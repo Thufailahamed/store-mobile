@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet, type ViewStyle } from "react-native";
+import { View, Pressable, StyleSheet, type ViewStyle, TouchableOpacity } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -11,24 +12,17 @@ import { formatPrice, discountPct } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
-import { WISHLIST_IMAGE_HEIGHT } from "@/components/wishlist/layout";
+import { WISHLIST_CARD_WIDTH, WISHLIST_IMAGE_HEIGHT } from "@/components/wishlist/layout";
 
 interface WishlistItemCardProps {
   product: Product;
-  selected?: boolean;
-  onToggleSelect?: () => void;
   style?: ViewStyle;
 }
 
-export function WishlistItemCard({
-  product,
-  selected = false,
-  onToggleSelect,
-  style,
-}: WishlistItemCardProps) {
+export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
   const theme = useTheme();
   const router = useRouter();
-  const { addItem, items: cartItems } = useCart();
+  const { addItem } = useCart();
   const { toggle } = useWishlist();
   const { toast } = useToast();
   const [adding, setAdding] = useState(false);
@@ -37,8 +31,6 @@ export function WishlistItemCard({
     product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const discount = discountPct(product.mrp, product.price);
   const variant = product.variants?.[0];
-  const cartKey = `${product.id}-${variant?.id ?? "default"}`;
-  const inCart = !!cartItems[cartKey];
 
   const open = () =>
     router.push({
@@ -46,7 +38,8 @@ export function WishlistItemCard({
       params: { slug: product.slug || product.id },
     });
 
-  const addToBag = async () => {
+  const moveToBag = async (e?: any) => {
+    e?.stopPropagation?.();
     if (adding) return;
     setAdding(true);
     try {
@@ -63,244 +56,174 @@ export function WishlistItemCard({
         stock: variant?.stock ?? 99,
         quantity: 1,
       });
-      toast(`${product.name} added to bag`, "success");
+      toggle(product.id);
+      toast(`Moved ${product.name} to bag`, "success");
     } finally {
       setAdding(false);
     }
   };
 
-  const colorSwatches = Array.from(
-    new Map(
-      (product.variants ?? [])
-        .filter((v) => v.color_hex)
-        .map((v) => [v.color_hex as string, v.color as string])
-    ).keys()
-  ).slice(0, 4);
+  const isOutOfStock = variant?.stock === 0;
 
-  const lowStock =
-    variant?.stock !== undefined && variant.stock > 0 && variant.stock <= 5;
+  // Premium Olive ramp gradient for the call-to-action button
+  const buttonGradient = (theme.isDark 
+    ? [theme.olive[400], theme.olive[600]] 
+    : [theme.olive[500], theme.olive[700]]) as [string, string];
+
+  // Soft background card gradient for editorial paper texture look
+  const cardGradient = (theme.isDark
+    ? ["#181913", "#0f100a"]
+    : ["#faf8f1", "#f0ede4"]) as [string, string];
+
+  const overlayBg = theme.isDark 
+    ? "rgba(20, 21, 16, 0.8)" 
+    : "rgba(255, 255, 255, 0.85)";
 
   return (
     <Pressable
       onPress={open}
       style={({ pressed }) => [
         styles.card,
-        selected && styles.cardSelected,
-        pressed && { opacity: 0.92 },
+        {
+          borderColor: theme.colors.border,
+        },
+        pressed && { opacity: 0.98 },
         style,
       ]}
     >
-      <View
-        style={[
-          styles.imageWrap,
-          {
-            backgroundColor: theme.colors.card,
-            borderColor: selected ? theme.colors.primary : "rgba(200, 200, 184, 0.4)",
-          },
-        ]}
+      <LinearGradient
+        colors={cardGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={{ flex: 1 }}
       >
-        {primary ? (
-          <Image
-            source={{ uri: primary }}
-            style={styles.image}
-            contentFit="cover"
-            transition={250}
-          />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Ionicons
-              name="image-outline"
-              size={24}
-              color={theme.colors.mutedForeground}
+        <View style={styles.imageWrap}>
+          {primary ? (
+            <Image
+              source={{ uri: primary }}
+              style={styles.image}
+              contentFit="cover"
+              transition={250}
             />
-          </View>
-        )}
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons
+                name="image-outline"
+                size={24}
+                color={theme.colors.mutedForeground}
+              />
+            </View>
+          )}
 
-        {discount > 0 ? (
-          <View
-            style={[
-              styles.discountBadge,
-              { backgroundColor: theme.accent2.rust },
-            ]}
-          >
-            <Label style={{ color: "#fff", fontSize: 9 }}>
-              {discount}% OFF
-            </Label>
-          </View>
-        ) : null}
-
-        {onToggleSelect ? (
+          {/* Remove from Wishlist button */}
           <Pressable
             onPress={(e) => {
-              e.stopPropagation?.();
-              onToggleSelect();
+              e.stopPropagation();
+              toggle(product.id);
             }}
             hitSlop={8}
-            accessibilityLabel={selected ? "Deselect item" : "Select item"}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: selected }}
+            accessibilityLabel="Remove from wishlist"
             style={({ pressed }) => [
-              styles.selectBtn,
+              styles.heart,
               {
-                borderColor: selected ? theme.colors.primary : theme.colors.border,
-                backgroundColor: selected
-                  ? theme.colors.primary
-                  : "rgba(255, 255, 255, 0.92)",
-              },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            {selected ? (
-              <Ionicons
-                name="checkmark"
-                size={12}
-                color={theme.colors.primaryForeground}
-              />
-            ) : null}
-          </Pressable>
-        ) : null}
-
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation?.();
-            toggle(product.id);
-          }}
-          hitSlop={6}
-          accessibilityLabel="Remove from wishlist"
-          style={({ pressed }) => [
-            styles.heart,
-            {
-              backgroundColor: "rgba(255, 255, 255, 0.88)",
-              borderColor: "rgba(200, 200, 184, 0.4)",
-            },
-            pressed && { opacity: 0.6 },
-          ]}
-        >
-          <Ionicons name="heart" size={14} color={theme.accent2.rust} />
-        </Pressable>
-
-        {lowStock ? (
-          <View
-            style={[
-              styles.lowStockBadge,
-              { backgroundColor: `${theme.colors.card}F2` },
-            ]}
-          >
-            <Ionicons name="flame-outline" size={10} color={theme.accent2.rust} />
-            <Label
-              style={{ color: theme.accent2.rust, fontSize: 8, marginLeft: 3 }}
-            >
-              {variant?.stock} LEFT
-            </Label>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.info}>
-        {product.brand ? (
-          <Label
-            style={{
-              color: theme.olive[600],
-              fontSize: 9,
-            }}
-            numberOfLines={1}
-          >
-            {product.brand.name}
-          </Label>
-        ) : null}
-        <Display
-          size="sm"
-          numberOfLines={2}
-          style={[styles.productName, { color: theme.colors.foreground }]}
-        >
-          {product.name}
-        </Display>
-
-        {colorSwatches.length > 0 ? (
-          <View style={styles.swatches}>
-            {colorSwatches.map((hex) => (
-              <View
-                key={hex}
-                style={[
-                  styles.swatch,
-                  {
-                    backgroundColor: hex,
-                    borderColor: theme.colors.border,
-                  },
-                ]}
-              />
-            ))}
-            {product.variants && product.variants.length > colorSwatches.length ? (
-              <Label
-                style={{
-                  color: theme.colors.mutedForeground,
-                  fontSize: 9,
-                  marginLeft: 4,
-                }}
-              >
-                +{product.variants.length - colorSwatches.length}
-              </Label>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View style={styles.priceRow}>
-          <View style={styles.priceCol}>
-            <Price size="base" style={{ color: theme.colors.foreground }}>
-              {formatPrice(product.price)}
-            </Price>
-            {discount > 0 ? (
-              <Body
-                size="xs"
-                muted
-                style={{
-                  textDecorationLine: "line-through",
-                  marginTop: 2,
-                }}
-              >
-                {formatPrice(product.mrp)}
-              </Body>
-            ) : null}
-          </View>
-          <Pressable
-            onPress={inCart ? open : addToBag}
-            hitSlop={6}
-            accessibilityLabel={inCart ? "View in bag" : "Add to bag"}
-            style={({ pressed }) => [
-              styles.addBtn,
-              {
-                backgroundColor: inCart ? theme.colors.muted : theme.olive[700],
+                backgroundColor: overlayBg,
               },
               pressed && { opacity: 0.75 },
             ]}
           >
-            <Ionicons
-              name={inCart ? "checkmark" : "add"}
-              size={16}
-              color={inCart ? theme.colors.foreground : "#fff"}
-            />
+            <Ionicons name="trash-outline" size={14} color={theme.colors.foreground} />
           </Pressable>
+
+          {/* Rating Badge */}
+          {product.rating > 0 && (
+            <View style={[styles.ratingBadge, { backgroundColor: overlayBg }]}>
+              <Body style={[styles.ratingText, { color: theme.colors.foreground }]}>
+                {product.rating.toFixed(1)} <Ionicons name="star" size={9} color={theme.olive[600]} /> | {product.total_reviews}
+              </Body>
+            </View>
+          )}
         </View>
-      </View>
+
+        <View style={styles.info}>
+          {product.brand ? (
+            <Label style={[styles.brandName, { color: theme.colors.mutedForeground }]} numberOfLines={1}>
+              {product.brand.name}
+            </Label>
+          ) : (
+            <Label style={[styles.brandName, { color: theme.colors.mutedForeground }]}>LUXE</Label>
+          )}
+          
+          <Body size="xs" numberOfLines={1} muted style={styles.productName}>
+            {product.name}
+          </Body>
+
+          <View style={styles.priceRow}>
+            <Label style={[styles.priceText, { color: theme.colors.foreground }]}>
+              {formatPrice(product.price)}
+            </Label>
+            {discount > 0 ? (
+              <>
+                <Body size="xs" muted style={styles.mrpText}>
+                  {formatPrice(product.mrp)}
+                </Body>
+                <Label style={[styles.discountText, { color: theme.accent2.rust }]}>
+                  ({discount}% OFF)
+                </Label>
+              </>
+            ) : null}
+          </View>
+
+          {isOutOfStock && (
+            <Body style={styles.outOfStockText}>
+              OUT OF STOCK
+            </Body>
+          )}
+
+          {/* Premium call-to-action button */}
+          <TouchableOpacity
+            onPress={moveToBag}
+            disabled={isOutOfStock}
+            activeOpacity={0.8}
+            style={{ width: "100%", marginTop: 8 }}
+          >
+            {isOutOfStock ? (
+              <View style={[styles.moveToBagBtn, { backgroundColor: theme.colors.muted, shadowOpacity: 0, elevation: 0 }]}>
+                <Label style={[styles.moveToBagText, { color: theme.colors.mutedForeground }]}>
+                  OUT OF STOCK
+                </Label>
+              </View>
+            ) : (
+              <LinearGradient
+                colors={buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.moveToBagBtn}
+              >
+                <Label style={[styles.moveToBagText, { color: "#FFFFFF" }]}>
+                  MOVE TO BAG
+                </Label>
+              </LinearGradient>
+            )}
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    width: "100%",
-  },
-  cardSelected: {
-    opacity: 1,
+    width: WISHLIST_CARD_WIDTH,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginBottom: 20,
+    ...shadows.soft,
   },
   imageWrap: {
     width: "100%",
     height: WISHLIST_IMAGE_HEIGHT,
-    borderRadius: radii.xl,
-    borderWidth: 1.5,
-    overflow: "hidden",
     position: "relative",
-    ...shadows.soft,
   },
   image: {
     width: "100%",
@@ -311,86 +234,94 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  discountBadge: {
-    position: "absolute",
-    bottom: 8,
-    right: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    zIndex: 1,
-  },
-  selectBtn: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    zIndex: 2,
-  },
   heart: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    top: 10,
+    right: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    zIndex: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  lowStockBadge: {
+  ratingBadge: {
     position: "absolute",
-    bottom: 8,
-    left: 8,
+    bottom: 10,
+    left: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
+  },
+  ratingText: {
+    fontSize: 9,
+    fontFamily: fontFamilies.sans.semibold,
+    fontWeight: "600",
   },
   info: {
-    paddingTop: spacing[2],
-    gap: spacing[1],
+    padding: 10,
+    gap: 3,
+  },
+  brandName: {
+    fontSize: 9.5,
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   productName: {
-    marginTop: spacing[1],
-    minHeight: 36,
-    lineHeight: 18,
-  },
-  swatches: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: spacing[1.5],
-  },
-  swatch: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 4,
-    borderWidth: 1,
+    fontSize: 11,
   },
   priceRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    marginTop: spacing[2],
-    gap: spacing[2],
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 2,
   },
-  priceCol: {
-    flex: 1,
+  priceText: {
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
   },
-  addBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  mrpText: {
+    fontSize: 10,
+    textDecorationLine: "line-through",
+  },
+  discountText: {
+    fontSize: 10,
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+  },
+  outOfStockText: {
+    fontSize: 9,
+    color: "#c0392b",
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  moveToBagBtn: {
+    width: "100%",
+    height: 36,
+    borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.glow,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  moveToBagText: {
+    fontSize: 10,
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
 });

@@ -43,6 +43,7 @@ export default function CheckoutScreen() {
   const [usePoints, setUsePoints] = useState(false);
   const [payhereVisible, setPayhereVisible] = useState(false);
   const [payhereSession, setPayhereSession] = useState<{ action: string; fields: Record<string, string> } | null>(null);
+  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
   const [couponInput, setCouponInput] = useState(couponCode || "");
@@ -192,6 +193,7 @@ export default function CheckoutScreen() {
       if (paymentMethod === "payhere") {
         const session = await getPayHereSession(order.id);
         if (!session.ok) throw new Error(session.error);
+        setPlacedOrderId(order.id);
         setPayhereSession(session.data);
         setPayhereVisible(true);
         await loyalty.reload();
@@ -201,7 +203,7 @@ export default function CheckoutScreen() {
       clear();
       await loyalty.reload();
       toast("Order placed", "success");
-      router.replace("/(main)/account/orders");
+      router.replace({ pathname: "/(main)/checkout/success" as never, params: { orderId: order.id } });
     } catch (e: any) {
       toast(e?.message || "Order failed", "error");
     } finally {
@@ -392,7 +394,11 @@ export default function CheckoutScreen() {
             setPayhereVisible(false);
             clear();
             toast("Payment complete", "success");
-            router.replace("/(main)/account/orders");
+            if (placedOrderId) {
+              router.replace({ pathname: "/(main)/checkout/success" as never, params: { orderId: placedOrderId } });
+            } else {
+              router.replace("/(main)/account/orders");
+            }
           }}
         />
       )}

@@ -67,7 +67,6 @@ export default function WishlistScreen() {
   const [filter, setFilter] = useState<WishlistFilter>("all");
   const [sort, setSort] = useState<WishlistSort>("recent");
   const [addedAt, setAddedAt] = useState<Record<string, number>>({});
-  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
   const productIds = useMemo(
     () => Object.keys(wishlist.items),
@@ -151,42 +150,6 @@ export default function WishlistScreen() {
     return list;
   }, [products, filter, sort, addedAt]);
 
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      const next = { ...prev };
-      let changed = false;
-
-      visibleProducts.forEach((product) => {
-        if (next[product.id] === undefined) {
-          next[product.id] = true;
-          changed = true;
-        }
-      });
-
-      Object.keys(next).forEach((id) => {
-        if (!products.some((product) => product.id === id)) {
-          delete next[id];
-          changed = true;
-        }
-      });
-
-      return changed ? next : prev;
-    });
-  }, [visibleProducts, products]);
-
-  const selectedProducts = useMemo(
-    () => visibleProducts.filter((product) => selectedIds[product.id]),
-    [visibleProducts, selectedIds]
-  );
-
-  const selectedCount = selectedProducts.length;
-  const allSelected =
-    visibleProducts.length > 0 && selectedCount === visibleProducts.length;
-  const selectedInStockCount = useMemo(
-    () => selectedProducts.filter((product) => getProductStock(product) > 0).length,
-    [selectedProducts]
-  );
-
   const totalValue = useMemo(
     () => products.reduce((sum, p) => sum + (p.price || 0), 0),
     [products]
@@ -196,60 +159,7 @@ export default function WishlistScreen() {
     [products]
   );
 
-  const handleToggleSelect = useCallback((productId: string) => {
-    setSelectedIds((prev) => ({
-      ...prev,
-      [productId]: !prev[productId],
-    }));
-  }, []);
-
-  const handleToggleSelectAll = useCallback(() => {
-    const targetState = !allSelected;
-    setSelectedIds((prev) => {
-      const next = { ...prev };
-      visibleProducts.forEach((product) => {
-        next[product.id] = targetState;
-      });
-      return next;
-    });
-  }, [allSelected, visibleProducts]);
-
-  const handleAddSelected = useCallback(() => {
-    if (selectedInStockCount === 0) {
-      toast("Select in-stock pieces to add to your bag", "info");
-      return;
-    }
-
-    let added = 0;
-    let skipped = 0;
-
-    selectedProducts.forEach((product) => {
-      if (addProductToCart(product, cart)) {
-        added += 1;
-      } else {
-        skipped += 1;
-      }
-    });
-
-    if (added > 0) {
-      toast(
-        skipped > 0
-          ? `${added} added to bag · ${skipped} out of stock`
-          : `${added} ${added === 1 ? "piece" : "pieces"} added to your bag`,
-        "success"
-      );
-    } else {
-      toast("Selected items are out of stock", "error");
-    }
-  }, [selectedProducts, selectedInStockCount, cart, toast]);
-
-  const handleClearAll = useCallback(() => {
-    if (!products.length) return;
-    products.forEach((p) => wishlist.toggle(p.id));
-    toast("Wishlist cleared", "info");
-  }, [products, wishlist, toast]);
-
-  const listBottomPad = expandableTabBarInset(insets.bottom) + 88;
+  const listBottomPad = expandableTabBarInset(insets.bottom) + 24;
 
   if (!loading && productIds.length === 0) {
     return (
@@ -355,59 +265,11 @@ export default function WishlistScreen() {
               style={styles.segmentBar}
             />
 
-            {visibleProducts.length > 0 && (
-              <View style={styles.selectionBar}>
-                <TouchableOpacity
-                  onPress={handleToggleSelectAll}
-                  style={styles.selectionLeft}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      {
-                        borderColor: allSelected
-                          ? theme.colors.primary
-                          : theme.colors.border,
-                        backgroundColor: allSelected
-                          ? theme.colors.primary
-                          : "transparent",
-                      },
-                    ]}
-                  >
-                    {allSelected && (
-                      <Ionicons
-                        name="checkmark"
-                        size={12}
-                        color={theme.colors.primaryForeground}
-                      />
-                    )}
-                  </View>
-                  <Body style={[styles.selectedCountText, { color: theme.colors.foreground }]}>
-                    {selectedCount}/{visibleProducts.length} selected
-                  </Body>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={handleClearAll}
-                  hitSlop={8}
-                  activeOpacity={0.7}
-                >
-                  <Body size="sm" style={{ color: theme.colors.mutedForeground }}>
-                    Clear all
-                  </Body>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
         }
         renderItem={({ item }) => (
           <View style={styles.gridItem}>
-            <WishlistItemCard
-              product={item}
-              selected={!!selectedIds[item.id]}
-              onToggleSelect={() => handleToggleSelect(item.id)}
-            />
+            <WishlistItemCard product={item} />
           </View>
         )}
         ListEmptyComponent={
@@ -428,55 +290,7 @@ export default function WishlistScreen() {
         }
       />
 
-      {visibleProducts.length > 0 && (
-        <View
-          style={[
-            styles.checkoutContainer,
-            {
-              paddingBottom: Math.max(insets.bottom, spacing[4]),
-              backgroundColor: theme.colors.card,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.selectionBand,
-              {
-                backgroundColor: theme.isDark
-                  ? `${theme.colors.primary}18`
-                  : `${theme.colors.primary}12`,
-              },
-            ]}
-          >
-            <Body style={[styles.selectionBandText, { color: theme.colors.foreground }]}>
-              {selectedCount} {selectedCount === 1 ? "piece" : "pieces"} selected
-              {selectedInStockCount < selectedCount
-                ? ` · ${selectedInStockCount} in stock`
-                : ""}
-            </Body>
-          </View>
 
-          <View style={styles.checkoutAction}>
-            <TouchableOpacity
-              style={[
-                styles.checkoutBtn,
-                {
-                  backgroundColor: theme.isDark ? theme.olive[600] : theme.olive[700],
-                },
-                selectedInStockCount === 0 && styles.checkoutBtnDisabled,
-              ]}
-              disabled={selectedInStockCount === 0}
-              onPress={handleAddSelected}
-              activeOpacity={0.85}
-            >
-              <Body style={styles.checkoutBtnText}>
-                Add {selectedInStockCount || selectedCount} to bag
-              </Body>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </PaperBackground>
   );
 }

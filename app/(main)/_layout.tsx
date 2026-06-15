@@ -31,6 +31,7 @@ export default function MainLayout() {
 
       <Tabs.Screen name="cart/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
       <Tabs.Screen name="checkout/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+      <Tabs.Screen name="checkout/success" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
       <Tabs.Screen name="notifications/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
       <Tabs.Screen name="blog/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
       <Tabs.Screen name="blog/[slug]" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
