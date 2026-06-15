@@ -43,7 +43,7 @@ export function WishlistEmptyState({
         </View>
       </View>
 
-      <Label style={{ color: theme.accent2.rust, marginTop: 28 }}>
+      <Label style={{ color: theme.accent2.rust, marginTop: spacing[7] }}>
         Your Collection
       </Label>
       <Display
@@ -108,11 +108,11 @@ export function WishlistEmptyState({
 
 const styles = StyleSheet.create({
   wrap: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
-    paddingTop: 60,
-    paddingBottom: 100,
+    paddingHorizontal: spacing[8],
+    paddingVertical: spacing[10],
   },
   medallion: {
     width: 132,

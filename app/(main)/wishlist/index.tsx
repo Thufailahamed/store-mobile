@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { View, FlatList, Pressable, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
-import { AppHeader, PaperBackground } from "@/components/layout";
+import { View, FlatList, StyleSheet, TouchableOpacity } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { AppHeader, PaperBackground, expandableTabBarInset } from "@/components/layout";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, radii } from "@/lib/theme/tokens";
+import { spacing, radii } from "@/lib/theme/tokens";
 import { useWishlist, useCart } from "@/lib/stores";
+import type { CartStore } from "@/lib/stores/cart-store";
 import { useToast } from "@/components/ui";
 import { supabase } from "@/lib/supabase/client";
 import { formatPrice, discountPct } from "@/lib/utils";
@@ -19,11 +21,44 @@ import {
 import { WishlistSkeleton } from "@/components/wishlist/WishlistSkeleton";
 import { WishlistEmptyState } from "@/components/wishlist/WishlistEmptyState";
 import { YouMayAlsoLove } from "@/components/wishlist/YouMayAlsoLove";
+import {
+  WISHLIST_CARD_WIDTH,
+  WISHLIST_GRID_GAP,
+  WISHLIST_H_PAD,
+} from "@/components/wishlist/layout";
 import type { Product } from "@/lib/types";
 
+function getProductStock(product: Product): number {
+  return product.variants?.[0]?.stock ?? 0;
+}
+
+function addProductToCart(product: Product, cart: CartStore): boolean {
+  const variant = product.variants?.[0];
+  const stock = getProductStock(product);
+  if (stock <= 0) return false;
+
+  const image =
+    product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
+
+  cart.addItem({
+    productId: product.id,
+    variantId: variant?.id ?? null,
+    storeId: product.store_id,
+    name: product.name,
+    variantLabel: variant
+      ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim()
+      : undefined,
+    price: product.price,
+    image,
+    stock,
+    quantity: 1,
+  });
+  return true;
+}
+
 export default function WishlistScreen() {
-  const router = useRouter();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const wishlist = useWishlist();
   const cart = useCart();
@@ -32,6 +67,7 @@ export default function WishlistScreen() {
   const [filter, setFilter] = useState<WishlistFilter>("all");
   const [sort, setSort] = useState<WishlistSort>("recent");
   const [addedAt, setAddedAt] = useState<Record<string, number>>({});
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
   const productIds = useMemo(
     () => Object.keys(wishlist.items),
@@ -47,7 +83,6 @@ export default function WishlistScreen() {
       return;
     }
 
-    // Stamp first-seen time per id (used for "Recently added" sort).
     setAddedAt((prev) => {
       const next = { ...prev };
       const now = Date.now();
@@ -116,6 +151,42 @@ export default function WishlistScreen() {
     return list;
   }, [products, filter, sort, addedAt]);
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      visibleProducts.forEach((product) => {
+        if (next[product.id] === undefined) {
+          next[product.id] = true;
+          changed = true;
+        }
+      });
+
+      Object.keys(next).forEach((id) => {
+        if (!products.some((product) => product.id === id)) {
+          delete next[id];
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [visibleProducts, products]);
+
+  const selectedProducts = useMemo(
+    () => visibleProducts.filter((product) => selectedIds[product.id]),
+    [visibleProducts, selectedIds]
+  );
+
+  const selectedCount = selectedProducts.length;
+  const allSelected =
+    visibleProducts.length > 0 && selectedCount === visibleProducts.length;
+  const selectedInStockCount = useMemo(
+    () => selectedProducts.filter((product) => getProductStock(product) > 0).length,
+    [selectedProducts]
+  );
+
   const totalValue = useMemo(
     () => products.reduce((sum, p) => sum + (p.price || 0), 0),
     [products]
@@ -125,29 +196,52 @@ export default function WishlistScreen() {
     [products]
   );
 
-  const handleAddAll = useCallback(() => {
-    const inStock = products.filter(
-      (p) => (p.variants?.[0]?.stock ?? 0) > 0
-    );
-    if (!inStock.length) return;
-    inStock.forEach((p) => {
-      const v = p.variants?.[0];
-      cart.addItem({
-        productId: p.id,
-        variantId: v?.id ?? null,
-        storeId: p.store_id,
-        name: p.name,
-        variantLabel: v
-          ? `${v.color ?? ""} ${v.size ?? ""}`.trim()
-          : undefined,
-        price: p.price,
-        image: p.images?.[0]?.url,
-        stock: v?.stock ?? 99,
-        quantity: 1,
+  const handleToggleSelect = useCallback((productId: string) => {
+    setSelectedIds((prev) => ({
+      ...prev,
+      [productId]: !prev[productId],
+    }));
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    const targetState = !allSelected;
+    setSelectedIds((prev) => {
+      const next = { ...prev };
+      visibleProducts.forEach((product) => {
+        next[product.id] = targetState;
       });
+      return next;
     });
-    toast(`${inStock.length} pieces moved to your bag`, "success");
-  }, [products, cart, toast]);
+  }, [allSelected, visibleProducts]);
+
+  const handleAddSelected = useCallback(() => {
+    if (selectedInStockCount === 0) {
+      toast("Select in-stock pieces to add to your bag", "info");
+      return;
+    }
+
+    let added = 0;
+    let skipped = 0;
+
+    selectedProducts.forEach((product) => {
+      if (addProductToCart(product, cart)) {
+        added += 1;
+      } else {
+        skipped += 1;
+      }
+    });
+
+    if (added > 0) {
+      toast(
+        skipped > 0
+          ? `${added} added to bag · ${skipped} out of stock`
+          : `${added} ${added === 1 ? "piece" : "pieces"} added to your bag`,
+        "success"
+      );
+    } else {
+      toast("Selected items are out of stock", "error");
+    }
+  }, [selectedProducts, selectedInStockCount, cart, toast]);
 
   const handleClearAll = useCallback(() => {
     if (!products.length) return;
@@ -155,9 +249,11 @@ export default function WishlistScreen() {
     toast("Wishlist cleared", "info");
   }, [products, wishlist, toast]);
 
+  const listBottomPad = expandableTabBarInset(insets.bottom) + 88;
+
   if (!loading && productIds.length === 0) {
     return (
-      <PaperBackground>
+      <PaperBackground style={styles.screen}>
         <AppHeader compact showTicker={false} showSearch={false} />
         <WishlistEmptyState hasBagItems={cart.itemCount() > 0} />
       </PaperBackground>
@@ -165,17 +261,20 @@ export default function WishlistScreen() {
   }
 
   return (
-    <PaperBackground>
+    <PaperBackground style={styles.screen}>
       <AppHeader compact showTicker={false} showSearch={false} />
       <FlatList
         data={visibleProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.listContent}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: listBottomPad },
+        ]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <View>
+          <View style={styles.headerBlock}>
             <View style={styles.hero}>
               <Label style={{ color: theme.accent2.rust }}>
                 Your Collection
@@ -183,22 +282,11 @@ export default function WishlistScreen() {
               <Display
                 size="3xl"
                 italic
-                style={{
-                  color: theme.colors.foreground,
-                  marginTop: 6,
-                }}
+                style={[styles.heroTitle, { color: theme.colors.foreground }]}
               >
                 Saved Pieces
               </Display>
-              <Body
-                muted
-                size="md"
-                style={{
-                  marginTop: 8,
-                  fontFamily: fontFamilies.display.regular,
-                  fontStyle: "italic",
-                }}
-              >
+              <Body muted size="md" style={styles.heroSubtitle}>
                 {products.length}{" "}
                 {products.length === 1 ? "piece" : "pieces"} ·{" "}
                 <Body
@@ -259,20 +347,67 @@ export default function WishlistScreen() {
               />
             </View>
 
-            <View style={styles.segmentWrap}>
-              <WishlistSegmentBar
-                filter={filter}
-                sort={sort}
-                onFilterChange={setFilter}
-                onSortChange={setSort}
-                style={{ marginHorizontal: -20 }}
-              />
-            </View>
+            <WishlistSegmentBar
+              filter={filter}
+              sort={sort}
+              onFilterChange={setFilter}
+              onSortChange={setSort}
+              style={styles.segmentBar}
+            />
+
+            {visibleProducts.length > 0 && (
+              <View style={styles.selectionBar}>
+                <TouchableOpacity
+                  onPress={handleToggleSelectAll}
+                  style={styles.selectionLeft}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      {
+                        borderColor: allSelected
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                        backgroundColor: allSelected
+                          ? theme.colors.primary
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    {allSelected && (
+                      <Ionicons
+                        name="checkmark"
+                        size={12}
+                        color={theme.colors.primaryForeground}
+                      />
+                    )}
+                  </View>
+                  <Body style={[styles.selectedCountText, { color: theme.colors.foreground }]}>
+                    {selectedCount}/{visibleProducts.length} selected
+                  </Body>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleClearAll}
+                  hitSlop={8}
+                  activeOpacity={0.7}
+                >
+                  <Body size="sm" style={{ color: theme.colors.mutedForeground }}>
+                    Clear all
+                  </Body>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         }
         renderItem={({ item }) => (
           <View style={styles.gridItem}>
-            <WishlistItemCard product={item} />
+            <WishlistItemCard
+              product={item}
+              selected={!!selectedIds[item.id]}
+              onToggleSelect={() => handleToggleSelect(item.id)}
+            />
           </View>
         )}
         ListEmptyComponent={
@@ -285,48 +420,63 @@ export default function WishlistScreen() {
           )
         }
         ListFooterComponent={
-          <View style={{ paddingBottom: 40 }}>
-            {products.length > 0 ? (
-              <View style={styles.bulkRow}>
-                <Pressable
-                  onPress={handleAddAll}
-                  disabled={inStockCount === 0}
-                  style={({ pressed }) => [
-                    styles.bulkBtn,
-                    { backgroundColor: theme.olive[700] },
-                    inStockCount === 0 && { opacity: 0.4 },
-                    pressed && { opacity: 0.88 },
-                  ]}
-                >
-                  <Label style={{ color: "#fff", fontSize: 11 }}>
-                    Add {inStockCount} to bag
-                  </Label>
-                </Pressable>
-                <Pressable
-                  onPress={handleClearAll}
-                  hitSlop={6}
-                  style={({ pressed }) => [
-                    styles.bulkGhost,
-                    { borderColor: theme.colors.border },
-                    pressed && { opacity: 0.6 },
-                  ]}
-                >
-                  <Label
-                    style={{
-                      color: theme.colors.mutedForeground,
-                      fontSize: 11,
-                    }}
-                  >
-                    Clear all
-                  </Label>
-                </Pressable>
-              </View>
-            ) : null}
-
-            <YouMayAlsoLove excludeIds={productIds} />
-          </View>
+          products.length > 0 ? (
+            <View style={styles.footer}>
+              <YouMayAlsoLove excludeIds={productIds} />
+            </View>
+          ) : null
         }
       />
+
+      {visibleProducts.length > 0 && (
+        <View
+          style={[
+            styles.checkoutContainer,
+            {
+              paddingBottom: Math.max(insets.bottom, spacing[4]),
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.selectionBand,
+              {
+                backgroundColor: theme.isDark
+                  ? `${theme.colors.primary}18`
+                  : `${theme.colors.primary}12`,
+              },
+            ]}
+          >
+            <Body style={[styles.selectionBandText, { color: theme.colors.foreground }]}>
+              {selectedCount} {selectedCount === 1 ? "piece" : "pieces"} selected
+              {selectedInStockCount < selectedCount
+                ? ` · ${selectedInStockCount} in stock`
+                : ""}
+            </Body>
+          </View>
+
+          <View style={styles.checkoutAction}>
+            <TouchableOpacity
+              style={[
+                styles.checkoutBtn,
+                {
+                  backgroundColor: theme.isDark ? theme.olive[600] : theme.olive[700],
+                },
+                selectedInStockCount === 0 && styles.checkoutBtnDisabled,
+              ]}
+              disabled={selectedInStockCount === 0}
+              onPress={handleAddSelected}
+              activeOpacity={0.85}
+            >
+              <Body style={styles.checkoutBtnText}>
+                Add {selectedInStockCount || selectedCount} to bag
+              </Body>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </PaperBackground>
   );
 }
@@ -344,16 +494,8 @@ function Stat({
 }) {
   return (
     <View style={styles.stat}>
-      <Label style={{ color: muted, fontSize: 9 }}>{label}</Label>
-      <Body
-        size="sm"
-        style={{
-          color,
-          fontFamily: fontFamilies.display.semibold,
-          marginTop: 4,
-          fontSize: 16,
-        }}
-      >
+      <Label style={[styles.statLabel, { color: muted }]}>{label}</Label>
+      <Body size="sm" style={[styles.statValue, { color }]}>
         {value}
       </Body>
     </View>
@@ -361,66 +503,133 @@ function Stat({
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
   listContent: {
-    paddingHorizontal: 20,
-    paddingTop: spacing[2],
-    paddingBottom: spacing[24],
+    paddingHorizontal: WISHLIST_H_PAD,
+    flexGrow: 1,
+  },
+  headerBlock: {
+    gap: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[2],
   },
   hero: {
-    paddingTop: spacing[4],
+    gap: spacing[2],
+  },
+  heroTitle: {
+    marginTop: spacing[1],
+  },
+  heroSubtitle: {
+    marginTop: spacing[1],
+    fontFamily: fontFamilies.display.regular,
+    fontStyle: "italic",
+    lineHeight: 22,
   },
   statRow: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderRadius: radii.xl,
-    paddingVertical: 14,
-    marginTop: 20,
-    marginBottom: 12,
+    paddingVertical: spacing[4],
   },
   stat: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[1],
+  },
+  statLabel: {
+    fontSize: 9,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  statValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
+    lineHeight: 20,
+    textAlign: "center",
   },
   statDivider: {
     width: 1,
-    height: 28,
+    alignSelf: "stretch",
+    marginVertical: spacing[1],
   },
-  row: {
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 14,
+  segmentBar: {
+    marginHorizontal: -WISHLIST_H_PAD,
+  },
+  gridRow: {
+    gap: WISHLIST_GRID_GAP,
+    marginBottom: WISHLIST_GRID_GAP,
   },
   gridItem: {
-    flex: 1,
+    width: WISHLIST_CARD_WIDTH,
   },
   filterEmpty: {
-    paddingVertical: 40,
+    paddingVertical: spacing[10],
     alignItems: "center",
+    justifyContent: "center",
   },
-  bulkRow: {
+  footer: {
+    paddingTop: spacing[2],
+  },
+  selectionBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginTop: 8,
-    marginBottom: 8,
+    justifyContent: "space-between",
+    paddingTop: spacing[1],
   },
-  bulkBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: radii.lg,
+  selectionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2.5],
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
   },
-  bulkGhost: {
-    height: 48,
-    paddingHorizontal: 18,
-    borderRadius: radii.lg,
+  selectedCountText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+  },
+  checkoutContainer: {
+    borderTopWidth: 1,
+  },
+  selectionBand: {
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[5],
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
   },
-  segmentWrap: {
-    marginTop: 14,
+  selectionBandText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    textAlign: "center",
+  },
+  checkoutAction: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+  },
+  checkoutBtn: {
+    width: "100%",
+    minHeight: 54,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkoutBtnDisabled: {
+    opacity: 0.42,
+  },
+  checkoutBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+    fontSize: 16,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
 });

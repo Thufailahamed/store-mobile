@@ -5,7 +5,8 @@ import { Image } from "expo-image";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, radii } from "@/lib/theme/tokens";
+import { WISHLIST_H_PAD } from "@/components/wishlist/layout";
+import { spacing, radii } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Product } from "@/lib/types";
@@ -72,8 +73,8 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
         keyExtractor={(item) => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20 }}
-        ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
+        contentContainerStyle={styles.railContent}
+        ItemSeparatorComponent={() => <View style={styles.railSeparator} />}
         renderItem={({ item }) => {
           const img =
             item.images?.find((i) => i.is_primary)?.url || item.images?.[0]?.url;
@@ -149,15 +150,21 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: spacing[8],
-    marginBottom: spacing[4],
+    marginHorizontal: -WISHLIST_H_PAD,
+    gap: spacing[3],
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginBottom: 14,
+    paddingHorizontal: WISHLIST_H_PAD,
+    gap: spacing[3],
+  },
+  railContent: {
+    paddingHorizontal: WISHLIST_H_PAD,
+  },
+  railSeparator: {
+    width: spacing[3],
   },
   card: {
     width: 156,
@@ -174,6 +181,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   cardInfo: {
-    padding: 10,
+    padding: spacing[2.5],
+    gap: spacing[1],
   },
 });

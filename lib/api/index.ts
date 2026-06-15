@@ -639,10 +639,19 @@ export async function updateAddress(id: string, patch: Partial<Address>): Promis
 export async function deleteAddress(id: string): Promise<Result<void>> {
   try {
     const { error } = await supabase.from("addresses").delete().eq("id", id);
-    if (error) return fail(error.message);
+    if (error) {
+      if (error.code === "23503" || error.message.includes("violates foreign key constraint")) {
+        return fail("This address is linked to past orders and cannot be deleted.");
+      }
+      return fail(error.message);
+    }
     return ok(undefined);
   } catch (e: any) {
-    return fail(e?.message ?? "Failed to delete address");
+    const msg = e?.message ?? "";
+    if (msg.includes("violates foreign key constraint")) {
+      return fail("This address is linked to past orders and cannot be deleted.");
+    }
+    return fail(msg || "Failed to delete address");
   }
 }
 

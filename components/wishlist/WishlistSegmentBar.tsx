@@ -12,6 +12,7 @@ import { useTheme } from "@/lib/hooks/useTheme";
 import { Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { typography, spacing, radii } from "@/lib/theme/tokens";
+import { WISHLIST_H_PAD } from "@/components/wishlist/layout";
 
 export type WishlistFilter = "all" | "in_stock" | "on_sale";
 export type WishlistSort =
@@ -115,10 +116,12 @@ export function WishlistSegmentBar({
             color={theme.olive[700]}
           />
           <Label
+            numberOfLines={1}
             style={{
               color: theme.colors.foreground,
               fontSize: 10,
               marginLeft: 4,
+              flexShrink: 1,
             }}
           >
             {currentSort.label}
@@ -216,16 +219,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: WISHLIST_H_PAD,
+    paddingVertical: spacing[2.5],
     borderBottomWidth: 1,
-    gap: 10,
+    gap: spacing[2],
   },
   chipRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: spacing[1.5],
     flex: 1,
+    flexShrink: 1,
   },
   chip: {
     paddingHorizontal: 12,
@@ -236,10 +240,12 @@ const styles = StyleSheet.create({
   sortBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    borderRadius: radii.full,
     borderWidth: 1,
+    flexShrink: 0,
+    maxWidth: "42%",
   },
   backdrop: {
     flex: 1,

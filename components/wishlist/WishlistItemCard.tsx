@@ -11,13 +11,21 @@ import { formatPrice, discountPct } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
+import { WISHLIST_IMAGE_HEIGHT } from "@/components/wishlist/layout";
 
 interface WishlistItemCardProps {
   product: Product;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   style?: ViewStyle;
 }
 
-export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
+export function WishlistItemCard({
+  product,
+  selected = false,
+  onToggleSelect,
+  style,
+}: WishlistItemCardProps) {
   const theme = useTheme();
   const router = useRouter();
   const { addItem, items: cartItems } = useCart();
@@ -77,10 +85,7 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
       onPress={open}
       style={({ pressed }) => [
         styles.card,
-        {
-          backgroundColor: theme.colors.card,
-          borderColor: theme.colors.border,
-        },
+        selected && styles.cardSelected,
         pressed && { opacity: 0.92 },
         style,
       ]}
@@ -88,7 +93,10 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
       <View
         style={[
           styles.imageWrap,
-          { backgroundColor: theme.colors.muted },
+          {
+            backgroundColor: theme.colors.card,
+            borderColor: selected ? theme.colors.primary : "rgba(200, 200, 184, 0.4)",
+          },
         ]}
       >
         {primary ? (
@@ -102,7 +110,7 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
           <View style={styles.imagePlaceholder}>
             <Ionicons
               name="image-outline"
-              size={20}
+              size={24}
               color={theme.colors.mutedForeground}
             />
           </View>
@@ -121,6 +129,37 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
           </View>
         ) : null}
 
+        {onToggleSelect ? (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onToggleSelect();
+            }}
+            hitSlop={8}
+            accessibilityLabel={selected ? "Deselect item" : "Select item"}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: selected }}
+            style={({ pressed }) => [
+              styles.selectBtn,
+              {
+                borderColor: selected ? theme.colors.primary : theme.colors.border,
+                backgroundColor: selected
+                  ? theme.colors.primary
+                  : "rgba(255, 255, 255, 0.92)",
+              },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            {selected ? (
+              <Ionicons
+                name="checkmark"
+                size={12}
+                color={theme.colors.primaryForeground}
+              />
+            ) : null}
+          </Pressable>
+        ) : null}
+
         <Pressable
           onPress={(e) => {
             e.stopPropagation?.();
@@ -131,8 +170,8 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
           style={({ pressed }) => [
             styles.heart,
             {
-              backgroundColor: `${theme.colors.card}E6`,
-              borderColor: theme.colors.border,
+              backgroundColor: "rgba(255, 255, 255, 0.88)",
+              borderColor: "rgba(200, 200, 184, 0.4)",
             },
             pressed && { opacity: 0.6 },
           ]}
@@ -170,9 +209,9 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
           </Label>
         ) : null}
         <Display
-          size="md"
+          size="sm"
           numberOfLines={2}
-          style={{ color: theme.colors.foreground, marginTop: 4 }}
+          style={[styles.productName, { color: theme.colors.foreground }]}
         >
           {product.name}
         </Display>
@@ -207,7 +246,7 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
 
         <View style={styles.priceRow}>
           <View style={styles.priceCol}>
-            <Price size="md" style={{ color: theme.colors.foreground }}>
+            <Price size="base" style={{ color: theme.colors.foreground }}>
               {formatPrice(product.price)}
             </Price>
             {discount > 0 ? (
@@ -249,16 +288,19 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    overflow: "hidden",
-    ...shadows.soft,
+    width: "100%",
+  },
+  cardSelected: {
+    opacity: 1,
   },
   imageWrap: {
     width: "100%",
-    aspectRatio: 0.78,
+    height: WISHLIST_IMAGE_HEIGHT,
+    borderRadius: radii.xl,
+    borderWidth: 1.5,
+    overflow: "hidden",
     position: "relative",
+    ...shadows.soft,
   },
   image: {
     width: "100%",
@@ -271,11 +313,24 @@ const styles = StyleSheet.create({
   },
   discountBadge: {
     position: "absolute",
-    top: 10,
-    left: 10,
+    bottom: 8,
+    right: 8,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    zIndex: 1,
+  },
+  selectBtn: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    zIndex: 2,
   },
   heart: {
     position: "absolute",
@@ -287,6 +342,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
+    zIndex: 2,
   },
   lowStockBadge: {
     position: "absolute",
@@ -299,13 +355,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   info: {
-    padding: 12,
-    gap: 2,
+    paddingTop: spacing[2],
+    gap: spacing[1],
+  },
+  productName: {
+    marginTop: spacing[1],
+    minHeight: 36,
+    lineHeight: 18,
   },
   swatches: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
+    marginTop: spacing[1.5],
   },
   swatch: {
     width: 10,
@@ -318,15 +379,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    marginTop: 10,
+    marginTop: spacing[2],
+    gap: spacing[2],
   },
   priceCol: {
     flex: 1,
   },
   addBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     ...shadows.glow,

@@ -1,11 +1,9 @@
 import React from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Skeleton } from "@/components/ui";
 import { spacing, radii } from "@/lib/theme/tokens";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = (SCREEN_WIDTH - 20 * 2 - 12) / 2;
+import { WISHLIST_CARD_WIDTH, WISHLIST_GRID_GAP } from "@/components/wishlist/layout";
 
 export function WishlistSkeleton() {
   const theme = useTheme();
@@ -25,7 +23,7 @@ export function WishlistSkeleton() {
         >
           <Skeleton
             width="100%"
-            height={CARD_WIDTH * 0.78}
+            height={WISHLIST_CARD_WIDTH * 0.78}
             borderRadius={0}
             style={{ borderTopLeftRadius: radii["2xl"], borderTopRightRadius: radii["2xl"] }}
           />
@@ -48,16 +46,14 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingHorizontal: 20,
-    gap: 12,
-    paddingTop: 16,
+    gap: WISHLIST_GRID_GAP,
+    paddingTop: spacing[2],
   },
   card: {
-    width: CARD_WIDTH,
+    width: WISHLIST_CARD_WIDTH,
     borderRadius: radii["2xl"],
     overflow: "hidden",
     borderWidth: 1,
-    marginBottom: 4,
   },
   row: {
     flexDirection: "row",

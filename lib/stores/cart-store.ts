@@ -15,7 +15,7 @@ export interface CartItem {
   stock: number;
 }
 
-interface CartStore {
+export interface CartStore {
   items: Record<string, CartItem>;
   couponCode: string | null;
   addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;

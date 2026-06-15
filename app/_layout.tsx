@@ -1,5 +1,5 @@
 import "react-native-gesture-handler";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -31,6 +31,7 @@ import {
   registerForPushNotifications,
   addNotificationResponseListener,
 } from "@/lib/notifications";
+import { hasCompletedOnboarding } from "@/lib/onboarding";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -48,40 +49,60 @@ function RootLayoutNav() {
   const router = useRouter();
   const segments = useSegments();
   const notifListenerRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+
+  useEffect(() => {
+    hasCompletedOnboarding().then((complete) => {
+      setOnboardingComplete(complete);
+      setOnboardingChecked(true);
+    });
+  }, [segments]);
 
   // Auth routing
   useEffect(() => {
-    if (loading) return;
+    if (loading || !onboardingChecked) return;
     if (session && roleLoading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inOnboardingGroup = segments[0] === "(onboarding)";
 
-    if (!session && !inAuthGroup) {
-      router.replace("/(auth)/login");
-    } else if (session && inAuthGroup) {
-      switch (role) {
-        case "store_owner":
-          router.replace("/(seller)");
-          break;
-        case "brand_owner":
-          router.replace("/(brand)");
-          break;
-        case "delivery":
-        case "delivery_company":
-          router.replace("/(delivery)");
-          break;
-        default:
-          router.replace("/(main)");
+    // If logged in: redirect away from onboarding and auth pages to role-based screens
+    if (session) {
+      if (inAuthGroup || inOnboardingGroup) {
+        switch (role) {
+          case "store_owner":
+            router.replace("/(seller)");
+            break;
+          case "brand_owner":
+            router.replace("/(brand)");
+            break;
+          case "delivery":
+          case "delivery_company":
+            router.replace("/(delivery)");
+            break;
+          default:
+            router.replace("/(main)");
+        }
       }
+      return;
     }
-  }, [session, loading, role, roleLoading, segments]);
+
+    // If NOT logged in: redirect to onboarding welcome screen if trying to access protected screens
+    if (!session) {
+      if (!inOnboardingGroup && !inAuthGroup) {
+        router.replace("/(onboarding)");
+      }
+      return;
+    }
+  }, [session, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete]);
 
   // Splash screen
   useEffect(() => {
-    if (!loading && (!session || !roleLoading)) {
+    if (onboardingChecked && !loading && (!session || !roleLoading)) {
       SplashScreen.hideAsync();
     }
-  }, [loading, session, roleLoading]);
+  }, [loading, session, roleLoading, onboardingChecked]);
 
   // Push notification registration
   useEffect(() => {
