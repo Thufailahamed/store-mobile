@@ -133,6 +133,13 @@ export default function AddressesScreen() {
         text: "Remove",
         style: "destructive",
         onPress: async () => {
+          if (a.is_default) {
+            const nextDefault = addresses.find((addr) => addr.id !== a.id);
+            if (nextDefault) {
+              await updateAddress(nextDefault.id, { is_default: true });
+            }
+          }
+
           const res = await deleteAddress(a.id);
           if (!res.ok) {
             toast(res.error, "error");

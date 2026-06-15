@@ -638,20 +638,53 @@ export async function updateAddress(id: string, patch: Partial<Address>): Promis
 
 export async function deleteAddress(id: string): Promise<Result<void>> {
   try {
-    const { error } = await supabase.from("addresses").delete().eq("id", id);
-    if (error) {
-      if (error.code === "23503" || error.message.includes("violates foreign key constraint")) {
-        return fail("This address is linked to past orders and cannot be deleted.");
+    const { data: linkedOrders, error: fetchError } = await supabase
+      .from("orders")
+      .select("id, shipping_address, address:addresses(*)")
+      .eq("address_id", id);
+
+    if (fetchError) return fail(fetchError.message);
+
+    if (linkedOrders?.length) {
+      for (const order of linkedOrders) {
+        const snap = order.shipping_address as Order["shipping_address"] | null;
+        const addr = (Array.isArray(order.address)
+          ? order.address[0]
+          : order.address) as Address | null | undefined;
+
+        if (!snap?.line1 && addr) {
+          const { error: snapshotError } = await supabase
+            .from("orders")
+            .update({
+              shipping_address: {
+                full_name: addr.full_name,
+                phone: addr.phone,
+                line1: addr.line1,
+                line2: addr.line2 ?? null,
+                city: addr.city,
+                state: addr.state,
+                postal_code: addr.postal_code,
+                country: addr.country,
+              },
+            })
+            .eq("id", order.id);
+          if (snapshotError) return fail(snapshotError.message);
+        }
       }
-      return fail(error.message);
+
+      const { error: unlinkError } = await supabase
+        .from("orders")
+        .update({ address_id: null })
+        .eq("address_id", id);
+
+      if (unlinkError) return fail(unlinkError.message);
     }
+
+    const { error } = await supabase.from("addresses").delete().eq("id", id);
+    if (error) return fail(error.message);
     return ok(undefined);
   } catch (e: any) {
-    const msg = e?.message ?? "";
-    if (msg.includes("violates foreign key constraint")) {
-      return fail("This address is linked to past orders and cannot be deleted.");
-    }
-    return fail(msg || "Failed to delete address");
+    return fail(e?.message ?? "Failed to delete address");
   }
 }
 
