@@ -310,37 +310,26 @@ export default function AccountScreen() {
         {payments.length === 0 ? (
           <TouchableOpacity
             style={styles.paymentEmpty}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
             onPress={() =>
               user
                 ? router.push("/(main)/account/payments")
                 : handleSignIn()
             }
           >
-            {/* Subtle dashed olive curves background to match real card stack */}
-            <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
-              <Path
-                d="M-20 40 C 60 100, 160 30, 240 90 S 320 40, 400 80"
-                fill="none"
-                stroke="rgba(83, 94, 44, 0.06)"
-                strokeWidth={1.2}
-                strokeDasharray="4 4"
-              />
-              <Path
-                d="M-20 60 C 60 120, 160 50, 240 110 S 320 60, 400 100"
-                fill="none"
-                stroke="rgba(83, 94, 44, 0.06)"
-                strokeWidth={1.2}
-                strokeDasharray="4 4"
-              />
-            </Svg>
-
-            <View style={styles.emptyCardContent}>
-              <View style={styles.emptyCardIconCircle}>
-                <Ionicons name="card-outline" size={18} color={colors.light.primary} />
+            <View style={styles.emptyCardRow}>
+              <View style={styles.emptyCardIconWrap}>
+                <Ionicons name="card-outline" size={22} color={colors.light.primary} />
               </View>
-              <Text style={styles.emptyCardTitle}>No cards saved yet</Text>
-              <Text style={styles.emptyCardSubtitle}>Tap to add one</Text>
+              <View style={styles.emptyCardCopy}>
+                <Text style={styles.emptyCardTitle}>No cards saved yet</Text>
+                <Text style={styles.emptyCardSubtitle}>
+                  Add a card for faster checkout
+                </Text>
+              </View>
+              <View style={styles.emptyCardCta}>
+                <Ionicons name="add" size={18} color={colors.light.primaryForeground} />
+              </View>
             </View>
           </TouchableOpacity>
         ) : (
@@ -362,13 +351,17 @@ export default function AccountScreen() {
             onPress={() => router.push("/(admin)")}
           >
             <View style={styles.adminPortalIcon}>
-              <Ionicons name="shield-outline" size={20} color={colors.light.primaryForeground} />
+              <Ionicons name="shield-checkmark" size={22} color={colors.light.primaryForeground} />
             </View>
             <View style={styles.adminPortalText}>
               <Text style={styles.adminPortalTitle}>Admin portal</Text>
-              <Text style={styles.adminPortalSub}>Overview, approvals, orders & CMS</Text>
+              <Text style={styles.adminPortalSub}>
+                Overview, approvals, orders & CMS
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
+            <View style={styles.adminPortalChevron}>
+              <Ionicons name="chevron-forward" size={16} color={colors.light.foreground} />
+            </View>
           </TouchableOpacity>
         ) : null}
 
@@ -847,59 +840,65 @@ const styles = StyleSheet.create({
     marginBottom: spacing[4],
   },
   addCardBtn: {
-    backgroundColor: "#f3f3f3",
+    backgroundColor: colors.olive[100],
     borderRadius: radii.full,
     paddingHorizontal: spacing[4],
     paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.olive[200],
   },
   addCardText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
-    color: colors.light.foreground,
+    color: colors.olive[700],
   },
   paymentEmpty: {
-    height: 120,
-    borderRadius: radii["2xl"],
-    borderWidth: 1.5,
-    borderColor: colors.olive[200],
-    borderStyle: "dashed",
-    backgroundColor: colors.olive[50],
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-    overflow: "hidden",
-    marginBottom: spacing[6],
-  },
-  emptyCardContent: {
-    alignItems: "center",
-    gap: 6,
-    zIndex: 2,
-  },
-  emptyCardIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     backgroundColor: "#ffffff",
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    padding: spacing[4],
+    marginBottom: spacing[6],
+    ...shadows.soft,
+  },
+  emptyCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+  },
+  emptyCardIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.xl,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.olive[100],
-    marginBottom: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+  },
+  emptyCardCopy: {
+    flex: 1,
+    gap: 3,
   },
   emptyCardTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.light.foreground,
+    letterSpacing: -0.2,
   },
   emptyCardSubtitle: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
+    lineHeight: 16,
+  },
+  emptyCardCta: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.light.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardStack: {
     height: 158,
@@ -967,16 +966,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#ffffff",
     borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: colors.olive[200],
+    borderColor: "#e5e7eb",
     padding: spacing[4],
     marginBottom: spacing[5],
+    ...shadows.soft,
   },
   adminPortalIcon: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: radii.xl,
     backgroundColor: colors.light.primary,
     alignItems: "center",
@@ -984,18 +984,27 @@ const styles = StyleSheet.create({
   },
   adminPortalText: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   adminPortalTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.light.foreground,
+    letterSpacing: -0.2,
   },
   adminPortalSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
-    lineHeight: 16,
+    lineHeight: 17,
+  },
+  adminPortalChevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f3f3f3",
+    alignItems: "center",
+    justifyContent: "center",
   },
   signOutText: {
     fontFamily: fontFamilies.sans.medium,
