@@ -1,12 +1,13 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Animated,
-  Dimensions,
 } from "react-native";
-import { colors, radii, typography } from "@/lib/theme/tokens";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { colors, radii, typography, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 
 type ToastType = "success" | "error" | "info";
 
@@ -28,66 +29,138 @@ export function useToast() {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [opacity] = useState(new Animated.Value(0));
 
   const show = useCallback(
     (message: string, type: ToastType = "info") => {
       const id = Date.now().toString();
       setToasts((prev) => [...prev, { id, message, type }]);
-      opacity.setValue(1);
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 3000,
-        delay: 2000,
-        useNativeDriver: true,
-      }).start(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      });
     },
-    [opacity]
+    []
   );
 
-  const current = toasts[toasts.length - 1];
-  const bgColor =
-    current?.type === "error"
-      ? colors.light.destructive
-      : current?.type === "success"
-        ? colors.olive[600]
-        : colors.light.foreground;
+  const remove = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   return (
     <ToastContext.Provider value={{ toast: show }}>
       {children}
-      {current && (
-        <Animated.View
-          style={[styles.container, { opacity, backgroundColor: bgColor }]}
-          pointerEvents="none"
-        >
-          <Text style={styles.text}>{current.message}</Text>
-        </Animated.View>
-      )}
+      <View style={styles.toastContainer} pointerEvents="none">
+        {toasts.map((t) => (
+          <ToastItem key={t.id} toast={t} onDismiss={() => remove(t.id)} />
+        ))}
+      </View>
     </ToastContext.Provider>
   );
 }
 
-const { width } = Dimensions.get("window");
+function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // 1. Entry Animation: Quick spring slide-up and fade-in
+    Animated.spring(animatedValue, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 60,
+      friction: 9,
+    }).start();
+
+    // 2. Auto-Dismiss Schedule
+    const timer = setTimeout(() => {
+      // 3. Exit Animation: Smooth fade-out and slide-up
+      Animated.timing(animatedValue, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        onDismiss();
+      });
+    }, 2800);
+
+    return () => clearTimeout(timer);
+  }, [animatedValue, onDismiss]);
+
+  const opacity = animatedValue;
+  const translateY = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [16, 0],
+  });
+  const scale = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.94, 1],
+  });
+
+  const iconName =
+    toast.type === "success"
+      ? "checkmark-circle"
+      : toast.type === "error"
+        ? "alert-circle"
+        : "information-circle";
+
+  const iconColor =
+    toast.type === "success"
+      ? colors.olive[300]
+      : toast.type === "error"
+        ? "#ff6b6b"
+        : colors.accent2.ochre;
+
+  const borderAccentColor =
+    toast.type === "success"
+      ? "rgba(83, 94, 44, 0.25)"
+      : toast.type === "error"
+        ? "rgba(192, 57, 43, 0.25)"
+        : "rgba(200, 164, 74, 0.25)";
+
+  return (
+    <Animated.View
+      style={[
+        styles.toastItem,
+        {
+          opacity,
+          transform: [{ translateY }, { scale }],
+          borderColor: borderAccentColor,
+        },
+      ]}
+    >
+      <Ionicons name={iconName} size={18} color={iconColor} style={styles.icon} />
+      <Text style={styles.text}>{toast.message}</Text>
+    </Animated.View>
+  );
+}
 
 const styles = StyleSheet.create({
-  container: {
+  toastContainer: {
     position: "absolute",
-    bottom: 60,
-    alignSelf: "center",
-    maxWidth: width - 48,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: radii.xl,
-    zIndex: 9999,
-    elevation: 9999,
+    bottom: 96, // Safe spacing above standard floating bars and layouts
+    left: 24,
+    right: 24,
+    alignItems: "center",
+    zIndex: 99999,
+    gap: spacing[2],
+  },
+  toastItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(22, 23, 15, 0.94)", // Luxury dark olive/charcoal translucent background
+    borderRadius: radii.full,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    maxWidth: "100%",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  icon: {
+    marginRight: 6,
   },
   text: {
-    color: "#faf8f1",
+    color: "#faf8f1", // Cream text color
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
-    textAlign: "center",
+    fontFamily: fontFamilies.sans.semibold,
+    letterSpacing: 0.2,
   },
 });

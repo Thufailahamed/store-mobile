@@ -29,12 +29,28 @@ async function writeFollowed(set: Set<string>): Promise<void> {
   }
 }
 
-export async function getFollowedStores(): Promise<string[]> {
+export async function getLocallyFollowedStoreIds(): Promise<string[]> {
   const set = await readFollowed();
   return Array.from(set);
 }
 
+/** @deprecated Use getLocallyFollowedStoreIds */
+export async function getFollowedStores(): Promise<string[]> {
+  return getLocallyFollowedStoreIds();
+}
+
 export async function isFollowingStore(storeId: string): Promise<boolean> {
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id;
+  if (userId) {
+    const { data } = await supabase
+      .from("followers")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("store_id", storeId)
+      .maybeSingle();
+    if (data) return true;
+  }
   const set = await readFollowed();
   return set.has(storeId);
 }
@@ -48,6 +64,22 @@ export async function toggleFollowStore(
     if (wasFollowing) set.delete(storeId);
     else set.add(storeId);
     await writeFollowed(set);
+
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id;
+    if (userId) {
+      if (wasFollowing) {
+        await supabase
+          .from("followers")
+          .delete()
+          .eq("user_id", userId)
+          .eq("store_id", storeId);
+      } else {
+        await supabase
+          .from("followers")
+          .insert({ user_id: userId, store_id: storeId });
+      }
+    }
 
     const res = await supabase
       .from("stores")

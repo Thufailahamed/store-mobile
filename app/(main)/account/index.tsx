@@ -20,7 +20,7 @@ import { useWishlist } from "@/lib/stores";
 import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { getFollowedBrands, getFollowedStores, type FollowedBrand, type FollowedStore } from "@/lib/api";
+import { getFollowedStores, type FollowedStore } from "@/lib/api";
 import { mapProducts } from "@/lib/api/product-mapper";
 import {
   getRecentlyViewedIds,
@@ -51,7 +51,6 @@ export default function AccountScreen() {
 
   const [savedProducts, setSavedProducts] = useState<Product[]>([]);
   const [followedStores, setFollowedStores] = useState<FollowedStore[]>([]);
-  const [followedBrands, setFollowedBrands] = useState<FollowedBrand[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const [payments, setPayments] = useState<PaymentCard[]>([]);
   const [profileName, setProfileName] = useState("");
@@ -94,14 +93,8 @@ export default function AccountScreen() {
       }
 
       if (user?.id) {
-        const [storesRes, brandsRes] = await Promise.all([
-          getFollowedStores(user.id),
-          getFollowedBrands(user.id),
-        ]);
-        if (!cancelled) {
-          if (storesRes.ok) setFollowedStores(storesRes.data);
-          if (brandsRes.ok) setFollowedBrands(brandsRes.data);
-        }
+        const storesRes = await getFollowedStores(user.id);
+        if (!cancelled && storesRes.ok) setFollowedStores(storesRes.data);
 
         const { data: profile } = await supabase
           .from("users")
@@ -129,15 +122,12 @@ export default function AccountScreen() {
   }, [user?.id, wishlistIds.join(",")]);
 
   const followingAvatars = useMemo(() => {
-    const items: { id: string; uri?: string | null; label: string }[] = [];
-    for (const fs of followedStores) {
-      items.push({ id: `s-${fs.id}`, uri: fs.store.logo_url, label: fs.store.name });
-    }
-    for (const fb of followedBrands) {
-      items.push({ id: `b-${fb.id}`, uri: fb.brand.logo_url, label: fb.brand.name });
-    }
-    return items.slice(0, 4);
-  }, [followedStores, followedBrands]);
+    return followedStores.slice(0, 4).map((fs) => ({
+      id: fs.id,
+      uri: fs.store.logo_url,
+      label: fs.store.name,
+    }));
+  }, [followedStores]);
 
   const savedThumbs = useMemo(() => {
     return savedProducts
@@ -210,7 +200,7 @@ export default function AccountScreen() {
           </SummaryCard>
           <SummaryCard
             label="Following"
-            onPress={() => router.push("/(main)/products")}
+            onPress={() => router.push("/(main)/account/following")}
             emptyIcon="people-outline"
           >
             <OverlapAvatars items={followingAvatars} emptyIcon="storefront-outline" />
