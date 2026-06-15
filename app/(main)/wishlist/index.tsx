@@ -11,6 +11,7 @@ import { useWishlist, useCart } from "@/lib/stores";
 import type { CartStore } from "@/lib/stores/cart-store";
 import { useToast } from "@/components/ui";
 import { supabase } from "@/lib/supabase/client";
+import { mapProducts } from "@/lib/api/product-mapper";
 import { formatPrice, discountPct } from "@/lib/utils";
 import { WishlistItemCard } from "@/components/wishlist/WishlistItemCard";
 import {
@@ -105,15 +106,7 @@ export default function WishlistScreen() {
           console.error("[wishlist] fetch error:", error);
           setProducts([]);
         } else {
-          setProducts(
-            ((data as Product[]) || []).map((p) => {
-              const variants = p.variants?.map((v: any) => ({
-                ...v,
-                stock: v.inventory?.[0]?.quantity ?? v.stock ?? 0,
-              }));
-              return { ...p, variants };
-            })
-          );
+          setProducts(mapProducts((data as Product[]) || []));
         }
       } catch (err) {
         if (!cancelled) console.error("[wishlist] fetch exception:", err);

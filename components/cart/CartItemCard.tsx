@@ -86,6 +86,11 @@ export function CartItemCard({
     return parts[parts.length - 1] || "Free";
   }, [item.variantLabel]);
 
+  const imageUrl =
+    product?.images?.find((i) => i.is_primary)?.url ||
+    product?.images?.[0]?.url ||
+    item.image;
+
   return (
     <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, style]}>
       {/* Top Right Close Button */}
@@ -110,9 +115,9 @@ export function CartItemCard({
 
       {/* Image */}
       <Pressable onPress={goToProduct} style={[styles.imageWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-        {item.image ? (
+        {imageUrl ? (
           <Image
-            source={{ uri: item.image }}
+            source={{ uri: imageUrl }}
             style={styles.image}
             contentFit="cover"
             transition={250}

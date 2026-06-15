@@ -1,5 +1,6 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Avatar } from "@/components/ui";
 import { Label, Body } from "@/components/ui/Typography";
@@ -12,8 +13,21 @@ interface ProductStoreCardProps {
 }
 
 export function ProductStoreCard({ store }: ProductStoreCardProps) {
+  const router = useRouter();
+  const handlePress = () => {
+    if (!store.slug) return;
+    router.push({
+      pathname: "/(main)/stores/[slug]",
+      params: { slug: store.slug, id: store.id },
+    });
+  };
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.85}
+      onPress={handlePress}
+      disabled={!store.slug}
+    >
       <Avatar
         name={store.name}
         uri={store.logo_url}
@@ -45,7 +59,7 @@ export function ProductStoreCard({ store }: ProductStoreCardProps) {
         <Body size="xs" style={styles.visitText}>Visit</Body>
         <Ionicons name="arrow-forward" size={12} color={colors.olive[600]} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

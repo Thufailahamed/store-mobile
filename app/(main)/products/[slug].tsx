@@ -72,14 +72,7 @@ export default function ProductDetailScreen() {
 
   useEffect(() => {
     if (!product) return;
-    recordRecentlyViewed(user?.id, {
-      id: product.id,
-      name: product.name,
-      slug: product.slug,
-      price: product.price,
-      currency: product.currency,
-      images: product.images ?? [],
-    });
+    recordRecentlyViewed(user?.id, product.id);
   }, [product?.id, user?.id]);
 
   const images = useMemo(

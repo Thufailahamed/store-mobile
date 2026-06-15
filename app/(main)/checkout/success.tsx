@@ -17,6 +17,7 @@ import { useTheme } from "@/lib/hooks/useTheme";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { getOrderById } from "@/lib/api";
+import { mapProducts } from "@/lib/api/product-mapper";
 import { Button, Avatar, useToast } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -128,7 +129,7 @@ export default function OrderSuccessScreen() {
       const { data } = await query;
       const orderProductIds = orderItems.map((item) => item.product_id);
       
-      let filtered = (data as Product[] || []).filter(
+      let filtered = mapProducts((data as Product[]) || []).filter(
         (p) => !orderProductIds.includes(p.id)
       );
 
@@ -141,7 +142,7 @@ export default function OrderSuccessScreen() {
           .eq("status", "active")
           .eq("is_featured", true)
           .limit(6);
-        filtered = (featured as Product[] || []).filter(
+        filtered = mapProducts((featured as Product[]) || []).filter(
           (p) => !orderProductIds.includes(p.id)
         );
       }

@@ -21,10 +21,10 @@ import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { getFollowedBrands, getFollowedStores, type FollowedBrand, type FollowedStore } from "@/lib/api";
+import { mapProducts } from "@/lib/api/product-mapper";
 import {
-  getRecentlyViewed,
+  getRecentlyViewedIds,
   getStoredPayments,
-  type RecentlyViewedProduct,
   type PaymentCard,
 } from "@/lib/account-local";
 import { formatPrice } from "@/lib/utils";
@@ -52,7 +52,7 @@ export default function AccountScreen() {
   const [savedProducts, setSavedProducts] = useState<Product[]>([]);
   const [followedStores, setFollowedStores] = useState<FollowedStore[]>([]);
   const [followedBrands, setFollowedBrands] = useState<FollowedBrand[]>([]);
-  const [recentlyViewed, setRecentlyViewed] = useState<RecentlyViewedProduct[]>([]);
+  const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const [payments, setPayments] = useState<PaymentCard[]>([]);
   const [profileName, setProfileName] = useState("");
 
@@ -66,13 +66,31 @@ export default function AccountScreen() {
     let cancelled = false;
 
     async function load() {
-      const [viewed, cards] = await Promise.all([
-        getRecentlyViewed(user?.id),
+      const [viewedIds, cards] = await Promise.all([
+        getRecentlyViewedIds(user?.id),
         getStoredPayments(user?.id),
       ]);
       if (!cancelled) {
-        setRecentlyViewed(viewed);
         setPayments(cards);
+      }
+
+      if (viewedIds.length > 0) {
+        const { data: viewedProducts } = await supabase
+          .from("products")
+          .select(
+            "id, name, slug, price, currency, images:product_images(url, is_primary, position)"
+          )
+          .in("id", viewedIds);
+        if (!cancelled) {
+          const byId = new Map(
+            mapProducts((viewedProducts as Product[]) ?? []).map((p) => [p.id, p])
+          );
+          setRecentlyViewed(
+            viewedIds.map((id) => byId.get(id)).filter((p): p is Product => !!p)
+          );
+        }
+      } else if (!cancelled) {
+        setRecentlyViewed([]);
       }
 
       if (user?.id) {
@@ -98,7 +116,7 @@ export default function AccountScreen() {
           .from("products")
           .select("id, name, images:product_images(url, is_primary)")
           .in("id", wishlistIds.slice(0, 8));
-        if (!cancelled) setSavedProducts((data as Product[]) ?? []);
+        if (!cancelled) setSavedProducts(mapProducts((data as Product[]) ?? []));
       } else if (!cancelled) {
         setSavedProducts([]);
       }
@@ -302,15 +320,38 @@ export default function AccountScreen() {
         {payments.length === 0 ? (
           <TouchableOpacity
             style={styles.paymentEmpty}
-            activeOpacity={0.85}
+            activeOpacity={0.8}
             onPress={() =>
               user
                 ? router.push("/(main)/account/payments")
                 : handleSignIn()
             }
           >
-            <Ionicons name="card-outline" size={24} color={colors.light.mutedForeground} />
-            <Text style={styles.emptyText}>No cards saved yet. Tap to add one.</Text>
+            {/* Subtle dashed olive curves background to match real card stack */}
+            <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
+              <Path
+                d="M-20 40 C 60 100, 160 30, 240 90 S 320 40, 400 80"
+                fill="none"
+                stroke="rgba(83, 94, 44, 0.06)"
+                strokeWidth={1.2}
+                strokeDasharray="4 4"
+              />
+              <Path
+                d="M-20 60 C 60 120, 160 50, 240 110 S 320 60, 400 100"
+                fill="none"
+                stroke="rgba(83, 94, 44, 0.06)"
+                strokeWidth={1.2}
+                strokeDasharray="4 4"
+              />
+            </Svg>
+
+            <View style={styles.emptyCardContent}>
+              <View style={styles.emptyCardIconCircle}>
+                <Ionicons name="card-outline" size={18} color={colors.light.primary} />
+              </View>
+              <Text style={styles.emptyCardTitle}>No cards saved yet</Text>
+              <Text style={styles.emptyCardSubtitle}>Tap to add one</Text>
+            </View>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -827,15 +868,48 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
   },
   paymentEmpty: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.light.card,
+    height: 120,
     borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: spacing[5],
+    borderWidth: 1.5,
+    borderColor: colors.olive[200],
+    borderStyle: "dashed",
+    backgroundColor: colors.olive[50],
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+    overflow: "hidden",
     marginBottom: spacing[6],
+  },
+  emptyCardContent: {
+    alignItems: "center",
+    gap: 6,
+    zIndex: 2,
+  },
+  emptyCardIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.olive[100],
+    marginBottom: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  emptyCardTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.light.foreground,
+  },
+  emptyCardSubtitle: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
   cardStack: {
     height: 158,

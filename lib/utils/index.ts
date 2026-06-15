@@ -1,5 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 
+export { resolveImageUrl } from "./resolve-image-url";
+
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }

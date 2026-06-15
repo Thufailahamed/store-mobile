@@ -35,7 +35,16 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
             key={s.id}
             style={styles.card}
             activeOpacity={0.85}
-            onPress={() => router.push("/(main)/products")}
+            onPress={() => {
+              if (s.slug) {
+                router.push({
+                  pathname: "/(main)/stores/[slug]",
+                  params: { slug: s.slug, id: s.id },
+                });
+              } else {
+                router.push("/(main)/products");
+              }
+            }}
           >
             <View style={styles.logoWrap}>
               {s.logo_url ? (

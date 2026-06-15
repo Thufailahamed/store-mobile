@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -6,11 +6,14 @@ import {
   TouchableOpacity,
   Linking,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { completeOnboarding } from "@/lib/onboarding";
+import { getOnboardingSlides, type OnboardingSlide } from "@/lib/api";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { radii, spacing } from "@/lib/theme/tokens";
 import { useTheme } from "@/lib/hooks/useTheme";
@@ -18,21 +21,24 @@ import { Display, Body } from "@/components/ui/Typography";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-const SLIDES = [
+const FALLBACK_SLIDES: OnboardingSlide[] = [
   {
     title: "Find and shop\nstores you love",
-    description: "Explore custom pieces and curated boutique collections hand-finished in our ateliers.",
-    image: require("@/assets/onboarding-hero.png"),
+    description:
+      "Explore custom pieces and curated boutique collections hand-finished in our ateliers.",
+    imageUrl: "",
   },
   {
     title: "Curate your\npersonal collection",
-    description: "Save items you adore and build your private wardrobe collection with custom styling options.",
-    image: require("@/assets/onboarding-curate.png"),
+    description:
+      "Save items you adore and build your private wardrobe collection with custom styling options.",
+    imageUrl: "",
   },
   {
     title: "Enjoy seamless\ncheckout & delivery",
-    description: "Secure purchase, real-time shipping updates, and premium editorial packaging to your doorstep.",
-    image: require("@/assets/onboarding-checkout.png"),
+    description:
+      "Secure purchase, real-time shipping updates, and premium editorial packaging to your doorstep.",
+    imageUrl: "",
   },
 ];
 
@@ -41,6 +47,23 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const [activeSlide, setActiveSlide] = useState(0);
+  const [slides, setSlides] = useState<OnboardingSlide[]>(FALLBACK_SLIDES);
+  const [loadingSlides, setLoadingSlides] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await getOnboardingSlides();
+      if (cancelled) return;
+      if (res.ok && res.data.length > 0) {
+        setSlides(res.data);
+      }
+      setLoadingSlides(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const finishOnboarding = async (destination: "register" | "login") => {
     await completeOnboarding();
@@ -57,14 +80,18 @@ export default function OnboardingScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
-      {/* Progress Tracker (Fixed at top) */}
       <View style={styles.progressRow}>
-        <View style={[styles.progressSegment, { backgroundColor: activeSlide === 0 ? theme.colors.primary : theme.colors.muted }]} />
-        <View style={[styles.progressSegment, { backgroundColor: activeSlide === 1 ? theme.colors.primary : theme.colors.muted }]} />
-        <View style={[styles.progressSegment, { backgroundColor: activeSlide === 2 ? theme.colors.primary : theme.colors.muted }]} />
+        {slides.map((_, index) => (
+          <View
+            key={index}
+            style={[
+              styles.progressSegment,
+              { backgroundColor: activeSlide === index ? theme.colors.primary : theme.colors.muted },
+            ]}
+          />
+        ))}
       </View>
 
-      {/* Horizontal Slider (Center) */}
       <ScrollView
         horizontal
         pagingEnabled
@@ -74,27 +101,32 @@ export default function OnboardingScreen() {
         style={styles.slider}
         contentContainerStyle={styles.sliderContent}
       >
-        {SLIDES.map((slide, index) => (
+        {slides.map((slide, index) => (
           <View key={index} style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            {/* Title */}
             <Display size="4xl" italic style={[styles.title, { color: theme.colors.foreground }]}>
               {slide.title}
             </Display>
 
-            {/* Hero Arch Image */}
             <View style={styles.heroWrap}>
               <View style={[styles.arch, { backgroundColor: theme.colors.accent }]}>
-                <Image
-                  source={slide.image}
-                  style={styles.heroImage}
-                  contentFit="cover"
-                  contentPosition="top center"
-                  accessibilityLabel={slide.description}
-                />
+                {slide.imageUrl ? (
+                  <Image
+                    source={{ uri: slide.imageUrl }}
+                    style={styles.heroImage}
+                    contentFit="cover"
+                    contentPosition="top center"
+                    accessibilityLabel={slide.description}
+                  />
+                ) : loadingSlides ? (
+                  <ActivityIndicator color={theme.colors.primary} style={styles.heroLoader} />
+                ) : (
+                  <View style={styles.heroPlaceholder}>
+                    <Ionicons name="image-outline" size={40} color={theme.colors.mutedForeground} />
+                  </View>
+                )}
               </View>
             </View>
 
-            {/* Description */}
             <Body size="base" style={[styles.description, { color: theme.colors.mutedForeground }]}>
               {slide.description}
             </Body>
@@ -102,7 +134,6 @@ export default function OnboardingScreen() {
         ))}
       </ScrollView>
 
-      {/* Fixed Actions & Footer (Bottom) */}
       <View style={[styles.bottomContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TouchableOpacity
           activeOpacity={0.85}
@@ -131,18 +162,12 @@ export default function OnboardingScreen() {
         </Body>
 
         <View style={styles.legalRow}>
-          <TouchableOpacity
-            onPress={() => Linking.openURL("https://luxe.marketplace/terms")}
-            hitSlop={8}
-          >
+          <TouchableOpacity onPress={() => Linking.openURL("https://luxe.marketplace/terms")} hitSlop={8}>
             <Body size="xs" style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
               User Terms
             </Body>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => Linking.openURL("https://luxe.marketplace/privacy")}
-            hitSlop={8}
-          >
+          <TouchableOpacity onPress={() => Linking.openURL("https://luxe.marketplace/privacy")} hitSlop={8}>
             <Body size="xs" style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
               Privacy
             </Body>
@@ -198,11 +223,20 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: radii["2xl"],
     overflow: "hidden",
     alignItems: "center",
+    justifyContent: "center",
   },
   heroImage: {
     width: "118%",
     height: 480,
     marginTop: -190,
+  },
+  heroLoader: {
+    marginTop: 40,
+  },
+  heroPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   description: {
     textAlign: "center",

@@ -43,11 +43,12 @@ export const useCart = create<CartStore>()(
         const key = cartKey(item.productId, item.variantId);
         set((state) => {
           const existing = state.items[key];
+          const { image: _image, ...rest } = item;
           return {
             items: {
               ...state.items,
               [key]: {
-                ...item,
+                ...rest,
                 quantity: existing
                   ? Math.min(existing.quantity + (item.quantity ?? 1), existing.stock)
                   : (item.quantity ?? 1),
@@ -153,7 +154,6 @@ export const useCart = create<CartStore>()(
               name: row.product?.name ?? "Product",
               variantLabel: row.variant?.label,
               price: row.unit_price,
-              image: row.product?.images?.find((i: any) => i.is_primary)?.url,
               quantity: row.quantity,
               stock: row.variant?.stock ?? 99,
             };
@@ -179,6 +179,15 @@ export const useCart = create<CartStore>()(
     {
       name: "cart-v1",
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        couponCode: state.couponCode,
+        items: Object.fromEntries(
+          Object.entries(state.items).map(([key, item]) => {
+            const { image: _image, ...rest } = item;
+            return [key, rest];
+          })
+        ),
+      }),
     }
   )
 );

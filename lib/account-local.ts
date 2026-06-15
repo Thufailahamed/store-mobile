@@ -94,13 +94,24 @@ export async function setStoredReviews(userId: string | null | undefined, review
   await writeJson(accountStorageKey(userId, "reviews"), reviews);
 }
 
+export async function getRecentlyViewedIds(userId?: string | null): Promise<string[]> {
+  const raw = await readJson<Array<string | RecentlyViewedProduct>>(
+    accountStorageKey(userId, "recently_viewed"),
+    []
+  );
+  return raw
+    .map((entry) => (typeof entry === "string" ? entry : entry?.id))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+/** @deprecated Use getRecentlyViewedIds — product rows are loaded from the database. */
 export async function getRecentlyViewed(userId?: string | null): Promise<RecentlyViewedProduct[]> {
   return readJson<RecentlyViewedProduct[]>(accountStorageKey(userId, "recently_viewed"), []);
 }
 
-export async function recordRecentlyViewed(userId: string | null | undefined, product: RecentlyViewedProduct) {
-  const existing = await getRecentlyViewed(userId);
-  const next = [product, ...existing.filter((p) => p.id !== product.id)].slice(0, 10);
+export async function recordRecentlyViewed(userId: string | null | undefined, productId: string) {
+  const existing = await getRecentlyViewedIds(userId);
+  const next = [productId, ...existing.filter((id) => id !== productId)].slice(0, 10);
   await writeJson(accountStorageKey(userId, "recently_viewed"), next);
 }
 

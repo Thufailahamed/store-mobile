@@ -1,5 +1,12 @@
-import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
+import {
+  mapProduct,
+  mapProducts,
+  mapStore,
+  mapBrand,
+  mapCategory,
+  mapBanner,
+} from "@/lib/api/product-mapper";
 import {
   tokenizeQuery,
   buildSearchOrParts,
@@ -17,45 +24,7 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (e: string): Result<never> => ({ ok: false, error: e });
 
-function resolveImageUrl(url?: string) {
-  if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  const apiHost = process.env.EXPO_PUBLIC_STORE_API_URL || "http://localhost:3000";
-  let host = apiHost;
-  if (Platform.OS === "android" && host.includes("localhost")) {
-    host = host.replace("localhost", "10.0.2.2");
-  }
-  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
-  return `${host}${cleanUrl}`;
-}
-
-function mapProduct(p: any): Product {
-  if (!p) return p;
-  
-  const images = p.images?.map((img: any) => ({
-    ...img,
-    url: resolveImageUrl(img.url),
-  }));
-
-  const variants = p.variants?.map((v: any) => {
-    const stock = v.inventory?.[0]?.quantity ?? v.stock ?? 0;
-    return {
-      ...v,
-      stock,
-    };
-  });
-
-  return {
-    ...p,
-    images,
-    variants,
-  };
-}
-
-function mapProducts(products: any[]): Product[] {
-  if (!products) return [];
-  return products.map(mapProduct);
-}
+export { mapProduct, mapProducts, mapStore, mapBrand } from "./product-mapper";
 
 const GENDER_SLUGS = new Set(["men", "women", "kids", "unisex"]);
 
@@ -112,7 +81,7 @@ export async function getProducts(opts: {
         .from("stores")
         .select("id")
         .eq("slug", storeSlug)
-        .eq("status", "approved")
+        .in("status", ["approved", "pending"])
         .maybeSingle();
       if (storeError) return fail(storeError.message);
       if (store) {
@@ -332,7 +301,8 @@ export async function getFeaturedStores(limit = 6): Promise<Result<Store[]>> {
       .order("homepage_order")
       .limit(limit);
     if (error) return fail(error.message);
-    return ok((data as Store[]) ?? []);
+    const stores = ((data as Store[]) ?? []).map((s) => mapStore(s));
+    return ok(stores);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch featured stores");
   }
@@ -347,7 +317,8 @@ export async function getCategories(limit = 20): Promise<Result<Category[]>> {
       .order("position")
       .limit(limit);
     if (error) return fail(error.message);
-    return ok((data as Category[]) ?? []);
+    const categories = ((data as Category[]) ?? []).map(mapCategory);
+    return ok(categories);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch categories");
   }
@@ -363,10 +334,34 @@ export async function getBanners(position?: string): Promise<Result<Banner[]>> {
     if (position) query = query.eq("position", position);
     const { data, error } = await query;
     if (error) return fail(error.message);
-    return ok((data as Banner[]) ?? []);
+    const banners = ((data as Banner[]) ?? []).map(mapBanner);
+    return ok(banners);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch banners");
   }
+}
+
+export type OnboardingSlide = {
+  title: string;
+  description: string;
+  imageUrl: string;
+};
+
+export async function getOnboardingSlides(): Promise<Result<OnboardingSlide[]>> {
+  const positions = ["mobile_onboarding", "home_hero"];
+  for (const position of positions) {
+    const res = await getBanners(position);
+    if (res.ok && res.data.length > 0) {
+      return ok(
+        res.data.slice(0, 3).map((b) => ({
+          title: b.title,
+          description: b.subtitle ?? "",
+          imageUrl: b.image_url,
+        }))
+      );
+    }
+  }
+  return ok([]);
 }
 
 export async function getTestimonials(limit = 6): Promise<Result<Testimonial[]>> {
@@ -2350,7 +2345,12 @@ export async function getFollowedStores(userId: string): Promise<Result<Followed
       .not("store_id", "is", null)
       .order("created_at", { ascending: false });
     if (error) return fail(error.message);
-    return ok((data as any as FollowedStore[]) ?? []);
+    return ok(
+      ((data as any as FollowedStore[]) ?? []).map((row) => ({
+        ...row,
+        store: mapStore(row.store),
+      }))
+    );
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch followed stores");
   }
@@ -2365,7 +2365,12 @@ export async function getFollowedBrands(userId: string): Promise<Result<Followed
       .not("brand_id", "is", null)
       .order("created_at", { ascending: false });
     if (error) return fail(error.message);
-    return ok((data as any as FollowedBrand[]) ?? []);
+    return ok(
+      ((data as any as FollowedBrand[]) ?? []).map((row) => ({
+        ...row,
+        brand: mapBrand(row.brand),
+      }))
+    );
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch followed brands");
   }
