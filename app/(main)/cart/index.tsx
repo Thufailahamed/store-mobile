@@ -396,7 +396,9 @@ export default function CartScreen() {
             <Ionicons name="heart-outline" size={20} color={theme.colors.foreground} />
           </TouchableOpacity>
         </View>
-        <BagEmptyState hasWishlistItems={wishlistCount > 0} />
+        <View style={styles.emptyWrap}>
+          <BagEmptyState hasWishlistItems={wishlistCount > 0} />
+        </View>
       </PaperBackground>
     );
   }
@@ -726,6 +728,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
     borderBottomWidth: 1,
+  },
+  emptyWrap: {
+    flex: 1,
   },
   headerLeftBtn: {
     position: "absolute",

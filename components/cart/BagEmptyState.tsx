@@ -2,15 +2,22 @@ import React from "react";
 import { View, Pressable, StyleSheet, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/lib/hooks/useTheme";
-import { Display, Body, Label } from "@/components/ui/Typography";
+import { Body, Label } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, radii } from "@/lib/theme/tokens";
+import { spacing, radii, shadows } from "@/lib/theme/tokens";
 
 interface BagEmptyStateProps {
   hasWishlistItems?: boolean;
   style?: ViewStyle;
 }
+
+const PERKS = [
+  { icon: "car-outline" as const, label: "Free shipping" },
+  { icon: "refresh-outline" as const, label: "Easy returns" },
+  { icon: "shield-checkmark-outline" as const, label: "Secure checkout" },
+];
 
 export function BagEmptyState({ hasWishlistItems, style }: BagEmptyStateProps) {
   const theme = useTheme();
@@ -18,126 +25,220 @@ export function BagEmptyState({ hasWishlistItems, style }: BagEmptyStateProps) {
 
   return (
     <View style={[styles.wrap, style]}>
-      <View
-        style={[
-          styles.medallion,
-          {
-            backgroundColor: `${theme.olive[600]}1A`,
-            borderColor: `${theme.olive[600]}44`,
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.medallionInner,
-            {
-              backgroundColor: theme.colors.card,
-              borderColor: `${theme.olive[600]}55`,
-            },
-          ]}
+      <View style={[styles.heroCard, shadows.soft]}>
+        <LinearGradient
+          colors={[theme.colors.card, theme.olive[50], `${theme.olive[100]}88`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroGradient}
         >
-          <Ionicons
-            name="bag-add-outline"
-            size={34}
-            color={theme.olive[700]}
-          />
-        </View>
+          <View style={[styles.decorA, { backgroundColor: `${theme.olive[300]}44` }]} />
+          <View style={[styles.decorB, { backgroundColor: `${theme.olive[200]}66` }]} />
+
+          <View
+            style={[
+              styles.iconRing,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={[styles.iconCore, { backgroundColor: theme.olive[50] }]}>
+              <Ionicons name="bag-outline" size={36} color={theme.olive[700]} />
+            </View>
+          </View>
+
+          <Label style={[styles.kicker, { color: theme.olive[600] }]}>My bag</Label>
+          <Label style={[styles.title, { color: theme.colors.foreground }]}>
+            Nothing here yet
+          </Label>
+          <Body
+            muted
+            size="sm"
+            style={[styles.subtitle, { color: theme.colors.mutedForeground }]}
+          >
+            Discover pieces you love and add them here. Your selections stay saved until
+            you are ready to checkout.
+          </Body>
+
+          <Pressable
+            onPress={() => router.push("/(main)/products")}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              { backgroundColor: theme.colors.foreground },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Label style={styles.primaryBtnText}>Start shopping</Label>
+            <Ionicons name="arrow-forward" size={16} color={theme.colors.card} />
+          </Pressable>
+
+          {hasWishlistItems ? (
+            <Pressable
+              onPress={() => router.push("/(main)/wishlist")}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="heart-outline" size={16} color={theme.olive[700]} />
+              <Label style={[styles.secondaryBtnText, { color: theme.colors.foreground }]}>
+                View saved items
+              </Label>
+            </Pressable>
+          ) : null}
+        </LinearGradient>
       </View>
 
-      <Label style={{ color: theme.olive[600], marginTop: 28 }}>
-        The Atelier
-      </Label>
-      <Display
-        size="3xl"
-        italic
-        style={{
-          textAlign: "center",
-          marginTop: 8,
-          color: theme.colors.foreground,
-        }}
-      >
-        Your bag awaits
-      </Display>
-      <Body
-        muted
-        size="md"
-        style={{
-          textAlign: "center",
-          marginTop: 10,
-          maxWidth: 280,
-          lineHeight: 22,
-        }}
-      >
-        Curate a selection from the atelier — every piece arrives hand‑finished
-        and ready to wear.
-      </Body>
-
-      <Pressable
-        onPress={() => router.push("/(main)/products")}
-        style={({ pressed }) => [
-          styles.cta,
-          { backgroundColor: theme.olive[700] },
-          pressed && { opacity: 0.88 },
-        ]}
-      >
-        <Label style={{ color: "#fff", fontSize: 12 }}>Browse the shop</Label>
-        <Ionicons name="arrow-forward" size={16} color="#fff" />
-      </Pressable>
-
-      {hasWishlistItems ? (
-        <Pressable
-          onPress={() => router.push("/(main)/wishlist")}
-          hitSlop={8}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-        >
-          <Body
-            size="sm"
-            style={{
-              color: theme.olive[700],
-              fontFamily: fontFamilies.display.regular,
-              fontStyle: "italic",
-              marginTop: 4,
-            }}
-          >
-            or revisit your saved pieces →
-          </Body>
-        </Pressable>
-      ) : null}
+      <View style={styles.perks}>
+        {PERKS.map((perk) => (
+          <View key={perk.label} style={styles.perkItem}>
+            <View style={[styles.perkIcon, { backgroundColor: theme.olive[50] }]}>
+              <Ionicons name={perk.icon} size={14} color={theme.olive[600]} />
+            </View>
+            <Label style={[styles.perkLabel, { color: theme.colors.mutedForeground }]}>
+              {perk.label}
+            </Label>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    alignItems: "center",
+    flex: 1,
     justifyContent: "center",
-    paddingHorizontal: 32,
-    paddingTop: 60,
-    paddingBottom: 100,
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[8],
   },
-  medallion: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    alignItems: "center",
-    justifyContent: "center",
+  heroCard: {
+    borderRadius: radii["3xl"],
+    overflow: "hidden",
     borderWidth: 1,
+    borderColor: "rgba(200, 200, 184, 0.5)",
   },
-  medallionInner: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+  heroGradient: {
+    paddingHorizontal: spacing[6],
+    paddingTop: spacing[8],
+    paddingBottom: spacing[6],
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  decorA: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    top: -40,
+    right: -30,
+  },
+  decorB: {
+    position: "absolute",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    bottom: -20,
+    left: -20,
+  },
+  iconRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    marginBottom: spacing[5],
+    ...shadows.soft,
   },
-  cta: {
-    marginTop: 32,
-    height: 56,
-    paddingHorizontal: 28,
-    borderRadius: radii.lg,
+  iconCore: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: spacing[2],
+  },
+  title: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 26,
+    letterSpacing: -0.5,
+    textAlign: "center",
+    marginBottom: spacing[2],
+  },
+  subtitle: {
+    textAlign: "center",
+    lineHeight: 21,
+    maxWidth: 300,
+    marginBottom: spacing[6],
+  },
+  primaryBtn: {
+    alignSelf: "stretch",
+    height: 52,
+    borderRadius: radii.full,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
+    gap: spacing[2],
+    marginBottom: spacing[3],
+  },
+  primaryBtnText: {
+    color: "#faf8f1",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+  },
+  secondaryBtn: {
+    alignSelf: "stretch",
+    height: 48,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+  },
+  secondaryBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+  },
+  pressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.99 }],
+  },
+  perks: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: spacing[6],
+    paddingHorizontal: spacing[1],
+    gap: spacing[2],
+  },
+  perkItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  perkIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  perkLabel: {
+    fontSize: 10,
+    textAlign: "center",
+    lineHeight: 13,
   },
 });

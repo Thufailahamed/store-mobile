@@ -60,6 +60,11 @@ export async function uploadAvatar(
 
     await supabase.from("users").update({ avatar_url: publicUrl }).eq("id", userId);
 
+    // Sync with Supabase Auth metadata for real-time app update
+    await supabase.auth.updateUser({
+      data: { avatar_url: publicUrl }
+    });
+
     return { url: publicUrl };
   } catch (e: any) {
     return { url: "", error: e?.message ?? "Upload failed" };

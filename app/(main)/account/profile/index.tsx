@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -19,12 +20,14 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { pickImage, takePhoto, uploadAvatar } from "@/lib/upload";
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -67,6 +70,54 @@ export default function ProfileScreen() {
       cancelled = true;
     };
   }, [user, authLoading, router]);
+
+  const uploadSelectedPhoto = async (uri: string) => {
+    if (!user) return;
+    setUpdatingPhoto(true);
+    try {
+      const res = await uploadAvatar(user.id, uri);
+      if (res.error) {
+        Alert.alert("Upload Failed", res.error);
+      } else {
+        Alert.alert("Success", "Profile photo updated successfully!");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "An error occurred");
+    } finally {
+      setUpdatingPhoto(false);
+    }
+  };
+
+  const handlePhotoSelect = useCallback(() => {
+    Alert.alert(
+      "Update Profile Photo",
+      "Choose an option",
+      [
+        {
+          text: "Take Photo",
+          onPress: async () => {
+            const result = await takePhoto();
+            if (result && !result.canceled && result.assets?.[0]?.uri) {
+              await uploadSelectedPhoto(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: "Choose from Library",
+          onPress: async () => {
+            const result = await pickImage();
+            if (result && !result.canceled && result.assets?.[0]?.uri) {
+              await uploadSelectedPhoto(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  }, [user]);
 
   const handleSave = useCallback(async () => {
     if (!user) return;
@@ -116,14 +167,32 @@ export default function ProfileScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.avatarSection}>
-            <Avatar
-              name={displayName}
-              uri={user.user_metadata?.avatar_url}
-              size={88}
-            />
-            <Body muted size="sm" style={styles.avatarHint}>
-              Profile photo uses your initials until you add a custom image in settings.
-            </Body>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handlePhotoSelect}
+              disabled={updatingPhoto}
+              style={styles.avatarWrapper}
+            >
+              <Avatar
+                name={displayName}
+                uri={user.user_metadata?.avatar_url}
+                size={88}
+              />
+              {updatingPhoto ? (
+                <View style={styles.avatarLoader}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                </View>
+              ) : (
+                <View style={styles.cameraIconBadge}>
+                  <Ionicons name="camera" size={14} color="#ffffff" />
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handlePhotoSelect} disabled={updatingPhoto} activeOpacity={0.7}>
+              <Body style={styles.changePhotoText}>
+                {updatingPhoto ? "Uploading..." : "Change photo"}
+              </Body>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.form}>
@@ -216,12 +285,8 @@ const styles = StyleSheet.create({
   },
   avatarSection: {
     alignItems: "center",
-    gap: spacing[3],
+    gap: spacing[2],
     marginBottom: spacing[6],
-  },
-  avatarHint: {
-    textAlign: "center",
-    maxWidth: 280,
   },
   form: {
     gap: spacing[4],
@@ -256,5 +321,37 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     alignSelf: "stretch",
+  },
+  avatarWrapper: {
+    position: "relative",
+  },
+  cameraIconBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.light.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  avatarLoader: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  changePhotoText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.light.primary,
+    marginTop: spacing[2],
   },
 });

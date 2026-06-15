@@ -45,7 +45,7 @@ const CARD_BRAND_STYLES: Record<PaymentCard["brand"], { colors: [string, string]
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, role } = useAuth();
   const wishlistItems = useWishlist((s) => s.items);
   const toggle = useWishlist((s) => s.toggle);
 
@@ -178,10 +178,10 @@ export default function AccountScreen() {
           />
         </View>
 
-        {/* Saved + Following */}
+        {/* Wishlist + Following */}
         <View style={styles.summaryRow}>
           <SummaryCard
-            label="Saved"
+            label="Wishlist"
             onPress={() => router.push("/(main)/wishlist")}
             emptyIcon="heart-outline"
           >
@@ -323,6 +323,23 @@ export default function AccountScreen() {
             ))}
           </TouchableOpacity>
         )}
+
+        {user && role === "admin" ? (
+          <TouchableOpacity
+            style={styles.adminPortal}
+            activeOpacity={0.85}
+            onPress={() => router.push("/(admin)")}
+          >
+            <View style={styles.adminPortalIcon}>
+              <Ionicons name="shield-outline" size={20} color={colors.light.primaryForeground} />
+            </View>
+            <View style={styles.adminPortalText}>
+              <Text style={styles.adminPortalTitle}>Admin portal</Text>
+              <Text style={styles.adminPortalSub}>Overview, approvals, orders & CMS</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
+          </TouchableOpacity>
+        ) : null}
 
         {user ? (
           <TouchableOpacity style={styles.signOut} onPress={signOut} activeOpacity={0.7}>
@@ -881,6 +898,40 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingVertical: spacing[3],
     marginBottom: spacing[4],
+  },
+  adminPortal: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    backgroundColor: colors.olive[50],
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+    padding: spacing[4],
+    marginBottom: spacing[5],
+  },
+  adminPortalIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.xl,
+    backgroundColor: colors.light.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminPortalText: {
+    flex: 1,
+    gap: 2,
+  },
+  adminPortalTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: colors.light.foreground,
+  },
+  adminPortalSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+    lineHeight: 16,
   },
   signOutText: {
     fontFamily: fontFamilies.sans.medium,

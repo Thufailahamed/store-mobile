@@ -1,6 +1,6 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet, Text, Modal, ScrollView, ActivityIndicator, Pressable } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Label, Body, Display } from "@/components/ui/Typography";
@@ -27,6 +27,11 @@ export function AppHeader({
   showBackToHome = false,
 }: AppHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const isWishlistScreen = pathname.includes("/wishlist");
+  const isCartScreen = pathname.includes("/cart");
+  const isNotificationsScreen = pathname.includes("/notifications");
+
   const insets = useSafeAreaInsets();
   const cartCount = useCart((s) => s.itemCount());
   const wishlistCount = useWishlist((s) => s.count());
@@ -128,20 +133,26 @@ export function AppHeader({
         </TouchableOpacity>
 
         <View style={styles.actions}>
-          <HeaderIcon
-            icon="notifications-outline"
-            onPress={handleNotificationsPress}
-          />
-          <HeaderIcon
-            icon="heart-outline"
-            badge={wishlistCount}
-            onPress={handleWishlistPress}
-          />
-          <HeaderIcon
-            icon="bag-outline"
-            badge={cartCount}
-            onPress={handleCartPress}
-          />
+          {!isNotificationsScreen && (
+            <HeaderIcon
+              icon="notifications-outline"
+              onPress={handleNotificationsPress}
+            />
+          )}
+          {!isWishlistScreen && (
+            <HeaderIcon
+              icon="heart-outline"
+              badge={wishlistCount}
+              onPress={handleWishlistPress}
+            />
+          )}
+          {!isCartScreen && (
+            <HeaderIcon
+              icon="bag-outline"
+              badge={cartCount}
+              onPress={handleCartPress}
+            />
+          )}
         </View>
       </View>
 
