@@ -8,7 +8,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -120,6 +120,12 @@ export default function AccountScreen() {
       cancelled = true;
     };
   }, [user?.id, wishlistIds.join(",")]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getStoredPayments(user?.id).then(setPayments);
+    }, [user?.id])
+  );
 
   const followingAvatars = useMemo(() => {
     return followedStores.slice(0, 4).map((fs) => ({
@@ -299,7 +305,7 @@ export default function AccountScreen() {
             activeOpacity={0.8}
             onPress={() =>
               user
-                ? router.push("/(main)/account/payments")
+                ? router.push("/(main)/account/payments/add")
                 : handleSignIn()
             }
           >
@@ -313,7 +319,7 @@ export default function AccountScreen() {
             activeOpacity={0.85}
             onPress={() =>
               user
-                ? router.push("/(main)/account/payments")
+                ? router.push("/(main)/account/payments/add")
                 : handleSignIn()
             }
           >

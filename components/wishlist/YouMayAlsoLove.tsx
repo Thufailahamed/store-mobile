@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { View, FlatList, Pressable, StyleSheet, type ViewStyle } from "react-native";
+import { View, FlatList, Pressable, StyleSheet, Text, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { useTheme } from "@/lib/hooks/useTheme";
-import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { WISHLIST_H_PAD } from "@/components/wishlist/layout";
 import { spacing, radii } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Product } from "@/lib/types";
+
+const INK = "#16170f";
+const MUTED = "#6b6b6b";
+const BORDER = "#e5e5e5";
 
 interface YouMayAlsoLoveProps {
   excludeIds?: string[];
@@ -17,7 +18,6 @@ interface YouMayAlsoLoveProps {
 }
 
 export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) {
-  const theme = useTheme();
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,21 +50,12 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
   return (
     <View style={[styles.wrap, style]}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Label style={{ color: theme.accent2.rust }}>Curated For You</Label>
-          <Display
-            size="lg"
-            italic
-            style={{ color: theme.colors.foreground, marginTop: 2 }}
-          >
-            You may also love
-          </Display>
+        <View style={styles.headerCopy}>
+          <Text style={styles.kicker}>CURATED FOR YOU</Text>
+          <Text style={styles.title}>You may also love</Text>
         </View>
-        <Pressable
-          onPress={() => router.push("/(main)/products")}
-          hitSlop={6}
-        >
-          <Label style={{ color: theme.olive[700] }}>Explore →</Label>
+        <Pressable onPress={() => router.push("/(main)/products")} hitSlop={6}>
+          <Text style={styles.explore}>EXPLORE →</Text>
         </Pressable>
       </View>
 
@@ -74,10 +65,12 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.railContent}
-        ItemSeparatorComponent={() => <View style={styles.railSeparator} />}
+        ItemSeparatorComponent={() => <View style={{ width: spacing[3] }} />}
         renderItem={({ item }) => {
           const img =
             item.images?.find((i) => i.is_primary)?.url || item.images?.[0]?.url;
+          const brandLabel = (item.store?.name || item.brand?.name || "").toUpperCase();
+
           return (
             <Pressable
               onPress={() =>
@@ -86,59 +79,23 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
                   params: { slug: item.slug || item.id },
                 })
               }
-              style={({ pressed }) => [
-                styles.card,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                },
-                pressed && { opacity: 0.9 },
-              ]}
+              style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
             >
-              <View
-                style={[
-                  styles.imgWrap,
-                  { backgroundColor: theme.colors.muted },
-                ]}
-              >
+              <View style={styles.imgWrap}>
                 {img ? (
-                  <Image
-                    source={{ uri: img }}
-                    style={styles.img}
-                    contentFit="cover"
-                    transition={250}
-                  />
+                  <Image source={{ uri: img }} style={styles.img} contentFit="cover" transition={250} />
                 ) : null}
               </View>
               <View style={styles.cardInfo}>
-                {item.brand ? (
-                  <Label
-                    style={{ color: theme.olive[600], fontSize: 9 }}
-                    numberOfLines={1}
-                  >
-                    {item.brand.name}
-                  </Label>
+                {brandLabel ? (
+                  <Text style={styles.brand} numberOfLines={1}>
+                    {brandLabel}
+                  </Text>
                 ) : null}
-                <Body
-                  size="xs"
-                  numberOfLines={2}
-                  style={{
-                    color: theme.colors.foreground,
-                    fontFamily: fontFamilies.display.regular,
-                    marginTop: 4,
-                  }}
-                >
+                <Text style={styles.name} numberOfLines={2}>
                   {item.name}
-                </Body>
-                <Price
-                  size="sm"
-                  style={{
-                    color: theme.colors.foreground,
-                    marginTop: 6,
-                  }}
-                >
-                  {formatPrice(item.price)}
-                </Price>
+                </Text>
+                <Text style={styles.price}>{formatPrice(item.price, item.currency)}</Text>
               </View>
             </Pressable>
           );
@@ -150,31 +107,52 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
 
 const styles = StyleSheet.create({
   wrap: {
-    marginHorizontal: -WISHLIST_H_PAD,
-    gap: spacing[3],
+    gap: spacing[4],
+    paddingTop: spacing[2],
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    paddingHorizontal: WISHLIST_H_PAD,
     gap: spacing[3],
   },
-  railContent: {
-    paddingHorizontal: WISHLIST_H_PAD,
+  headerCopy: {
+    flex: 1,
+    gap: 4,
   },
-  railSeparator: {
-    width: spacing[3],
+  kicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9,
+    color: MUTED,
+    letterSpacing: 1.2,
+  },
+  title: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 22,
+    color: INK,
+    letterSpacing: -0.3,
+  },
+  explore: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10,
+    color: INK,
+    letterSpacing: 0.8,
+  },
+  railContent: {
+    gap: spacing[3],
   },
   card: {
-    width: 156,
-    borderRadius: radii.xl,
+    width: 148,
+    backgroundColor: "#ffffff",
+    borderRadius: radii.lg,
     borderWidth: 1,
+    borderColor: BORDER,
     overflow: "hidden",
   },
   imgWrap: {
-    width: 156,
-    height: 180,
+    width: 148,
+    height: 176,
+    backgroundColor: "#f5f5f5",
   },
   img: {
     width: "100%",
@@ -182,6 +160,24 @@ const styles = StyleSheet.create({
   },
   cardInfo: {
     padding: spacing[2.5],
-    gap: spacing[1],
+    gap: 3,
+  },
+  brand: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 8,
+    color: MUTED,
+    letterSpacing: 0.7,
+  },
+  name: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 12,
+    color: INK,
+    lineHeight: 16,
+  },
+  price: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: INK,
+    marginTop: 4,
   },
 });

@@ -5,14 +5,15 @@ import {
   Modal,
   FlatList,
   StyleSheet,
-  type ViewStyle,
+  Text,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useTheme } from "@/lib/hooks/useTheme";
-import { Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, radii } from "@/lib/theme/tokens";
-import { WISHLIST_H_PAD } from "@/components/wishlist/layout";
+import { spacing, radii } from "@/lib/theme/tokens";
+
+const INK = "#16170f";
+const BORDER = "#16170f";
+const MUTED = "#6b6b6b";
 
 export type WishlistFilter = "all" | "in_stock" | "on_sale";
 export type WishlistSort =
@@ -22,9 +23,9 @@ export type WishlistSort =
   | "name";
 
 const FILTERS: { key: WishlistFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "in_stock", label: "In stock" },
-  { key: "on_sale", label: "On sale" },
+  { key: "all", label: "ALL" },
+  { key: "in_stock", label: "IN STOCK" },
+  { key: "on_sale", label: "ON SALE" },
 ];
 
 const SORTS: { key: WishlistSort; label: string }[] = [
@@ -39,7 +40,6 @@ interface WishlistSegmentBarProps {
   sort: WishlistSort;
   onFilterChange: (f: WishlistFilter) => void;
   onSortChange: (s: WishlistSort) => void;
-  style?: ViewStyle;
 }
 
 export function WishlistSegmentBar({
@@ -47,25 +47,14 @@ export function WishlistSegmentBar({
   sort,
   onFilterChange,
   onSortChange,
-  style,
 }: WishlistSegmentBarProps) {
-  const theme = useTheme();
   const [open, setOpen] = useState(false);
-  const currentSort = SORTS.find((s) => s.key === sort) ?? SORTS[0];
+  const activeSort = SORTS.find((s) => s.key === sort) ?? SORTS[0];
 
   return (
     <>
-      <View
-        style={[
-          styles.wrap,
-          {
-            backgroundColor: theme.colors.background,
-            borderColor: theme.colors.border,
-          },
-          style,
-        ]}
-      >
-        <View style={styles.chipRow}>
+      <View style={styles.bar}>
+        <View style={styles.filters}>
           {FILTERS.map((f) => {
             const selected = f.key === filter;
             return (
@@ -74,25 +63,18 @@ export function WishlistSegmentBar({
                 onPress={() => onFilterChange(f.key)}
                 style={({ pressed }) => [
                   styles.chip,
-                  {
-                    backgroundColor: selected
-                      ? theme.olive[700]
-                      : theme.colors.card,
-                    borderColor: selected
-                      ? theme.olive[700]
-                      : theme.colors.border,
-                  },
-                  pressed && { opacity: 0.75 },
+                  selected ? styles.chipActive : styles.chipIdle,
+                  pressed && { opacity: 0.8 },
                 ]}
               >
-                <Label
-                  style={{
-                    color: selected ? "#fff" : theme.colors.foreground,
-                    fontSize: 10,
-                  }}
+                <Text
+                  style={[styles.chipText, selected && styles.chipTextActive]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
                 >
                   {f.label}
-                </Label>
+                </Text>
               </Pressable>
             );
           })}
@@ -100,72 +82,23 @@ export function WishlistSegmentBar({
 
         <Pressable
           onPress={() => setOpen(true)}
-          hitSlop={6}
           style={({ pressed }) => [
             styles.sortBtn,
-            {
-              backgroundColor: theme.colors.card,
-              borderColor: theme.colors.border,
-            },
-            pressed && { opacity: 0.7 },
+            pressed && { opacity: 0.8 },
           ]}
+          accessibilityLabel={`Sort: ${activeSort.label}`}
         >
-          <Ionicons
-            name="swap-vertical"
-            size={12}
-            color={theme.olive[700]}
-          />
-          <Label
-            numberOfLines={1}
-            style={{
-              color: theme.colors.foreground,
-              fontSize: 10,
-              marginLeft: 4,
-              flexShrink: 1,
-            }}
-          >
-            {currentSort.label}
-          </Label>
+          <Ionicons name="swap-vertical" size={15} color={INK} />
         </Pressable>
       </View>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        <Pressable
-          style={styles.backdrop}
-          onPress={() => setOpen(false)}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation?.()}
-            style={[
-              styles.sheet,
-              {
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border,
-              },
-            ]}
-          >
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
+          <Pressable onPress={(e) => e.stopPropagation?.()} style={styles.sheet}>
             <View style={styles.sheetHandle}>
-              <View
-                style={[
-                  styles.handleBar,
-                  { backgroundColor: theme.colors.border },
-                ]}
-              />
+              <View style={styles.handleBar} />
             </View>
-            <Label
-              style={{
-                color: theme.olive[600],
-                marginBottom: 4,
-                paddingHorizontal: 18,
-              }}
-            >
-              Sort by
-            </Label>
+            <Text style={styles.sheetTitle}>Sort by</Text>
             <FlatList
               data={SORTS}
               keyExtractor={(item) => item.key}
@@ -180,28 +113,13 @@ export function WishlistSegmentBar({
                     }}
                     style={({ pressed }) => [
                       styles.option,
-                      index < SORTS.length - 1 && {
-                        borderBottomWidth: 1,
-                        borderBottomColor: theme.colors.border,
-                      },
+                      index < SORTS.length - 1 && styles.optionBorder,
                       pressed && { opacity: 0.6 },
                     ]}
                   >
-                    <Body
-                      size="md"
-                      style={{
-                        fontFamily: fontFamilies.display.regular,
-                        color: theme.colors.foreground,
-                      }}
-                    >
-                      {item.label}
-                    </Body>
+                    <Text style={styles.optionText}>{item.label}</Text>
                     {selected ? (
-                      <Ionicons
-                        name="checkmark"
-                        size={18}
-                        color={theme.olive[700]}
-                      />
+                      <Ionicons name="checkmark" size={18} color={INK} />
                     ) : null}
                   </Pressable>
                 );
@@ -215,37 +133,57 @@ export function WishlistSegmentBar({
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  bar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: WISHLIST_H_PAD,
-    paddingVertical: spacing[2.5],
-    borderBottomWidth: 1,
     gap: spacing[2],
+    width: "100%",
   },
-  chipRow: {
+  filters: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[1.5],
-    flex: 1,
-    flexShrink: 1,
+    minWidth: 0,
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  sortBtn: {
-    flexDirection: "row",
+    flex: 1,
     alignItems: "center",
-    paddingHorizontal: spacing[2.5],
-    paddingVertical: spacing[1.5],
+    justifyContent: "center",
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 9,
     borderRadius: radii.full,
     borderWidth: 1,
+    minWidth: 0,
+  },
+  chipActive: {
+    backgroundColor: INK,
+    borderColor: INK,
+  },
+  chipIdle: {
+    backgroundColor: "#ffffff",
+    borderColor: BORDER,
+  },
+  chipText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 9,
+    color: INK,
+    letterSpacing: 0.4,
+    textAlign: "center",
+  },
+  chipTextActive: {
+    color: "#ffffff",
+  },
+  sortBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
-    maxWidth: "42%",
   },
   backdrop: {
     flex: 1,
@@ -253,11 +191,13 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
+    backgroundColor: "#ffffff",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 10,
     paddingBottom: 32,
     borderTopWidth: 1,
+    borderColor: "#e5e5e5",
   },
   sheetHandle: {
     alignItems: "center",
@@ -267,6 +207,16 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
+    backgroundColor: "#e5e5e5",
+  },
+  sheetTitle: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: MUTED,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    paddingHorizontal: 20,
+    marginBottom: 8,
   },
   option: {
     flexDirection: "row",
@@ -274,5 +224,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 16,
     paddingHorizontal: 20,
+  },
+  optionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  optionText: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 16,
+    color: INK,
   },
 });

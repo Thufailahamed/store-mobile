@@ -9,4 +9,4 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 export const WISHLIST_CARD_WIDTH =
   (SCREEN_WIDTH - WISHLIST_H_PAD * 2 - WISHLIST_GRID_GAP) / 2;
 
-export const WISHLIST_IMAGE_HEIGHT = WISHLIST_CARD_WIDTH * (4 / 3);
+export const WISHLIST_IMAGE_HEIGHT = WISHLIST_CARD_WIDTH * 1.22;

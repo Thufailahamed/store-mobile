@@ -1,25 +1,29 @@
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet, type ViewStyle, TouchableOpacity } from "react-native";
+import { View, Pressable, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useTheme } from "@/lib/hooks/useTheme";
-import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, radii, shadows } from "@/lib/theme/tokens";
-import { formatPrice, discountPct } from "@/lib/utils";
+import { spacing, radii } from "@/lib/theme/tokens";
+import { formatPrice } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
 import { WISHLIST_CARD_WIDTH, WISHLIST_IMAGE_HEIGHT } from "@/components/wishlist/layout";
 
+const INK = "#16170f";
+const MUTED = "#6b6b6b";
+const BORDER = "#e5e5e5";
+
 interface WishlistItemCardProps {
   product: Product;
-  style?: ViewStyle;
 }
 
-export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
-  const theme = useTheme();
+function getStock(product: Product) {
+  return product.variants?.[0]?.stock ?? 0;
+}
+
+export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const router = useRouter();
   const { addItem } = useCart();
   const { toggle } = useWishlist();
@@ -28,8 +32,10 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
 
   const primary =
     product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-  const discount = discountPct(product.mrp, product.price);
   const variant = product.variants?.[0];
+  const stock = getStock(product);
+  const isOutOfStock = stock <= 0;
+  const brandLabel = (product.store?.name || product.brand?.name || "LUXE").toUpperCase();
 
   const open = () =>
     router.push({
@@ -37,9 +43,8 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
       params: { slug: product.slug || product.id },
     });
 
-  const moveToBag = async (e?: any) => {
-    e?.stopPropagation?.();
-    if (adding) return;
+  const moveToBag = async () => {
+    if (adding || isOutOfStock) return;
     setAdding(true);
     try {
       addItem({
@@ -52,7 +57,7 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
           : undefined,
         price: product.price,
         image: primary,
-        stock: variant?.stock ?? 99,
+        stock: stock || 99,
         quantity: 1,
       });
       toggle(product.id);
@@ -62,43 +67,24 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
     }
   };
 
-  const isOutOfStock = variant?.stock === 0;
-
-  // Calculate simulated price drop dynamically (10% of the total discount)
-  const priceDropAmount = discount > 0 ? Math.round((product.mrp - product.price) * 0.1) : 0;
+  const notifyMe = () => {
+    toast("We'll notify you when this piece is back", "success");
+  };
 
   return (
     <Pressable
       onPress={open}
-      style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: theme.colors.card,
-          borderColor: theme.colors.border,
-        },
-        pressed && { opacity: 0.98 },
-        style,
-      ]}
+      style={({ pressed }) => [styles.card, pressed && { opacity: 0.98 }]}
     >
       <View style={styles.imageWrap}>
         {primary ? (
-          <Image
-            source={{ uri: primary }}
-            style={styles.image}
-            contentFit="cover"
-            transition={250}
-          />
+          <Image source={{ uri: primary }} style={styles.image} contentFit="cover" transition={250} />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Ionicons
-              name="image-outline"
-              size={24}
-              color={theme.colors.mutedForeground}
-            />
+            <Ionicons name="image-outline" size={24} color={MUTED} />
           </View>
         )}
 
-        {/* Remove from Wishlist button */}
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
@@ -106,77 +92,39 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
           }}
           hitSlop={8}
           accessibilityLabel="Remove from wishlist"
-          style={({ pressed }) => [
-            styles.heart,
-            pressed && { opacity: 0.75 },
-          ]}
+          style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.75 }]}
         >
-          <Ionicons name="trash-outline" size={16} color="#16170f" />
+          <Ionicons name="trash-outline" size={15} color={INK} />
         </Pressable>
 
-        {/* Rating Badge */}
-        {product.rating > 0 && (
-          <View style={styles.ratingBadge}>
-            <Body style={styles.ratingText}>
-              {product.rating.toFixed(0)} <Ionicons name="star" size={10} color={theme.isDark ? theme.olive[400] : theme.olive[600]} /> | {product.total_reviews}
-            </Body>
+        {isOutOfStock ? (
+          <View style={styles.oosBanner}>
+            <Text style={styles.oosBannerText}>OUT OF STOCK</Text>
           </View>
-        )}
+        ) : null}
       </View>
 
       <View style={styles.info}>
-        <Body size="sm" numberOfLines={1} style={[styles.productName, { color: theme.colors.foreground, fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
+        <Text style={styles.brandName} numberOfLines={1}>
+          {brandLabel}
+        </Text>
+        <Text style={styles.productName} numberOfLines={2}>
           {product.name}
-        </Body>
-
-        <View style={styles.priceRow}>
-          <Label style={[styles.priceText, { color: theme.colors.foreground }]}>
-            {formatPrice(product.price)}
-          </Label>
-          {discount > 0 ? (
-            <>
-              <Body size="xs" muted style={styles.mrpText}>
-                {formatPrice(product.mrp)}
-              </Body>
-              <Label style={[styles.discountText, { color: theme.accent2.rust }]}>
-                ({discount}% OFF)
-              </Label>
-            </>
-          ) : null}
-        </View>
-
-        {/* Price drop indicator row */}
-        {priceDropAmount > 0 && !isOutOfStock && (
-          <View style={styles.priceDropRow}>
-            <Ionicons name="arrow-down-circle-outline" size={15} color="#15803d" />
-            <Body size="xs" style={styles.priceDropText}>
-              Price dropped by {formatPrice(priceDropAmount)}
-            </Body>
-          </View>
-        )}
-
-        {isOutOfStock && (
-          <Body style={styles.outOfStockText}>
-            OUT OF STOCK
-          </Body>
-        )}
+        </Text>
+        <Text style={styles.price}>{formatPrice(product.price, product.currency)}</Text>
       </View>
 
-      {/* Bottom docking button matching mockup layout */}
-      <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+      <View style={styles.divider} />
 
       <TouchableOpacity
-        style={styles.moveToBagBtn}
-        onPress={moveToBag}
-        disabled={isOutOfStock}
+        style={styles.actionBtn}
+        onPress={isOutOfStock ? notifyMe : moveToBag}
+        disabled={adding}
         activeOpacity={0.8}
       >
-        <Label style={[
-          styles.moveToBagText, 
-          { color: isOutOfStock ? theme.colors.mutedForeground : theme.colors.primary }
-        ]}>
-          {isOutOfStock ? "OUT OF STOCK" : "MOVE TO BAG"}
-        </Label>
+        <Text style={[styles.actionText, isOutOfStock && styles.actionTextMuted]}>
+          {isOutOfStock ? "NOTIFY ME" : adding ? "ADDING…" : "MOVE TO BAG"}
+        </Text>
       </TouchableOpacity>
     </Pressable>
   );
@@ -185,16 +133,18 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
 const styles = StyleSheet.create({
   card: {
     width: WISHLIST_CARD_WIDTH,
-    borderRadius: radii.xl,
+    backgroundColor: "#ffffff",
+    borderRadius: radii.lg,
     borderWidth: 1,
+    borderColor: BORDER,
     overflow: "hidden",
-    marginBottom: 20,
-    ...shadows.soft,
+    marginBottom: spacing[4],
   },
   imageWrap: {
     width: "100%",
     height: WISHLIST_IMAGE_HEIGHT,
     position: "relative",
+    backgroundColor: "#f5f5f5",
   },
   image: {
     width: "100%",
@@ -205,108 +155,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  heart: {
+  removeBtn: {
     position: "absolute",
-    top: 10,
-    right: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  ratingBadge: {
+  oosBanner: {
     position: "absolute",
-    bottom: 10,
-    left: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    flexDirection: "row",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#c0392b",
+    paddingVertical: 6,
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  ratingText: {
-    fontSize: 10,
-    fontFamily: fontFamilies.sans.semibold,
-    fontWeight: "600",
-    color: "#16170f",
+  oosBannerText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9,
+    color: "#ffffff",
+    letterSpacing: 1.2,
   },
   info: {
-    padding: 12,
-    gap: 3,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 4,
   },
   brandName: {
-    fontSize: 12,
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9,
+    color: MUTED,
+    letterSpacing: 0.8,
   },
   productName: {
-    fontSize: 11,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 13,
+    color: INK,
+    lineHeight: 17,
+    letterSpacing: -0.1,
   },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 4,
-    marginTop: 2,
-  },
-  priceText: {
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-  },
-  mrpText: {
-    fontSize: 10,
-    textDecorationLine: "line-through",
-  },
-  discountText: {
-    fontSize: 10,
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-  },
-  priceDropRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-  },
-  priceDropText: {
-    fontSize: 11,
-    color: "#15803d",
-    fontFamily: fontFamilies.sans.medium,
-  },
-  outOfStockText: {
-    fontSize: 9,
-    color: "#c0392b",
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
+  price: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: INK,
     marginTop: 2,
   },
   divider: {
     height: 1,
+    backgroundColor: BORDER,
   },
-  moveToBagBtn: {
+  actionBtn: {
     width: "100%",
-    height: 42,
+    minHeight: 40,
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 10,
   },
-  moveToBagText: {
-    fontSize: 11,
+  actionText: {
     fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: 10,
+    color: INK,
+    letterSpacing: 1,
+  },
+  actionTextMuted: {
+    color: MUTED,
   },
 });

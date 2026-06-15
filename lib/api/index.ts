@@ -206,11 +206,35 @@ export async function getHomepageProductPicks(
       .eq("section", section)
       .order("display_order");
     if (error || !picks?.length) {
-      const r = await getProducts({
-        limit: 12,
-        sort: section === "new_arrivals_rail" ? "newest" : section === "trending_rail" ? "rating" : "sale",
-      });
-      return r.ok ? ok(r.data.products.slice(0, section === "todays_edit" ? 3 : 12)) : fail(r.error);
+      switch (section) {
+        case "new_arrivals_rail": {
+          const r = await getProducts({ limit: 12, sort: "newest" });
+          return r.ok ? ok(r.data.products) : fail(r.error);
+        }
+        case "trending_rail": {
+          const r = await getProducts({ limit: 12, sort: "rating" });
+          return r.ok ? ok(r.data.products) : fail(r.error);
+        }
+        case "editors_picks_rail": {
+          const featured = await getFeaturedProducts(12);
+          if (featured.ok && featured.data.length) return ok(featured.data);
+          const r = await getProducts({ limit: 12, sort: "price_desc" });
+          return r.ok ? ok(r.data.products) : fail(r.error);
+        }
+        case "todays_edit": {
+          const offset = (new Date().getDate() % 6) * 2;
+          const r = await getProducts({ limit: 4, offset, sort: "newest" });
+          return r.ok ? ok(r.data.products) : fail(r.error);
+        }
+        case "parallax_grid": {
+          const r = await getProducts({ limit: 8, sort: "sale" });
+          return r.ok ? ok(r.data.products) : fail(r.error);
+        }
+        default: {
+          const r = await getProducts({ limit: 12, sort: "newest" });
+          return r.ok ? ok(r.data.products) : fail(r.error);
+        }
+      }
     }
     const ids = picks.map((p) => p.product_id);
     const { data, error: prodErr } = await supabase

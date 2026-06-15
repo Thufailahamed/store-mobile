@@ -1,9 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { View, FlatList, StyleSheet, TouchableOpacity } from "react-native";
+import { View, FlatList, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { AppHeader, PaperBackground } from "@/components/layout";
-import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, radii } from "@/lib/theme/tokens";
@@ -57,8 +55,16 @@ function addProductToCart(product: Product, cart: CartStore): boolean {
   return true;
 }
 
+function formatCompactValue(amount: number, currency = "LKR") {
+  if (amount >= 1000) {
+    const compact = amount / 1000;
+    const label = compact >= 10 ? Math.round(compact) : compact.toFixed(1).replace(/\.0$/, "");
+    return `${currency} ${label}k`;
+  }
+  return formatPrice(amount, currency);
+}
+
 export default function WishlistScreen() {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const wishlist = useWishlist();
@@ -170,6 +176,7 @@ export default function WishlistScreen() {
         data={visibleProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
+        removeClippedSubviews={false}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={[
           styles.listContent,
@@ -179,74 +186,26 @@ export default function WishlistScreen() {
         ListHeaderComponent={
           <View style={styles.headerBlock}>
             <View style={styles.hero}>
-              <Label style={{ color: theme.accent2.rust }}>
-                Your Collection
-              </Label>
-              <Display
-                size="3xl"
-                italic
-                style={[styles.heroTitle, { color: theme.colors.foreground }]}
-              >
+              <Label style={styles.heroKicker}>Your Collection</Label>
+              <Display size="3xl" style={styles.heroTitle}>
                 Saved Pieces
               </Display>
               <Body muted size="md" style={styles.heroSubtitle}>
-                {products.length}{" "}
-                {products.length === 1 ? "piece" : "pieces"} ·{" "}
-                <Body
-                  size="md"
-                  style={{
-                    fontFamily: fontFamilies.display.regular,
-                    fontStyle: "italic",
-                    color: theme.olive[700],
-                  }}
-                >
+                {products.length} {products.length === 1 ? "piece" : "pieces"} ·{" "}
+                <Body size="md" style={styles.heroValue}>
                   {formatPrice(totalValue)} curated
                 </Body>
               </Body>
             </View>
 
-            <View
-              style={[
-                styles.statRow,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
+            <View style={styles.statRow}>
+              <Stat label="TOTAL" value={`${products.length}`} />
+              <View style={styles.statDivider} />
+              <Stat label="IN STOCK" value={`${inStockCount}`} highlight={inStockCount > 0} />
+              <View style={styles.statDivider} />
               <Stat
-                label="Total"
-                value={`${products.length}`}
-                color={theme.colors.foreground}
-                muted={theme.colors.mutedForeground}
-              />
-              <View
-                style={[
-                  styles.statDivider,
-                  { backgroundColor: theme.colors.border },
-                ]}
-              />
-              <Stat
-                label="In stock"
-                value={`${inStockCount}`}
-                color={
-                  inStockCount > 0
-                    ? theme.olive[700]
-                    : theme.colors.mutedForeground
-                }
-                muted={theme.colors.mutedForeground}
-              />
-              <View
-                style={[
-                  styles.statDivider,
-                  { backgroundColor: theme.colors.border },
-                ]}
-              />
-              <Stat
-                label="Value"
-                value={formatPrice(totalValue)}
-                color={theme.colors.foreground}
-                muted={theme.colors.mutedForeground}
+                label="VALUE"
+                value={formatCompactValue(totalValue, products[0]?.currency || "LKR")}
               />
             </View>
 
@@ -255,7 +214,6 @@ export default function WishlistScreen() {
               sort={sort}
               onFilterChange={setFilter}
               onSortChange={setSort}
-              style={styles.segmentBar}
             />
 
           </View>
@@ -291,20 +249,16 @@ export default function WishlistScreen() {
 function Stat({
   label,
   value,
-  color,
-  muted,
+  highlight,
 }: {
   label: string;
   value: string;
-  color: string;
-  muted: string;
+  highlight?: boolean;
 }) {
   return (
     <View style={styles.stat}>
-      <Label style={[styles.statLabel, { color: muted }]}>{label}</Label>
-      <Body size="sm" style={[styles.statValue, { color }]}>
-        {value}
-      </Body>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, highlight && styles.statValueHighlight]}>{value}</Text>
     </View>
   );
 }
@@ -321,25 +275,41 @@ const styles = StyleSheet.create({
     gap: spacing[4],
     paddingTop: spacing[4],
     paddingBottom: spacing[2],
+    overflow: "visible",
   },
   hero: {
     gap: spacing[2],
   },
+  heroKicker: {
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "#6b6b6b",
+  },
   heroTitle: {
     marginTop: spacing[1],
+    color: "#16170f",
+    fontFamily: fontFamilies.display.regular,
+    letterSpacing: -0.5,
   },
   heroSubtitle: {
     marginTop: spacing[1],
+    lineHeight: 22,
+    color: "#6b6b6b",
+  },
+  heroValue: {
     fontFamily: fontFamilies.display.regular,
     fontStyle: "italic",
-    lineHeight: 22,
+    color: "#16170f",
   },
   statRow: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderRadius: radii.xl,
+    borderColor: "#e5e5e5",
+    borderRadius: radii.lg,
     paddingVertical: spacing[4],
+    backgroundColor: "#ffffff",
   },
   stat: {
     flex: 1,
@@ -348,23 +318,26 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   statLabel: {
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 9,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: "#6b6b6b",
   },
   statValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    lineHeight: 20,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    lineHeight: 18,
     textAlign: "center",
+    color: "#16170f",
+  },
+  statValueHighlight: {
+    color: "#16170f",
   },
   statDivider: {
     width: 1,
     alignSelf: "stretch",
     marginVertical: spacing[1],
-  },
-  segmentBar: {
-    marginHorizontal: -WISHLIST_H_PAD,
+    backgroundColor: "#e5e5e5",
   },
   gridRow: {
     gap: WISHLIST_GRID_GAP,

@@ -14,6 +14,86 @@ export type PaymentCard = {
   charges: number;
 };
 
+export const PAYMENT_BRAND_META: Record<
+  PaymentBrand,
+  { label: string; shortLabel: string; color: string }
+> = {
+  visa: { label: "VISA", shortLabel: "Visa", color: "#1a1f71" },
+  mastercard: { label: "MASTERCARD", shortLabel: "Mastercard", color: "#eb001b" },
+  amex: { label: "AMEX", shortLabel: "Amex", color: "#016fd0" },
+};
+
+/** Detect card brand from the leading digits (BIN). */
+export function detectPaymentBrand(raw: string): PaymentBrand | null {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("4")) return "visa";
+  if (/^3[47]/.test(digits)) return "amex";
+  if (/^5[1-5]/.test(digits)) return "mastercard";
+  // Mastercard 2-series BIN range (2221–2720)
+  if (/^2(?:2(?:2[1-9]\d{2}|[3-9]\d{3})|[3-6]\d{4}|7(?:0\d{3}|1\d{3}|20\d{2}))/.test(digits)) {
+    return "mastercard";
+  }
+  return null;
+}
+
+export function cardNumberMaxLength(brand: PaymentBrand | null): number {
+  return brand === "amex" ? 15 : 16;
+}
+
+export function formatCardNumberInput(value: string, brand?: PaymentBrand | null): string {
+  const digits = value.replace(/\D/g, "");
+  const detected = brand ?? detectPaymentBrand(digits);
+  const max = cardNumberMaxLength(detected);
+  const trimmed = digits.slice(0, max);
+
+  if (detected === "amex") {
+    const parts = [trimmed.slice(0, 4), trimmed.slice(4, 10), trimmed.slice(10, 15)].filter(Boolean);
+    return parts.join(" ");
+  }
+
+  return trimmed.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+}
+
+export function formatCardNumberDisplay(raw: string, brand?: PaymentBrand | null): string {
+  const digits = raw.replace(/\D/g, "");
+  const detected = brand ?? detectPaymentBrand(digits);
+
+  if (detected === "amex") {
+    const slots = [
+      digits.slice(0, 4).padEnd(4, "•"),
+      digits.slice(4, 10).padEnd(6, "•"),
+      digits.slice(10, 15).padEnd(5, "•"),
+    ];
+    return `${slots[0]} ${slots[1]} ${slots[2]}`;
+  }
+
+  const parts: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const chunk = digits.slice(i * 4, i * 4 + 4);
+    if (!chunk) {
+      parts.push("••••");
+    } else if (chunk.length < 4) {
+      parts.push(chunk + "•".repeat(4 - chunk.length));
+    } else {
+      parts.push(chunk);
+    }
+  }
+  return parts.join(" ");
+}
+
+export function isValidCardNumber(raw: string, brand?: PaymentBrand | null): boolean {
+  const digits = raw.replace(/\D/g, "");
+  const detected = brand ?? detectPaymentBrand(digits);
+  if (!detected) return false;
+  const len = cardNumberMaxLength(detected);
+  return digits.length === len;
+}
+
+export function cvvMaxLength(brand: PaymentBrand | null): number {
+  return brand === "amex" ? 4 : 3;
+}
+
 export type MobileReview = {
   id: string;
   product: string;
