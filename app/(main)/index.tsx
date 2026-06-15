@@ -1,118 +1,53 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
-import { HomeSectionRenderer, type HomeData } from "@/components/home/HomeSectionRenderer";
-import { spacing } from "@/lib/theme/tokens";
+import {
+  CategoryScroller,
+  PromoCarousel,
+  ProductRail,
+  FeaturedStoresRow,
+  TrustStrip,
+} from "@/components/home/premium";
 import * as api from "@/lib/api";
-import type { HomepageSection } from "@/lib/types";
-
-const EMPTY_DATA: HomeData = {
-  banners: [],
-  secondaryBanners: [],
-  categories: [],
-  brands: [],
-  stores: [],
-  todaysEdit: [],
-  trending: [],
-  newArrivals: [],
-  editorsPicks: [],
-  parallaxGrid: [],
-  flashSaleProducts: [],
-  blogPosts: [],
-  promises: [],
-  testimonials: [],
-  tenets: [],
-  heroMeta: null,
-  flashEndsAt: new Date(Date.now() + 6 * 3600_000).toISOString(),
-};
-
-const FALLBACK_SECTIONS: HomepageSection[] = [
-  { slug: "hero", enabled: true, position: 0, label: "Hero" },
-  { slug: "marquee", enabled: true, position: 1, label: "Marquee" },
-  { slug: "todays_edit", enabled: true, position: 2, label: "Today's Edit" },
-  { slug: "pinned_drop", enabled: true, position: 3, label: "The Drop" },
-  { slug: "categories", enabled: true, position: 4, label: "Categories" },
-  { slug: "trending_rail", enabled: true, position: 5, label: "Trending" },
-  { slug: "pinned_ateliers", enabled: true, position: 6, label: "Ateliers" },
-  { slug: "parallax_grid", enabled: true, position: 7, label: "Lookbook" },
-  { slug: "now_live", enabled: true, position: 8, label: "Now Live" },
-  { slug: "featured_stores", enabled: true, position: 9, label: "Stores" },
-  { slug: "letters", enabled: true, position: 10, label: "Letters" },
-  { slug: "new_arrivals_rail", enabled: true, position: 11, label: "New Arrivals" },
-  { slug: "manifesto", enabled: true, position: 12, label: "Manifesto" },
-  { slug: "editors_picks_rail", enabled: true, position: 13, label: "Editor's Picks" },
-  { slug: "home_secondary", enabled: true, position: 14, label: "Spotlight" },
-  { slug: "journal", enabled: true, position: 15, label: "Journal" },
-  { slug: "newsletter", enabled: true, position: 16, label: "Newsletter" },
-  { slug: "promises", enabled: true, position: 17, label: "House Rules" },
-];
+import type { Banner, Category, Product, Store } from "@/lib/types";
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [sections, setSections] = useState<HomepageSection[]>([]);
-  const [data, setData] = useState<HomeData>(EMPTY_DATA);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [banners, setBanners] = useState<Banner[]>([]);
+  const [saleProducts, setSaleProducts] = useState<Product[]>([]);
+  const [newArrivals, setNewArrivals] = useState<Product[]>([]);
+  const [trending, setTrending] = useState<Product[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
 
   const fetchData = useCallback(async () => {
-    const [
-      layout,
-      banners,
-      secondaryBanners,
-      categories,
-      brands,
-      stores,
-      todaysEdit,
-      trending,
-      newArrivals,
-      editorsPicks,
-      parallaxGrid,
-      blogPosts,
-      promises,
-      flashProducts,
-      flashEndsAt,
-      testimonials,
-      tenets,
-      heroMeta,
-    ] = await Promise.all([
-      api.getHomepageSections(),
-      api.getBanners("home_hero"),
-      api.getBanners("home_secondary"),
-      api.getCategories(10),
-      api.getFeaturedBrands(6),
-      api.getFeaturedStores(6),
-      api.getHomepageProductPicks("todays_edit"),
-      api.getHomepageProductPicks("trending_rail"),
-      api.getHomepageProductPicks("new_arrivals_rail"),
-      api.getHomepageProductPicks("editors_picks_rail"),
-      api.getHomepageProductPicks("parallax_grid"),
-      api.getFeaturedBlogPosts(3),
-      api.getHomepagePromises(),
-      api.getFlashSaleProducts(5),
-      api.getFlashSaleEndsAt(),
-      api.getTestimonials(6),
-      api.getTenets(6),
-      api.getHeroMeta(),
-    ]);
+    const [cats, heroBanners, flash, arrivals, trend, featuredStores, saleList] =
+      await Promise.all([
+        api.getCategories(12),
+        api.getBanners("home_hero"),
+        api.getFlashSaleProducts(12),
+        api.getHomepageProductPicks("new_arrivals_rail"),
+        api.getHomepageProductPicks("trending_rail"),
+        api.getFeaturedStores(8),
+        api.getProducts({ limit: 12, sort: "sale" }),
+      ]);
 
-    setSections(layout.ok ? layout.data : FALLBACK_SECTIONS);
-    setData({
-      banners: banners.ok ? banners.data : [],
-      secondaryBanners: secondaryBanners.ok ? secondaryBanners.data : [],
-      categories: categories.ok ? categories.data : [],
-      brands: brands.ok ? brands.data : [],
-      stores: stores.ok ? stores.data : [],
-      todaysEdit: todaysEdit.ok ? todaysEdit.data : [],
-      trending: trending.ok ? trending.data : [],
-      newArrivals: newArrivals.ok ? newArrivals.data : [],
-      editorsPicks: editorsPicks.ok ? editorsPicks.data : [],
-      parallaxGrid: parallaxGrid.ok ? parallaxGrid.data : [],
-      blogPosts: blogPosts.ok ? blogPosts.data : [],
-      promises: promises.ok ? promises.data : [],
-      flashSaleProducts: flashProducts.ok ? flashProducts.data : [],
-      flashEndsAt,
-      testimonials: testimonials.ok ? testimonials.data : [],
-      tenets: tenets.ok ? tenets.data : [],
-      heroMeta: heroMeta.ok ? heroMeta.data : null,
-    });
+    setCategories(cats.ok ? cats.data : []);
+    setBanners(heroBanners.ok ? heroBanners.data : []);
+    setSaleProducts(
+      flash.ok && flash.data.length
+        ? flash.data
+        : saleList.ok
+          ? saleList.data.products
+          : []
+    );
+    setNewArrivals(arrivals.ok ? arrivals.data : []);
+    setTrending(trend.ok ? trend.data : []);
+    setStores(featuredStores.ok ? featuredStores.data : []);
   }, []);
 
   useEffect(() => {
@@ -125,26 +60,46 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  const visibleSections: HomepageSection[] = sections.length
-    ? sections.filter((s) => s.enabled).sort((a, b) => a.position - b.position)
-    : FALLBACK_SECTIONS;
-
   return (
     <PaperBackground>
-      <AppHeader />
+      <AppHeader showSearch />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
       >
-        {visibleSections.map((section) => (
-          <HomeSectionRenderer key={section.slug} section={section} data={data} />
-        ))}
+        <CategoryScroller categories={categories} />
+        <PromoCarousel banners={banners} />
+        <ProductRail
+          title="On sale"
+          products={saleProducts}
+          showSaleBadge
+          onSeeAll={() => router.push("/(main)/products?sort=sale")}
+        />
+        <ProductRail
+          title="New arrivals"
+          products={newArrivals}
+          showSaleBadge={false}
+          onSeeAll={() => router.push("/(main)/products?sort=newest")}
+        />
+        <FeaturedStoresRow stores={stores} />
+        <ProductRail
+          title="Trending now"
+          products={trending}
+          showSaleBadge={false}
+          onSeeAll={() => router.push("/(main)/products?sort=rating")}
+        />
+        <TrustStrip />
       </ScrollView>
     </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: spacing[24] },
+  scroll: {
+    paddingTop: 4,
+  },
 });

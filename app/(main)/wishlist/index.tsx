@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { View, FlatList, StyleSheet, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { AppHeader, PaperBackground, expandableTabBarInset } from "@/components/layout";
+import { AppHeader, PaperBackground } from "@/components/layout";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -159,12 +159,12 @@ export default function WishlistScreen() {
     [products]
   );
 
-  const listBottomPad = expandableTabBarInset(insets.bottom) + 24;
+  const listBottomPad = insets.bottom + 24;
 
   if (!loading && productIds.length === 0) {
     return (
       <PaperBackground style={styles.screen}>
-        <AppHeader compact showTicker={false} showSearch={false} />
+        <AppHeader compact showTicker={false} showSearch={false} showBackToHome />
         <WishlistEmptyState hasBagItems={cart.itemCount() > 0} />
       </PaperBackground>
     );
@@ -172,7 +172,7 @@ export default function WishlistScreen() {
 
   return (
     <PaperBackground style={styles.screen}>
-      <AppHeader compact showTicker={false} showSearch={false} />
+      <AppHeader compact showTicker={false} showSearch={false} showBackToHome />
       <FlatList
         data={visibleProducts}
         keyExtractor={(item) => item.id}

@@ -119,10 +119,10 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
   }
 
   if (horizontal) {
-    const w = 156;
+    const w = 160;
     return (
       <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={[styles.horizontalCard, { width: w }]}>
-        <View style={[styles.imageWrap, { width: w, height: w * (4 / 3) }]}>
+        <View style={[styles.imageWrap, { width: w, height: 200 }]}>
           {primaryImage ? (
             <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={300} />
           ) : (
@@ -135,15 +135,33 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
               <Label style={styles.discountText}>{discount}% OFF</Label>
             </View>
           )}
+          <TouchableOpacity
+            style={styles.wishlistBtn}
+            onPress={() => toggle(product.id)}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isWishlisted ? "heart" : "heart-outline"}
+              size={14}
+              color={isWishlisted ? colors.light.destructive : colors.light.foreground}
+            />
+          </TouchableOpacity>
         </View>
         <View style={styles.info}>
-          <Body size="sm" numberOfLines={1} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
+          <Body size="sm" numberOfLines={2} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
             {product.name || "Untitled Piece"}
           </Body>
           <View style={styles.priceRow}>
             <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
             {discount > 0 && <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>}
           </View>
+          {product.rating > 0 && (
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={12} color={colors.olive[600]} />
+              <Body size="xs" style={styles.rating}>{product.rating.toFixed(1)}</Body>
+              <Body muted size="xs">({product.total_reviews})</Body>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );

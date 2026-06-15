@@ -1,7 +1,4 @@
-/**
- * LUXE Mobile — API client layer.
- * Thin wrappers around Supabase queries. Returns typed Result<T> envelopes.
- */
+import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import {
   tokenizeQuery,
@@ -20,8 +17,26 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (e: string): Result<never> => ({ ok: false, error: e });
 
+function resolveImageUrl(url?: string) {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const apiHost = process.env.EXPO_PUBLIC_STORE_API_URL || "http://localhost:3000";
+  let host = apiHost;
+  if (Platform.OS === "android" && host.includes("localhost")) {
+    host = host.replace("localhost", "10.0.2.2");
+  }
+  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+  return `${host}${cleanUrl}`;
+}
+
 function mapProduct(p: any): Product {
   if (!p) return p;
+  
+  const images = p.images?.map((img: any) => ({
+    ...img,
+    url: resolveImageUrl(img.url),
+  }));
+
   const variants = p.variants?.map((v: any) => {
     const stock = v.inventory?.[0]?.quantity ?? v.stock ?? 0;
     return {
@@ -29,8 +44,10 @@ function mapProduct(p: any): Product {
       stock,
     };
   });
+
   return {
     ...p,
+    images,
     variants,
   };
 }

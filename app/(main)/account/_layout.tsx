@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import { colors } from "@/lib/theme/tokens";
 
-export default function MainLayout() {
+export default function AccountLayout() {
   return (
     <Stack
       screenOptions={{

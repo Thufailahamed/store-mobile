@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
+import { navigateHome } from "@/lib/navigation";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -194,7 +195,7 @@ export default function NotificationsScreen() {
         ]}
       >
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => navigateHome(router)}
           style={styles.headerBtn}
           hitSlop={8}
         >

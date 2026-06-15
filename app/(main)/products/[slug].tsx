@@ -19,6 +19,7 @@ import { useToast, Button, Skeleton } from "@/components/ui";
 import { Display, Body, Price } from "@/components/ui/Typography";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
+import { navigateHome } from "@/lib/navigation";
 import { recordRecentlyViewed } from "@/lib/account-local";
 import * as api from "@/lib/api";
 import type { Product, ProductVariant, Review } from "@/lib/types";
@@ -195,7 +196,7 @@ export default function ProductDetailScreen() {
       <PaperBackground>
         <View style={styles.empty}>
           <Display size="2xl">Not found</Display>
-          <Button variant="brand" onPress={() => router.back()}>Go back</Button>
+          <Button variant="brand" onPress={() => navigateHome(router)}>Go home</Button>
         </View>
       </PaperBackground>
     );
@@ -217,7 +218,7 @@ export default function ProductDetailScreen() {
       >
         <AnimatedTouchableOpacity
           style={[styles.topBtn, { backgroundColor: btnBg, borderColor: btnBorder }]}
-          onPress={() => router.back()}
+          onPress={() => navigateHome(router)}
           activeOpacity={0.8}
         >
           <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { View, FlatList, StyleSheet, Pressable, TouchableOpacity, Share } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { navigateHome } from "@/lib/navigation";
 import { useRouter } from "expo-router";
 import { PaperBackground } from "@/components/layout";
 import { useTheme } from "@/lib/hooks/useTheme";
@@ -382,7 +383,7 @@ export default function CartScreen() {
           borderColor: theme.colors.border 
         }]}>
           <TouchableOpacity 
-            onPress={() => router.back()} 
+            onPress={() => navigateHome(router)} 
             style={[styles.headerLeftBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
           >
             <Ionicons name="close" size={20} color={theme.colors.foreground} />
@@ -410,7 +411,7 @@ export default function CartScreen() {
         borderColor: theme.colors.border 
       }]}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={() => navigateHome(router)} 
           style={[styles.headerLeftBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
         >
           <Ionicons name="close" size={20} color={theme.colors.foreground} />

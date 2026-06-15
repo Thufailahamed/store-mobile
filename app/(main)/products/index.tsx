@@ -190,7 +190,7 @@ export default function ProductsScreen() {
 
   return (
     <PaperBackground>
-      <AppHeader compact showTicker={false} />
+      <AppHeader compact showTicker={false} showBackToHome />
       <FlatList
         key={view}
         data={view === "list" ? restProducts : restProducts}

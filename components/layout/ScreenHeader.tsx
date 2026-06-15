@@ -4,23 +4,43 @@ import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Display } from "@/components/ui/Typography";
 import { colors, radii } from "@/lib/theme/tokens";
+import { navigateHome } from "@/lib/navigation";
 
 interface ScreenHeaderProps {
   title?: string;
   showBack?: boolean;
+  backToHome?: boolean;
   onBack?: () => void;
   right?: React.ReactNode;
 }
 
-export function ScreenHeader({ title, showBack = true, onBack, right }: ScreenHeaderProps) {
+export function ScreenHeader({
+  title,
+  showBack = true,
+  backToHome = false,
+  onBack,
+  right,
+}: ScreenHeaderProps) {
   const router = useRouter();
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (backToHome) {
+      navigateHome(router);
+      return;
+    }
+    router.back();
+  };
 
   return (
     <View style={styles.bar}>
       {showBack ? (
         <TouchableOpacity
           style={styles.iconBtn}
-          onPress={onBack ?? (() => router.back())}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />

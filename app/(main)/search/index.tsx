@@ -13,7 +13,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { PaperBackground } from "@/components/layout";
+import { PaperBackground, HomeBackButton } from "@/components/layout";
 import { ProductCard } from "@/components/product/ProductCard";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -201,6 +201,9 @@ export default function SearchScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
         <View style={styles.headerBg} />
         <View style={styles.headerContent}>
+          <View style={styles.headerTopRow}>
+            <HomeBackButton style={styles.headerBackBtn} />
+          </View>
           <Label style={styles.kicker}>
             <Ionicons name="sparkles" size={11} color={colors.olive[600]} />
             {" "}Search the Edit
@@ -708,6 +711,13 @@ const styles = StyleSheet.create({
   headerContent: {
     paddingHorizontal: spacing[5],
     gap: spacing[3],
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerBackBtn: {
+    backgroundColor: colors.light.card,
   },
   kicker: {
     color: colors.olive[600],

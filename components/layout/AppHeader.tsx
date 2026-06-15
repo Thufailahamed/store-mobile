@@ -11,14 +11,21 @@ import { useAuth } from "@/lib/supabase/auth";
 import { getAddresses, updateAddress } from "@/lib/api";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
+import { navigateHome } from "@/lib/navigation";
 
 interface AppHeaderProps {
   showTicker?: boolean;
   showSearch?: boolean;
   compact?: boolean;
+  showBackToHome?: boolean;
 }
 
-export function AppHeader({ showTicker = true, showSearch = true, compact = false }: AppHeaderProps) {
+export function AppHeader({
+  showTicker = true,
+  showSearch = true,
+  compact = false,
+  showBackToHome = false,
+}: AppHeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cartCount = useCart((s) => s.itemCount());
@@ -98,8 +105,18 @@ export function AppHeader({ showTicker = true, showSearch = true, compact = fals
     <View style={[styles.wrapper, { paddingTop: insets.top }]}>
       {showTicker && <LiveTicker />}
       <View style={[styles.masthead, compact && styles.mastheadCompact]}>
+        {showBackToHome ? (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigateHome(router)}
+            activeOpacity={0.7}
+            accessibilityLabel="Back to home"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
-          style={styles.locationSelector}
+          style={[styles.locationSelector, showBackToHome && styles.locationSelectorWithBack]}
           activeOpacity={0.7}
           onPress={handleAddressPress}
         >
@@ -128,30 +145,35 @@ export function AppHeader({ showTicker = true, showSearch = true, compact = fals
         </View>
       </View>
 
-      {showSearch && (
+      {showSearch ? (
         <View style={styles.searchRow}>
           <TouchableOpacity
             style={styles.searchBar}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
             onPress={() => router.push("/(main)/search")}
           >
             <Ionicons
-              name="search-outline"
-              size={18}
+              name="search"
+              size={16}
               color={colors.light.mutedForeground}
               style={styles.searchIcon}
             />
-            <Text style={styles.searchPlaceholder}>Search "Luxe Ateliers"...</Text>
+            <Text style={styles.searchPlaceholder}>Search LUXE</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.mapBtn}
+            style={styles.accountBtn}
             activeOpacity={0.8}
-            onPress={() => router.push("/(main)/products")}
+            onPress={() => router.push("/(main)/account")}
           >
-            <Ionicons name="map-outline" size={20} color={colors.light.foreground} />
+            <Ionicons
+              name="person-outline"
+              size={18}
+              color={colors.light.foreground}
+            />
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
+
       <View style={styles.hairline} />
 
       <Modal
@@ -285,12 +307,24 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[50],
+    marginRight: 4,
+  },
   locationSelector: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     flex: 1,
     marginRight: 16,
+  },
+  locationSelectorWithBack: {
+    marginRight: 8,
   },
   locationText: {
     color: colors.light.foreground,
@@ -341,6 +375,14 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     height: 40,
     paddingHorizontal: 14,
+  },
+  accountBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchIcon: {
     marginRight: 8,

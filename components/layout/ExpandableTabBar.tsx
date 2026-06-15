@@ -20,7 +20,7 @@ const TAB_CONFIG: Record<string, TabConfig> = {
   "products/index": { label: "Shop", icon: "bag-outline", iconFocused: "bag" },
   "search/index": { label: "Search", icon: "search-outline", iconFocused: "search" },
   "wishlist/index": { label: "Wishlist", icon: "heart-outline", iconFocused: "heart" },
-  "account/index": { label: "Account", icon: "person-outline", iconFocused: "person" },
+  account: { label: "Account", icon: "person-outline", iconFocused: "person" },
 };
 
 function TabItem({
@@ -132,9 +132,9 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
   );
 }
 
-/** Total vertical space reserved above the home indicator. */
+/** Bottom padding for scroll content (safe area only — no tab bar). */
 export function expandableTabBarInset(safeBottom: number) {
-  return 72 + Math.max(safeBottom, 10) + 12;
+  return Math.max(safeBottom, 10) + 24;
 }
 
 const styles = StyleSheet.create({

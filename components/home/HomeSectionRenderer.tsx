@@ -70,7 +70,7 @@ export function HomeSectionRenderer({ section, data }: HomeSectionRendererProps)
 
   switch (section.slug) {
     case "hero":
-      return <HeroCarousel banners={data.banners} heroMeta={data.heroMeta} />;
+      return <HeroCarousel banners={data.banners} />;
     case "home_secondary":
       return data.secondaryBanners.length ? (
         <SecondaryBannerStrip banners={data.secondaryBanners} kicker={kicker} title={title} />
