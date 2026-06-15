@@ -1,0 +1,318 @@
+/* ------------------------------------------------------------------ */
+/*  LUXE Mobile — shared types (mirrors web/src/types/index.ts)       */
+/* ------------------------------------------------------------------ */
+
+export type UserRole = "customer" | "store_owner" | "brand_owner" | "admin" | "influencer" | "delivery" | "delivery_company";
+export type ApprovalStatus = "draft" | "pending" | "approved" | "rejected";
+export type ProductStatus = "draft" | "pending" | "active" | "archived" | "rejected";
+export type ProductType = "simple" | "variable";
+export type Gender = "men" | "women" | "kids" | "unisex";
+export type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "partially_refunded";
+export type PaymentMethod = "stripe" | "payhere" | "paypal" | "cod" | "wallet" | "gift_card" | "koko";
+export type CouponType = "percentage" | "fixed" | "free_shipping" | "bxgy";
+
+export interface User {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  role: UserRole;
+  loyalty_points?: number;
+  referral_code?: string;
+  created_at: string;
+}
+
+export interface Category {
+  id: string;
+  parent_id?: string | null;
+  name: string;
+  slug: string;
+  description?: string;
+  image_url?: string;
+  icon?: string;
+  gender?: Gender;
+  position: number;
+  is_active: boolean;
+  children?: Category[];
+}
+
+export interface Store {
+  id: string;
+  owner_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  logo_url?: string;
+  banner_url?: string;
+  status: ApprovalStatus;
+  rating: number;
+  total_reviews: number;
+  total_followers: number;
+  total_products: number;
+  total_sales: number;
+  is_featured?: boolean;
+  homepage_order?: number;
+}
+
+export interface Brand {
+  id: string;
+  owner_id?: string;
+  name: string;
+  slug: string;
+  tagline?: string;
+  description?: string;
+  logo_url?: string;
+  banner_url?: string;
+  status: ApprovalStatus;
+  rating: number;
+  total_followers: number;
+  total_products: number;
+  is_featured?: boolean;
+  homepage_order?: number;
+}
+
+export interface Product {
+  id: string;
+  store_id: string;
+  brand_id?: string;
+  category_id?: string;
+  name: string;
+  slug: string;
+  sku?: string;
+  product_type: ProductType;
+  description?: string;
+  short_description?: string;
+  mrp: number;
+  price: number;
+  currency: string;
+  discount_pct: number;
+  tax_rate: number;
+  status: ProductStatus;
+  gender?: Gender;
+  material?: string;
+  pattern?: string;
+  fit?: string;
+  sleeve?: string;
+  occasion?: string;
+  season?: string;
+  care_instructions?: string;
+  tags: string[];
+  attributes?: Record<string, unknown>;
+  is_featured: boolean;
+  is_active: boolean;
+  rating: number;
+  total_reviews: number;
+  total_sales: number;
+  view_count: number;
+  wishlist_count: number;
+  created_at: string;
+  images?: ProductImage[];
+  variants?: ProductVariant[];
+  brand?: Brand;
+  store?: Store;
+  category?: Category;
+}
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  sku?: string;
+  size?: string;
+  color?: string;
+  color_hex?: string;
+  material?: string;
+  mrp?: number;
+  price?: number;
+  image_url?: string;
+  position: number;
+  is_active: boolean;
+  stock?: number;
+}
+
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  url: string;
+  alt_text?: string;
+  media_type: "image" | "video" | "360";
+  position: number;
+  is_primary: boolean;
+}
+
+export interface Review {
+  id: string;
+  user_id: string;
+  product_id: string;
+  rating: number;
+  title?: string;
+  content?: string;
+  photos: string[];
+  is_verified_purchase: boolean;
+  helpful_count: number;
+  status: ApprovalStatus;
+  created_at: string;
+  user?: Pick<User, "id" | "full_name" | "avatar_url">;
+}
+
+export interface CartItem {
+  id: string;
+  product_id: string;
+  variant_id?: string;
+  store_id: string;
+  quantity: number;
+  unit_price: number;
+  saved_for_later?: boolean;
+  product?: Product;
+  variant?: ProductVariant;
+}
+
+export interface Address {
+  id: string;
+  user_id: string;
+  type: "home" | "work" | "other";
+  full_name: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  is_default: boolean;
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  user_id: string;
+  subtotal: number;
+  discount: number;
+  shipping_fee: number;
+  tax: number;
+  total: number;
+  currency: string;
+  status: OrderStatus;
+  payment_status: PaymentStatus;
+  payment_method?: PaymentMethod;
+  notes?: string;
+  delivered_at?: string | null;
+  placed_at: string;
+  items?: OrderItem[];
+  address?: Address;
+  shipping_address?: {
+    full_name: string;
+    phone: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    postal_code: string;
+    country: string;
+  };
+}
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string;
+  variant_id?: string;
+  store_id: string;
+  product_name: string;
+  variant_label?: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  status: OrderStatus;
+  product?: Product;
+}
+
+export interface Banner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  image_url: string;
+  link?: string;
+  position: string;
+  cta_text?: string;
+  display_order: number;
+  is_active: boolean;
+  accent_color?: string | null;
+  text_color?: string | null;
+  bg_color?: string | null;
+}
+
+export interface HomepageSection {
+  slug: string;
+  label: string;
+  kicker?: string;
+  title?: string;
+  subtitle?: string;
+  enabled: boolean;
+  position: number;
+}
+
+export type HomepageProductSection =
+  | "todays_edit"
+  | "trending_rail"
+  | "new_arrivals_rail"
+  | "editors_picks_rail"
+  | "parallax_grid";
+
+export interface HomepagePromise {
+  n: string;
+  title: string;
+  description: string;
+  icon?: string;
+}
+
+export interface Testimonial {
+  id: string;
+  body: string;
+  name: string;
+  place: string;
+  piece: string;
+  accent?: string;
+  display_order?: number;
+}
+
+export interface Tenet {
+  id: string;
+  n: string;
+  title: string;
+  body: string;
+  tag: string;
+  display_order?: number;
+}
+
+export interface HeroMeta {
+  issue_no: string;
+  top_caption: string;
+  kpi_ateliers_n: string;
+  kpi_ateliers_l: string;
+  kpi_pieces_n: string;
+  kpi_pieces_l: string;
+  kpi_members_n: string;
+  kpi_members_l: string;
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt?: string;
+  cover_image?: string;
+  published_at?: string;
+}
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  read_at?: string | null;
+  created_at: string;
+}
