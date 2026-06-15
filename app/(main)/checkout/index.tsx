@@ -5,6 +5,10 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground, ScreenHeader, SectionHeader } from "@/components/layout";
 import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
+import {
+  AddressFormSheet,
+  type AddressFormPayload,
+} from "@/components/address/AddressFormSheet";
 import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
@@ -58,8 +62,10 @@ export default function CheckoutScreen() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [country, setCountry] = useState("Sri Lanka");
   const [shippingKey, setShippingKey] = useState<ShippingKey>("standard");
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "payhere">("cod");
+  const [addressSheetOpen, setAddressSheetOpen] = useState(false);
 
   const cartItems = Object.values(items);
   const sub = subtotal();
@@ -95,6 +101,37 @@ export default function CheckoutScreen() {
     setCity(a.city);
     setState(a.state);
     setPostalCode(a.postal_code);
+    setCountry(a.country || "Sri Lanka");
+  };
+
+  const handleNewAddressSubmit = async (payload: AddressFormPayload) => {
+    if (!user) return;
+    const basePayload = {
+      user_id: user.id,
+      type: payload.type,
+      full_name: payload.full_name.trim(),
+      phone: payload.phone.trim(),
+      line1: payload.line1.trim(),
+      line2: payload.line2.trim() || undefined,
+      city: payload.city.trim(),
+      state: payload.state.trim(),
+      postal_code: payload.postal_code.trim(),
+      country: payload.country.trim() || "Sri Lanka",
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      is_default: false,
+    };
+    const res = await api.createAddress(basePayload as any);
+    if (!res.ok) {
+      toast(res.error, "error");
+      return;
+    }
+    const saved = res.data;
+    setSavedAddresses((prev) => [saved, ...prev]);
+    setSelectedAddressId(saved.id);
+    fillAddress(saved);
+    setAddressSheetOpen(false);
+    toast("Address added", "success");
   };
 
   const applyCoupon = async () => {
@@ -119,25 +156,8 @@ export default function CheckoutScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      let addressId: string | null = null;
-      if (selectedAddressId === "new") {
-        const addressResult = await api.createAddress({
-          user_id: user.id,
-          type: "home",
-          full_name: fullName,
-          phone,
-          line1,
-          line2: line2 || undefined,
-          city,
-          state,
-          postal_code: postalCode,
-          country: "LK",
-          is_default: false,
-        });
-        addressId = addressResult.ok ? addressResult.data.id : null;
-      } else {
-        addressId = selectedAddressId;
-      }
+      const addressId: string | null =
+        selectedAddressId === "new" ? null : selectedAddressId;
 
       const rpcItems = cartItems.map((item) => ({
         product_id: item.productId,
@@ -158,7 +178,7 @@ export default function CheckoutScreen() {
         city,
         state,
         postal_code: postalCode,
-        country: "LK",
+        country,
       };
 
       const { data: orderData, error } = await supabase.rpc("place_order", {
@@ -250,29 +270,45 @@ export default function CheckoutScreen() {
                   fillAddress(a);
                 }}
               >
-                <Body size="sm" style={{ fontWeight: "600" }}>{a.full_name}</Body>
-                <Body muted size="xs">{a.line1}, {a.city}</Body>
+                <View style={styles.addressCardBody}>
+                  <View style={styles.addressCardHead}>
+                    <Body size="sm" style={{ fontWeight: "600" }}>{a.full_name}</Body>
+                    {a.is_default && (
+                      <Label style={styles.defaultTag}>DEFAULT</Label>
+                    )}
+                  </View>
+                  <Body muted size="xs" numberOfLines={1}>
+                    {a.line1}, {a.city}
+                  </Body>
+                  {a.latitude && a.longitude ? (
+                    <View style={styles.coordsPill}>
+                      <Ionicons name="navigate-outline" size={10} color={colors.olive[700]} />
+                      <Label style={styles.coordsText}>
+                        PINNED · {a.latitude.toFixed(3)}, {a.longitude.toFixed(3)}
+                      </Label>
+                    </View>
+                  ) : null}
+                </View>
+                {selectedAddressId === a.id && (
+                  <Ionicons name="checkmark-circle" size={20} color={colors.light.primary} />
+                )}
               </TouchableOpacity>
             ))}
             <TouchableOpacity
-              style={[styles.addressCard, selectedAddressId === "new" && styles.addressCardActive]}
-              onPress={() => setSelectedAddressId("new")}
+              style={[styles.addressCard, styles.addAddressCard]}
+              onPress={() => setAddressSheetOpen(true)}
             >
-              <Label style={{ color: colors.light.primary }}>+ New address</Label>
-            </TouchableOpacity>
-            {selectedAddressId === "new" && (
-              <View style={styles.form}>
-                <Input label="Full name" value={fullName} onChangeText={setFullName} />
-                <Input label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-                <Input label="Address line 1" value={line1} onChangeText={setLine1} />
-                <Input label="Address line 2" value={line2} onChangeText={setLine2} />
-                <View style={styles.row}>
-                  <View style={styles.half}><Input label="City" value={city} onChangeText={setCity} /></View>
-                  <View style={styles.half}><Input label="State" value={state} onChangeText={setState} /></View>
-                </View>
-                <Input label="Postal code" value={postalCode} onChangeText={setPostalCode} keyboardType="number-pad" />
+              <View style={styles.addAddressIcon}>
+                <Ionicons name="add" size={18} color={colors.light.primary} />
               </View>
-            )}
+              <View style={{ flex: 1 }}>
+                <Body size="sm" style={{ fontWeight: "600" }}>Add a new address</Body>
+                <Body muted size="xs" numberOfLines={1}>
+                  Autocomplete + pin on map · saved to your account
+                </Body>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
+            </TouchableOpacity>
             <Button variant="brand" onPress={() => setStep(2)}>Continue</Button>
           </View>
         )}
@@ -402,6 +438,18 @@ export default function CheckoutScreen() {
           }}
         />
       )}
+
+      <AddressFormSheet
+        visible={addressSheetOpen}
+        onClose={() => setAddressSheetOpen(false)}
+        onSubmit={handleNewAddressSubmit}
+        title="Delivery address"
+        subtitle="Auto-detect, autocomplete, or drop a pin"
+        primaryLabel="Use this address"
+        hideDefault
+        defaultName={user?.user_metadata?.full_name ?? ""}
+        defaultPhone={(user?.user_metadata?.phone as string) ?? ""}
+      />
     </PaperBackground>
   );
 }
@@ -443,17 +491,54 @@ const styles = StyleSheet.create({
     ...shadows.soft,
   },
   addressCard: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: spacing[4],
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.light.border,
     backgroundColor: colors.paper.DEFAULT,
-    gap: 4,
+    gap: spacing[3],
   },
   addressCardActive: { borderColor: colors.light.primary, backgroundColor: colors.olive[50] },
-  form: { gap: spacing[3] },
-  row: { flexDirection: "row", gap: spacing[3] },
-  half: { flex: 1 },
+  addressCardBody: { flex: 1, gap: 4 },
+  addressCardHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  defaultTag: {
+    fontFamily: "JetBrainsMono_600SemiBold",
+    fontSize: 9,
+    color: colors.olive[700],
+    backgroundColor: colors.olive[100],
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    letterSpacing: 0.4,
+  },
+  addAddressCard: { borderStyle: "dashed", borderColor: colors.olive[200] },
+  addAddressIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[50],
+  },
+  coordsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    marginTop: 2,
+  },
+  coordsText: {
+    color: colors.olive[700],
+    fontFamily: "JetBrainsMono_500Medium",
+    fontSize: 9,
+    letterSpacing: 0.4,
+  },
   optionCard: {
     flexDirection: "row",
     alignItems: "center",

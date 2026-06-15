@@ -3,7 +3,6 @@ import { View, Pressable, StyleSheet, type ViewStyle, TouchableOpacity } from "r
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -65,19 +64,8 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
 
   const isOutOfStock = variant?.stock === 0;
 
-  // Premium Olive ramp gradient for the call-to-action button
-  const buttonGradient = (theme.isDark 
-    ? [theme.olive[400], theme.olive[600]] 
-    : [theme.olive[500], theme.olive[700]]) as [string, string];
-
-  // Soft background card gradient for editorial paper texture look
-  const cardGradient = (theme.isDark
-    ? ["#181913", "#0f100a"]
-    : ["#faf8f1", "#f0ede4"]) as [string, string];
-
-  const overlayBg = theme.isDark 
-    ? "rgba(20, 21, 16, 0.8)" 
-    : "rgba(255, 255, 255, 0.85)";
+  // Calculate simulated price drop dynamically (10% of the total discount)
+  const priceDropAmount = discount > 0 ? Math.round((product.mrp - product.price) * 0.1) : 0;
 
   return (
     <Pressable
@@ -85,128 +73,111 @@ export function WishlistItemCard({ product, style }: WishlistItemCardProps) {
       style={({ pressed }) => [
         styles.card,
         {
+          backgroundColor: theme.colors.card,
           borderColor: theme.colors.border,
         },
         pressed && { opacity: 0.98 },
         style,
       ]}
     >
-      <LinearGradient
-        colors={cardGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={{ flex: 1 }}
-      >
-        <View style={styles.imageWrap}>
-          {primary ? (
-            <Image
-              source={{ uri: primary }}
-              style={styles.image}
-              contentFit="cover"
-              transition={250}
+      <View style={styles.imageWrap}>
+        {primary ? (
+          <Image
+            source={{ uri: primary }}
+            style={styles.image}
+            contentFit="cover"
+            transition={250}
+          />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Ionicons
+              name="image-outline"
+              size={24}
+              color={theme.colors.mutedForeground}
             />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <Ionicons
-                name="image-outline"
-                size={24}
-                color={theme.colors.mutedForeground}
-              />
-            </View>
-          )}
-
-          {/* Remove from Wishlist button */}
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              toggle(product.id);
-            }}
-            hitSlop={8}
-            accessibilityLabel="Remove from wishlist"
-            style={({ pressed }) => [
-              styles.heart,
-              {
-                backgroundColor: overlayBg,
-              },
-              pressed && { opacity: 0.75 },
-            ]}
-          >
-            <Ionicons name="trash-outline" size={14} color={theme.colors.foreground} />
-          </Pressable>
-
-          {/* Rating Badge */}
-          {product.rating > 0 && (
-            <View style={[styles.ratingBadge, { backgroundColor: overlayBg }]}>
-              <Body style={[styles.ratingText, { color: theme.colors.foreground }]}>
-                {product.rating.toFixed(1)} <Ionicons name="star" size={9} color={theme.olive[600]} /> | {product.total_reviews}
-              </Body>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.info}>
-          {product.brand ? (
-            <Label style={[styles.brandName, { color: theme.colors.mutedForeground }]} numberOfLines={1}>
-              {product.brand.name}
-            </Label>
-          ) : (
-            <Label style={[styles.brandName, { color: theme.colors.mutedForeground }]}>LUXE</Label>
-          )}
-          
-          <Body size="xs" numberOfLines={1} muted style={styles.productName}>
-            {product.name}
-          </Body>
-
-          <View style={styles.priceRow}>
-            <Label style={[styles.priceText, { color: theme.colors.foreground }]}>
-              {formatPrice(product.price)}
-            </Label>
-            {discount > 0 ? (
-              <>
-                <Body size="xs" muted style={styles.mrpText}>
-                  {formatPrice(product.mrp)}
-                </Body>
-                <Label style={[styles.discountText, { color: theme.accent2.rust }]}>
-                  ({discount}% OFF)
-                </Label>
-              </>
-            ) : null}
           </View>
+        )}
 
-          {isOutOfStock && (
-            <Body style={styles.outOfStockText}>
-              OUT OF STOCK
+        {/* Remove from Wishlist button */}
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            toggle(product.id);
+          }}
+          hitSlop={8}
+          accessibilityLabel="Remove from wishlist"
+          style={({ pressed }) => [
+            styles.heart,
+            pressed && { opacity: 0.75 },
+          ]}
+        >
+          <Ionicons name="trash-outline" size={16} color="#16170f" />
+        </Pressable>
+
+        {/* Rating Badge */}
+        {product.rating > 0 && (
+          <View style={styles.ratingBadge}>
+            <Body style={styles.ratingText}>
+              {product.rating.toFixed(0)} <Ionicons name="star" size={10} color={theme.isDark ? theme.olive[400] : theme.olive[600]} /> | {product.total_reviews}
             </Body>
-          )}
+          </View>
+        )}
+      </View>
 
-          {/* Premium call-to-action button */}
-          <TouchableOpacity
-            onPress={moveToBag}
-            disabled={isOutOfStock}
-            activeOpacity={0.8}
-            style={{ width: "100%", marginTop: 8 }}
-          >
-            {isOutOfStock ? (
-              <View style={[styles.moveToBagBtn, { backgroundColor: theme.colors.muted, shadowOpacity: 0, elevation: 0 }]}>
-                <Label style={[styles.moveToBagText, { color: theme.colors.mutedForeground }]}>
-                  OUT OF STOCK
-                </Label>
-              </View>
-            ) : (
-              <LinearGradient
-                colors={buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.moveToBagBtn}
-              >
-                <Label style={[styles.moveToBagText, { color: "#FFFFFF" }]}>
-                  MOVE TO BAG
-                </Label>
-              </LinearGradient>
-            )}
-          </TouchableOpacity>
+      <View style={styles.info}>
+        <Body size="sm" numberOfLines={1} style={[styles.productName, { color: theme.colors.foreground, fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
+          {product.name}
+        </Body>
+
+        <View style={styles.priceRow}>
+          <Label style={[styles.priceText, { color: theme.colors.foreground }]}>
+            {formatPrice(product.price)}
+          </Label>
+          {discount > 0 ? (
+            <>
+              <Body size="xs" muted style={styles.mrpText}>
+                {formatPrice(product.mrp)}
+              </Body>
+              <Label style={[styles.discountText, { color: theme.accent2.rust }]}>
+                ({discount}% OFF)
+              </Label>
+            </>
+          ) : null}
         </View>
-      </LinearGradient>
+
+        {/* Price drop indicator row */}
+        {priceDropAmount > 0 && !isOutOfStock && (
+          <View style={styles.priceDropRow}>
+            <Ionicons name="arrow-down-circle-outline" size={15} color="#15803d" />
+            <Body size="xs" style={styles.priceDropText}>
+              Price dropped by {formatPrice(priceDropAmount)}
+            </Body>
+          </View>
+        )}
+
+        {isOutOfStock && (
+          <Body style={styles.outOfStockText}>
+            OUT OF STOCK
+          </Body>
+        )}
+      </View>
+
+      {/* Bottom docking button matching mockup layout */}
+      <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+
+      <TouchableOpacity
+        style={styles.moveToBagBtn}
+        onPress={moveToBag}
+        disabled={isOutOfStock}
+        activeOpacity={0.8}
+      >
+        <Label style={[
+          styles.moveToBagText, 
+          { color: isOutOfStock ? theme.colors.mutedForeground : theme.colors.primary }
+        ]}>
+          {isOutOfStock ? "OUT OF STOCK" : "MOVE TO BAG"}
+        </Label>
+      </TouchableOpacity>
     </Pressable>
   );
 }
@@ -238,42 +209,48 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 10,
     right: 10,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 2,
   },
   ratingBadge: {
     position: "absolute",
     bottom: 10,
     left: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   ratingText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: fontFamilies.sans.semibold,
     fontWeight: "600",
+    color: "#16170f",
   },
   info: {
-    padding: 10,
+    padding: 12,
     gap: 3,
   },
   brandName: {
-    fontSize: 9.5,
+    fontSize: 12,
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "700",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
   },
   productName: {
     fontSize: 11,
@@ -299,6 +276,17 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "700",
   },
+  priceDropRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  priceDropText: {
+    fontSize: 11,
+    color: "#15803d",
+    fontFamily: fontFamilies.sans.medium,
+  },
   outOfStockText: {
     fontSize: 9,
     color: "#c0392b",
@@ -306,20 +294,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 2,
   },
+  divider: {
+    height: 1,
+  },
   moveToBagBtn: {
     width: "100%",
-    height: 36,
-    borderRadius: radii.full,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
   },
   moveToBagText: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "700",
     letterSpacing: 0.5,

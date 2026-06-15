@@ -17,7 +17,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.luxe.marketplace",
       "config": {
-        "usesNonExemptEncryption": false
+        "usesNonExemptEncryption": false,
+        "googleMapsApiKey": "AIzaSyBf0hycsxuNKRh94zf8A2HWTQOzSGkt44w"
       }
     },
     "android": {
@@ -25,7 +26,12 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f5f4ef"
       },
-      "package": "com.luxe.marketplace"
+      "package": "com.luxe.marketplace",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBf0hycsxuNKRh94zf8A2HWTQOzSGkt44w"
+        }
+      }
     },
     "plugins": [
       "expo-router",
@@ -41,6 +47,12 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow LUXE to access your photos for product images and avatars."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow LUXE to use your location to autofill delivery addresses and pin map location."
         }
       ],
       [

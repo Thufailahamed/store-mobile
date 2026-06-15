@@ -80,12 +80,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         </View>
         <View style={styles.listInfo}>
           <View>
-            {product.brand ? (
-              <Label style={styles.brandName}>{product.brand.name}</Label>
-            ) : (
-              <Label style={styles.brandName}>LUXE</Label>
-            )}
-            <Body size="sm" numberOfLines={2} style={styles.listName}>
+            <Body size="sm" numberOfLines={2} style={[styles.listName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
               {product.name || "Untitled Piece"}
             </Body>
             {product.short_description ? (
@@ -142,12 +137,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           )}
         </View>
         <View style={styles.info}>
-          {product.brand ? (
-            <Label style={styles.brandName}>{product.brand.name}</Label>
-          ) : (
-            <Label style={styles.brandName}>LUXE</Label>
-          )}
-          <Body size="sm" numberOfLines={1} style={styles.productName}>
+          <Body size="sm" numberOfLines={1} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
             {product.name || "Untitled Piece"}
           </Body>
           <View style={styles.priceRow}>
@@ -190,12 +180,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         </TouchableOpacity>
       </View>
       <View style={styles.info}>
-        {product.brand ? (
-          <Label style={styles.brandName}>{product.brand.name}</Label>
-        ) : (
-          <Label style={styles.brandName}>LUXE</Label>
-        )}
-        <Body size="sm" numberOfLines={2} style={styles.productName}>
+        <Body size="sm" numberOfLines={2} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
           {product.name || "Untitled Piece"}
         </Body>
         <View style={styles.priceRow}>
