@@ -10,12 +10,12 @@
 		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
-		384142D8650D49C29E64B345 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC10AFF4BFCB4220B0AA17AB /* noop-file.swift */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		509D83A7C679497982945C85 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD655A61BEC444D8F873CA4 /* noop-file.swift */; };
 		96905EF65AED1B983A6B3ABC /* libPods-LUXE.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-LUXE.a */; };
-		AB081FE0EC760FD47905FD56 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BA53CF6E412A35CD0F3D8B81 /* PrivacyInfo.xcprivacy */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		F67C60A10C5DC07B05F4100B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7F6C53E9637348BB44ADBAE2 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,14 +25,14 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = LUXE/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = LUXE/Info.plist; sourceTree = "<group>"; };
 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = LUXE/main.m; sourceTree = "<group>"; };
+		437636C1F1B64C5CA9F705EA /* LUXE-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "LUXE-Bridging-Header.h"; path = "LUXE/LUXE-Bridging-Header.h"; sourceTree = "<group>"; };
 		58EEBF8E8E6FB1BC6CAF49B5 /* libPods-LUXE.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-LUXE.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C2E3173556A471DD304B334 /* Pods-LUXE.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LUXE.debug.xcconfig"; path = "Target Support Files/Pods-LUXE/Pods-LUXE.debug.xcconfig"; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-LUXE.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LUXE.release.xcconfig"; path = "Target Support Files/Pods-LUXE/Pods-LUXE.release.xcconfig"; sourceTree = "<group>"; };
+		7F6C53E9637348BB44ADBAE2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = LUXE/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		8BD655A61BEC444D8F873CA4 /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "LUXE/noop-file.swift"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = LUXE/SplashScreen.storyboard; sourceTree = "<group>"; };
-		BA53CF6E412A35CD0F3D8B81 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = LUXE/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		CC10AFF4BFCB4220B0AA17AB /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "LUXE/noop-file.swift"; sourceTree = "<group>"; };
-		D970E491A29849FC878E9B48 /* LUXE-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "LUXE-Bridging-Header.h"; path = "LUXE/LUXE-Bridging-Header.h"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-LUXE/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -59,9 +59,9 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				13B07FB71A68108700A75B9A /* main.m */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				CC10AFF4BFCB4220B0AA17AB /* noop-file.swift */,
-				D970E491A29849FC878E9B48 /* LUXE-Bridging-Header.h */,
-				BA53CF6E412A35CD0F3D8B81 /* PrivacyInfo.xcprivacy */,
+				8BD655A61BEC444D8F873CA4 /* noop-file.swift */,
+				437636C1F1B64C5CA9F705EA /* LUXE-Bridging-Header.h */,
+				7F6C53E9637348BB44ADBAE2 /* PrivacyInfo.xcprivacy */,
 			);
 			name = LUXE;
 			sourceTree = "<group>";
@@ -147,13 +147,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "LUXE" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				D81C49F5F9C25CD16C5180E3 /* [Expo] Configure project */,
+				FF0A150C4D3D7EAF3CC2BB6B /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				8847EDA757680F440AE9B1C6 /* [CP] Embed Pods Frameworks */,
+				B647C7F4895DAA5A06A6472E /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -203,7 +203,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				AB081FE0EC760FD47905FD56 /* PrivacyInfo.xcprivacy in Resources */,
+				F67C60A10C5DC07B05F4100B /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,7 +294,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-LUXE/Pods-LUXE-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		8847EDA757680F440AE9B1C6 /* [CP] Embed Pods Frameworks */ = {
+		B647C7F4895DAA5A06A6472E /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -312,7 +312,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-LUXE/Pods-LUXE-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		D81C49F5F9C25CD16C5180E3 /* [Expo] Configure project */ = {
+		FF0A150C4D3D7EAF3CC2BB6B /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -341,7 +341,7 @@
 				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
-				384142D8650D49C29E64B345 /* noop-file.swift in Sources */,
+				509D83A7C679497982945C85 /* noop-file.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

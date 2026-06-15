@@ -11,12 +11,14 @@ import {
   Text,
   TextInput,
   View,
+  TouchableOpacity,
 } from "react-native";
+import * as Location from "expo-location";
+import { useToast } from "@/components/ui";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Body, Display, Label } from "@/components/ui/Typography";
 import { Button } from "@/components/ui/Button";
-import { PlacesAutocompleteInput } from "./PlacesAutocompleteInput";
 import { AddressMapPicker } from "./AddressMapPicker";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { reverseGeocode } from "@/lib/maps";
@@ -106,6 +108,49 @@ export function AddressFormSheet({
     500
   );
   const lastReverseKey = useRef<string | null>(null);
+  const [fetchingLoc, setFetchingLoc] = useState(false);
+  const { toast } = useToast();
+
+  const handleAutoFetch = async () => {
+    if (fetchingLoc) return;
+    setFetchingLoc(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        toast("Permission to access location was denied", "error");
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      
+      setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
+      
+      setGeoBusy(true);
+      const res = await reverseGeocode(lat, lng);
+      setGeoBusy(false);
+      
+      if (res) {
+        setForm((prev) => ({
+          ...prev,
+          line1: res.components.line1 || prev.line1,
+          city: res.components.city || prev.city,
+          state: res.components.state || prev.state,
+          postal_code: res.components.postal_code || prev.postal_code,
+          country: res.components.country || prev.country,
+        }));
+        toast("Address auto-filled successfully!", "success");
+      } else {
+        toast("Could not resolve address details. Please fill manually.", "error");
+      }
+    } catch (err: any) {
+      toast(err?.message || "Failed to get current location", "error");
+    } finally {
+      setFetchingLoc(false);
+    }
+  };
 
   // Reset form when sheet opens with a new initial value.
   useEffect(() => {
@@ -241,20 +286,22 @@ export function AddressFormSheet({
               <Body muted size="xs" style={styles.typeCopy}>{TYPE_META[form.type].copy}</Body>
             </View>
 
-            {/* Autocomplete */}
-            <View style={styles.field}>
-              <PlacesAutocompleteInput
-                label="Search address"
-                country="LK"
-                value={form.line1}
-                onChangeText={(v) => set("line1", v)}
-                onSelect={handlePlaceSelect}
-                error={errors.line1}
-              />
-              <Body muted size="xs" style={styles.helper}>
-                Start typing — pick a suggestion to autofill.
-              </Body>
-            </View>
+            {/* Auto-detect location button */}
+            <TouchableOpacity
+              onPress={handleAutoFetch}
+              disabled={fetchingLoc}
+              style={[styles.autoDetectBtn, { borderColor: colors.light.primary }]}
+              activeOpacity={0.75}
+            >
+              {fetchingLoc ? (
+                <ActivityIndicator size="small" color={colors.light.primary} />
+              ) : (
+                <Ionicons name="location-outline" size={16} color={colors.light.primary} />
+              )}
+              <Label style={[styles.autoDetectBtnText, { color: colors.light.primary }]}>
+                {fetchingLoc ? "Detecting location…" : "Auto-detect current address"}
+              </Label>
+            </TouchableOpacity>
 
             {/* Map */}
             <View style={styles.field}>
@@ -300,6 +347,15 @@ export function AddressFormSheet({
                 />
               </View>
             </View>
+
+            <Field
+              label="Address line 1"
+              required
+              value={form.line1}
+              onChangeText={(v) => set("line1", v)}
+              error={errors.line1}
+              placeholder="Street address, P.O. box, company name"
+            />
 
             <Field
               label="Address line 2"
@@ -581,5 +637,21 @@ const styles = StyleSheet.create({
     borderTopColor: colors.light.border,
     backgroundColor: colors.light.background,
     ...shadows.soft,
+  },
+  autoDetectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    height: 44,
+    backgroundColor: colors.olive[50],
+    marginBottom: spacing[2],
+  },
+  autoDetectBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+    fontSize: 13,
   },
 });

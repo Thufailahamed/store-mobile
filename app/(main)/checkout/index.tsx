@@ -304,7 +304,7 @@ export default function CheckoutScreen() {
               <View style={{ flex: 1 }}>
                 <Body size="sm" style={{ fontWeight: "600" }}>Add a new address</Body>
                 <Body muted size="xs" numberOfLines={1}>
-                  Autocomplete + pin on map · saved to your account
+                  Auto-detect + pin on map · saved to your account
                 </Body>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
@@ -444,7 +444,7 @@ export default function CheckoutScreen() {
         onClose={() => setAddressSheetOpen(false)}
         onSubmit={handleNewAddressSubmit}
         title="Delivery address"
-        subtitle="Auto-detect, autocomplete, or drop a pin"
+        subtitle="Auto-detect location or drop a pin"
         primaryLabel="Use this address"
         hideDefault
         defaultName={user?.user_metadata?.full_name ?? ""}

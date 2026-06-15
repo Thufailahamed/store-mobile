@@ -18,7 +18,7 @@
       "bundleIdentifier": "com.luxe.marketplace",
       "config": {
         "usesNonExemptEncryption": false,
-        "googleMapsApiKey": "AIzaSyBf0hycsxuNKRh94zf8A2HWTQOzSGkt44w"
+        "googleMapsApiKey": "GOOGLE_MAPS_API_KEY_PLACEHOLDER"
       }
     },
     "android": {
@@ -29,7 +29,7 @@
       "package": "com.luxe.marketplace",
       "config": {
         "googleMaps": {
-          "apiKey": "AIzaSyBf0hycsxuNKRh94zf8A2HWTQOzSGkt44w"
+          "apiKey": "GOOGLE_MAPS_API_KEY_PLACEHOLDER"
         }
       }
     },
