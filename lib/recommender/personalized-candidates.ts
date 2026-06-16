@@ -22,6 +22,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
+import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
 import { isProductInStock } from "./inventory";
 import type { Product } from "@/lib/types";
 import type { RailContext } from "./engine";
@@ -30,8 +31,7 @@ const POOL_LIMIT = 80;
 const HARD_CAP = 60;
 const AFFINITY_SPLIT = 0.5;
 
-const PRODUCT_SELECT =
-  "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(id, name, slug)";
+const PRODUCT_SELECT = PRODUCT_CARD_SELECT;
 
 interface TopCategoryRow {
   category_id: string;

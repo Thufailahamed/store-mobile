@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   ScrollView,
@@ -21,7 +21,6 @@ import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { getFollowedStores, getOrders, type FollowedStore } from "@/lib/api";
-import { mapProducts } from "@/lib/api/product-mapper";
 import {
   getRecentlyViewedIds,
   getStoredPayments,
@@ -29,7 +28,8 @@ import {
 } from "@/lib/account-local";
 import { formatPrice } from "@/lib/utils";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
-import type { Product } from "@/lib/types";
+import type { Order, Product } from "@/lib/types";
+import { mapProducts } from "@/lib/api/product-mapper";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const H_PAD = spacing[5];
@@ -93,6 +93,18 @@ const CARD_BRAND_STYLES: Record<PaymentCard["brand"], { colors: [string, string]
   amex: { colors: ["#0d213a", "#123c60"], label: "AMEX" },
 };
 
+function buildOrderThumbs(orders: Order[]): string[] {
+  return orders
+    .flatMap((o) => o.items ?? [])
+    .map(
+      (item) =>
+        item.product?.images?.find((i) => i.is_primary)?.url ??
+        item.product?.images?.[0]?.url,
+    )
+    .filter(Boolean)
+    .slice(0, 4) as string[];
+}
+
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -110,101 +122,70 @@ export default function AccountScreen() {
   const name = profileName || user?.user_metadata?.full_name || "Guest";
   const email = user?.email ?? "Sign in to sync your account";
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const [viewedIds, cards] = await Promise.all([
-        getRecentlyViewedIds(user?.id),
-        getStoredPayments(user?.id),
-      ]);
-      if (!cancelled) {
-        setPayments(cards);
-      }
-
-      if (viewedIds.length > 0) {
-        const { data: viewedProducts } = await supabase
-          .from("products")
-          .select(
-            "id, name, slug, price, currency, images:product_images(url, is_primary, position)"
-          )
-          .in("id", viewedIds);
-        if (!cancelled) {
-          const byId = new Map(
-            mapProducts((viewedProducts as Product[]) ?? []).map((p) => [p.id, p])
-          );
-          setRecentlyViewed(
-            viewedIds.map((id) => byId.get(id)).filter((p): p is Product => !!p)
-          );
-        }
-      } else if (!cancelled) {
-        setRecentlyViewed([]);
-      }
-
-      if (user?.id) {
-        const storesRes = await getFollowedStores(user.id);
-        if (!cancelled && storesRes.ok) setFollowedStores(storesRes.data);
-
-        const ordersRes = await getOrders(user.id, 8);
-        if (!cancelled && ordersRes.ok) {
-          const thumbs = ordersRes.data
-            .flatMap((o) => o.items ?? [])
-            .map(
-              (item) =>
-                item.product?.images?.find((i) => i.is_primary)?.url ??
-                item.product?.images?.[0]?.url,
-            )
-            .filter(Boolean)
-            .slice(0, 4) as string[];
-          setOrderThumbs(thumbs);
-        } else if (!cancelled) {
-          setOrderThumbs([]);
-        }
-
-        const { data: profile } = await supabase
-          .from("users")
-          .select("full_name, avatar_url")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (!cancelled) {
-          if (profile?.full_name) setProfileName(profile.full_name);
-          const nextAvatar =
-            profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null;
-          setAvatarUri(nextAvatar ? resolveImageUrl(nextAvatar) || nextAvatar : null);
-        }
-      } else if (!cancelled) {
-        setOrderThumbs([]);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
-
   useFocusEffect(
     useCallback(() => {
-      getStoredPayments(user?.id).then(setPayments);
+      let cancelled = false;
 
-      if (!user?.id) return;
-      getOrders(user.id, 8).then((ordersRes) => {
-        if (!ordersRes.ok) {
+      async function load() {
+        const [viewedIds, cards] = await Promise.all([
+          getRecentlyViewedIds(user?.id),
+          getStoredPayments(user?.id),
+        ]);
+        if (cancelled) return;
+        setPayments(cards);
+
+        if (viewedIds.length > 0) {
+          const { data: viewedProducts } = await supabase
+            .from("products")
+            .select(
+              "id, name, slug, price, currency, images:product_images(url, is_primary, position)",
+            )
+            .in("id", viewedIds);
+          if (cancelled) return;
+          const byId = new Map(
+            mapProducts((viewedProducts as Product[]) ?? []).map((p) => [p.id, p]),
+          );
+          setRecentlyViewed(
+            viewedIds.map((id) => byId.get(id)).filter((p): p is Product => !!p),
+          );
+        } else {
+          setRecentlyViewed([]);
+        }
+
+        if (!user?.id) {
           setOrderThumbs([]);
+          setFollowedStores([]);
           return;
         }
-        const thumbs = ordersRes.data
-          .flatMap((o) => o.items ?? [])
-          .map(
-            (item) =>
-              item.product?.images?.find((i) => i.is_primary)?.url ??
-              item.product?.images?.[0]?.url,
-          )
-          .filter(Boolean)
-          .slice(0, 4) as string[];
-        setOrderThumbs(thumbs);
-      });
-    }, [user?.id])
+
+        const [storesRes, ordersRes, profileRes] = await Promise.all([
+          getFollowedStores(user.id),
+          getOrders(user.id, 8),
+          supabase
+            .from("users")
+            .select("full_name, avatar_url")
+            .eq("id", user.id)
+            .maybeSingle(),
+        ]);
+
+        if (cancelled) return;
+
+        if (storesRes.ok) setFollowedStores(storesRes.data);
+        if (ordersRes.ok) setOrderThumbs(buildOrderThumbs(ordersRes.data));
+        else setOrderThumbs([]);
+
+        const profile = profileRes.data;
+        if (profile?.full_name) setProfileName(profile.full_name);
+        const nextAvatar =
+          profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null;
+        setAvatarUri(nextAvatar ? resolveImageUrl(nextAvatar) || nextAvatar : null);
+      }
+
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }, [user?.id, user?.user_metadata?.avatar_url, user?.user_metadata?.full_name]),
   );
 
   const followingAvatars = useMemo(() => {

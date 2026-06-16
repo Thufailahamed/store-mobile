@@ -1,4 +1,12 @@
-import { useEffect, useState, useCallback } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { supabase } from "./client";
 import type { Session, User } from "@supabase/supabase-js";
 
@@ -16,27 +24,62 @@ export interface AuthState {
   verifyOtp: (phone: string, token: string) => Promise<{ error?: string }>;
 }
 
-export function useAuth(): AuthState {
+const AuthContext = createContext<AuthState | null>(null);
+
+async function resolveRole(authUser: User): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", authUser.id)
+      .maybeSingle();
+    const metaRole = authUser.user_metadata?.role as string | undefined;
+    return data?.role ?? metaRole ?? "customer";
+  } catch {
+    const metaRole = authUser.user_metadata?.role as string | undefined;
+    return metaRole ?? "customer";
+  }
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string>("customer");
   const [loading, setLoading] = useState(true);
   const [roleLoading, setRoleLoading] = useState(false);
+  const roleUserIdRef = useRef<string | null>(null);
+  const roleRequestIdRef = useRef(0);
+
+  const applyRole = useCallback(async (authUser: User | null) => {
+    if (!authUser) {
+      roleUserIdRef.current = null;
+      setRole("customer");
+      setRoleLoading(false);
+      return;
+    }
+
+    if (roleUserIdRef.current === authUser.id) return;
+
+    const requestId = ++roleRequestIdRef.current;
+    roleUserIdRef.current = authUser.id;
+    setRoleLoading(true);
+
+    const nextRole = await resolveRole(authUser);
+    if (requestId !== roleRequestIdRef.current) return;
+
+    setRole(nextRole);
+    setRoleLoading(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    const applySession = (session: Session | null) => {
+    const applySession = (nextSession: Session | null) => {
       if (cancelled) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchRole(session.user);
-      } else {
-        setRole("customer");
-        setRoleLoading(false);
-      }
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
+      void applyRole(nextSession?.user ?? null);
     };
 
     const sessionTimeout = setTimeout(() => {
@@ -45,9 +88,9 @@ export function useAuth(): AuthState {
 
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
+      .then(({ data: { session: initialSession } }) => {
         clearTimeout(sessionTimeout);
-        applySession(session);
+        applySession(initialSession);
       })
       .catch(() => {
         clearTimeout(sessionTimeout);
@@ -56,16 +99,12 @@ export function useAuth(): AuthState {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchRole(session.user);
-      } else {
-        setRole("customer");
-        setRoleLoading(false);
-      }
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (cancelled) return;
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
       setLoading(false);
+      void applyRole(nextSession?.user ?? null);
     });
 
     return () => {
@@ -73,25 +112,7 @@ export function useAuth(): AuthState {
       clearTimeout(sessionTimeout);
       subscription.unsubscribe();
     };
-  }, []);
-
-  const fetchRole = async (authUser: User) => {
-    setRoleLoading(true);
-    try {
-      const { data } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", authUser.id)
-        .maybeSingle();
-      const metaRole = authUser.user_metadata?.role as string | undefined;
-      setRole(data?.role ?? metaRole ?? "customer");
-    } catch {
-      const metaRole = authUser.user_metadata?.role as string | undefined;
-      setRole(metaRole ?? "customer");
-    } finally {
-      setRoleLoading(false);
-    }
-  };
+  }, [applyRole]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -108,10 +129,12 @@ export function useAuth(): AuthState {
   }, []);
 
   const signOut = useCallback(async () => {
+    roleUserIdRef.current = null;
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
     setRole("customer");
+    setRoleLoading(false);
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -135,17 +158,42 @@ export function useAuth(): AuthState {
     return { error: error?.message };
   }, []);
 
-  return {
-    session,
-    user,
-    role,
-    loading,
-    roleLoading,
-    signIn,
-    signUp,
-    signOut,
-    resetPassword,
-    signInWithPhone,
-    verifyOtp,
-  };
+  const value = useMemo<AuthState>(
+    () => ({
+      session,
+      user,
+      role,
+      loading,
+      roleLoading,
+      signIn,
+      signUp,
+      signOut,
+      resetPassword,
+      signInWithPhone,
+      verifyOtp,
+    }),
+    [
+      session,
+      user,
+      role,
+      loading,
+      roleLoading,
+      signIn,
+      signUp,
+      signOut,
+      resetPassword,
+      signInWithPhone,
+      verifyOtp,
+    ],
+  );
+
+  return React.createElement(AuthContext.Provider, { value }, children);
+}
+
+export function useAuth(): AuthState {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+  return ctx;
 }

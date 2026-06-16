@@ -25,10 +25,10 @@ interface ProductCardProps {
 
 export function ProductCard({ product, horizontal, listMode }: ProductCardProps) {
   const router = useRouter();
-  const { addItem } = useCart();
-  const { toggle, items: wishlistItems } = useWishlist();
+  const addItem = useCart((s) => s.addItem);
+  const isWishlisted = useWishlist((s) => !!s.items[product.id]);
+  const toggle = useWishlist((s) => s.toggle);
   const tracker = useTrackEvent();
-  const isWishlisted = !!wishlistItems[product.id];
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const storeOrBrandName = product.store?.name || product.brand?.name;
   const discount =

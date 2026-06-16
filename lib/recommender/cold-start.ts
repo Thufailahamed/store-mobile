@@ -8,6 +8,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
+import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
 import type { Product } from "@/lib/types";
 import type { Result } from "@/lib/api";
 
@@ -19,7 +20,7 @@ export async function fetchColdStartProducts(limit = 12): Promise<Result<Product
     const [featuredRes, topRatedRes, recentRes] = await Promise.all([
       supabase
         .from("products")
-        .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)")
+        .select(PRODUCT_CARD_SELECT)
         .eq("status", "active")
         .eq("is_active", true)
         .eq("is_featured", true)
@@ -27,14 +28,14 @@ export async function fetchColdStartProducts(limit = 12): Promise<Result<Product
         .limit(limit),
       supabase
         .from("products")
-        .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)")
+        .select(PRODUCT_CARD_SELECT)
         .eq("status", "active")
         .eq("is_active", true)
         .order("rating", { ascending: false })
         .limit(limit),
       supabase
         .from("products")
-        .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)")
+        .select(PRODUCT_CARD_SELECT)
         .eq("status", "active")
         .eq("is_active", true)
         .order("created_at", { ascending: false })

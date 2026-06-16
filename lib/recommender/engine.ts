@@ -20,6 +20,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
+import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
 import type { Product } from "@/lib/types";
 import type { Result } from "@/lib/api";
 import { loadProfile, type UserProfile } from "./profile";
@@ -66,7 +67,7 @@ async function pullCandidates(
   try {
     let query = supabase
       .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(id, name, slug)")
+      .select(PRODUCT_CARD_SELECT)
       .eq("status", "active")
       .eq("is_active", true)
       .limit(Math.min(limit, HARD_CAP));
@@ -304,7 +305,7 @@ export async function getFromWishlistRail(
     }
     const { data, error } = await supabase
       .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)")
+      .select(PRODUCT_CARD_SELECT)
       .eq("status", "active")
       .eq("is_active", true)
       .in("id", wishlistIds);

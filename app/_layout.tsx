@@ -26,7 +26,7 @@ import {
 } from "@expo-google-fonts/jetbrains-mono";
 import * as Linking from "expo-linking";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useAuth } from "@/lib/supabase/auth";
+import { useAuth, AuthProvider } from "@/lib/supabase/auth";
 import { useSyncStores } from "@/lib/hooks";
 import { ToastProvider } from "@/components/ui";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -213,10 +213,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <StatusBar style="dark" />
-            <RootLayoutNav />
-          </ToastProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <StatusBar style="dark" />
+              <RootLayoutNav />
+            </ToastProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -8,6 +8,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
+import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
 import { getRecentlyViewedIds, recordRecentlyViewed } from "@/lib/account-local";
 import type { Result } from "@/lib/api";
 import type { Product } from "@/lib/types";
@@ -29,7 +30,7 @@ export async function fetchRecentlyViewed(
 
     const { data, error } = await supabase
       .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)")
+      .select(PRODUCT_CARD_SELECT)
       .eq("status", "active")
       .eq("is_active", true)
       .in("id", ids);

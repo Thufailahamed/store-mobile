@@ -19,9 +19,9 @@ interface HomeProductCardProps {
 
 export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCardProps) {
   const router = useRouter();
-  const { toggle, items: wishlistItems } = useWishlist();
+  const isWishlisted = useWishlist((s) => !!s.items[product.id]);
+  const toggle = useWishlist((s) => s.toggle);
   const tracker = useTrackEvent();
-  const isWishlisted = !!wishlistItems[product.id];
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const onSale = product.mrp > product.price;
   const storeOrBrandName = product.store?.name || product.brand?.name;

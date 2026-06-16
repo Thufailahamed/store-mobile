@@ -7,6 +7,7 @@ import {
   mapCategory,
   mapBanner,
 } from "@/lib/api/product-mapper";
+import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
 import {
   tokenizeQuery,
   buildSearchOrParts,
@@ -25,6 +26,12 @@ const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (e: string): Result<never> => ({ ok: false, error: e });
 
 export { mapProduct, mapProducts, mapStore, mapBrand } from "./product-mapper";
+export {
+  PRODUCT_CARD_SELECT,
+  getProductCards,
+  getProductCardsByIds,
+  type ProductCardSort,
+} from "./product-queries";
 
 const GENDER_SLUGS = new Set(["men", "women", "kids", "unisex"]);
 
@@ -208,46 +215,42 @@ export async function getHomepageProductPicks(
     if (error || !picks?.length) {
       switch (section) {
         case "new_arrivals_rail": {
-          const r = await getProducts({ limit: 12, sort: "newest" });
-          return r.ok ? ok(r.data.products) : fail(r.error);
+          const r = await getProductCards({ limit: 12, sort: "newest" });
+          return r.ok ? ok(r.data) : fail(r.error);
         }
         case "trending_rail": {
-          const r = await getProducts({ limit: 12, sort: "rating" });
-          return r.ok ? ok(r.data.products) : fail(r.error);
+          const r = await getProductCards({ limit: 12, sort: "rating" });
+          return r.ok ? ok(r.data) : fail(r.error);
         }
         case "editors_picks_rail": {
           const featured = await getFeaturedProducts(12);
           if (featured.ok && featured.data.length) return ok(featured.data);
-          const r = await getProducts({ limit: 12, sort: "price_desc" });
-          return r.ok ? ok(r.data.products) : fail(r.error);
+          const r = await getProductCards({ limit: 12, sort: "price_desc" });
+          return r.ok ? ok(r.data) : fail(r.error);
         }
         case "todays_edit": {
           const offset = (new Date().getDate() % 6) * 2;
-          const r = await getProducts({ limit: 4, offset, sort: "newest" });
-          return r.ok ? ok(r.data.products) : fail(r.error);
+          const r = await getProductCards({ limit: 4, offset, sort: "newest" });
+          return r.ok ? ok(r.data) : fail(r.error);
         }
         case "parallax_grid": {
-          const r = await getProducts({ limit: 8, sort: "sale" });
-          return r.ok ? ok(r.data.products) : fail(r.error);
+          const r = await getProductCards({ limit: 8, sort: "sale" });
+          return r.ok ? ok(r.data) : fail(r.error);
         }
         default: {
-          const r = await getProducts({ limit: 12, sort: "newest" });
-          return r.ok ? ok(r.data.products) : fail(r.error);
+          const r = await getProductCards({ limit: 12, sort: "newest" });
+          return r.ok ? ok(r.data) : fail(r.error);
         }
       }
     }
     const ids = picks.map((p) => p.product_id);
-    const { data, error: prodErr } = await supabase
-      .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)")
-      .in("id", ids)
-      .eq("is_active", true);
-    if (prodErr) return fail(prodErr.message);
+    const cardsRes = await getProductCardsByIds(ids);
+    if (!cardsRes.ok) return fail(cardsRes.error);
     const order = new Map(ids.map((id, i) => [id, i]));
-    const sorted = ((data as Product[]) ?? []).sort(
-      (a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)
+    const sorted = cardsRes.data.sort(
+      (a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
     );
-    return ok(mapProducts(sorted));
+    return ok(sorted);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch homepage product picks");
   }
@@ -283,20 +286,7 @@ export async function getFeaturedBlogPosts(limit = 3): Promise<Result<import("@/
 }
 
 export async function getFeaturedProducts(limit = 12): Promise<Result<Product[]>> {
-  try {
-    const { data, error } = await supabase
-      .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*))")
-      .eq("status", "active")
-      .eq("is_active", true)
-      .eq("is_featured", true)
-      .order("total_sales", { ascending: false })
-      .limit(limit);
-    if (error) return fail(error.message);
-    return ok(mapProducts(data as any[]));
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to fetch featured products");
-  }
+  return getProductCards({ limit, featuredOnly: true, sort: "popular" });
 }
 
 export async function getFeaturedBrands(limit = 6): Promise<Result<Brand[]>> {
@@ -485,10 +475,10 @@ export async function getHeroMeta(): Promise<Result<HeroMeta | null>> {
 }
 
 export async function getFlashSaleProducts(limit = 5): Promise<Result<Product[]>> {
-  const r = await getProducts({ limit, sort: "sale" });
+  const r = await getProductCards({ limit, sort: "sale" });
   if (!r.ok) return r;
-  const items = (r.data.products ?? []).filter((p) => (p.discount_pct ?? 0) > 0);
-  return ok(items.length ? items.slice(0, limit) : r.data.products.slice(0, limit));
+  const items = (r.data ?? []).filter((p) => (p.discount_pct ?? 0) > 0);
+  return ok(items.length ? items.slice(0, limit) : r.data.slice(0, limit));
 }
 
 export async function getFlashSaleEndsAt(): Promise<string> {
