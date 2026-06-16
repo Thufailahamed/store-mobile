@@ -214,8 +214,8 @@ const styles = StyleSheet.create({
   },
   actions: {
     position: "absolute",
-    top: 4,
-    right: 4,
+    top: 8,
+    left: 8,
     flexDirection: "column",
     gap: 4,
   },
