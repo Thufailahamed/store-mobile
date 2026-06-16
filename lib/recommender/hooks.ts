@@ -130,6 +130,26 @@ export function useTrackEvent() {
           product: snapshotProduct(product),
         });
       },
+      /** Fires a search event for a clicked suggestion (keyword row). */
+      searchSuggestion(term: string, label: string) {
+        trackEvent(userId, {
+          type: "search",
+          t: Date.now(),
+          query: label,
+          tokens: [label],
+          resultCount: 0,
+          surface: "suggestion",
+        });
+      },
+      /** Fires a view event tagged with scan:source for analytics. */
+      scan(source: "library" | "camera", queryId?: string) {
+        trackEvent(userId, {
+          type: "view",
+          t: Date.now(),
+          product: { id: queryId ?? `scan-${Date.now()}` },
+          surface: `scan:${source}`,
+        });
+      },
     };
   }, [user?.id]);
 }

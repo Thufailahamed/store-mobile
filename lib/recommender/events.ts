@@ -52,6 +52,8 @@ export interface ViewEvent extends BaseEvent {
   product: TrackedProduct;
   /** Dwell time in ms. Capped at 120s. */
   dwellMs?: number;
+  /** Optional surface tag (e.g. "scan:camera", "scan:library"). */
+  surface?: string;
 }
 
 export interface SearchEvent extends BaseEvent {
@@ -61,6 +63,8 @@ export interface SearchEvent extends BaseEvent {
   tokens: string[];
   /** Result count. */
   resultCount: number;
+  /** Optional surface tag (e.g. "suggestion" for typeahead picks). */
+  surface?: string;
 }
 
 export interface WishlistEvent extends BaseEvent {

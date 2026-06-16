@@ -2828,3 +2828,115 @@ export async function getStoreAnalytics(storeId: string): Promise<Result<{
     return fail(e?.message ?? "Failed to fetch store analytics");
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Search recommendation system — keywords, image/camera, price drops */
+/* ------------------------------------------------------------------ */
+
+export type V2Suggestion = {
+  kind: "keyword" | "store" | "brand";
+  label: string;
+  slug?: string;
+  count?: number;
+  logo_url?: string;
+  followers?: number;
+  is_verified?: boolean;
+  trend_pct?: number;
+};
+
+/**
+ * Typeahead suggestions: 6 keywords (with count), 3 stores, 2 brands.
+ * Backed by the `search_suggestions_v2` RPC so it stays fast at 250ms debounce.
+ */
+export async function getSearchSuggestionsV2(term: string): Promise<Result<V2Suggestion[]>> {
+  if (term.trim().length < 1) return ok([]);
+  try {
+    const { data, error } = await supabase.rpc("search_suggestions_v2", {
+      p_term: term.trim(),
+    });
+    if (error) return fail(error.message);
+    return ok((data ?? []) as V2Suggestion[]);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch suggestions");
+  }
+}
+
+export type WishlistPriceDrop = {
+  product_id: string;
+  slug: string;
+  name: string;
+  image_url?: string;
+  old_price: number;
+  new_price: number;
+  drop_pct: number;
+};
+
+/** Wishlist items whose current price is below the price at time of add. */
+export async function getWishlistPriceDrops(): Promise<Result<WishlistPriceDrop[]>> {
+  try {
+    const { data: userRes } = await supabase.auth.getUser();
+    const userId = userRes?.user?.id;
+    if (!userId) return ok([]);
+    const { data, error } = await supabase.rpc("wishlist_price_drops", { p_user: userId });
+    if (error) return fail(error.message);
+    return ok((data ?? []) as WishlistPriceDrop[]);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch price drops");
+  }
+}
+
+export type ScanMatch = {
+  kind: "product" | "store" | "none";
+  product_id?: string;
+  store_id?: string;
+  slug?: string;
+  confidence: number;
+};
+
+/** Upload a captured/picked image to the private `scan-uploads` bucket. */
+export async function uploadScanImage(
+  uri: string,
+  source: "library" | "camera",
+): Promise<Result<{ path: string; url: string }>> {
+  try {
+    const { data: userRes } = await supabase.auth.getUser();
+    const user = userRes?.user;
+    if (!user) return fail("Not authenticated");
+    const ext = (uri.split(".").pop() ?? "jpg").toLowerCase().split("?")[0] || "jpg";
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const blob = await fetch(uri).then((r) => r.blob());
+    const { error } = await supabase.storage
+      .from("scan-uploads")
+      .upload(path, blob, { contentType: `image/${ext}` });
+    if (error) return fail(error.message);
+    const { data: pub } = supabase.storage.from("scan-uploads").getPublicUrl(path);
+    return ok({ path, url: pub?.publicUrl ?? "" });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to upload scan");
+  }
+}
+
+/** Match a previously-uploaded scan path against the catalogue. */
+export async function reverseImageMatch(path: string): Promise<Result<ScanMatch>> {
+  try {
+    const { data: userRes } = await supabase.auth.getUser();
+    const user = userRes?.user;
+    if (!user) return fail("Not authenticated");
+    const { data, error } = await supabase.rpc("reverse_image_match", {
+      p_path: path,
+      p_user: user.id,
+    });
+    if (error) return fail(error.message);
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || row.kind === "none") return ok({ kind: "none", confidence: 0 });
+    return ok({
+      kind: row.kind,
+      product_id: row.product_id ?? undefined,
+      store_id: row.store_id ?? undefined,
+      slug: row.slug ?? undefined,
+      confidence: Number(row.confidence ?? 0),
+    });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to match image");
+  }
+}

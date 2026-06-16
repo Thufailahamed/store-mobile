@@ -29,13 +29,14 @@ import { formatPrice, discountPct } from "@/lib/utils";
 import { SORTS, PRICE_BOUNDS } from "@/lib/api/facets";
 import type { ProductFilters } from "@/lib/api/facets";
 import * as api from "@/lib/api";
-import type { SearchSuggestion } from "@/lib/api";
+import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";
 import type { Product, Brand, Store, Category } from "@/lib/types";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { useTrackEvent, getForYouRail } from "@/lib/recommender";
 import { tokenizeQuery } from "@/lib/utils/search-utils";
 import { useAuth } from "@/lib/supabase/auth";
 import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
+import { pickImage, takePhoto } from "@/lib/upload";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 10;
@@ -77,8 +78,10 @@ export default function SearchScreen() {
   const [sort, setSort] = useState("newest");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<V2Suggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [priceDrops, setPriceDrops] = useState<WishlistPriceDrop[]>([]);
+  const [scanBusy, setScanBusy] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<ProductFilters>({
     price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max],
@@ -146,15 +149,15 @@ export default function SearchScreen() {
     tracker.search(q, tokenizeQuery(q), productCount);
   }, [recentSearches, tracker]);
 
-  const localSuggestions = useMemo<SearchSuggestion[]>(() => {
+  const localSuggestions = useMemo<V2Suggestion[]>(() => {
     const term = draft.trim().toLowerCase();
     if (!term) return [];
 
-    const items: SearchSuggestion[] = [];
+    const items: V2Suggestion[] = [];
 
     for (const label of recentSearches) {
       if (label.toLowerCase().includes(term)) {
-        items.push({ id: `recent-${label}`, label, type: "recent" });
+        items.push({ kind: "keyword", label });
       }
     }
 
@@ -163,7 +166,7 @@ export default function SearchScreen() {
         label.toLowerCase().includes(term) &&
         !items.some((item) => item.label.toLowerCase() === label.toLowerCase())
       ) {
-        items.push({ id: `trending-${label}`, label, type: "trending" });
+        items.push({ kind: "keyword", label });
       }
     }
 
@@ -172,7 +175,7 @@ export default function SearchScreen() {
 
   useEffect(() => {
     const term = debouncedDraft.trim();
-    if (term.length < 2) {
+    if (term.length < 1) {
       setSuggestions([]);
       setSuggestionsLoading(false);
       return;
@@ -181,7 +184,7 @@ export default function SearchScreen() {
     let cancelled = false;
     setSuggestionsLoading(true);
 
-    api.getSearchSuggestions(term).then((res) => {
+    api.getSearchSuggestionsV2(term).then((res) => {
       if (cancelled) return;
       setSuggestions(res.ok ? res.data : []);
       setSuggestionsLoading(false);
@@ -192,31 +195,83 @@ export default function SearchScreen() {
     };
   }, [debouncedDraft]);
 
+  // Fetch wishlist price drops once (when authenticated) so the suggestion
+  // overlay can show "Price dropped on items you wishlisted".
+  useEffect(() => {
+    if (!user) {
+      setPriceDrops([]);
+      return;
+    }
+    let cancelled = false;
+    api.getWishlistPriceDrops().then((res) => {
+      if (cancelled) return;
+      setPriceDrops(res.ok ? res.data : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  /** Run an image / camera scan, upload, then route to the match (or /scan). */
+  const runScan = useCallback(
+    async (source: "library" | "camera") => {
+      if (scanBusy) return;
+      setScanBusy(true);
+      tracker.scan(source);
+      try {
+        const picker = source === "camera" ? takePhoto : pickImage;
+        const result = await picker({ allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+        if (!result || result.canceled) {
+          setScanBusy(false);
+          return;
+        }
+        const uri = result.assets?.[0]?.uri;
+        if (!uri) {
+          setScanBusy(false);
+          return;
+        }
+        const upload = await api.uploadScanImage(uri, source);
+        if (!upload.ok) {
+          router.push("/scan");
+          return;
+        }
+        const match = await api.reverseImageMatch(upload.data.path);
+        if (!match.ok || match.data.kind === "none") {
+          router.push("/scan");
+          return;
+        }
+        if (match.data.kind === "product" && match.data.slug) {
+          router.push(`/(main)/products/${match.data.slug}`);
+        } else if (match.data.kind === "store" && match.data.slug) {
+          router.push(`/(main)/stores/${match.data.slug}`);
+        }
+      } catch {
+        router.push("/scan");
+      } finally {
+        setScanBusy(false);
+      }
+    },
+    [router, scanBusy, tracker],
+  );
+
   const showSuggestions =
     draft.trim().length >= 1 &&
     (!searched || draft.trim().toLowerCase() !== query.trim().toLowerCase());
 
   const handleSuggestionSelect = useCallback(
-    (suggestion: SearchSuggestion) => {
-      if (suggestion.type === "product" && suggestion.slug) {
-        router.push(`/(main)/products/${suggestion.slug}`);
-        return;
-      }
-      if (suggestion.type === "store" && suggestion.slug) {
+    (suggestion: V2Suggestion) => {
+      tracker.searchSuggestion(draft, suggestion.label);
+      if (suggestion.kind === "store" && suggestion.slug) {
         router.push(`/(main)/stores/${suggestion.slug}`);
         return;
       }
-      if (suggestion.type === "brand" && suggestion.slug) {
+      if (suggestion.kind === "brand" && suggestion.slug) {
         router.push(`/(main)/products?brand=${suggestion.slug}`);
-        return;
-      }
-      if (suggestion.type === "category" && suggestion.slug) {
-        router.push(`/(main)/products?category=${suggestion.slug}`);
         return;
       }
       doSearch(suggestion.label);
     },
-    [doSearch, router],
+    [doSearch, draft, router, tracker],
   );
 
   // Client-side filter + sort pipeline
@@ -344,8 +399,12 @@ export default function SearchScreen() {
           suggestions={suggestions}
           localSuggestions={localSuggestions}
           loading={suggestionsLoading}
+          priceDrops={priceDrops}
           onSelect={handleSuggestionSelect}
           onSearchDraft={() => doSearch(draft)}
+          onImageSearch={() => runScan("library")}
+          onCameraSearch={() => runScan("camera")}
+          onPriceDropPress={(d) => router.push(`/(main)/products/${d.slug}`)}
         />
       ) : null}
 
