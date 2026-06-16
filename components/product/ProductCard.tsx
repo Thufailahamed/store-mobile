@@ -1,5 +1,4 @@
-import React from "react";
-import { View, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
+import { View, TouchableOpacity, StyleSheet, Dimensions, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -29,6 +28,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
   const { toggle, items: wishlistItems } = useWishlist();
   const isWishlisted = !!wishlistItems[product.id];
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
+  const storeOrBrandName = product.store?.name || product.brand?.name;
   const discount =
     product.mrp > product.price
       ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
@@ -80,21 +80,33 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         </View>
         <View style={styles.listInfo}>
           <View>
-            <Body size="sm" numberOfLines={2} style={[styles.listName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
+            <Body size="sm" numberOfLines={1} style={[styles.listName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
               {product.name || "Untitled Piece"}
             </Body>
+            {storeOrBrandName ? (
+              <View style={styles.storeRow}>
+                <Text style={styles.storeName} numberOfLines={1}>
+                  {storeOrBrandName}
+                </Text>
+              </View>
+            ) : null}
             {product.short_description ? (
-              <Body muted size="xs" numberOfLines={2} style={styles.listDesc}>
+              <Body muted size="xs" numberOfLines={1} style={styles.listDesc}>
                 {product.short_description}
               </Body>
             ) : null}
           </View>
           <View style={styles.listPriceRow}>
             <View style={styles.priceRow}>
-              <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
               {discount > 0 ? (
-                <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
-              ) : null}
+                <>
+                  <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
+                  <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
+                  <Body size="xs" style={styles.discountPct}>{discount}% OFF</Body>
+                </>
+              ) : (
+                <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
+              )}
             </View>
             <View style={styles.listActions}>
               <TouchableOpacity
@@ -148,12 +160,26 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           </TouchableOpacity>
         </View>
         <View style={styles.info}>
-          <Body size="sm" numberOfLines={2} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
+          <Body size="sm" numberOfLines={1} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
             {product.name || "Untitled Piece"}
           </Body>
+          {storeOrBrandName ? (
+            <View style={styles.storeRow}>
+              <Text style={styles.storeName} numberOfLines={1}>
+                {storeOrBrandName}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.priceRow}>
-            <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-            {discount > 0 && <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>}
+            {discount > 0 ? (
+              <>
+                <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
+                <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
+                <Body size="xs" style={styles.discountPct}>{discount}% OFF</Body>
+              </>
+            ) : (
+              <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
+            )}
           </View>
           {product.rating > 0 && (
             <View style={styles.ratingRow}>
@@ -198,12 +224,26 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         </TouchableOpacity>
       </View>
       <View style={styles.info}>
-        <Body size="sm" numberOfLines={2} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
+        <Body size="sm" numberOfLines={1} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
           {product.name || "Untitled Piece"}
         </Body>
+        {storeOrBrandName ? (
+          <View style={styles.storeRow}>
+            <Text style={styles.storeName} numberOfLines={1}>
+              {storeOrBrandName}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.priceRow}>
-          <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-          {discount > 0 && <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>}
+          {discount > 0 ? (
+            <>
+              <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
+              <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
+              <Body size="xs" style={styles.discountPct}>{discount}% OFF</Body>
+            </>
+          ) : (
+            <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
+          )}
         </View>
         {colorSwatches.length > 0 && (
           <View style={styles.swatches}>
@@ -317,6 +357,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "baseline",
     gap: 6,
+    flexWrap: "wrap",
   },
   mrp: {
     fontSize: 11,
@@ -410,5 +451,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     ...shadows.glow,
+  },
+  storeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  storeName: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+  },
+  discountPct: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    color: colors.accent2.rust,
+    marginLeft: 4,
   },
 });

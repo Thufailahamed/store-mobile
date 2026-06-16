@@ -22,7 +22,11 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
   const isWishlisted = !!wishlistItems[product.id];
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const onSale = product.mrp > product.price;
-  const storeName = product.store?.name;
+  const storeOrBrandName = product.store?.name || product.brand?.name;
+  const discount =
+    product.mrp > product.price
+      ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
+      : 0;
 
   return (
     <TouchableOpacity
@@ -57,28 +61,48 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
         ) : null}
       </View>
 
-      {storeName ? (
+      <Text style={styles.productName} numberOfLines={1}>
+        {product.name || "Untitled Piece"}
+      </Text>
+
+      {storeOrBrandName ? (
         <View style={styles.storeRow}>
-          {product.store?.logo_url ? (
-            <Image source={{ uri: product.store.logo_url }} style={styles.storeLogo} contentFit="cover" />
+          {product.store?.logo_url || product.brand?.logo_url ? (
+            <Image 
+              source={{ uri: product.store?.logo_url || product.brand?.logo_url }} 
+              style={styles.storeLogo} 
+              contentFit="cover" 
+            />
           ) : (
             <View style={styles.storeLogoFallback}>
-              <Text style={styles.storeInitial}>{storeName.charAt(0)}</Text>
+              <Text style={styles.storeInitial}>{storeOrBrandName.charAt(0)}</Text>
             </View>
           )}
           <Text style={styles.storeName} numberOfLines={1}>
-            {storeName}
+            {storeOrBrandName}
           </Text>
         </View>
-      ) : (
-        <Text style={styles.productName} numberOfLines={2}>
-          {product.name}
-        </Text>
-      )}
+      ) : null}
 
-      <Text style={styles.price}>
-        {product.price ? formatPrice(product.price) : "Price on request"}
-      </Text>
+      <View style={styles.priceRow}>
+        {discount > 0 ? (
+          <>
+            <Text style={styles.originalPrice}>
+              {formatPrice(product.mrp)}
+            </Text>
+            <Text style={styles.sellingPrice}>
+              {product.price ? formatPrice(product.price) : "Price on request"}
+            </Text>
+            <Text style={styles.discountPct}>
+              {discount}% OFF
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.sellingPrice}>
+            {product.price ? formatPrice(product.price) : "Price on request"}
+          </Text>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -132,43 +156,60 @@ const styles = StyleSheet.create({
   storeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 2,
+    gap: 4,
+    marginBottom: 3,
   },
   storeLogo: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
   },
   storeLogoFallback: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: colors.olive[100],
     alignItems: "center",
     justifyContent: "center",
   },
   storeInitial: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
+    fontSize: 8,
     color: colors.light.primary,
   },
   storeName: {
     flex: 1,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
   },
   productName: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 13,
     color: colors.light.foreground,
     marginBottom: 2,
     lineHeight: 17,
   },
-  price: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flexWrap: "wrap",
+  },
+  sellingPrice: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    color: colors.light.foreground,
+  },
+  originalPrice: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10,
+    textDecorationLine: "line-through",
     color: colors.light.mutedForeground,
+  },
+  discountPct: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9,
+    color: colors.accent2.rust,
   },
 });

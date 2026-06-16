@@ -1,20 +1,24 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ScreenHeader } from "@/components/layout";
-import { Button, useToast } from "@/components/ui";
+import { Avatar, Button, Chip, useToast } from "@/components/ui";
 import { Body, Display, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
@@ -22,31 +26,32 @@ import {
   saveNotificationPrefs,
   type NotificationPreferenceKey,
   type NotificationPrefs,
+  DEFAULT_NOTIFICATION_PREFS,
 } from "@/lib/api";
+import {
+  DEFAULT_LOCAL_PREFS,
+  getLocalSettingsPrefs,
+  setLocalSettingsPrefs,
+  type LocalSettingsPrefs,
+  type ThemeMode,
+  type TextSize,
+} from "@/lib/settings-prefs";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-type PrivacyKey = "public_profile" | "personalized_picks" | "activity_status" | "block_tracking";
+type PrivacyKey =
+  | "public_profile"
+  | "personalized_picks"
+  | "activity_status"
+  | "block_tracking"
+  | "search_indexing";
 
 const DEFAULT_PRIVACY: Record<PrivacyKey, boolean> = {
   public_profile: true,
   personalized_picks: true,
   activity_status: false,
   block_tracking: false,
-};
-
-const DEFAULT_NOTIFICATIONS: NotificationPrefs = {
-  orders_email: true,
-  orders_sms: false,
-  orders_push: true,
-  marketing_email: true,
-  marketing_sms: false,
-  marketing_push: false,
-  social_email: true,
-  social_push: true,
-  security_email: true,
-  security_sms: true,
-  security_push: true,
+  search_indexing: false,
 };
 
 const LOCALES = [
@@ -74,64 +79,139 @@ const CURRENCIES = [
   { value: "SGD", label: "SGD · Singapore Dollar" },
 ];
 
+const TEXT_SIZE_LABEL: Record<TextSize, string> = { sm: "Small", md: "Default", lg: "Large" };
+const THEME_LABEL: Record<ThemeMode, string> = { system: "Match system", light: "Light", dark: "Dark" };
+
+const PRIVACY_DESCRIPTIONS: Record<PrivacyKey, { title: string; detail: string }> = {
+  public_profile: {
+    title: "Public profile",
+    detail: "Show your profile to stores and other members.",
+  },
+  personalized_picks: {
+    title: "Personalized picks",
+    detail: "Use your activity to tailor product recommendations.",
+  },
+  activity_status: {
+    title: "Activity status",
+    detail: "Let others see when you are browsing or active.",
+  },
+  block_tracking: {
+    title: "Block tracking",
+    detail: "Limit analytics used for personalization.",
+  },
+  search_indexing: {
+    title: "Search engine indexing",
+    detail: "Allow your public profile to appear in search results.",
+  },
+};
+
+type ServerSnapshot = {
+  locale: string;
+  timezone: string;
+  currency: string;
+  phone: string;
+  email: string;
+  privacy: Record<PrivacyKey, boolean>;
+  notifications: NotificationPrefs;
+};
+
 export default function SettingsScreen() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, role } = useAuth();
   const { toast } = useToast();
+  const insets = useSafeAreaInsets();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Server-side
   const [locale, setLocale] = useState("en-LK");
   const [timezone, setTimezone] = useState("Asia/Colombo");
   const [currency, setCurrency] = useState("LKR");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [privacy, setPrivacy] = useState<Record<PrivacyKey, boolean>>(DEFAULT_PRIVACY);
-  const [notifications, setNotifications] = useState<NotificationPrefs>(DEFAULT_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+
+  // Device-local
+  const [local, setLocal] = useState<LocalSettingsPrefs>(DEFAULT_LOCAL_PREFS);
+
+  // Dirty tracking
+  const initialSnapshot = useRef<string>("");
+  const [dirty, setDirty] = useState(false);
+
+  // Modals
   const [changeEmailOpen, setChangeEmailOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [changePhoneOpen, setChangePhoneOpen] = useState(false);
   const [newPhone, setNewPhone] = useState("");
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [newPwd, setNewPwd] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
-  const [deleting, setDeleting] = useState(false);
+
+  /* ------------------------------ load ------------------------------ */
 
   useEffect(() => {
-    if (!user?.id) return;
-    const userId = user.id;
-    const userEmail = user.email ?? "";
     let cancelled = false;
 
     async function load() {
       try {
+        const localPrefs = await getLocalSettingsPrefs();
+        if (!cancelled) setLocal(localPrefs);
+
+        if (!user?.id) {
+          if (!cancelled) {
+            initialSnapshot.current = JSON.stringify({
+              locale: "en-LK",
+              timezone: "Asia/Colombo",
+              currency: "LKR",
+              phone: "",
+              email: user?.email ?? "",
+              privacy: DEFAULT_PRIVACY,
+              notifications: DEFAULT_NOTIFICATION_PREFS,
+            } satisfies ServerSnapshot);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const userId = user.id;
+        const userEmail = user.email ?? "";
+
         const [{ data: profile }, { data: prefs }] = await Promise.all([
-          supabase.from("users").select("email, phone, locale, timezone, currency, metadata").eq("id", userId).maybeSingle(),
-          supabase.from("notification_preferences").select("*").eq("user_id", userId).maybeSingle(),
+          supabase
+            .from("users")
+            .select("email, phone, locale, timezone, currency, metadata")
+            .eq("id", userId)
+            .maybeSingle(),
+          supabase
+            .from("notification_preferences")
+            .select("*")
+            .eq("user_id", userId)
+            .maybeSingle(),
         ]);
 
-        if (!cancelled) {
-          setLocale(profile?.locale ?? "en-LK");
-          setTimezone(profile?.timezone ?? "Asia/Colombo");
-          setCurrency(profile?.currency ?? "LKR");
-          setPhone(profile?.phone ?? "");
-          setEmail(profile?.email ?? userEmail);
-          if (profile?.metadata?.privacy) {
-            setPrivacy((current) => ({ ...current, ...profile.metadata.privacy }));
-          }
-          setNotifications({
-            ...DEFAULT_NOTIFICATIONS,
-            ...(prefs ?? {}),
-            orders_email: Boolean(prefs?.orders_email),
-            orders_sms: Boolean(prefs?.orders_sms),
-            orders_push: Boolean(prefs?.orders_push),
-            marketing_email: Boolean(prefs?.marketing_email),
-            marketing_sms: Boolean(prefs?.marketing_sms),
-            marketing_push: Boolean(prefs?.marketing_push),
-            social_email: Boolean(prefs?.social_email),
-            social_push: Boolean(prefs?.social_push),
-            security_email: Boolean(prefs?.security_email),
-            security_sms: Boolean(prefs?.security_sms),
-            security_push: Boolean(prefs?.security_push),
-          });
-        }
+        if (cancelled) return;
+
+        const next: ServerSnapshot = {
+          locale: profile?.locale ?? "en-LK",
+          timezone: profile?.timezone ?? "Asia/Colombo",
+          currency: profile?.currency ?? "LKR",
+          phone: profile?.phone ?? "",
+          email: profile?.email ?? userEmail,
+          privacy: { ...DEFAULT_PRIVACY, ...(profile?.metadata?.privacy ?? {}) },
+          notifications: { ...DEFAULT_NOTIFICATION_PREFS, ...(prefs ?? {}) },
+        };
+
+        setLocale(next.locale);
+        setTimezone(next.timezone);
+        setCurrency(next.currency);
+        setPhone(next.phone);
+        setEmail(next.email);
+        setPrivacy(next.privacy);
+        setNotifications(next.notifications);
+        initialSnapshot.current = JSON.stringify(next);
+        setDirty(false);
       } catch (error: any) {
         if (!cancelled) toast(error?.message ?? "Could not load settings", "error");
       } finally {
@@ -145,28 +225,71 @@ export default function SettingsScreen() {
     };
   }, [user?.id, user?.email, toast]);
 
+  /* ----------------------------- derived --------------------------- */
+
+  const snapshot = useMemo<ServerSnapshot>(
+    () => ({ locale, timezone, currency, phone, email, privacy, notifications }),
+    [locale, timezone, currency, phone, email, privacy, notifications]
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    if (!initialSnapshot.current) {
+      initialSnapshot.current = JSON.stringify(snapshot);
+      return;
+    }
+    setDirty(JSON.stringify(snapshot) !== initialSnapshot.current);
+  }, [snapshot, loading]);
+
+  const togglePrivacy = (key: PrivacyKey) =>
+    setPrivacy((current) => ({ ...current, [key]: !current[key] }));
+
+  const toggleNotification = (key: NotificationPreferenceKey) =>
+    setNotifications((current) => ({ ...current, [key]: !current[key] }));
+
+  const updateLocal = async (patch: Partial<LocalSettingsPrefs>) => {
+    const next = await setLocalSettingsPrefs(patch);
+    setLocal(next);
+  };
+
+  /* ------------------------------ save ------------------------------ */
+
   const save = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      initialSnapshot.current = JSON.stringify(snapshot);
+      setDirty(false);
+      toast("Local preferences saved", "success");
+      return;
+    }
     setSaving(true);
     try {
-      const usersPatch: Record<string, string> = {
-        locale,
-        timezone,
-        currency,
-        phone,
-        email,
-      };
-      const { error: settingsError } = await supabase.rpc("update_user_settings", { p_patch: usersPatch });
+      const usersPatch: Record<string, string> = { locale, timezone, currency, phone, email };
+      const { error: settingsError } = await supabase.rpc("update_user_settings", {
+        p_patch: usersPatch,
+      });
       if (settingsError) throw settingsError;
 
-      const { error: privacyError } = await supabase.rpc("update_privacy_prefs", {
-        p_patch: privacy,
-      });
-      if (privacyError) throw privacyError;
+      // Privacy: try RPC, fall back to metadata merge (matches web fallback).
+      const rpc = await supabase.rpc("update_privacy_prefs", { p_patch: privacy });
+      if (rpc.error) {
+        const { data: row } = await supabase
+          .from("users")
+          .select("metadata")
+          .eq("id", user.id)
+          .maybeSingle();
+        const nextMeta = { ...(row?.metadata ?? {}), privacy };
+        const { error: metaError } = await supabase
+          .from("users")
+          .update({ metadata: nextMeta })
+          .eq("id", user.id);
+        if (metaError) throw metaError;
+      }
 
       const prefsRes = await saveNotificationPrefs(user.id, notifications);
       if (!prefsRes.ok) throw new Error(prefsRes.error);
 
+      initialSnapshot.current = JSON.stringify(snapshot);
+      setDirty(false);
       toast("Settings saved", "success");
     } catch (error: any) {
       toast(error?.message ?? "Could not save settings", "error");
@@ -174,6 +297,23 @@ export default function SettingsScreen() {
       setSaving(false);
     }
   };
+
+  const discard = () => {
+    try {
+      const snap = JSON.parse(initialSnapshot.current) as ServerSnapshot;
+      setLocale(snap.locale);
+      setTimezone(snap.timezone);
+      setCurrency(snap.currency);
+      setPhone(snap.phone);
+      setEmail(snap.email);
+      setPrivacy(snap.privacy);
+      setNotifications(snap.notifications);
+    } catch {
+      /* noop */
+    }
+  };
+
+  /* ----------------------------- actions --------------------------- */
 
   const requestEmailChange = async () => {
     if (!user?.id) return;
@@ -212,45 +352,156 @@ export default function SettingsScreen() {
     setChangePhoneOpen(false);
   };
 
+  const changePassword = async () => {
+    if (!user?.id) return;
+    if (newPwd.length < 8) {
+      toast("Use at least 8 characters", "error");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPwd });
+    setSaving(false);
+    if (error) {
+      toast(error.message, "error");
+      return;
+    }
+    toast("Password updated", "success");
+    setNewPwd("");
+    setPasswordOpen(false);
+  };
+
   const deleteAccount = async () => {
     if (!user?.id) return;
     if (deleteConfirm !== "DELETE") {
       toast("Type DELETE to confirm", "error");
       return;
     }
-    setDeleting(true);
+    setSaving(true);
     try {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL ?? ""}/functions/v1/delete-account`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token ?? ""}`,
-        },
-        body: JSON.stringify({ user_id: user.id }),
-      }).catch(() => null);
+      const res = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL ?? ""}/functions/v1/delete-account`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${
+              (await supabase.auth.getSession()).data.session?.access_token ?? ""
+            }`,
+          },
+          body: JSON.stringify({ user_id: user.id }),
+        }
+      ).catch(() => null);
       if (res && !res.ok) {
         const body = await res.text();
         throw new Error(body || "Account deletion failed");
       }
       toast("Account deletion requested", "success");
       await signOut();
-    } catch (error: any) {
-      // Fallback: mark deleted_at locally even if edge function not configured
-      await supabase.from("users").update({ deleted_at: new Date().toISOString() }).eq("id", user.id);
+    } catch {
+      await supabase
+        .from("users")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", user.id);
       toast("Account marked for deletion. Contact support to confirm.", "success");
       setDeleteOpen(false);
     } finally {
-      setDeleting(false);
+      setSaving(false);
     }
   };
 
-  const togglePrivacy = (key: PrivacyKey) => {
-    setPrivacy((current) => ({ ...current, [key]: !current[key] }));
+  const clearCache = async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const drop = keys.filter((k) => {
+        if (!k.startsWith("luxe:")) return false;
+        // Always keep these
+        if (k.startsWith("luxe:local:settings")) return false;
+        if (k.includes(":payments") || k.includes(":reviews")) return false;
+        if (k.includes("recently_viewed")) return false;
+        return true;
+      });
+      if (drop.length > 0) await AsyncStorage.multiRemove(drop);
+      toast(
+        `Cleared ${drop.length} cached item${drop.length === 1 ? "" : "s"}`,
+        "success"
+      );
+    } catch (error: any) {
+      toast(error?.message ?? "Could not clear cache", "error");
+    }
   };
 
-  const toggleNotification = (key: NotificationPreferenceKey) => {
-    setNotifications((current) => ({ ...current, [key]: !current[key] }));
+  const exportData = async () => {
+    if (!user?.id) {
+      toast("Sign in to export your data", "info");
+      return;
+    }
+    try {
+      const [profile, prefs, recent] = await Promise.all([
+        supabase.from("users").select("*").eq("id", user.id).maybeSingle(),
+        supabase
+          .from("notification_preferences")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        AsyncStorage.getItem(`luxe:${user.id}:recently_viewed`),
+      ]);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        profile: profile.data,
+        notificationPreferences: prefs.data,
+        recentlyViewed: recent ? JSON.parse(recent) : [],
+      };
+      const message = `LUXE data export\n\n${JSON.stringify(payload, null, 2)}`;
+      if (Platform.OS === "ios" || Platform.OS === "android") {
+        await Share.share({ message, title: "LUXE data export" });
+      } else {
+        await Linking.openURL(
+          `mailto:support@luxe.com?subject=LUXE%20Data%20Export&body=${encodeURIComponent(message)}`
+        );
+      }
+    } catch (error: any) {
+      toast(error?.message ?? "Export failed", "error");
+    }
   };
+
+  const handleSignOut = () => {
+    Alert.alert("Sign out?", "You can sign back in any time.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign out",
+        style: "destructive",
+        onPress: async () => {
+          await signOut();
+        },
+      },
+    ]);
+  };
+
+  /* ----------------------------- derived --------------------------- */
+
+  const name =
+    (user?.user_metadata?.full_name as string | undefined) ??
+    user?.email?.split("@")[0] ??
+    "Guest";
+  const avatarUri = user?.user_metadata?.avatar_url as string | undefined;
+
+  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
+  const buildNumber =
+    (Platform.OS === "ios"
+      ? Constants.expoConfig?.ios?.buildNumber
+      : Constants.expoConfig?.android?.versionCode?.toString()) ?? "—";
+
+  const linkedProviders = useMemo(() => {
+    const providers = (user?.app_metadata?.providers ?? []) as string[];
+    return {
+      email: providers.includes("email") || !!user?.email,
+      google: providers.includes("google"),
+      apple: providers.includes("apple"),
+      facebook: providers.includes("facebook"),
+    };
+  }, [user]);
+
+  /* ------------------------------ render --------------------------- */
 
   if (loading) {
     return (
@@ -265,96 +516,303 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScreenHeader title="Settings" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScreenHeader
+        title="Settings"
+        right={
+          <TouchableOpacity onPress={handleSignOut} style={styles.headerIcon} activeOpacity={0.7}>
+            <Ionicons name="log-out-outline" size={18} color={colors.light.foreground} />
+          </TouchableOpacity>
+        }
+      />
+
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: 140 + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* HERO */}
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="settings-outline" size={22} color={colors.light.primaryForeground} />
+          <Avatar name={name} uri={avatarUri} size={64} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Display size="xl" numberOfLines={1}>
+              {name}
+            </Display>
+            <Body muted size="sm" numberOfLines={1}>
+              {email || "Not signed in"}
+            </Body>
+            <View style={styles.rolePill}>
+              <Label style={styles.rolePillText}>{role.toUpperCase()}</Label>
+            </View>
           </View>
-          <Display size="2xl" style={styles.heroTitle}>Preferences</Display>
-          <Body muted>Language, privacy, and how LUXE reaches you.</Body>
         </View>
 
-        <Section title="Language & region">
+        {/* LANGUAGE & REGION */}
+        <Section
+          kicker="01"
+          title="Language & region"
+          subtitle="How LUXE adapts prices, dates, and copy."
+        >
           <Label style={styles.subLabel}>Locale</Label>
-          <View style={styles.chipRow}>
+          <ChipRow>
             {LOCALES.map((item) => (
-              <Chip key={item.value} selected={locale === item.value} onPress={() => setLocale(item.value)}>
+              <Chip
+                key={item.value}
+                selected={locale === item.value}
+                onPress={() => setLocale(item.value)}
+              >
                 {item.label}
               </Chip>
             ))}
-          </View>
+          </ChipRow>
+
           <Label style={[styles.subLabel, styles.subLabelTop]}>Timezone</Label>
-          <View style={styles.chipRow}>
+          <ChipRow>
             {TIMEZONES.map((item) => (
-              <Chip key={item.value} selected={timezone === item.value} onPress={() => setTimezone(item.value)}>
+              <Chip
+                key={item.value}
+                selected={timezone === item.value}
+                onPress={() => setTimezone(item.value)}
+              >
                 {item.label}
               </Chip>
             ))}
-          </View>
+          </ChipRow>
+
           <Label style={[styles.subLabel, styles.subLabelTop]}>Currency</Label>
-          <View style={styles.chipRow}>
+          <ChipRow>
             {CURRENCIES.map((item) => (
-              <Chip key={item.value} selected={currency === item.value} onPress={() => setCurrency(item.value)}>
+              <Chip
+                key={item.value}
+                selected={currency === item.value}
+                onPress={() => setCurrency(item.value)}
+              >
                 {item.label}
               </Chip>
             ))}
+          </ChipRow>
+        </Section>
+
+        {/* APPEARANCE */}
+        <Section
+          kicker="02"
+          title="Appearance"
+          subtitle="Device-only. Synced across reinstalls on this device."
+        >
+          <Label style={styles.subLabel}>Theme</Label>
+          <ChipRow>
+            {(["system", "light", "dark"] as ThemeMode[]).map((mode) => (
+              <Chip
+                key={mode}
+                selected={local.theme === mode}
+                onPress={() => updateLocal({ theme: mode })}
+              >
+                {THEME_LABEL[mode]}
+              </Chip>
+            ))}
+          </ChipRow>
+
+          <Label style={[styles.subLabel, styles.subLabelTop]}>Text size</Label>
+          <ChipRow>
+            {(["sm", "md", "lg"] as TextSize[]).map((size) => (
+              <Chip
+                key={size}
+                selected={local.textSize === size}
+                onPress={() => updateLocal({ textSize: size })}
+              >
+                {TEXT_SIZE_LABEL[size]}
+              </Chip>
+            ))}
+          </ChipRow>
+
+          <ToggleRow
+            label="Reduce motion"
+            detail="Minimize transitions and parallax effects."
+            value={local.reduceMotion}
+            onValueChange={() => updateLocal({ reduceMotion: !local.reduceMotion })}
+            isLast
+          />
+        </Section>
+
+        {/* EMAIL & PHONE */}
+        <Section kicker="03" title="Email & phone" subtitle="How we verify it's you.">
+          <CommsRow
+            icon="mail-outline"
+            label="Email"
+            value={email || "Add an email"}
+            onPress={() => {
+              setNewEmail(email);
+              setChangeEmailOpen(true);
+            }}
+          />
+          <CommsRow
+            icon="call-outline"
+            label="Phone"
+            value={phone || "Add a phone"}
+            onPress={() => {
+              setNewPhone(phone);
+              setChangePhoneOpen(true);
+            }}
+            isLast
+          />
+        </Section>
+
+        {/* PRIVACY */}
+        <Section
+          kicker="04"
+          title="Privacy"
+          subtitle="Control what others — and our systems — can see."
+        >
+          {(Object.keys(PRIVACY_DESCRIPTIONS) as PrivacyKey[]).map((key, idx, arr) => (
+            <ToggleRow
+              key={key}
+              label={PRIVACY_DESCRIPTIONS[key].title}
+              detail={PRIVACY_DESCRIPTIONS[key].detail}
+              value={privacy[key]}
+              onValueChange={() => togglePrivacy(key)}
+              isLast={idx === arr.length - 1}
+            />
+          ))}
+        </Section>
+
+        {/* SECURITY */}
+        <Section
+          kicker="05"
+          title="Security"
+          subtitle="Lock the app and keep an eye on sign-ins."
+        >
+          <ToggleRow
+            label="Require biometrics on launch"
+            detail="Use Face ID / fingerprint to open LUXE."
+            value={local.biometricLock}
+            onValueChange={() => updateLocal({ biometricLock: !local.biometricLock })}
+          />
+          <CommsRow
+            icon="key-outline"
+            label="Change password"
+            value="••••••••"
+            onPress={() => setPasswordOpen(true)}
+          />
+          <CommsRow
+            icon="shield-checkmark-outline"
+            label="Two-factor authentication"
+            value="Not configured"
+            onPress={() =>
+              toast("Visit the web app to enroll an authenticator device.", "info")
+            }
+            isLast
+          />
+        </Section>
+
+        {/* NOTIFICATIONS */}
+        <Section
+          kicker="06"
+          title="Notifications"
+          subtitle="Pick how each topic reaches you."
+        >
+          <View style={styles.notifHeader}>
+            <View style={{ flex: 1 }} />
+            <Label style={styles.notifChannel}>Email</Label>
+            <Label style={styles.notifChannel}>SMS</Label>
+            <Label style={styles.notifChannel}>Push</Label>
+          </View>
+          <NotificationRow
+            label="Orders"
+            detail="Confirmations, shipping, delivery, and returns"
+            prefix="orders"
+            value={notifications}
+            onToggle={toggleNotification}
+          />
+          <NotificationRow
+            label="Marketing"
+            detail="Drops, promos, and sale alerts"
+            prefix="marketing"
+            value={notifications}
+            onToggle={toggleNotification}
+          />
+          <NotificationRow
+            label="Social"
+            detail="Reviews, replies, mentions, and review requests"
+            prefix="social"
+            value={notifications}
+            onToggle={toggleNotification}
+            channels={["email", "push"]}
+          />
+          <NotificationRow
+            label="Security"
+            detail="Sign-ins, password changes, and MFA"
+            prefix="security"
+            value={notifications}
+            onToggle={toggleNotification}
+            isLast
+          />
+        </Section>
+
+        {/* CONNECTED ACCOUNTS */}
+        <Section kicker="07" title="Connected accounts" subtitle="Single sign-on providers.">
+          <ProviderRow icon="logo-google" label="Google" linked={linkedProviders.google} />
+          <ProviderRow icon="logo-apple" label="Apple" linked={linkedProviders.apple} />
+          <ProviderRow
+            icon="logo-facebook"
+            label="Facebook"
+            linked={linkedProviders.facebook}
+            isLast
+          />
+        </Section>
+
+        {/* DATA & STORAGE */}
+        <Section
+          kicker="08"
+          title="Data & storage"
+          subtitle="Your data lives in Supabase. Download or wipe local cache here."
+        >
+          <CommsRow
+            icon="download-outline"
+            label="Export my data"
+            value="JSON via share sheet"
+            onPress={exportData}
+          />
+          <CommsRow
+            icon="trash-outline"
+            label="Clear local cache"
+            value="Keeps payments & recent"
+            onPress={() =>
+              Alert.alert("Clear cache?", "This wipes cached sessions on this device.", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Clear", style: "destructive", onPress: clearCache },
+              ])
+            }
+            isLast
+          />
+        </Section>
+
+        {/* LEGAL & ABOUT */}
+        <Section kicker="09" title="Legal & about" subtitle="Policies, licences, and build info.">
+          <CommsRow
+            icon="document-text-outline"
+            label="Terms of service"
+            value=""
+            onPress={() => Linking.openURL("https://luxe.com/terms")}
+          />
+          <CommsRow
+            icon="lock-closed-outline"
+            label="Privacy policy"
+            value=""
+            onPress={() => Linking.openURL("https://luxe.com/privacy")}
+          />
+          <CommsRow
+            icon="information-circle-outline"
+            label="Open-source licences"
+            value=""
+            onPress={() => Linking.openURL("https://luxe.com/licences")}
+          />
+          <View style={styles.versionRow}>
+            <Label style={styles.versionLabel}>App version</Label>
+            <Body size="sm" style={styles.versionValue}>
+              {appVersion} ({buildNumber})
+            </Body>
           </View>
         </Section>
 
-        <Section title="Email & phone">
-          <TouchableOpacity style={styles.commsRow} onPress={() => { setNewEmail(email); setChangeEmailOpen(true); }}>
-            <View style={styles.commsIcon}><Ionicons name="mail-outline" size={16} color={colors.light.primary} /></View>
-            <View style={{ flex: 1 }}>
-              <Body size="sm" style={styles.commsLabel}>Email</Body>
-              <Body muted size="xs">{email || "Add an email"}</Body>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.commsRow} onPress={() => { setNewPhone(phone); setChangePhoneOpen(true); }}>
-            <View style={styles.commsIcon}><Ionicons name="call-outline" size={16} color={colors.light.primary} /></View>
-            <View style={{ flex: 1 }}>
-              <Body size="sm" style={styles.commsLabel}>Phone</Body>
-              <Body muted size="xs">{phone || "Add a phone"}</Body>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
-          </TouchableOpacity>
-        </Section>
-
-        <Section title="Privacy">
-          <ToggleRow
-            label="Public profile"
-            detail="Show your profile to stores and other members."
-            value={privacy.public_profile}
-            onValueChange={() => togglePrivacy("public_profile")}
-          />
-          <ToggleRow
-            label="Personalized picks"
-            detail="Use your activity to tailor product recommendations."
-            value={privacy.personalized_picks}
-            onValueChange={() => togglePrivacy("personalized_picks")}
-          />
-          <ToggleRow
-            label="Activity status"
-            detail="Let others see when you are browsing or active."
-            value={privacy.activity_status}
-            onValueChange={() => togglePrivacy("activity_status")}
-          />
-          <ToggleRow
-            label="Block tracking"
-            detail="Limit analytics used for personalization."
-            value={privacy.block_tracking}
-            onValueChange={() => togglePrivacy("block_tracking")}
-          />
-        </Section>
-
-        <Section title="Notifications">
-          <NotificationRow label="Orders" detail="Confirmations, shipping, delivery, and returns" prefix="orders" value={notifications} onToggle={toggleNotification} />
-          <NotificationRow label="Marketing" detail="Drops, promos, and sale alerts" prefix="marketing" value={notifications} onToggle={toggleNotification} />
-          <NotificationRow label="Social" detail="Reviews, replies, mentions, and review requests" prefix="social" value={notifications} onToggle={toggleNotification} />
-          <NotificationRow label="Security" detail="Sign-ins, password changes, and MFA" prefix="security" value={notifications} onToggle={toggleNotification} />
-        </Section>
-
+        {/* DANGER ZONE */}
         <View style={styles.danger}>
           <View style={styles.dangerHeader}>
             <View style={styles.dangerIcon}>
@@ -362,126 +820,241 @@ export default function SettingsScreen() {
             </View>
             <View>
               <Label style={styles.dangerKicker}>Danger zone</Label>
-              <Display size="lg" style={styles.dangerTitle}>Delete account</Display>
+              <Display size="lg" style={styles.dangerTitle}>
+                Delete account
+              </Display>
             </View>
           </View>
           <Body muted size="sm" style={styles.dangerCopy}>
-            Permanently remove your account, orders history, saved addresses, and wishlist. This cannot be undone.
+            Permanently remove your account, orders history, saved addresses, and wishlist.
+            This cannot be undone.
           </Body>
           <Button variant="destructive" onPress={() => setDeleteOpen(true)}>
             Request account deletion
           </Button>
         </View>
 
-        <View style={styles.actions}>
-          <Button variant="outline" onPress={() => Alert.alert("Help", "Contact support@luxe.com for any settings issues.")}>
-            Help
-          </Button>
-          <Button loading={saving} onPress={save}>Save changes</Button>
-        </View>
+        <Body muted size="xs" style={styles.footerHint}>
+          LUXE · Crafted for collectors
+        </Body>
       </ScrollView>
 
-      <Modal visible={changeEmailOpen} transparent animationType="fade" onRequestClose={() => setChangeEmailOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Label style={styles.modalKicker}>Email</Label>
-                <Display size="lg">Change email</Display>
-              </View>
-              <TouchableOpacity onPress={() => setChangeEmailOpen(false)} style={styles.modalClose}>
-                <Ionicons name="close" size={18} color={colors.light.foreground} />
-              </TouchableOpacity>
-            </View>
-            <Body muted size="sm" style={styles.modalCopy}>
-              We'll send a confirmation link to both your current and new email. The change takes effect once you click.
+      {/* Sticky save bar */}
+      <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={styles.saveBarInner}>
+          {dirty ? (
+            <Body size="sm" style={styles.dirtyText}>
+              Unsaved changes
             </Body>
-            <Field label="New email" value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" icon="mail-outline" />
-            <View style={styles.modalFooter}>
-              <Button variant="outline" onPress={() => setChangeEmailOpen(false)}>Cancel</Button>
-              <Button loading={saving} onPress={requestEmailChange}>Send confirmation</Button>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal visible={changePhoneOpen} transparent animationType="fade" onRequestClose={() => setChangePhoneOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Label style={styles.modalKicker}>Phone</Label>
-                <Display size="lg">Change phone</Display>
-              </View>
-              <TouchableOpacity onPress={() => setChangePhoneOpen(false)} style={styles.modalClose}>
-                <Ionicons name="close" size={18} color={colors.light.foreground} />
-              </TouchableOpacity>
-            </View>
-            <Body muted size="sm" style={styles.modalCopy}>
-              We'll send a 6-digit code to your new number to confirm the change.
+          ) : (
+            <Body muted size="sm">
+              All changes saved
             </Body>
-            <Field label="New phone" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" icon="call-outline" />
-            <View style={styles.modalFooter}>
-              <Button variant="outline" onPress={() => setChangePhoneOpen(false)}>Cancel</Button>
-              <Button loading={saving} onPress={requestPhoneChange}>Send code</Button>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => setDeleteOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Label style={[styles.modalKicker, { color: colors.light.destructive }]}>Danger</Label>
-                <Display size="lg">Delete account</Display>
-              </View>
-              <TouchableOpacity onPress={() => setDeleteOpen(false)} style={styles.modalClose}>
-                <Ionicons name="close" size={18} color={colors.light.foreground} />
-              </TouchableOpacity>
-            </View>
-            <Body muted size="sm" style={styles.modalCopy}>
-              Type <Body size="sm" style={{ color: colors.light.destructive, fontFamily: fontFamilies.mono.semibold }}>DELETE</Body> to confirm. This is permanent.
-            </Body>
-            <TextInput
-              style={styles.dangerInput}
-              value={deleteConfirm}
-              onChangeText={setDeleteConfirm}
-              autoCapitalize="characters"
-              placeholder="Type DELETE"
-              placeholderTextColor={colors.light.mutedForeground}
-            />
-            <View style={styles.modalFooter}>
-              <Button variant="outline" onPress={() => { setDeleteOpen(false); setDeleteConfirm(""); }}>Cancel</Button>
-              <Button variant="destructive" loading={deleting} onPress={deleteAccount} disabled={deleteConfirm !== "DELETE"}>
-                Delete account
+          )}
+          <View style={styles.saveBarActions}>
+            {dirty ? (
+              <Button variant="ghost" size="sm" onPress={discard}>
+                Discard
               </Button>
-            </View>
+            ) : null}
+            <Button size="sm" loading={saving} onPress={save} disabled={!dirty && !!user?.id}>
+              Save changes
+            </Button>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </View>
+      </View>
+
+      {/* Modals */}
+      <CenteredModal
+        visible={changeEmailOpen}
+        onClose={() => setChangeEmailOpen(false)}
+        kicker="Email"
+        title="Change email"
+        copy="We'll send a confirmation link to both your current and new email. The change takes effect once you click."
+      >
+        <Field
+          label="New email"
+          icon="mail-outline"
+          value={newEmail}
+          onChangeText={setNewEmail}
+          keyboardType="email-address"
+        />
+        <View style={styles.modalFooter}>
+          <Button variant="outline" onPress={() => setChangeEmailOpen(false)}>
+            Cancel
+          </Button>
+          <Button loading={saving} onPress={requestEmailChange}>
+            Send confirmation
+          </Button>
+        </View>
+      </CenteredModal>
+
+      <CenteredModal
+        visible={changePhoneOpen}
+        onClose={() => setChangePhoneOpen(false)}
+        kicker="Phone"
+        title="Change phone"
+        copy="We'll send a 6-digit code to your new number to confirm the change."
+      >
+        <Field
+          label="New phone"
+          icon="call-outline"
+          value={newPhone}
+          onChangeText={setNewPhone}
+          keyboardType="phone-pad"
+        />
+        <View style={styles.modalFooter}>
+          <Button variant="outline" onPress={() => setChangePhoneOpen(false)}>
+            Cancel
+          </Button>
+          <Button loading={saving} onPress={requestPhoneChange}>
+            Send code
+          </Button>
+        </View>
+      </CenteredModal>
+
+      <CenteredModal
+        visible={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+        kicker="Security"
+        title="Change password"
+        copy="Use at least 8 characters. We won't ask for your current password because you're already signed in."
+      >
+        <Field
+          label="New password"
+          icon="lock-closed-outline"
+          value={newPwd}
+          onChangeText={setNewPwd}
+          secureTextEntry
+          autoComplete="password-new"
+        />
+        <View style={styles.modalFooter}>
+          <Button variant="outline" onPress={() => setPasswordOpen(false)}>
+            Cancel
+          </Button>
+          <Button loading={saving} onPress={changePassword}>
+            Update password
+          </Button>
+        </View>
+      </CenteredModal>
+
+      <CenteredModal
+        visible={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        kicker="Danger"
+        kickerColor={colors.light.destructive}
+        title="Delete account"
+        copy={
+          <Body muted size="sm" style={styles.modalCopy}>
+            Type{" "}
+            <Body
+              size="sm"
+              style={{ color: colors.light.destructive, fontFamily: fontFamilies.mono.semibold }}
+            >
+              DELETE
+            </Body>{" "}
+            to confirm. This is permanent.
+          </Body>
+        }
+      >
+        <TextInput
+          style={styles.dangerInput}
+          value={deleteConfirm}
+          onChangeText={setDeleteConfirm}
+          autoCapitalize="characters"
+          placeholder="Type DELETE"
+          placeholderTextColor={colors.light.mutedForeground}
+        />
+        <View style={styles.modalFooter}>
+          <Button
+            variant="outline"
+            onPress={() => {
+              setDeleteOpen(false);
+              setDeleteConfirm("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            loading={saving}
+            onPress={deleteAccount}
+            disabled={deleteConfirm !== "DELETE"}
+          >
+            Delete account
+          </Button>
+        </View>
+      </CenteredModal>
     </SafeAreaView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/* ----------------------------- subcomponents ----------------------------- */
+
+function Section({
+  kicker,
+  title,
+  subtitle,
+  children,
+}: {
+  kicker?: string;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.section}>
-      <Display size="lg" style={styles.sectionTitle}>{title}</Display>
-      {children}
+      <View style={styles.sectionHeader}>
+        {kicker ? <Label style={styles.sectionKicker}>{kicker}</Label> : null}
+        <View style={{ flex: 1 }}>
+          <Display size="lg">{title}</Display>
+          {subtitle ? (
+            <Body muted size="sm" style={styles.sectionSubtitle}>
+              {subtitle}
+            </Body>
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.sectionBody}>{children}</View>
     </View>
   );
 }
 
-function Chip({ selected, onPress, children }: { selected: boolean; onPress: () => void; children: React.ReactNode }) {
+function ChipRow({ children }: { children: React.ReactNode }) {
+  return <View style={styles.chipRow}>{children}</View>;
+}
+
+function CommsRow({
+  icon,
+  label,
+  value,
+  onPress,
+  isLast = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  onPress: () => void;
+  isLast?: boolean;
+}) {
   return (
     <TouchableOpacity
-      style={[styles.chip, selected && styles.chipSelected]}
+      style={[styles.commsRow, isLast && styles.commsRowLast]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Body size="xs" style={[styles.chipText, selected && styles.chipTextSelected]}>{children}</Body>
+      <View style={styles.commsIcon}>
+        <Ionicons name={icon} size={16} color={colors.light.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Body size="sm" style={styles.commsLabel}>
+          {label}
+        </Body>
+        <Body muted size="xs" numberOfLines={1}>
+          {value || "—"}
+        </Body>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
     </TouchableOpacity>
   );
 }
@@ -492,23 +1065,30 @@ function Field({
   onChangeText,
   keyboardType,
   icon,
+  secureTextEntry,
+  autoComplete,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   keyboardType?: "email-address" | "phone-pad" | "default";
   icon?: keyof typeof Ionicons.glyphMap;
+  secureTextEntry?: boolean;
+  autoComplete?: "password" | "password-new";
 }) {
   return (
     <View style={styles.field}>
       <Label style={styles.fieldLabel}>
-        {icon ? <Ionicons name={icon} size={12} color={colors.light.mutedForeground} /> : null} {label}
+        {icon ? <Ionicons name={icon} size={12} color={colors.light.mutedForeground} /> : null}{" "}
+        {label}
       </Label>
       <TextInput
         style={styles.input}
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        autoComplete={autoComplete}
         autoCapitalize="none"
         placeholderTextColor={colors.light.mutedForeground}
       />
@@ -521,19 +1101,28 @@ function ToggleRow({
   detail,
   value,
   onValueChange,
+  isLast = false,
 }: {
   label: string;
   detail: string;
   value: boolean;
   onValueChange: () => void;
+  isLast?: boolean;
 }) {
   return (
-    <View style={styles.toggleRow}>
+    <View style={[styles.toggleRow, isLast && styles.toggleRowLast]}>
       <View style={styles.toggleInfo}>
         <Body style={styles.toggleLabel}>{label}</Body>
-        <Body muted size="xs">{detail}</Body>
+        <Body muted size="xs">
+          {detail}
+        </Body>
       </View>
-      <Switch value={value} onValueChange={onValueChange} trackColor={{ false: colors.light.border, true: colors.light.primary }} thumbColor={colors.paper.cream} />
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: colors.light.border, true: colors.light.primary }}
+        thumbColor={colors.paper.cream}
+      />
     </View>
   );
 }
@@ -544,91 +1133,208 @@ function NotificationRow({
   prefix,
   value,
   onToggle,
+  channels,
+  isLast = false,
 }: {
   label: string;
   detail: string;
   prefix: "orders" | "marketing" | "social" | "security";
   value: NotificationPrefs;
   onToggle: (key: NotificationPreferenceKey) => void;
+  channels?: Array<"email" | "sms" | "push">;
+  isLast?: boolean;
 }) {
-  const keys: NotificationPreferenceKey[] =
-    prefix === "social"
-      ? [`${prefix}_email`, `${prefix}_push`].flatMap((k) => k as NotificationPreferenceKey)
-      : [`${prefix}_email`, `${prefix}_sms`, `${prefix}_push`].flatMap((k) => k as NotificationPreferenceKey);
-
+  const activeChannels: Array<"email" | "sms" | "push"> = channels ?? ["email", "sms", "push"];
   return (
-    <View style={styles.notificationRow}>
+    <View style={[styles.notificationRow, isLast && styles.notificationRowLast]}>
       <View style={styles.notificationInfo}>
         <Body style={styles.toggleLabel}>{label}</Body>
-        <Body muted size="xs">{detail}</Body>
+        <Body muted size="xs">
+          {detail}
+        </Body>
       </View>
       <View style={styles.notificationSwitches}>
-        {keys.map((key) => (
-          <TouchableOpacity key={key} onPress={() => onToggle(key)} activeOpacity={0.8}>
-            <Switch
-              value={value[key]}
-              trackColor={{ false: colors.light.border, true: colors.light.primary }}
-              thumbColor={colors.paper.cream}
-            />
-          </TouchableOpacity>
-        ))}
+        {activeChannels.map((channel) => {
+          const key = `${prefix}_${channel}` as NotificationPreferenceKey;
+          return (
+            <TouchableOpacity
+              key={channel}
+              onPress={() => onToggle(key)}
+              activeOpacity={0.8}
+              style={styles.notificationSwitchWrap}
+            >
+              <Switch
+                value={value[key]}
+                trackColor={{ false: colors.light.border, true: colors.light.primary }}
+                thumbColor={colors.paper.cream}
+              />
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
 }
 
+function ProviderRow({
+  icon,
+  label,
+  linked,
+  isLast = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  linked: boolean;
+  isLast?: boolean;
+}) {
+  return (
+    <View style={[styles.providerRow, isLast && styles.providerRowLast]}>
+      <View style={styles.commsIcon}>
+        <Ionicons name={icon} size={16} color={colors.light.foreground} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Body size="sm" style={styles.commsLabel}>
+          {label}
+        </Body>
+        <Body muted size="xs">
+          {linked ? "Connected" : "Not connected"}
+        </Body>
+      </View>
+      {linked ? (
+        <View style={styles.linkedDot}>
+          <Ionicons name="checkmark" size={12} color={colors.light.primaryForeground} />
+        </View>
+      ) : (
+        <Body size="xs" style={styles.linkAction}>
+          Link
+        </Body>
+      )}
+    </View>
+  );
+}
+
+function CenteredModal({
+  visible,
+  onClose,
+  kicker,
+  kickerColor,
+  title,
+  copy,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  kicker?: string;
+  kickerColor?: string;
+  title: string;
+  copy: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.modalBackdrop}
+      >
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <View>
+              {kicker ? (
+                <Label style={[styles.modalKicker, kickerColor ? { color: kickerColor } : null]}>
+                  {kicker}
+                </Label>
+              ) : null}
+              <Display size="lg">{title}</Display>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.modalClose} activeOpacity={0.7}>
+              <Ionicons name="close" size={18} color={colors.light.foreground} />
+            </TouchableOpacity>
+          </View>
+          {typeof copy === "string" ? (
+            <Body muted size="sm" style={styles.modalCopy}>
+              {copy}
+            </Body>
+          ) : (
+            copy
+          )}
+          {children}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/* --------------------------------- styles --------------------------------- */
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { padding: spacing[5], paddingBottom: spacing[8] },
+  content: { padding: spacing[5] },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  hero: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
-    marginBottom: spacing[5],
-  },
-  heroIcon: {
-    width: 42,
-    height: 42,
+  headerIcon: {
+    width: 36,
+    height: 36,
     borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.primary,
-    marginBottom: spacing[3],
+    backgroundColor: colors.olive[50],
   },
-  heroTitle: { marginBottom: spacing[2] },
-  section: {
+
+  hero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[4],
     backgroundColor: colors.light.card,
     borderRadius: radii["2xl"],
-    padding: 18,
+    padding: spacing[5],
     borderWidth: 1,
     borderColor: colors.light.border,
     marginBottom: spacing[5],
+    ...shadows.soft,
   },
-  sectionTitle: { marginBottom: spacing[4] },
+  rolePill: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[100],
+    marginTop: 4,
+  },
+  rolePillText: {
+    color: colors.olive[800],
+    fontSize: 9,
+    letterSpacing: typography.letterSpacing.widest,
+  },
+
+  section: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii["2xl"],
+    padding: spacing[5],
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    marginBottom: spacing[5],
+    ...shadows.soft,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    marginBottom: spacing[4],
+  },
+  sectionKicker: {
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.mono.regular,
+    marginTop: 6,
+  },
+  sectionSubtitle: { marginTop: 4 },
+  sectionBody: { gap: spacing[3] },
+
   subLabel: {
     color: colors.light.mutedForeground,
     marginBottom: spacing[2],
   },
-  subLabelTop: { marginTop: spacing[4] },
+  subLabelTop: { marginTop: spacing[2] },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-  },
-  chipSelected: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
-  },
-  chipText: { color: colors.light.foreground },
-  chipTextSelected: { color: colors.light.primaryForeground },
+
   commsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -637,6 +1343,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
   },
+  commsRowLast: { borderBottomWidth: 0 },
   commsIcon: {
     width: 34,
     height: 34,
@@ -645,7 +1352,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.olive[50],
   },
-  commsLabel: { fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
+  commsLabel: {
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.light.foreground,
+  },
+
   field: { gap: 8, marginBottom: spacing[4] },
   fieldLabel: {
     flexDirection: "row",
@@ -664,6 +1375,7 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
     fontFamily: fontFamilies.sans.regular,
   },
+
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -673,8 +1385,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
   },
-  toggleInfo: { flex: 1 },
+  toggleRowLast: { borderBottomWidth: 0 },
+  toggleInfo: { flex: 1, paddingRight: spacing[2] },
   toggleLabel: { fontWeight: typography.fontWeights.semibold },
+
+  notifHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.light.border,
+  },
+  notifChannel: {
+    width: 50,
+    textAlign: "center",
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.mono.regular,
+  },
   notificationRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -684,12 +1411,49 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
   },
-  notificationInfo: { flex: 1 },
-  notificationSwitches: { flexDirection: "row", gap: 2 },
+  notificationRowLast: { borderBottomWidth: 0 },
+  notificationInfo: { flex: 1, paddingRight: spacing[2] },
+  notificationSwitches: { flexDirection: "row", alignItems: "center" },
+  notificationSwitchWrap: { width: 50, alignItems: "center" },
+
+  providerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.light.border,
+  },
+  providerRowLast: { borderBottomWidth: 0 },
+  linkedDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.light.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  linkAction: {
+    color: colors.light.primary,
+    fontWeight: typography.fontWeights.semibold,
+  },
+
+  versionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: spacing[3],
+  },
+  versionLabel: { color: colors.light.mutedForeground },
+  versionValue: {
+    fontFamily: fontFamilies.mono.regular,
+    color: colors.light.foreground,
+  },
+
   danger: {
     backgroundColor: colors.light.card,
     borderRadius: radii["2xl"],
-    padding: 18,
+    padding: spacing[5],
     borderWidth: 1,
     borderColor: colors.light.destructive + "30",
     marginBottom: spacing[5],
@@ -717,12 +1481,34 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     color: colors.light.foreground,
     fontFamily: fontFamilies.mono.medium,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 10,
     marginBottom: spacing[2],
   },
+
+  footerHint: { textAlign: "center", marginTop: spacing[2] },
+
+  saveBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.light.card,
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
+    paddingHorizontal: spacing[5],
+    paddingTop: 10,
+  },
+  saveBarInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing[3],
+  },
+  saveBarActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  dirtyText: {
+    color: colors.accent2.rust,
+    fontWeight: typography.fontWeights.semibold,
+  },
+
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -738,7 +1524,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.light.border,
   },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing[3] },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing[3],
+  },
   modalKicker: { color: colors.light.mutedForeground, marginBottom: 2 },
   modalCopy: { marginBottom: spacing[4] },
   modalClose: {
@@ -752,6 +1543,6 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: "row",
     gap: 10,
-    marginTop: spacing[4],
+    marginTop: spacing[2],
   },
 });

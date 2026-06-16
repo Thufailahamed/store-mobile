@@ -341,6 +341,7 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
     fontFamily: fontFamilies.sans.bold,
     fontSize: 16,
+    flex: 1,
   },
   actions: {
     flexDirection: "row",
