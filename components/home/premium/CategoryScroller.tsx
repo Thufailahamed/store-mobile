@@ -39,7 +39,7 @@ export function CategoryScroller({ categories }: CategoryScrollerProps) {
     <View style={styles.wrap}>
       <HomeSectionHeader
         title="Shop by category"
-        onPress={() => router.push("/(main)/products")}
+        onPress={() => router.push("/(main)/categories")}
       />
       <ScrollView
         horizontal

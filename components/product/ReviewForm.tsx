@@ -9,13 +9,13 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { pickImage, uploadReviewPhoto } from "@/lib/upload";
+import { useToast } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -29,6 +29,7 @@ interface ReviewFormProps {
 
 export function ReviewForm({ visible, onClose, productId, productName, onSubmitted }: ReviewFormProps) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -37,7 +38,7 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
 
   const handleAddPhoto = async () => {
     if (photos.length >= 5) {
-      Alert.alert("Limit reached", "Maximum 5 photos per review");
+      toast("Maximum 5 photos per review", "error");
       return;
     }
     const result = await pickImage({ aspect: [1, 1], quality: 0.7 });
@@ -52,11 +53,11 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      Alert.alert("Rating required", "Please select a star rating");
+      toast("Please select a star rating", "error");
       return;
     }
     if (!content.trim()) {
-      Alert.alert("Review required", "Please write your review");
+      toast("Please write your review", "error");
       return;
     }
     if (!user) return;
@@ -82,9 +83,9 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
     setSubmitting(false);
 
     if (error) {
-      Alert.alert("Error", error.message);
+      toast(error.message, "error");
     } else {
-      Alert.alert("Thank you", "Your review has been submitted for approval");
+      toast("Your review has been submitted for approval", "success");
       resetForm();
       onClose();
       onSubmitted?.();

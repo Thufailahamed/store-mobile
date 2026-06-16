@@ -25,7 +25,9 @@ import {
 } from "@expo-google-fonts/jetbrains-mono";
 import * as Linking from "expo-linking";
 import { useAuth } from "@/lib/supabase/auth";
+import { useSyncStores } from "@/lib/hooks";
 import { ToastProvider } from "@/components/ui";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { colors } from "@/lib/theme/tokens";
 import {
   registerForPushNotifications,
@@ -46,6 +48,7 @@ const queryClient = new QueryClient({
 
 function RootLayoutNav() {
   const { session, user, role, loading, roleLoading } = useAuth();
+  useSyncStores();
   const router = useRouter();
   const segments = useSegments();
   const notifListenerRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null);
@@ -118,7 +121,7 @@ function RootLayoutNav() {
       if (data?.screen) {
         router.push(data.screen as any);
       } else if (data?.order_id) {
-        router.push(`/(main)/orders/${data.order_id}` as any);
+        router.push(`/(main)/account/orders/${data.order_id}` as any);
       }
     });
     return () => {
@@ -146,7 +149,7 @@ function RootLayoutNav() {
       // Order deep link: luxe://order/<id>
       if (parsed.hostname === "order" && parsed.path) {
         const orderId = parsed.path.replace("/", "");
-        if (orderId) router.push(`/(main)/orders/${orderId}` as any);
+        if (orderId) router.push(`/(main)/account/orders/${orderId}` as any);
       }
     };
 
@@ -158,12 +161,14 @@ function RootLayoutNav() {
   }, []);
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.light.background },
-      }}
-    />
+    <ErrorBoundary>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.light.background },
+        }}
+      />
+    </ErrorBoundary>
   );
 }
 

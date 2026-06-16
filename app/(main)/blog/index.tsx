@@ -2,9 +2,11 @@ import React from "react";
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { Image } from "expo-image";
 import { getBlogPosts, type BlogPost } from "@/lib/api";
 import { Card, Skeleton } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 
 export default function BlogScreen() {
   const router = useRouter();
@@ -49,7 +51,14 @@ export default function BlogScreen() {
           renderItem={({ item }) => (
             <Pressable onPress={() => router.push({ pathname: "/(main)/blog/[slug]", params: { slug: item.slug } })}>
               <Card style={styles.postCard}>
-                {item.cover_image && (
+                {item.cover_image ? (
+                  <Image
+                    source={{ uri: resolveImageUrl(item.cover_image) ?? item.cover_image }}
+                    style={styles.coverImage}
+                    contentFit="cover"
+                    transition={300}
+                  />
+                ) : (
                   <View style={styles.coverContainer}>
                     <Text style={styles.coverPlaceholder}>📷</Text>
                   </View>
@@ -94,6 +103,7 @@ const styles = StyleSheet.create({
   list: { padding: 24 },
   postCard: { marginBottom: 24, padding: 0, overflow: "hidden" },
   coverContainer: { height: 160, backgroundColor: colors.light.muted + "20", justifyContent: "center", alignItems: "center" },
+  coverImage: { width: "100%", height: 160 },
   coverPlaceholder: { fontSize: 32 },
   postContent: { padding: 24 },
   tags: { flexDirection: "row", gap: 4, marginBottom: 8 },

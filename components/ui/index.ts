@@ -16,3 +16,4 @@ export { StatusDot } from "./StatusDot";
 export { Chip } from "./Chip";
 export { StatRow } from "./StatRow";
 export { QtyStepper } from "./QtyStepper";
+export { SafeImage, type SafeImageVariant } from "./SafeImage";

@@ -332,6 +332,43 @@ export async function getFeaturedStores(limit = 6): Promise<Result<Store[]>> {
   }
 }
 
+export async function getStores(opts: {
+  search?: string;
+  sort?: "popular" | "newest" | "rating";
+  limit?: number;
+  offset?: number;
+} = {}): Promise<Result<{ stores: Store[]; total: number }>> {
+  const { search, sort = "popular", limit = 30, offset = 0 } = opts;
+  try {
+    let query = supabase
+      .from("stores")
+      .select("*", { count: "exact" })
+      .eq("status", "approved");
+    if (search) query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+    switch (sort) {
+      case "newest":
+        query = query.order("created_at", { ascending: false });
+        break;
+      case "rating":
+        query = query.order("rating", { ascending: false });
+        break;
+      default:
+        query = query
+          .order("is_featured", { ascending: false })
+          .order("total_sales", { ascending: false });
+    }
+    query = query.range(offset, offset + limit - 1);
+    const { data, error, count } = await query;
+    if (error) return fail(error.message);
+    return ok({
+      stores: ((data as Store[]) ?? []).map((s) => mapStore(s)),
+      total: count ?? 0,
+    });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch stores");
+  }
+}
+
 export async function getCategories(limit = 20): Promise<Result<Category[]>> {
   try {
     const { data, error } = await supabase
@@ -340,6 +377,22 @@ export async function getCategories(limit = 20): Promise<Result<Category[]>> {
       .eq("is_active", true)
       .order("position")
       .limit(limit);
+    if (error) return fail(error.message);
+    const categories = ((data as Category[]) ?? []).map(mapCategory);
+    return ok(categories);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch categories");
+  }
+}
+
+export async function getAllCategories(): Promise<Result<Category[]>> {
+  try {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .eq("is_active", true)
+      .order("position")
+      .limit(200);
     if (error) return fail(error.message);
     const categories = ((data as Category[]) ?? []).map(mapCategory);
     return ok(categories);
@@ -732,6 +785,80 @@ export async function getOrderById(orderId: string): Promise<Result<Order | null
     return ok(data as Order | null);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch order");
+  }
+}
+
+export interface TrackingEvent {
+  id: string;
+  order_id: string;
+  status: string;
+  description?: string | null;
+  location?: string | null;
+  carrier?: string | null;
+  tracking_number?: string | null;
+  created_at: string;
+}
+
+export interface OrderTracking {
+  order: Order;
+  events: TrackingEvent[];
+  rider?: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    vehicle?: string | null;
+  } | null;
+}
+
+export async function getOrderTracking(orderId: string): Promise<Result<OrderTracking>> {
+  try {
+    const [orderRes, eventsRes, riderRes] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("*, items:order_items(*, product:products(id, name, images:product_images(url, is_primary, position))), address:addresses(*)")
+        .eq("id", orderId)
+        .single(),
+      supabase
+        .from("tracking_events")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("orders")
+        .select("delivery_person_id, rider:users!orders_delivery_person_id_fkey(id, full_name, phone)")
+        .eq("id", orderId)
+        .maybeSingle(),
+    ]);
+    if (orderRes.error) return fail(orderRes.error.message);
+    const order = orderRes.data as Order;
+    const events = (eventsRes.data ?? []) as TrackingEvent[];
+
+    // Synthesise a placeholder event for the current status if no events
+    // exist yet for the order — keeps the timeline never empty.
+    if (events.length === 0) {
+      const fallback: TrackingEvent = {
+        id: "synthetic",
+        order_id: order.id,
+        status: order.status,
+        description: `Order is ${order.status.replace(/_/g, " ")}`,
+        created_at: order.placed_at,
+      };
+      events.push(fallback);
+    }
+
+    const riderRow = riderRes.data as
+      | { rider?: { id: string; full_name: string; phone?: string | null } | null }
+      | null;
+
+    return ok({
+      order,
+      events,
+      rider: riderRow?.rider
+        ? { id: riderRow.rider.id, name: riderRow.rider.full_name, phone: riderRow.rider.phone }
+        : null,
+    });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch tracking");
   }
 }
 
@@ -2629,6 +2756,54 @@ export async function getReturnByGroupId(
   const res = await getReturns(userId);
   if (!res.ok) return res;
   return ok(res.data.find((r) => r.return_group_id === returnGroupId) ?? null);
+}
+
+export interface CreateReturnInput {
+  orderId: string;
+  reason: string;
+  items: { orderItemId: string; quantity: number }[];
+}
+
+export interface CreateReturnResult {
+  returnGroupId: string;
+  returnNumber: string;
+  items: {
+    return_id: string;
+    order_item_id: string;
+    quantity: number;
+    refund_amount: number;
+  }[];
+}
+
+export async function createReturnRequest(
+  userId: string,
+  input: CreateReturnInput
+): Promise<Result<CreateReturnResult>> {
+  try {
+    const { data, error } = await supabase.rpc("create_return_request", {
+      p_user_id: userId,
+      p_order_id: input.orderId,
+      p_reason: input.reason,
+      p_items: input.items.map((i) => ({
+        order_item_id: i.orderItemId,
+        quantity: i.quantity,
+      })),
+    });
+    if (error) return fail(error.message);
+    const row = (data ?? {}) as {
+      return_group_id?: string;
+      return_number?: string;
+      items?: CreateReturnResult["items"];
+    };
+    if (!row.return_group_id) return fail("Return request did not return an id");
+    return ok({
+      returnGroupId: row.return_group_id,
+      returnNumber: row.return_number ?? "",
+      items: row.items ?? [],
+    });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to create return");
+  }
 }
 
 export async function getMyReviews(userId: string): Promise<Result<Review[]>> {

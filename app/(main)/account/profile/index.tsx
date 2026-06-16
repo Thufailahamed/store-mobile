@@ -4,17 +4,17 @@ import {
   ScrollView,
   TextInput,
   StyleSheet,
-  Alert,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ScreenHeader } from "@/components/layout";
-import { Avatar, Button } from "@/components/ui";
+import { Avatar, Button, useToast } from "@/components/ui";
 import { Body, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
@@ -25,6 +25,7 @@ import { pickImage, takePhoto, uploadAvatar } from "@/lib/upload";
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
@@ -77,18 +78,20 @@ export default function ProfileScreen() {
     try {
       const res = await uploadAvatar(user.id, uri);
       if (res.error) {
-        Alert.alert("Upload Failed", res.error);
+        toast(res.error, "error");
       } else {
-        Alert.alert("Success", "Profile photo updated successfully!");
+        toast("Profile photo updated", "success");
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message || "An error occurred");
+      toast(err.message || "Upload failed", "error");
     } finally {
       setUpdatingPhoto(false);
     }
   };
 
   const handlePhotoSelect = useCallback(() => {
+    // Alert kept for the system action sheet (camera vs library picker).
+    // Success/failure of the chosen action surfaces a toast.
     Alert.alert(
       "Update Profile Photo",
       "Choose an option",
@@ -117,27 +120,43 @@ export default function ProfileScreen() {
         },
       ]
     );
-  }, [user]);
+  }, [user, toast]);
 
   const handleSave = useCallback(async () => {
     if (!user) return;
     setSaving(true);
+    // Read existing metadata so we don't clobber fields we don't manage.
+    const { data: existing } = await supabase
+      .from("users")
+      .select("metadata")
+      .eq("id", user.id)
+      .maybeSingle();
+    const prevMeta = (existing?.metadata as Record<string, unknown> | null) ?? {};
+
     const { error } = await supabase
       .from("users")
       .update({
         full_name: form.name,
         phone: form.phone || null,
-        metadata: { dob: form.dob, bio: form.bio },
+        metadata: { ...prevMeta, dob: form.dob, bio: form.bio },
       })
       .eq("id", user.id);
 
+    // Mirror full_name into Supabase Auth user_metadata so the session
+    // reflects the change immediately (useAuth hydrates from this).
+    if (!error) {
+      await supabase.auth.updateUser({
+        data: { ...(user.user_metadata ?? {}), full_name: form.name },
+      });
+    }
+
     setSaving(false);
     if (error) {
-      Alert.alert("Error", error.message);
+      toast(error.message, "error");
     } else {
-      Alert.alert("Saved", "Your profile has been updated.");
+      toast("Profile saved", "success");
     }
-  }, [user, form]);
+  }, [user, form, toast]);
 
   if (authLoading || loading) {
     return (

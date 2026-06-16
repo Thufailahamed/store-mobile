@@ -150,6 +150,31 @@ export function useTrackEvent() {
           surface: `scan:${source}`,
         });
       },
+      /**
+       * Generic screen-view event. Use for non-product surfaces where
+       * we just need to record that a screen appeared. The `name` is
+       * stored on `surface` (e.g. "screen:returns_new"); an optional
+       * `props` object is merged into the event payload.
+       */
+      screen(name: string, props?: Record<string, unknown>) {
+        trackEvent(userId, {
+          type: "view",
+          t: Date.now(),
+          product: { id: `screen:${name}` },
+          surface: `screen:${name}`,
+          ...(props ?? {}),
+        } as any);
+      },
+      /** Generic action event (e.g. button submit). */
+      action(name: string, props?: Record<string, unknown>) {
+        trackEvent(userId, {
+          type: "view",
+          t: Date.now(),
+          product: { id: `action:${name}` },
+          surface: `action:${name}`,
+          ...(props ?? {}),
+        } as any);
+      },
     };
   }, [user?.id]);
 }

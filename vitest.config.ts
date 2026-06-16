@@ -5,7 +5,12 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
-    include: ["lib/recommender/**/*.test.ts", "lib/recommender/__tests__/**/*.test.ts"],
+    include: [
+      "lib/recommender/**/*.test.ts",
+      "lib/recommender/__tests__/**/*.test.ts",
+      "lib/api/__tests__/**/*.test.ts",
+      "lib/hooks/__tests__/**/*.test.ts",
+    ],
     setupFiles: ["./vitest.setup.ts"],
   },
   resolve: {

@@ -142,12 +142,10 @@ export const useCart = create<CartStore>()(
             .select("*, product:products(name, images:product_images(url, is_primary)), variant:product_variants(label, stock)")
             .eq("cart_id", cart.id);
 
-          if (!rows || rows.length === 0) return;
-
-          const items: Record<string, CartItem> = {};
-          for (const row of rows as any[]) {
+          const serverItems: Record<string, CartItem> = {};
+          for (const row of (rows ?? []) as any[]) {
             const key = cartKey(row.product_id, row.variant_id);
-            items[key] = {
+            serverItems[key] = {
               productId: row.product_id,
               variantId: row.variant_id,
               storeId: row.store_id,
@@ -159,7 +157,14 @@ export const useCart = create<CartStore>()(
             };
           }
 
-          set({ items });
+          // Merge: any local items the server doesn't know about get added
+          // (covers the "added to cart while signed out" case).
+          const local = get().items;
+          const merged: Record<string, CartItem> = { ...serverItems };
+          for (const [key, item] of Object.entries(local)) {
+            if (!merged[key]) merged[key] = item;
+          }
+          set({ items: merged });
         } catch {
           // Silent fail — local cart still works
         }

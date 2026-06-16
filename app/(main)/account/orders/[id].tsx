@@ -174,13 +174,34 @@ export default function OrderDetailScreen() {
         {/* Quick actions */}
         <View style={styles.actionsRow}>
           {canReturn && (
-            <ActionChip icon="refresh-outline" label="Return" onPress={() => router.push("/(main)/account/returns" as never)} />
+            <ActionChip
+              icon="refresh-outline"
+              label="Return"
+              onPress={() =>
+                router.push({
+                  pathname: "/(main)/account/returns/new" as never,
+                  params: { orderId: order.id },
+                })
+              }
+            />
           )}
           {order.status === "delivered" && (
             <ActionChip icon="star-outline" label="Review" onPress={() => router.push("/(main)/account/reviews" as never)} />
           )}
-          {(order.status === "shipped" || order.status === "out_for_delivery") && (
-            <ActionChip icon="location-outline" label="Track" onPress={() => toast("Live tracking opens in a future update", "success")} />
+          {(order.status === "shipped" ||
+            order.status === "out_for_delivery" ||
+            order.status === "processing" ||
+            order.status === "confirmed") && (
+            <ActionChip
+              icon="location-outline"
+              label="Track"
+              onPress={() =>
+                router.push({
+                  pathname: "/(main)/account/orders/[id]/track" as never,
+                  params: { id: order.id },
+                })
+              }
+            />
           )}
           <ActionChip icon="document-text-outline" label="Invoice" onPress={shareOrder} />
           {canCancel && (

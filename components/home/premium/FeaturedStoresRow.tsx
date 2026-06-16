@@ -23,7 +23,7 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
     <View style={styles.wrap}>
       <HomeSectionHeader
         title="Featured boutiques"
-        onPress={() => router.push("/(main)/products")}
+        onPress={() => router.push("/(main)/stores")}
       />
       <ScrollView
         horizontal
