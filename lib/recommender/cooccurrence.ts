@@ -3,6 +3,9 @@
  *
  * Surfaces products that pair naturally with an anchor product. Tries
  * (in order):
+ *   0. Purchase co-occurrence (server-side aggregation: products
+ *      bought together in the same paid order). Strongest signal —
+ *      actual conversion, not passive viewing.
  *   1. Aggregate co-view data from a `product_views` table if available.
  *   2. The user's own view history (their co-viewed items).
  *   3. A content-based complementary category fallback (e.g. a "top" pairs
@@ -10,7 +13,8 @@
  *   4. Brand-companion fallback (other items from the same brand, different
  *      category).
  *
- * Co-view and content signals are blended. Items out of stock are filtered.
+ * Tier 0 wins when it yields enough products; the lower tiers fill in.
+ * Out-of-stock items are filtered at every tier.
  */
 
 import { supabase } from "@/lib/supabase/client";
@@ -41,6 +45,35 @@ function categorySlug(product: Product): string {
   if (cat?.slug) return cat.slug.toLowerCase();
   if (cat?.name) return cat.name.toLowerCase();
   return "";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tier 0 — purchase co-occurrence                                    */
+/* ------------------------------------------------------------------ */
+
+interface CoPurchaseRow {
+  co_product_id: string;
+  pair_count: number;
+  last_purchased_at: string;
+}
+
+async function tryCoPurchases(anchorId: string, limit: number): Promise<string[]> {
+  try {
+    const { data, error } = await supabase.rpc("get_product_co_purchases", {
+      p_product_id: anchorId,
+      p_limit: limit * 2,
+    });
+    if (error || !data || !Array.isArray(data)) return [];
+    return (data as CoPurchaseRow[])
+      .sort((a, b) => {
+        if (b.pair_count !== a.pair_count) return b.pair_count - a.pair_count;
+        return b.last_purchased_at.localeCompare(a.last_purchased_at);
+      })
+      .slice(0, limit)
+      .map((r) => r.co_product_id);
+  } catch {
+    return [];
+  }
 }
 
 async function tryAggregateCoViews(anchorId: string, limit: number): Promise<string[]> {
@@ -159,21 +192,51 @@ export async function getPairsWellWith(
   limit: number = 6,
 ): Promise<Result<Product[]>> {
   try {
-    // Tier 1: aggregate co-views.
-    const aggIds = await tryAggregateCoViews(anchor.id, limit * 2);
     let products: Product[] = [];
-    if (aggIds.length > 0) {
+
+    // Tier 0: purchase co-occurrence — strongest signal, comes first.
+    // If the table is freshly populated and the anchor has strong pairs,
+    // we can return immediately without going to the lower tiers.
+    const coIds = await tryCoPurchases(anchor.id, limit);
+    if (coIds.length > 0) {
       const { data, error } = await supabase
         .from("products")
         .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
         .eq("status", "active")
         .eq("is_active", true)
-        .in("id", aggIds);
+        .in("id", coIds);
       if (!error && data) {
         const byId = new Map(mapProducts(data as any[]).map((p) => [p.id, p]));
-        products = aggIds
+        products = coIds
           .map((id) => byId.get(id))
-          .filter((p): p is Product => p != null && isProductInStock(p));
+          .filter((p): p is Product => p != null && p.id !== anchor.id && isProductInStock(p));
+      }
+    }
+    if (products.length >= limit) {
+      return ok(products.slice(0, limit));
+    }
+
+    // Tier 1: aggregate co-views.
+    if (products.length < limit) {
+      const aggIds = await tryAggregateCoViews(anchor.id, (limit - products.length) * 2);
+      if (aggIds.length > 0) {
+        const { data, error } = await supabase
+          .from("products")
+          .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
+          .eq("status", "active")
+          .eq("is_active", true)
+          .in("id", aggIds);
+        if (!error && data) {
+          const byId = new Map(mapProducts(data as any[]).map((p) => [p.id, p]));
+          const seen = new Set(products.map((p) => p.id));
+          for (const id of aggIds) {
+            const p = byId.get(id);
+            if (!p || seen.has(p.id) || p.id === anchor.id || !isProductInStock(p)) continue;
+            products.push(p);
+            seen.add(p.id);
+            if (products.length >= limit) break;
+          }
+        }
       }
     }
 
@@ -190,9 +253,10 @@ export async function getPairsWellWith(
         if (!error && data) {
           const seen = new Set(products.map((p) => p.id));
           for (const p of mapProducts(data as any[])) {
-            if (seen.has(p.id) || !isProductInStock(p)) continue;
+            if (seen.has(p.id) || p.id === anchor.id || !isProductInStock(p)) continue;
             products.push(p);
             seen.add(p.id);
+            if (products.length >= limit) break;
           }
         }
       }
@@ -200,23 +264,25 @@ export async function getPairsWellWith(
 
     // Tier 3: complementary category.
     if (products.length < limit) {
-      const comp = await complementaryCandidates(anchor, limit - products.length);
+      const comp = await complementaryCandidates(anchor, (limit - products.length) * 2);
       const seen = new Set(products.map((p) => p.id));
       for (const p of comp) {
-        if (seen.has(p.id)) continue;
+        if (seen.has(p.id) || p.id === anchor.id) continue;
         products.push(p);
         seen.add(p.id);
+        if (products.length >= limit) break;
       }
     }
 
     // Tier 4: same brand, different category.
     if (products.length < limit) {
-      const comp = await brandCompanions(anchor, limit - products.length);
+      const comp = await brandCompanions(anchor, (limit - products.length) * 2);
       const seen = new Set(products.map((p) => p.id));
       for (const p of comp) {
-        if (seen.has(p.id)) continue;
+        if (seen.has(p.id) || p.id === anchor.id) continue;
         products.push(p);
         seen.add(p.id);
+        if (products.length >= limit) break;
       }
     }
 

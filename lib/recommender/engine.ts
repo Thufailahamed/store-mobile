@@ -35,6 +35,7 @@ import { getPairsWellWith } from "./cooccurrence";
 import { cacheGet, cacheSet, cacheKey as makeKey, cacheBustPrefix } from "./cache";
 import { useWishlist } from "@/lib/stores";
 import { isProductInStock } from "./inventory";
+import { pullPersonalizedCandidates } from "./personalized-candidates";
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (e: string): Result<never> => ({ ok: false, error: e });
@@ -54,6 +55,10 @@ export interface RailContext {
 /*  Candidate pullers                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Generic candidate puller (no user). Kept for callers that need a
+ * broad pool — search-result rerank, similar products, etc.
+ */
 async function pullCandidates(
   limit: number = CANDIDATE_POOL,
   ctx: RailContext = {},
@@ -75,6 +80,23 @@ async function pullCandidates(
   } catch {
     return [];
   }
+}
+
+/**
+ * Personalized candidate puller. Splits the pool between the user's
+ * top affinity categories and the general top-sellers. Falls back to
+ * `pullCandidates` when the user has no signal (no events yet) or the
+ * server RPC fails.
+ */
+async function pullCandidatesForUser(
+  userId: string | null | undefined,
+  limit: number = CANDIDATE_POOL,
+  ctx: RailContext = {},
+): Promise<Product[]> {
+  if (!userId) return pullCandidates(limit, ctx);
+  const personalized = await pullPersonalizedCandidates(userId, limit, ctx);
+  if (personalized.length > 0) return personalized;
+  return pullCandidates(limit, ctx);
 }
 
 /* ------------------------------------------------------------------ */
@@ -113,7 +135,7 @@ export async function getForYouRail(
       cacheSet(key, wrapped, TTL_FOR_YOU);
       return wrapped;
     }
-    const candidates = await pullCandidates(CANDIDATE_POOL, ctx);
+    const candidates = await pullCandidatesForUser(userId, CANDIDATE_POOL, ctx);
     if (candidates.length === 0) {
       const cold = await fetchColdStartProducts(limit);
       if (!cold.ok) return cold;
@@ -203,7 +225,7 @@ export async function getYouMayAlsoLike(
     if (!profile.hasSignal) {
       return getSimilarProducts(product, limit);
     }
-    const candidates = await pullCandidates(CANDIDATE_POOL);
+    const candidates = await pullCandidatesForUser(userId, CANDIDATE_POOL);
     if (candidates.length === 0) return getSimilarProducts(product, limit);
     const ranked = rankProducts(candidates, profile, {
       limit,
@@ -297,7 +319,7 @@ export async function getFromWishlistRail(
     const profile = await loadProfile(userId);
     let companions: Product[] = [];
     if (profile.hasSignal) {
-      const candidates = await pullCandidates(CANDIDATE_POOL);
+      const candidates = await pullCandidatesForUser(userId, CANDIDATE_POOL);
       const ranked = rankProducts(candidates, profile, {
         limit,
         excludeIds: wishlistIds,

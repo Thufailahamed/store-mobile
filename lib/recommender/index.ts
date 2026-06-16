@@ -59,5 +59,6 @@ export { isProductInStock, inStockVariantCount, minVariantStock } from "./invent
 
 export { fetchRecentlyViewed, recordRecentlyViewed } from "./recently-viewed";
 export { getPairsWellWith } from "./cooccurrence";
+export { pullPersonalizedCandidates, POOL_LIMITS } from "./personalized-candidates";
 
 export { cacheGet, cacheSet, cacheDelete, cacheClear, cacheBustPrefix, cacheKey } from "./cache";
