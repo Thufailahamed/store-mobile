@@ -20,7 +20,7 @@ import { useWishlist } from "@/lib/stores";
 import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { getFollowedStores, type FollowedStore } from "@/lib/api";
+import { getFollowedStores, getOrders, type FollowedStore } from "@/lib/api";
 import { mapProducts } from "@/lib/api/product-mapper";
 import {
   getRecentlyViewedIds,
@@ -28,6 +28,7 @@ import {
   type PaymentCard,
 } from "@/lib/account-local";
 import { formatPrice } from "@/lib/utils";
+import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import type { Product } from "@/lib/types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -35,6 +36,56 @@ const H_PAD = spacing[5];
 const CARD_GAP = spacing[3];
 const SUMMARY_CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - CARD_GAP) / 2;
 const RECENT_SIZE = 120;
+
+const ACCOUNT_LINKS: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  sub: string;
+  route: string;
+  requiresAuth?: boolean;
+}[] = [
+  {
+    icon: "location-outline",
+    label: "Addresses",
+    sub: "Shipping & billing",
+    route: "/(main)/account/addresses",
+    requiresAuth: true,
+  },
+  {
+    icon: "return-down-back-outline",
+    label: "Returns",
+    sub: "Track refunds",
+    route: "/(main)/account/returns",
+    requiresAuth: true,
+  },
+  {
+    icon: "ribbon-outline",
+    label: "Loyalty & rewards",
+    sub: "Points and perks",
+    route: "/(main)/account/loyalty",
+    requiresAuth: true,
+  },
+  {
+    icon: "star-outline",
+    label: "My reviews",
+    sub: "Products you've rated",
+    route: "/(main)/account/reviews",
+    requiresAuth: true,
+  },
+  {
+    icon: "shield-outline",
+    label: "Security",
+    sub: "Password & MFA",
+    route: "/(main)/account/security",
+    requiresAuth: true,
+  },
+  {
+    icon: "headset-outline",
+    label: "Contact support",
+    sub: "Get help with orders",
+    route: "/(main)/contact",
+  },
+];
 
 const CARD_BRAND_STYLES: Record<PaymentCard["brand"], { colors: [string, string]; label: string }> = {
   visa: { colors: ["#0a0d24", "#1b2d72"], label: "VISA" },
@@ -49,17 +100,15 @@ export default function AccountScreen() {
   const wishlistItems = useWishlist((s) => s.items);
   const toggle = useWishlist((s) => s.toggle);
 
-  const [savedProducts, setSavedProducts] = useState<Product[]>([]);
+  const [orderThumbs, setOrderThumbs] = useState<string[]>([]);
   const [followedStores, setFollowedStores] = useState<FollowedStore[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const [payments, setPayments] = useState<PaymentCard[]>([]);
   const [profileName, setProfileName] = useState("");
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   const name = profileName || user?.user_metadata?.full_name || "Guest";
   const email = user?.email ?? "Sign in to sync your account";
-  const avatarUri = user?.user_metadata?.avatar_url;
-
-  const wishlistIds = useMemo(() => Object.keys(wishlistItems), [wishlistItems]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,22 +145,35 @@ export default function AccountScreen() {
         const storesRes = await getFollowedStores(user.id);
         if (!cancelled && storesRes.ok) setFollowedStores(storesRes.data);
 
+        const ordersRes = await getOrders(user.id, 8);
+        if (!cancelled && ordersRes.ok) {
+          const thumbs = ordersRes.data
+            .flatMap((o) => o.items ?? [])
+            .map(
+              (item) =>
+                item.product?.images?.find((i) => i.is_primary)?.url ??
+                item.product?.images?.[0]?.url,
+            )
+            .filter(Boolean)
+            .slice(0, 4) as string[];
+          setOrderThumbs(thumbs);
+        } else if (!cancelled) {
+          setOrderThumbs([]);
+        }
+
         const { data: profile } = await supabase
           .from("users")
-          .select("full_name")
+          .select("full_name, avatar_url")
           .eq("id", user.id)
           .maybeSingle();
-        if (!cancelled && profile?.full_name) setProfileName(profile.full_name);
-      }
-
-      if (wishlistIds.length > 0) {
-        const { data } = await supabase
-          .from("products")
-          .select("id, name, images:product_images(url, is_primary)")
-          .in("id", wishlistIds.slice(0, 8));
-        if (!cancelled) setSavedProducts(mapProducts((data as Product[]) ?? []));
+        if (!cancelled) {
+          if (profile?.full_name) setProfileName(profile.full_name);
+          const nextAvatar =
+            profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null;
+          setAvatarUri(nextAvatar ? resolveImageUrl(nextAvatar) || nextAvatar : null);
+        }
       } else if (!cancelled) {
-        setSavedProducts([]);
+        setOrderThumbs([]);
       }
     }
 
@@ -119,11 +181,29 @@ export default function AccountScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, wishlistIds.join(",")]);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
       getStoredPayments(user?.id).then(setPayments);
+
+      if (!user?.id) return;
+      getOrders(user.id, 8).then((ordersRes) => {
+        if (!ordersRes.ok) {
+          setOrderThumbs([]);
+          return;
+        }
+        const thumbs = ordersRes.data
+          .flatMap((o) => o.items ?? [])
+          .map(
+            (item) =>
+              item.product?.images?.find((i) => i.is_primary)?.url ??
+              item.product?.images?.[0]?.url,
+          )
+          .filter(Boolean)
+          .slice(0, 4) as string[];
+        setOrderThumbs(thumbs);
+      });
     }, [user?.id])
   );
 
@@ -135,16 +215,20 @@ export default function AccountScreen() {
     }));
   }, [followedStores]);
 
-  const savedThumbs = useMemo(() => {
-    return savedProducts
-      .map((p) => p.images?.find((i) => i.is_primary)?.url ?? p.images?.[0]?.url)
-      .filter(Boolean)
-      .slice(0, 4) as string[];
-  }, [savedProducts]);
-
   const handleSignIn = useCallback(() => {
     router.push("/(auth)/login");
   }, [router]);
+
+  const openAccountLink = useCallback(
+    (link: (typeof ACCOUNT_LINKS)[number]) => {
+      if (link.requiresAuth && !user) {
+        handleSignIn();
+        return;
+      }
+      router.push(link.route as never);
+    },
+    [user, router, handleSignIn],
+  );
 
   return (
     <PaperBackground style={{ backgroundColor: "#ffffff" }}>
@@ -192,16 +276,19 @@ export default function AccountScreen() {
           />
         </View>
 
-        {/* Wishlist + Following */}
+        {/* Order history + Following */}
         <View style={styles.summaryRow}>
           <SummaryCard
-            label="Wishlist"
-            onPress={() => router.push("/(main)/wishlist")}
-            emptyIcon="heart-outline"
+            label="Order history"
+            onPress={() =>
+              user
+                ? router.push("/(main)/account/orders")
+                : handleSignIn()
+            }
           >
             <OverlapRow
-              images={savedThumbs}
-              emptyIcon="heart-outline"
+              images={orderThumbs}
+              emptyIcon="receipt-outline"
             />
           </SummaryCard>
           <SummaryCard
@@ -296,6 +383,35 @@ export default function AccountScreen() {
             })}
           </ScrollView>
         )}
+
+        {/* Account shortcuts */}
+        <Text style={styles.sectionTitle}>Your account</Text>
+        <View style={styles.menuGroup}>
+          {ACCOUNT_LINKS.map((link, index) => (
+            <TouchableOpacity
+              key={link.route}
+              style={[
+                styles.menuRow,
+                index < ACCOUNT_LINKS.length - 1 && styles.menuRowBorder,
+              ]}
+              activeOpacity={0.85}
+              onPress={() => openAccountLink(link)}
+            >
+              <View style={styles.menuIcon}>
+                <Ionicons name={link.icon} size={18} color={colors.olive[700]} />
+              </View>
+              <View style={styles.menuText}>
+                <Text style={styles.menuTitle}>{link.label}</Text>
+                <Text style={styles.menuSub}>{link.sub}</Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.light.mutedForeground}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {/* Payment methods */}
         <View style={styles.paymentHeader}>
@@ -844,6 +960,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: spacing[4],
+    marginTop: spacing[2],
+  },
+  menuGroup: {
+    backgroundColor: "#ffffff",
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    marginBottom: spacing[6],
+    overflow: "hidden",
+    ...shadows.soft,
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
+  },
+  menuRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  menuIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.lg,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.olive[100],
+  },
+  menuText: {
+    flex: 1,
+    gap: 2,
+  },
+  menuTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.foreground,
+    letterSpacing: -0.2,
+  },
+  menuSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
   addCardBtn: {
     backgroundColor: colors.olive[100],

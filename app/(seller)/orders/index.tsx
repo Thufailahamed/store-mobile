@@ -177,7 +177,7 @@ export default function SellerOrders() {
 
       {/* Orders List */}
       <FlatList
-        data={orders.filter((o) => statusTab === "all" || o.status === statusTab)}
+        data={orders}
         keyExtractor={(item) => item.id}
         renderItem={renderOrder}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}

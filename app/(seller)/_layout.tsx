@@ -1,9 +1,33 @@
-import React from "react";
-import { Tabs } from "expo-router";
+import React, { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { Tabs, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography } from "@/lib/theme/tokens";
 
 export default function SellerLayout() {
+  const { role, roleLoading, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading || roleLoading) return;
+    if (role !== "store_owner") {
+      router.replace("/(main)");
+    }
+  }, [role, roleLoading, loading, router]);
+
+  if (loading || roleLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.light.background }}>
+        <ActivityIndicator size="large" color={colors.light.primary} />
+      </View>
+    );
+  }
+
+  if (role !== "store_owner") {
+    return null;
+  }
+
   return (
     <Tabs
       screenOptions={{

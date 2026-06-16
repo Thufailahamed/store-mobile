@@ -1,6 +1,8 @@
 import React from "react";
-import { View, Text, StyleSheet, type ViewStyle } from "react-native";
+import { View, StyleSheet, type ViewStyle } from "react-native";
 import { colors, radii, typography } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { AppText } from "./AppText";
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
@@ -38,7 +40,7 @@ export function Badge({ variant = "default", children, style }: BadgeProps) {
 
   return (
     <View style={[styles.badge, v.container, style]}>
-      <Text style={[styles.text, v.text]}>{children}</Text>
+      <AppText style={[styles.text, v.text]}>{children}</AppText>
     </View>
   );
 }
@@ -51,8 +53,8 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   text: {
+    fontFamily: fontFamilies.mono.medium,
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold,
     letterSpacing: typography.letterSpacing.wide,
     textTransform: "uppercase",
   },

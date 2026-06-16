@@ -7,12 +7,14 @@ import {
   StyleSheet,
   RefreshControl,
   Dimensions,
+  TextInput,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications } from "@/lib/api";
+import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore } from "@/lib/api";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -70,6 +72,10 @@ export default function SellerDashboard() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [creatingStore, setCreatingStore] = useState(false);
+  const [newStoreName, setNewStoreName] = useState("");
+  const [newStoreSlug, setNewStoreSlug] = useState("");
+  const [newStoreDescription, setNewStoreDescription] = useState("");
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -95,6 +101,27 @@ export default function SellerDashboard() {
     setRefreshing(true);
     fetchData();
   }, [fetchData]);
+
+  const handleCreateStore = async () => {
+    if (!user) return;
+    if (!newStoreName.trim()) {
+      Alert.alert("Store name required", "Enter a name for your store to continue.");
+      return;
+    }
+    setCreatingStore(true);
+    const res = await createSellerStore(user.id, {
+      name: newStoreName,
+      slug: newStoreSlug || undefined,
+      description: newStoreDescription || undefined,
+    });
+    setCreatingStore(false);
+    if (res.ok) {
+      setLoading(true);
+      fetchData();
+    } else {
+      Alert.alert("Could not create store", res.error);
+    }
+  };
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -134,6 +161,63 @@ export default function SellerDashboard() {
         <Ionicons name="hourglass-outline" size={32} color={colors.light.mutedForeground} />
         <Text style={styles.loadingText}>Loading dashboard…</Text>
       </View>
+    );
+  }
+
+  if (!store) {
+    return (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.onboardingContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.onboardingCard}>
+          <Ionicons name="storefront-outline" size={40} color={colors.olive[700]} />
+          <Text style={styles.onboardingTitle}>Set up your store</Text>
+          <Text style={styles.onboardingSub}>
+            Create your seller profile to list products, manage orders, and track revenue.
+          </Text>
+
+          <Text style={styles.onboardingLabel}>Store name</Text>
+          <TextInput
+            style={styles.onboardingInput}
+            value={newStoreName}
+            onChangeText={setNewStoreName}
+            placeholder="e.g. Luxe Boutique"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+
+          <Text style={styles.onboardingLabel}>Store URL slug (optional)</Text>
+          <TextInput
+            style={styles.onboardingInput}
+            value={newStoreSlug}
+            onChangeText={setNewStoreSlug}
+            placeholder="luxe-boutique"
+            autoCapitalize="none"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+
+          <Text style={styles.onboardingLabel}>Description (optional)</Text>
+          <TextInput
+            style={[styles.onboardingInput, styles.onboardingTextArea]}
+            value={newStoreDescription}
+            onChangeText={setNewStoreDescription}
+            placeholder="Tell shoppers what you sell"
+            multiline
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+
+          <TouchableOpacity
+            style={[styles.onboardingButton, creatingStore && { opacity: 0.6 }]}
+            onPress={handleCreateStore}
+            disabled={creatingStore}
+          >
+            <Text style={styles.onboardingButtonText}>
+              {creatingStore ? "Creating…" : "Create store"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     );
   }
 
@@ -471,6 +555,64 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 120 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: spacing[3] },
   loadingText: { color: colors.light.mutedForeground, fontSize: typography.fontSizes.sm },
+
+  onboardingContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: spacing[5],
+    paddingBottom: 120,
+  },
+  onboardingCard: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    padding: spacing[5],
+    gap: spacing[2],
+  },
+  onboardingTitle: {
+    fontSize: typography.fontSizes["2xl"],
+    fontFamily: fontFamilies.display.semibold,
+    color: colors.light.foreground,
+    marginTop: spacing[2],
+  },
+  onboardingSub: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    lineHeight: 20,
+    marginBottom: spacing[3],
+  },
+  onboardingLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.light.foreground,
+    marginTop: spacing[2],
+  },
+  onboardingInput: {
+    backgroundColor: colors.light.background,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.lg,
+    padding: spacing[3],
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.foreground,
+  },
+  onboardingTextArea: {
+    minHeight: 96,
+    textAlignVertical: "top",
+  },
+  onboardingButton: {
+    backgroundColor: colors.light.primary,
+    borderRadius: radii.lg,
+    paddingVertical: spacing[4],
+    alignItems: "center",
+    marginTop: spacing[4],
+  },
+  onboardingButtonText: {
+    color: colors.light.card,
+    fontSize: typography.fontSizes.base,
+    fontFamily: fontFamilies.sans.semibold,
+  },
 
   /* Hero */
   hero: {

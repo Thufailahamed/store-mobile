@@ -1,6 +1,8 @@
 import React from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { colors, typography } from "@/lib/theme/tokens";
+import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 
 interface AvatarProps {
   uri?: string | null;
@@ -36,11 +38,12 @@ function hashColor(name: string): string {
 export function Avatar({ uri, name = "", size = 40, style }: AvatarProps) {
   const initials = getInitials(name);
   const bgColor = hashColor(name);
+  const imageUri = uri ? resolveImageUrl(uri) : "";
 
-  if (uri) {
+  if (imageUri) {
     return (
       <Image
-        source={{ uri }}
+        source={{ uri: imageUri }}
         style={[
           {
             width: size,
@@ -49,6 +52,9 @@ export function Avatar({ uri, name = "", size = 40, style }: AvatarProps) {
           },
           style,
         ]}
+        contentFit="cover"
+        transition={200}
+        cachePolicy="memory-disk"
       />
     );
   }

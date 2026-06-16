@@ -21,6 +21,7 @@ import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { pickImage, takePhoto, uploadAvatar } from "@/lib/upload";
+import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -38,6 +40,13 @@ export default function ProfileScreen() {
   });
 
   const displayName = user?.user_metadata?.full_name || form.name || "Guest";
+
+  useEffect(() => {
+    if (user?.user_metadata?.avatar_url) {
+      const url = resolveImageUrl(user.user_metadata.avatar_url) || user.user_metadata.avatar_url;
+      setAvatarUrl(url);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -51,7 +60,7 @@ export default function ProfileScreen() {
     (async () => {
       const { data: profile } = await supabase
         .from("users")
-        .select("full_name, phone, metadata")
+        .select("full_name, phone, avatar_url, metadata")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -64,6 +73,9 @@ export default function ProfileScreen() {
         dob: (profile as { metadata?: { dob?: string } } | null)?.metadata?.dob ?? "",
         bio: (profile as { metadata?: { bio?: string } } | null)?.metadata?.bio ?? "",
       });
+      if (profile?.avatar_url) {
+        setAvatarUrl(resolveImageUrl(profile.avatar_url) || profile.avatar_url);
+      }
       setLoading(false);
     })();
 
@@ -72,14 +84,23 @@ export default function ProfileScreen() {
     };
   }, [user, authLoading, router]);
 
-  const uploadSelectedPhoto = async (uri: string) => {
+  const uploadSelectedPhoto = async (
+    uri: string,
+    asset?: { mimeType?: string | null; fileName?: string | null }
+  ) => {
     if (!user) return;
     setUpdatingPhoto(true);
     try {
-      const res = await uploadAvatar(user.id, uri);
+      const res = await uploadAvatar(user.id, uri, {
+        mimeType: asset?.mimeType,
+        fileName: asset?.fileName,
+      });
       if (res.error) {
         toast(res.error, "error");
       } else {
+        if (res.url) {
+          setAvatarUrl(resolveImageUrl(res.url) || res.url);
+        }
         toast("Profile photo updated", "success");
       }
     } catch (err: any) {
@@ -87,6 +108,17 @@ export default function ProfileScreen() {
     } finally {
       setUpdatingPhoto(false);
     }
+  };
+
+  const handlePickedAsset = async (
+    result: Awaited<ReturnType<typeof pickImage>>
+  ) => {
+    if (!result || result.canceled || !result.assets?.[0]?.uri) return;
+    const asset = result.assets[0];
+    await uploadSelectedPhoto(asset.uri, {
+      mimeType: asset.mimeType,
+      fileName: asset.fileName,
+    });
   };
 
   const handlePhotoSelect = useCallback(() => {
@@ -100,18 +132,22 @@ export default function ProfileScreen() {
           text: "Take Photo",
           onPress: async () => {
             const result = await takePhoto();
-            if (result && !result.canceled && result.assets?.[0]?.uri) {
-              await uploadSelectedPhoto(result.assets[0].uri);
+            if (!result) {
+              toast("Camera permission is required", "error");
+              return;
             }
+            await handlePickedAsset(result);
           },
         },
         {
           text: "Choose from Library",
           onPress: async () => {
             const result = await pickImage();
-            if (result && !result.canceled && result.assets?.[0]?.uri) {
-              await uploadSelectedPhoto(result.assets[0].uri);
+            if (!result) {
+              toast("Photo library permission is required", "error");
+              return;
             }
+            await handlePickedAsset(result);
           },
         },
         {
@@ -194,7 +230,7 @@ export default function ProfileScreen() {
             >
               <Avatar
                 name={displayName}
-                uri={user.user_metadata?.avatar_url}
+                uri={avatarUrl}
                 size={88}
               />
               {updatingPhoto ? (

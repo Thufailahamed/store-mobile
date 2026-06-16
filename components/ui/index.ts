@@ -17,3 +17,4 @@ export { Chip } from "./Chip";
 export { StatRow } from "./StatRow";
 export { QtyStepper } from "./QtyStepper";
 export { SafeImage, type SafeImageVariant } from "./SafeImage";
+export { AppText } from "./AppText";

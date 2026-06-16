@@ -50,14 +50,24 @@ export default function OrderSuccessScreen() {
       return;
     }
     let cancelled = false;
-    getOrderById(orderId).then((res) => {
+
+    const loadOrder = async (attempt = 0) => {
+      const res = await getOrderById(orderId);
       if (cancelled) return;
       if (res.ok && res.data) {
         setOrder(res.data);
         fetchRecommendations(res.data.items || []);
+        setLoading(false);
+        return;
+      }
+      if (attempt < 3) {
+        setTimeout(() => loadOrder(attempt + 1), 600);
+        return;
       }
       setLoading(false);
-    });
+    };
+
+    loadOrder();
 
     return () => {
       cancelled = true;
@@ -212,8 +222,11 @@ export default function OrderSuccessScreen() {
           <Body muted style={{ marginTop: 6, marginBottom: 20 }}>
             We couldn't retrieve the details for this order.
           </Body>
-          <Button variant="brand" onPress={() => router.replace("/(main)")}>
-            Return Home
+          <Button variant="brand" onPress={() => router.replace("/(main)/account/orders")}>
+            View orders
+          </Button>
+          <Button variant="outline" onPress={() => router.replace("/(main)")} style={{ marginTop: 12 }}>
+            Return home
           </Button>
         </View>
       </PaperBackground>

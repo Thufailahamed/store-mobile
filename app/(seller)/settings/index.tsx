@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, updateSellerStore } from "@/lib/api";
+import { getSellerStore, updateSellerStore, createSellerStore } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Store } from "@/lib/types";
 
@@ -21,6 +21,7 @@ export default function SellerSettings() {
   const [store, setStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -60,6 +61,27 @@ export default function SellerSettings() {
     }
   };
 
+  const handleCreate = async () => {
+    if (!user) return;
+    if (!name.trim()) {
+      Alert.alert("Error", "Store name is required");
+      return;
+    }
+    setCreating(true);
+    const res = await createSellerStore(user.id, {
+      name: name.trim(),
+      slug: slug.trim() || undefined,
+      description: description.trim() || undefined,
+    });
+    setCreating(false);
+    if (res.ok) {
+      setStore(res.data);
+      Alert.alert("Success", "Store created. It will be reviewed before going live.");
+    } else {
+      Alert.alert("Error", res.error);
+    }
+  };
+
   const handleSignOut = () => {
     Alert.alert("Sign out?", "You will be logged out", [
       { text: "Cancel", style: "cancel" },
@@ -79,8 +101,10 @@ export default function SellerSettings() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Store Settings</Text>
-        <Text style={styles.subtitle}>Manage your store profile</Text>
+        <Text style={styles.title}>{store ? "Store Settings" : "Create Your Store"}</Text>
+        <Text style={styles.subtitle}>
+          {store ? "Manage your store profile" : "Set up your seller profile to start listing products"}
+        </Text>
       </View>
 
       {/* Store Status */}
@@ -150,11 +174,13 @@ export default function SellerSettings() {
         </View>
 
         <TouchableOpacity
-          style={[styles.saveButton, saving && { opacity: 0.6 }]}
-          onPress={handleSave}
-          disabled={saving}
+          style={[styles.saveButton, (saving || creating) && { opacity: 0.6 }]}
+          onPress={store ? handleSave : handleCreate}
+          disabled={saving || creating}
         >
-          <Text style={styles.saveButtonText}>{saving ? "Saving..." : "Save Changes"}</Text>
+          <Text style={styles.saveButtonText}>
+            {store ? (saving ? "Saving..." : "Save Changes") : (creating ? "Creating..." : "Create Store")}
+          </Text>
         </TouchableOpacity>
       </View>
 

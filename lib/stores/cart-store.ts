@@ -84,7 +84,11 @@ export const useCart = create<CartStore>()(
 
       setCoupon: (code) => set({ couponCode: code }),
 
-      clear: () => set({ items: {}, couponCode: null }),
+      clear: () => {
+        const { items, couponCode } = get();
+        if (Object.keys(items).length === 0 && couponCode == null) return;
+        set({ items: {}, couponCode: null });
+      },
 
       syncToServer: async (userId) => {
         try {

@@ -1,4 +1,5 @@
 import "react-native-gesture-handler";
+import "@/lib/theme/setup-android-text";
 import React, { useEffect, useRef, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -24,6 +25,7 @@ import {
   JetBrainsMono_600SemiBold,
 } from "@expo-google-fonts/jetbrains-mono";
 import * as Linking from "expo-linking";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { useSyncStores } from "@/lib/hooks";
 import { ToastProvider } from "@/components/ui";
@@ -60,7 +62,7 @@ function RootLayoutNav() {
       setOnboardingComplete(complete);
       setOnboardingChecked(true);
     });
-  }, [segments]);
+  }, []);
 
   // Auth routing
   useEffect(() => {
@@ -100,12 +102,20 @@ function RootLayoutNav() {
     }
   }, [session, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete]);
 
-  // Splash screen
+  // Hide splash once onboarding + auth bootstrap finish. Role lookup continues in background.
   useEffect(() => {
-    if (onboardingChecked && !loading && (!session || !roleLoading)) {
-      SplashScreen.hideAsync();
+    if (onboardingChecked && !loading) {
+      SplashScreen.hideAsync().catch(() => {});
     }
-  }, [loading, session, roleLoading, onboardingChecked]);
+  }, [loading, onboardingChecked]);
+
+  // Never leave users stuck on the native splash if auth/storage is slow.
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, []);
 
   // Push notification registration
   useEffect(() => {
@@ -173,7 +183,8 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
+    ...Ionicons.font,
     Manrope_400Regular,
     Manrope_500Medium,
     Manrope_600SemiBold,
@@ -186,7 +197,15 @@ export default function RootLayout() {
     JetBrainsMono_600SemiBold,
   });
 
-  if (!fontsLoaded) {
+  useEffect(() => {
+    if (fontsLoaded || fontError) return;
+    const timeout = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) {
     return null;
   }
 

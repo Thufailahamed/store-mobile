@@ -193,7 +193,19 @@ export default function ReturnDetailScreen() {
           </View>
         )}
 
-        <TouchableOpacity style={styles.supportBtn} onPress={() => router.push("/(main)/contact" as never)} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.supportBtn}
+          onPress={() =>
+            router.push({
+              pathname: "/(main)/contact",
+              params: {
+                subject: `Return #${returnReq.return_number}`,
+                message: `I need help with return #${returnReq.return_number} (order #${returnReq.order_number}).`,
+              },
+            } as never)
+          }
+          activeOpacity={0.85}
+        >
           <Ionicons name="headset-outline" size={16} color={colors.olive[950]} />
           <Label style={styles.supportBtnText}>Contact support</Label>
         </TouchableOpacity>

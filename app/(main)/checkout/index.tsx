@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, Switch } from "react-native";
-import { useRouter } from "expo-router";
+import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pressable } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground, ScreenHeader, SectionHeader } from "@/components/layout";
@@ -14,7 +16,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
 import { getPayHereSession } from "@/lib/api/payments";
-import { Button, Input, Separator } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
@@ -26,6 +28,7 @@ import {
   type ShippingKey,
 } from "@/lib/utils";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
 
 const STEPS = [
@@ -35,10 +38,28 @@ const STEPS = [
   { key: 4, label: "Review" },
 ];
 
+function parsePlacedOrder(data: unknown): { id: string; order_number?: string } | null {
+  if (!data) return null;
+  if (typeof data === "string") return { id: data };
+  if (Array.isArray(data)) return parsePlacedOrder(data[0]);
+  if (typeof data === "object") {
+    const row = data as Record<string, unknown>;
+    const id = row.id ?? row.order_id;
+    if (typeof id === "string" && id.length > 0) {
+      return {
+        id,
+        order_number: typeof row.order_number === "string" ? row.order_number : undefined,
+      };
+    }
+  }
+  return null;
+}
+
 export default function CheckoutScreen() {
   const router = useRouter();
+  const { openAddress } = useLocalSearchParams<{ openAddress?: string }>();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const loyalty = useLoyalty();
   const { items, subtotal, couponCode, setCoupon, clear } = useCart();
@@ -82,16 +103,22 @@ export default function CheckoutScreen() {
   const earnEstimate = Math.floor(afterCoupon * 0.05);
 
   useEffect(() => {
-    if (!user) return;
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/(auth)/login");
+      return;
+    }
     api.getAddresses(user.id).then((res) => {
       if (res.ok && res.data.length) {
         setSavedAddresses(res.data);
         const def = res.data.find((a) => a.is_default) || res.data[0];
         setSelectedAddressId(def.id);
         fillAddress(def);
+      } else if (openAddress === "1") {
+        setAddressSheetOpen(true);
       }
     });
-  }, [user]);
+  }, [user, authLoading, openAddress, router]);
 
   const fillAddress = (a: Address) => {
     setFullName(a.full_name);
@@ -153,7 +180,18 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!user) return;
+    if (authLoading) return;
+    if (!user) {
+      toast("Please sign in to place your order", "error");
+      router.replace("/(auth)/login");
+      return;
+    }
+    if (cartItems.length === 0) {
+      toast("Your bag is empty", "error");
+      router.replace("/(main)/cart");
+      return;
+    }
+
     setLoading(true);
     try {
       const addressId: string | null =
@@ -199,7 +237,7 @@ export default function CheckoutScreen() {
 
       if (error) throw error;
 
-      const order = orderData as { id: string; order_number?: string } | null;
+      const order = parsePlacedOrder(orderData);
       if (!order?.id) throw new Error("Order created but no id returned");
 
       if (pointsToUse > 0) {
@@ -220,10 +258,10 @@ export default function CheckoutScreen() {
         return;
       }
 
-      clear();
       await loyalty.reload();
       toast("Order placed", "success");
-      router.replace({ pathname: "/(main)/checkout/success" as never, params: { orderId: order.id } });
+      router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(order.id)}` as never);
+      clear();
     } catch (e: any) {
       toast(e?.message || "Order failed", "error");
     } finally {
@@ -236,8 +274,39 @@ export default function CheckoutScreen() {
     else setStep(step - 1);
   };
 
+  const handleAddressContinue = () => {
+    if (!fullName.trim() || !phone.trim() || !line1.trim() || !city.trim()) {
+      toast("Please select or add a delivery address", "error");
+      setAddressSheetOpen(true);
+      return;
+    }
+    setStep(2);
+  };
+
+  const clearCoupon = () => {
+    setCoupon(null);
+    setCouponInput("");
+    setCouponDiscount(0);
+    setCouponId(null);
+    setFreeShippingCoupon(false);
+  };
+
+  const paymentLabel = paymentMethod === "cod" ? "Cash on delivery" : "Card via PayHere";
+  const addressSummary = [line1, city].filter(Boolean).join(", ");
+
+  if (authLoading) {
+    return (
+      <PaperBackground style={styles.screen}>
+        <ScreenHeader title="Checkout" onBack={goBack} />
+        <View style={styles.authLoading}>
+          <Body muted>Loading checkout…</Body>
+        </View>
+      </PaperBackground>
+    );
+  }
+
   return (
-    <PaperBackground>
+    <PaperBackground style={styles.screen}>
       <ScreenHeader title="Checkout" onBack={goBack} />
       <View style={styles.stepBar}>
         {STEPS.map((s, i) => (
@@ -257,7 +326,14 @@ export default function CheckoutScreen() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
+      <View style={styles.body}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: step === 4 ? insets.bottom + 112 : insets.bottom + 24 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
         {step === 1 && (
           <View style={styles.panel}>
             <SectionHeader kicker="Step 01" title="Delivery address" />
@@ -309,7 +385,7 @@ export default function CheckoutScreen() {
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
             </TouchableOpacity>
-            <Button variant="brand" onPress={() => setStep(2)}>Continue</Button>
+            <Button variant="brand" onPress={handleAddressContinue}>Continue</Button>
           </View>
         )}
 
@@ -363,42 +439,149 @@ export default function CheckoutScreen() {
         {step === 4 && (
           <View style={styles.panel}>
             <SectionHeader kicker="Step 04" title="Review & place" />
-            {cartItems.map((item, i) => (
-              <View key={i} style={styles.reviewRow}>
-                <Body size="sm" numberOfLines={1} style={{ flex: 1 }}>{item.name}</Body>
-                <Body muted size="sm">×{item.quantity}</Body>
-                <Price size="sm">{formatPrice(item.price * item.quantity)}</Price>
-              </View>
-            ))}
-            <Separator style={{ marginVertical: spacing[3] }} />
-            <View style={styles.couponRow}>
-              <Input
-                label="Coupon code"
-                value={couponInput}
-                onChangeText={setCouponInput}
-                placeholder="Enter code"
-                containerStyle={{ flex: 1 }}
-              />
-              <Button variant="outline" size="sm" onPress={applyCoupon} style={{ marginTop: 22 }}>
-                Apply
-              </Button>
+
+            <View style={styles.recapRow}>
+              <TouchableOpacity style={styles.recapChip} onPress={() => setStep(1)} activeOpacity={0.8}>
+                <View style={styles.recapIcon}>
+                  <Ionicons name="location-outline" size={14} color={colors.olive[700]} />
+                </View>
+                <View style={styles.recapText}>
+                  <Label style={styles.recapLabel}>Deliver to</Label>
+                  <Body size="xs" numberOfLines={1}>{addressSummary || "—"}</Body>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.recapChip} onPress={() => setStep(2)} activeOpacity={0.8}>
+                <View style={styles.recapIcon}>
+                  <Ionicons name="car-outline" size={14} color={colors.olive[700]} />
+                </View>
+                <View style={styles.recapText}>
+                  <Label style={styles.recapLabel}>Shipping</Label>
+                  <Body size="xs" numberOfLines={1}>{shippingOption.label}</Body>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.recapChip} onPress={() => setStep(3)} activeOpacity={0.8}>
+                <View style={styles.recapIcon}>
+                  <Ionicons name={paymentMethod === "cod" ? "cash-outline" : "card-outline"} size={14} color={colors.olive[700]} />
+                </View>
+                <View style={styles.recapText}>
+                  <Label style={styles.recapLabel}>Payment</Label>
+                  <Body size="xs" numberOfLines={1}>{paymentLabel}</Body>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
+              </TouchableOpacity>
             </View>
-            <View style={styles.summaryRow}><Body muted>Subtotal</Body><Body>{formatPrice(sub)}</Body></View>
-            {couponDiscount > 0 && (
-              <View style={styles.summaryRow}><Body muted>Discount</Body><Body style={{ color: colors.olive[600] }}>-{formatPrice(couponDiscount)}</Body></View>
-            )}
-            {pointsValue > 0 && (
-              <View style={styles.summaryRow}><Body muted>Points</Body><Body style={{ color: colors.olive[600] }}>-{formatPrice(pointsValue)}</Body></View>
-            )}
-            <View style={styles.summaryRow}><Body muted>Shipping</Body><Body>{shippingFee === 0 ? "FREE" : formatPrice(shippingFee)}</Body></View>
-            <View style={styles.summaryRow}><Body muted>Tax</Body><Body>{formatPrice(tax)}</Body></View>
-            <Separator style={{ marginVertical: spacing[2] }} />
-            <View style={styles.summaryRow}><Display size="lg">Total</Display><Price size="xl">{formatPrice(total)}</Price></View>
+
+            <View style={styles.itemsSection}>
+              <View style={styles.itemsSectionHead}>
+                <Label style={styles.itemsSectionLabel}>Your bag</Label>
+                <Label style={styles.itemsCount}>{cartItems.length} item{cartItems.length === 1 ? "" : "s"}</Label>
+              </View>
+              {cartItems.map((item, i) => (
+                <View key={`${item.productId}-${item.variantId ?? i}`} style={styles.reviewItem}>
+                  <View style={styles.reviewThumb}>
+                    {item.image ? (
+                      <Image source={{ uri: item.image }} style={styles.reviewImage} contentFit="cover" />
+                    ) : (
+                      <View style={styles.reviewImagePlaceholder}>
+                        <Ionicons name="bag-outline" size={18} color={colors.light.mutedForeground} />
+                      </View>
+                    )}
+                    <View style={styles.qtyBadge}>
+                      <Label style={styles.qtyBadgeText}>{item.quantity}</Label>
+                    </View>
+                  </View>
+                  <View style={styles.reviewItemBody}>
+                    <Body size="sm" numberOfLines={2} style={styles.reviewItemName}>{item.name}</Body>
+                    {item.variantLabel ? (
+                      <Label style={styles.reviewVariant}>{item.variantLabel}</Label>
+                    ) : null}
+                    <Price size="sm" style={styles.reviewItemPrice}>
+                      {formatPrice(item.price * item.quantity)}
+                    </Price>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.couponCard}>
+              <View style={styles.couponCardHead}>
+                <Ionicons name="pricetag-outline" size={16} color={colors.olive[700]} />
+                <Label style={styles.couponCardTitle}>Promo code</Label>
+              </View>
+              {couponCode && (couponDiscount > 0 || freeShippingCoupon) ? (
+                <View style={styles.couponApplied}>
+                  <View style={styles.couponAppliedLeft}>
+                    <Ionicons name="checkmark-circle" size={18} color={colors.olive[600]} />
+                    <View>
+                      <Body size="sm" style={{ fontWeight: "600" }}>{couponCode}</Body>
+                      <Body muted size="xs">
+                        {freeShippingCoupon ? "Free shipping applied" : `${formatPrice(couponDiscount)} off`}
+                      </Body>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={clearCoupon} hitSlop={8}>
+                    <Ionicons name="close-circle" size={20} color={colors.light.mutedForeground} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.couponInputRow}>
+                  <TextInput
+                    style={styles.couponInput}
+                    value={couponInput}
+                    onChangeText={setCouponInput}
+                    placeholder="Enter code"
+                    placeholderTextColor={colors.light.mutedForeground}
+                    autoCapitalize="characters"
+                  />
+                  <Pressable
+                    style={({ pressed }) => [styles.couponApplyBtn, pressed && { opacity: 0.85 }]}
+                    onPress={applyCoupon}
+                  >
+                    <Label style={styles.couponApplyText}>Apply</Label>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.receiptCard}>
+              <Label style={styles.receiptLabel}>Price details</Label>
+              <View style={styles.receiptRule} />
+              <SummaryLine label="Subtotal" value={formatPrice(sub)} />
+              {couponDiscount > 0 && (
+                <SummaryLine label="Coupon discount" value={`-${formatPrice(couponDiscount)}`} accent />
+              )}
+              {pointsValue > 0 && (
+                <SummaryLine label="Loyalty points" value={`-${formatPrice(pointsValue)}`} accent />
+              )}
+              <SummaryLine
+                label="Shipping"
+                value={shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
+                accent={shippingFee === 0}
+              />
+              <SummaryLine label="Tax · 8%" value={formatPrice(tax)} muted />
+              <View style={styles.receiptRule} />
+              <View style={styles.totalRow}>
+                <Display size="lg">Total</Display>
+                <Price size="xl">{formatPrice(total)}</Price>
+              </View>
+            </View>
+
             {loyalty.state.points >= 100 && maxRedeemablePts >= 100 && (
-              <View style={styles.loyaltyRow}>
+              <View style={styles.loyaltyCard}>
+                <View style={styles.loyaltyIcon}>
+                  <Ionicons name="diamond-outline" size={18} color={colors.olive[700]} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Body size="sm" style={{ fontWeight: "600" }}>Use loyalty points</Body>
-                  <Body muted size="xs">Use {pointsToUse.toLocaleString()} pts · {loyalty.state.points.toLocaleString()} available</Body>
+                  <Body muted size="xs">
+                    {usePoints
+                      ? `Redeeming ${pointsToUse.toLocaleString()} pts`
+                      : `Up to ${maxRedeemablePts.toLocaleString()} pts available`}
+                  </Body>
                 </View>
                 <Switch
                   value={usePoints}
@@ -408,13 +591,51 @@ export default function CheckoutScreen() {
                 />
               </View>
             )}
-            <Body muted size="xs">Earn ≈ {earnEstimate.toLocaleString()} pts when delivered</Body>
-            <Button variant="brand" loading={loading} onPress={handlePlaceOrder} style={{ marginTop: spacing[4] }}>
-              Place order · {formatPrice(total)}
-            </Button>
+
+            <View style={styles.earnPill}>
+              <Ionicons name="sparkles-outline" size={14} color={colors.olive[700]} />
+              <Body muted size="xs">Earn ≈ {earnEstimate.toLocaleString()} pts when delivered</Body>
+            </View>
+
+            <View style={styles.trustRow}>
+              <TrustBadge icon="lock-closed-outline" label="Secure" />
+              <View style={styles.trustDot} />
+              <TrustBadge icon="return-down-back-outline" label="14-day returns" />
+              <View style={styles.trustDot} />
+              <TrustBadge icon="leaf-outline" label="Atelier-sourced" />
+            </View>
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+
+        {step === 4 && (
+          <View
+            style={[styles.reviewFooter, { paddingBottom: insets.bottom + 12 }]}
+            pointerEvents="box-none"
+          >
+            <View style={styles.reviewFooterTotal}>
+              <Label style={styles.reviewFooterLabel}>Total payable</Label>
+              <Price size="lg">{formatPrice(total)}</Price>
+            </View>
+            <Pressable
+              style={({ pressed }) => [styles.placeOrderBtn, pressed && { opacity: 0.9 }, loading && { opacity: 0.7 }]}
+              onPress={handlePlaceOrder}
+              disabled={loading}
+            >
+              <LinearGradient
+                colors={[colors.olive[500], colors.olive[700]]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <Label style={styles.placeOrderText}>
+                {loading ? "Placing order…" : "Place order"}
+              </Label>
+              {!loading && <Ionicons name="arrow-forward" size={18} color="#fff" />}
+            </Pressable>
+          </View>
+        )}
+      </View>
 
       {payhereSession && (
         <PayHereCheckout
@@ -431,7 +652,7 @@ export default function CheckoutScreen() {
             clear();
             toast("Payment complete", "success");
             if (placedOrderId) {
-              router.replace({ pathname: "/(main)/checkout/success" as never, params: { orderId: placedOrderId } });
+              router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(placedOrderId)}` as never);
             } else {
               router.replace("/(main)/account/orders");
             }
@@ -454,7 +675,48 @@ export default function CheckoutScreen() {
   );
 }
 
+function SummaryLine({
+  label,
+  value,
+  muted,
+  accent,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <View style={styles.summaryLine}>
+      <Body muted={muted} size="sm">{label}</Body>
+      <Body
+        size="sm"
+        style={accent ? { color: colors.olive[600], fontFamily: fontFamilies.sans.semibold } : undefined}
+      >
+        {value}
+      </Body>
+    </View>
+  );
+}
+
+function TrustBadge({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  return (
+    <View style={styles.trustBadge}>
+      <Ionicons name={icon} size={12} color={colors.light.mutedForeground} />
+      <Label style={styles.trustLabel}>{label}</Label>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  body: { flex: 1 },
+  authLoading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing[5],
+  },
   stepBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -561,9 +823,9 @@ const styles = StyleSheet.create({
   },
   radioActive: { borderColor: colors.light.primary },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.light.primary },
-  reviewRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], paddingVertical: 6 },
-  couponRow: { flexDirection: "row", gap: spacing[2], alignItems: "flex-start" },
-  loyaltyRow: {
+
+  recapRow: { gap: spacing[2] },
+  recapChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
@@ -573,5 +835,282 @@ const styles = StyleSheet.create({
     borderColor: colors.light.border,
     backgroundColor: colors.paper.DEFAULT,
   },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
+  recapIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.lg,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recapText: { flex: 1, gap: 2 },
+  recapLabel: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+
+  itemsSection: {
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.DEFAULT,
+    padding: spacing[3],
+    gap: spacing[3],
+  },
+  itemsSectionHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: spacing[1],
+  },
+  itemsSectionLabel: {
+    color: colors.olive[700],
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  itemsCount: {
+    color: colors.light.mutedForeground,
+    fontSize: 10,
+  },
+  reviewItem: {
+    flexDirection: "row",
+    gap: spacing[3],
+    alignItems: "flex-start",
+  },
+  reviewThumb: {
+    width: 72,
+    height: 88,
+    borderRadius: radii.lg,
+    overflow: "hidden",
+    backgroundColor: colors.light.muted,
+    position: "relative",
+  },
+  reviewImage: { width: "100%", height: "100%" },
+  reviewImagePlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qtyBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[700],
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  qtyBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+  },
+  reviewItemBody: { flex: 1, gap: 4, paddingTop: 2 },
+  reviewItemName: { fontFamily: fontFamilies.sans.medium, lineHeight: 20 },
+  reviewVariant: {
+    color: colors.light.mutedForeground,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  reviewItemPrice: { marginTop: 4 },
+
+  couponCard: {
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.DEFAULT,
+    padding: spacing[4],
+    gap: spacing[3],
+  },
+  couponCardHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  couponCardTitle: {
+    color: colors.olive[700],
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  couponInputRow: {
+    flexDirection: "row",
+    gap: spacing[2],
+    alignItems: "center",
+  },
+  couponInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+    paddingHorizontal: spacing[3],
+    fontSize: 14,
+    fontFamily: fontFamilies.mono.medium,
+    color: colors.light.foreground,
+    letterSpacing: 1,
+  },
+  couponApplyBtn: {
+    height: 44,
+    paddingHorizontal: spacing[4],
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
+    borderColor: colors.light.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  couponApplyText: {
+    color: colors.light.primary,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  couponApplied: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: spacing[3],
+    borderRadius: radii.lg,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
+  couponAppliedLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    flex: 1,
+  },
+
+  receiptCard: {
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.DEFAULT,
+    padding: spacing[4],
+    gap: spacing[2],
+  },
+  receiptLabel: {
+    color: colors.olive[700],
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  receiptRule: {
+    height: 1,
+    backgroundColor: colors.light.border,
+    marginVertical: spacing[1],
+  },
+  summaryLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 3,
+  },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: spacing[1],
+  },
+
+  loyaltyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    padding: spacing[4],
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+    backgroundColor: colors.olive[50],
+  },
+  loyaltyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.lg,
+    backgroundColor: colors.light.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  earnPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    paddingVertical: spacing[2],
+  },
+
+  trustRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    paddingTop: spacing[1],
+  },
+  trustBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  trustLabel: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+    letterSpacing: 0.3,
+  },
+  trustDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.light.border,
+  },
+
+  reviewFooter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    backgroundColor: colors.light.card,
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
+    ...shadows.editorial,
+  },
+  reviewFooterTotal: { flex: 1, gap: 2 },
+  reviewFooterLabel: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  placeOrderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    height: 52,
+    minWidth: 168,
+    paddingHorizontal: spacing[5],
+    borderRadius: radii.xl,
+    overflow: "hidden",
+  },
+  placeOrderText: {
+    color: "#fff",
+    fontSize: 12,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    fontFamily: fontFamilies.sans.semibold,
+  },
 });

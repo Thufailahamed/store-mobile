@@ -1,5 +1,6 @@
 import React from "react";
-import { Text, type TextProps, type TextStyle } from "react-native";
+import { type TextProps } from "react-native";
+import { AppText } from "./AppText";
 import { textStyles } from "@/lib/theme/text-styles";
 import { typography } from "@/lib/theme/tokens";
 
@@ -11,11 +12,11 @@ export function Display({
   style,
   ...props
 }: TextProps & { size?: Size; italic?: boolean }) {
-  return <Text style={[textStyles.display(size, italic), style]} {...props} />;
+  return <AppText style={[textStyles.display(size, italic), style]} {...props} />;
 }
 
 export function Label({ style, ...props }: TextProps) {
-  return <Text style={[textStyles.label(), style]} {...props} />;
+  return <AppText style={[textStyles.label(), style]} {...props} />;
 }
 
 export function Body({
@@ -25,13 +26,13 @@ export function Body({
   ...props
 }: TextProps & { size?: Size; muted?: boolean }) {
   const base = muted ? textStyles.muted(size) : textStyles.body(size);
-  return <Text style={[base, style]} {...props} />;
+  return <AppText style={[base, style]} {...props} />;
 }
 
 export function Price({ size = "lg", style, ...props }: TextProps & { size?: Size }) {
-  return <Text style={[textStyles.price(size), style]} {...props} />;
+  return <AppText style={[textStyles.price(size), style]} {...props} />;
 }
 
 export function MonoLabel({ style, ...props }: TextProps) {
-  return <Text style={[textStyles.label(), style]} {...props} />;
+  return <AppText style={[textStyles.label(), style]} {...props} />;
 }

@@ -65,7 +65,7 @@ export default function AdminContact() {
                     <Badge variant={item.status === "new" ? "secondary" : item.status === "resolved" ? "default" : "outline"}>{item.status}</Badge>
                   </View>
                   <Text style={styles.name}>{item.name} · {item.email}</Text>
-                  <Text style={styles.body} numberOfLines={2}>{item.body}</Text>
+                  <Text style={styles.body} numberOfLines={2}>{item.message}</Text>
                   <Text style={styles.meta}>{rel(item.created_at)} ago</Text>
                 </View>
               </View>

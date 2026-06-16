@@ -1,6 +1,20 @@
 const path = require("path");
 const fs = require("fs");
 
+const APP_FONTS = [
+  "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf",
+  "node_modules/@expo-google-fonts/manrope/400Regular/Manrope_400Regular.ttf",
+  "node_modules/@expo-google-fonts/manrope/500Medium/Manrope_500Medium.ttf",
+  "node_modules/@expo-google-fonts/manrope/600SemiBold/Manrope_600SemiBold.ttf",
+  "node_modules/@expo-google-fonts/manrope/700Bold/Manrope_700Bold.ttf",
+  "node_modules/@expo-google-fonts/fraunces/400Regular/Fraunces_400Regular.ttf",
+  "node_modules/@expo-google-fonts/fraunces/400Regular_Italic/Fraunces_400Regular_Italic.ttf",
+  "node_modules/@expo-google-fonts/fraunces/600SemiBold/Fraunces_600SemiBold.ttf",
+  "node_modules/@expo-google-fonts/jetbrains-mono/400Regular/JetBrainsMono_400Regular.ttf",
+  "node_modules/@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf",
+  "node_modules/@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf",
+];
+
 // Ensure Metro embeds EXPO_PUBLIC_* even when only .env.local exists.
 for (const file of [".env.local", ".env"]) {
   const envPath = path.join(__dirname, file);
@@ -28,8 +42,17 @@ module.exports = ({ config }) => {
   const storeApiUrl =
     process.env.EXPO_PUBLIC_STORE_API_URL || "https://store-three-xi-58.vercel.app";
 
+  const plugins = (config.plugins ?? []).map((plugin) => {
+    if (plugin === "expo-font") return ["expo-font", { fonts: APP_FONTS }];
+    if (Array.isArray(plugin) && plugin[0] === "expo-font") {
+      return ["expo-font", { ...plugin[1], fonts: APP_FONTS }];
+    }
+    return plugin;
+  });
+
   return {
     ...config,
+    plugins,
     extra: {
       ...config.extra,
       storeApiUrl,

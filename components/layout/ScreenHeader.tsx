@@ -1,6 +1,7 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Display } from "@/components/ui/Typography";
 import { colors, radii } from "@/lib/theme/tokens";
@@ -22,6 +23,7 @@ export function ScreenHeader({
   right,
 }: ScreenHeaderProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleBack = () => {
     if (onBack) {
@@ -36,7 +38,7 @@ export function ScreenHeader({
   };
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
       {showBack ? (
         <TouchableOpacity
           style={styles.iconBtn}
@@ -65,7 +67,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingBottom: 8,
+    minHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
     backgroundColor: colors.light.card,

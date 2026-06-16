@@ -8,7 +8,8 @@ import {
   Alert,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { getOrderById, transitionOrderStatus } from "@/lib/api";
+import { getSellerStore, getSellerOrderById, transitionOrderStatus } from "@/lib/api";
+import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -57,18 +58,24 @@ function formatDate(dateStr: string) {
 export default function SellerOrderDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !user) return;
     (async () => {
-      const res = await getOrderById(id);
+      const storeRes = await getSellerStore(user.id);
+      if (!storeRes.ok || !storeRes.data) {
+        setLoading(false);
+        return;
+      }
+      const res = await getSellerOrderById(id, storeRes.data.id);
       if (res.ok && res.data) setOrder(res.data);
       setLoading(false);
     })();
-  }, [id]);
+  }, [id, user]);
 
   const handleTransition = async (nextStatus: OrderStatus) => {
     if (!order) return;
@@ -216,14 +223,9 @@ export default function SellerOrderDetail() {
 
       {/* Summary */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Summary</Text>
+        <Text style={styles.sectionTitle}>Your items total</Text>
         <View style={styles.summaryCard}>
-          <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
-          {order.discount > 0 && <SummaryRow label="Discount" value={`-${formatPrice(order.discount)}`} />}
-          <SummaryRow label="Shipping" value={formatPrice(order.shipping_fee)} />
-          {order.tax > 0 && <SummaryRow label="Tax" value={formatPrice(order.tax)} />}
-          <View style={styles.summaryDivider} />
-          <SummaryRow label="Total" value={formatPrice(order.total)} bold />
+          <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} bold />
         </View>
       </View>
 

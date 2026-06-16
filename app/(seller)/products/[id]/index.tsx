@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -17,9 +17,23 @@ import {
   getSellerProductById,
   createSellerProduct,
   updateSellerProduct,
+  deleteSellerProductImage,
+  setSellerProductImagePrimary,
+  saveSellerVariants,
+  type SellerVariantInput,
 } from "@/lib/api";
+import { uploadProductImage } from "@/lib/upload";
+import {
+  ProductMediaSection,
+  type PendingProductImage,
+} from "@/components/seller/ProductMediaSection";
+import {
+  ProductVariantsSection,
+  createEmptyVariant,
+  type VariantDraft,
+} from "@/components/seller/ProductVariantsSection";
 import { colors, typography, radii } from "@/lib/theme/tokens";
-import type { Product } from "@/lib/types";
+import type { Product, ProductImage } from "@/lib/types";
 
 export default function SellerProductEdit() {
   const router = useRouter();
@@ -29,6 +43,7 @@ export default function SellerProductEdit() {
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [storeId, setStoreId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
@@ -41,6 +56,14 @@ export default function SellerProductEdit() {
   const [status, setStatus] = useState<string>("draft");
   const [tags, setTags] = useState("");
 
+  const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
+  const [pendingImages, setPendingImages] = useState<PendingProductImage[]>([]);
+  const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
+
+  const [variants, setVariants] = useState<VariantDraft[]>([createEmptyVariant()]);
+  const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
+  const [initialVariantIds, setInitialVariantIds] = useState<string[]>([]);
+
   useEffect(() => {
     (async () => {
       if (!user) return;
@@ -48,6 +71,7 @@ export default function SellerProductEdit() {
       if (storeRes.ok && storeRes.data) {
         setStoreId(storeRes.data.id);
       }
+
       if (!isNew && id) {
         const productRes = await getSellerProductById(id);
         if (productRes.ok && productRes.data) {
@@ -61,18 +85,127 @@ export default function SellerProductEdit() {
           setGender(p.gender ?? "unisex");
           setStatus(p.status);
           setTags(p.tags?.join(", ") ?? "");
+          setExistingImages(p.images ?? []);
+
+          const loadedVariants =
+            p.variants && p.variants.length > 0
+              ? p.variants.map((v) => ({
+                  key: v.id,
+                  id: v.id,
+                  sku: v.sku ?? "",
+                  size: v.size ?? "",
+                  color: v.color ?? "",
+                  price: v.price != null ? String(v.price) : "",
+                  stock: String(v.stock ?? 0),
+                }))
+              : [createEmptyVariant()];
+          setVariants(loadedVariants);
+          setInitialVariantIds(loadedVariants.map((v) => v.id).filter(Boolean) as string[]);
         }
       }
       setLoading(false);
     })();
   }, [user, isNew, id]);
 
+  const visibleExistingImages = useMemo(
+    () => existingImages.filter((img) => !removedImageIds.includes(img.id)),
+    [existingImages, removedImageIds],
+  );
+
+  const handleAddPending = (image: PendingProductImage) => {
+    setPendingImages((prev) => [...prev, image]);
+  };
+
+  const handleRemoveExisting = (imageId: string) => {
+    setRemovedImageIds((prev) => [...prev, imageId]);
+    setExistingImages((prev) =>
+      prev.map((img) =>
+        img.id === imageId ? { ...img, is_primary: false } : img,
+      ),
+    );
+  };
+
+  const handleRemovePending = (key: string) => {
+    setPendingImages((prev) => {
+      const next = prev.filter((img) => img.key !== key);
+      if (next.length > 0 && !next.some((img) => img.isPrimary)) {
+        next[0] = { ...next[0], isPrimary: true };
+      }
+      return next;
+    });
+  };
+
+  const handleSetPrimaryExisting = async (imageId: string) => {
+    setExistingImages((prev) =>
+      prev.map((img) => ({ ...img, is_primary: img.id === imageId })),
+    );
+    setPendingImages((prev) => prev.map((img) => ({ ...img, isPrimary: false })));
+    if (!isNew && id) {
+      await setSellerProductImagePrimary(id, imageId);
+    }
+  };
+
+  const handleSetPrimaryPending = (key: string) => {
+    setPendingImages((prev) =>
+      prev.map((img) => ({ ...img, isPrimary: img.key === key })),
+    );
+    setExistingImages((prev) =>
+      prev.map((img) => ({ ...img, is_primary: false })),
+    );
+  };
+
+  const buildVariantInputs = (): SellerVariantInput[] => {
+    const baseMrp = Number(mrp) || Number(price) || 0;
+    const basePrice = Number(price) || 0;
+    return variants.map((variant, index) => ({
+      id: variant.id,
+      sku: variant.sku.trim() || undefined,
+      size: variant.size.trim() || undefined,
+      color: variant.color.trim() || undefined,
+      price: variant.price.trim() ? Number(variant.price) : undefined,
+      mrp: baseMrp,
+      stock: Math.max(0, Number(variant.stock) || 0),
+      position: index,
+      is_active: true,
+    }));
+  };
+
+  const syncImages = async (productId: string) => {
+    for (const imageId of removedImageIds) {
+      const res = await deleteSellerProductImage(imageId);
+      if (!res.ok) throw new Error(res.error);
+    }
+
+    if (pendingImages.length === 0) return;
+
+    setUploadingImages(true);
+    const startPosition = visibleExistingImages.length;
+    for (let i = 0; i < pendingImages.length; i++) {
+      const img = pendingImages[i];
+      const res = await uploadProductImage(
+        storeId,
+        productId,
+        img.uri,
+        startPosition + i,
+        img.isPrimary,
+        { mimeType: img.mimeType, fileName: img.fileName },
+      );
+      if (res.error) throw new Error(res.error);
+    }
+    setUploadingImages(false);
+
+    const primaryExisting = visibleExistingImages.find((img) => img.is_primary);
+    if (primaryExisting) {
+      await setSellerProductImagePrimary(productId, primaryExisting.id);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Error", "Product name is required");
       return;
     }
-    if (!price || isNaN(Number(price))) {
+    if (!price || Number.isNaN(Number(price))) {
       Alert.alert("Error", "Valid price is required");
       return;
     }
@@ -80,38 +213,86 @@ export default function SellerProductEdit() {
       Alert.alert("Error", "Store not found");
       return;
     }
-
-    setSaving(true);
-    const productData: Partial<Product> = {
-      name: name.trim(),
-      sku: sku.trim() || undefined,
-      description: description.trim() || undefined,
-      mrp: Number(mrp) || Number(price),
-      price: Number(price),
-      discount_pct: Number(discountPct) || 0,
-      gender: gender as any,
-      status: status as any,
-      tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
-      store_id: storeId,
-      currency: "LKR",
-      is_active: status === "active",
-    };
-
-    let res;
-    if (isNew) {
-      res = await createSellerProduct(productData);
-    } else {
-      res = await updateSellerProduct(id!, productData);
+    if (variants.length === 0) {
+      Alert.alert("Error", "Add at least one variant with stock");
+      return;
     }
 
-    setSaving(false);
-    if (res.ok) {
+    const totalImages = visibleExistingImages.length + pendingImages.length;
+    if (totalImages === 0) {
+      Alert.alert("Error", "Add at least one product photo");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const productData: Partial<Product> = {
+        name: name.trim(),
+        sku: sku.trim() || undefined,
+        description: description.trim() || undefined,
+        mrp: Number(mrp) || Number(price),
+        price: Number(price),
+        discount_pct: Number(discountPct) || 0,
+        gender: gender as Product["gender"],
+        status: status as Product["status"],
+        tags: tags
+          ? tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
+          : [],
+        store_id: storeId,
+        currency: "LKR",
+        is_active: status === "active",
+      };
+
+      let productId = isNew ? undefined : id;
+      if (isNew) {
+        const res = await createSellerProduct(productData);
+        if (!res.ok) throw new Error(res.error);
+        productId = res.data.id;
+      } else {
+        const res = await updateSellerProduct(id!, productData);
+        if (!res.ok) throw new Error(res.error);
+      }
+
+      if (!productId) throw new Error("Product could not be saved");
+
+      await syncImages(productId);
+
+      const removedIds = [
+        ...removedVariantIds,
+        ...initialVariantIds.filter(
+          (variantId) => !variants.some((v) => v.id === variantId),
+        ),
+      ];
+      const variantRes = await saveSellerVariants(
+        productId,
+        storeId,
+        buildVariantInputs(),
+        removedIds,
+      );
+      if (!variantRes.ok) throw new Error(variantRes.error);
+
       Alert.alert("Success", isNew ? "Product created" : "Product updated", [
         { text: "OK", onPress: () => router.back() },
       ]);
-    } else {
-      Alert.alert("Error", res.error);
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Failed to save product");
+    } finally {
+      setSaving(false);
+      setUploadingImages(false);
     }
+  };
+
+  const trackRemovedVariant = (next: VariantDraft[]) => {
+    const removed = variants
+      .filter((v) => v.id && !next.some((n) => n.id === v.id))
+      .map((v) => v.id!);
+    if (removed.length > 0) {
+      setRemovedVariantIds((prev) => [...new Set([...prev, ...removed])]);
+    }
+    setVariants(next);
   };
 
   const genders = ["men", "women", "kids", "unisex"];
@@ -131,15 +312,25 @@ export default function SellerProductEdit() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>{isNew ? "New Product" : "Edit Product"}</Text>
+          <Text style={styles.subtitle}>Photos, variants, and listing details</Text>
         </View>
 
-        {/* Name */}
+        <ProductMediaSection
+          existing={visibleExistingImages}
+          pending={pendingImages}
+          uploading={uploadingImages}
+          onAddPending={handleAddPending}
+          onRemoveExisting={handleRemoveExisting}
+          onRemovePending={handleRemovePending}
+          onSetPrimaryExisting={handleSetPrimaryExisting}
+          onSetPrimaryPending={handleSetPrimaryPending}
+        />
+
         <View style={styles.field}>
           <Text style={styles.label}>Product Name *</Text>
           <TextInput
@@ -151,7 +342,6 @@ export default function SellerProductEdit() {
           />
         </View>
 
-        {/* SKU */}
         <View style={styles.field}>
           <Text style={styles.label}>SKU</Text>
           <TextInput
@@ -164,7 +354,6 @@ export default function SellerProductEdit() {
           />
         </View>
 
-        {/* Price Row */}
         <View style={styles.row}>
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.label}>MRP (Rs.)</Text>
@@ -191,7 +380,6 @@ export default function SellerProductEdit() {
           </View>
         </View>
 
-        {/* Discount */}
         <View style={styles.field}>
           <Text style={styles.label}>Discount %</Text>
           <TextInput
@@ -204,7 +392,12 @@ export default function SellerProductEdit() {
           />
         </View>
 
-        {/* Description */}
+        <ProductVariantsSection
+          variants={variants}
+          basePrice={price}
+          onChange={trackRemovedVariant}
+        />
+
         <View style={styles.field}>
           <Text style={styles.label}>Description</Text>
           <TextInput
@@ -218,7 +411,6 @@ export default function SellerProductEdit() {
           />
         </View>
 
-        {/* Gender */}
         <View style={styles.field}>
           <Text style={styles.label}>Gender</Text>
           <View style={styles.chipRow}>
@@ -236,7 +428,6 @@ export default function SellerProductEdit() {
           </View>
         </View>
 
-        {/* Status */}
         <View style={styles.field}>
           <Text style={styles.label}>Status</Text>
           <View style={styles.chipRow}>
@@ -254,7 +445,6 @@ export default function SellerProductEdit() {
           </View>
         </View>
 
-        {/* Tags */}
         <View style={styles.field}>
           <Text style={styles.label}>Tags (comma separated)</Text>
           <TextInput
@@ -266,14 +456,19 @@ export default function SellerProductEdit() {
           />
         </View>
 
-        {/* Save Button */}
         <TouchableOpacity
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
           onPress={handleSave}
           disabled={saving}
         >
           <Text style={styles.saveButtonText}>
-            {saving ? "Saving..." : isNew ? "Create Product" : "Save Changes"}
+            {saving
+              ? uploadingImages
+                ? "Uploading photos..."
+                : "Saving..."
+              : isNew
+                ? "Create Product"
+                : "Save Changes"}
           </Text>
         </TouchableOpacity>
 
@@ -300,6 +495,11 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.light.foreground,
+  },
+  subtitle: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginTop: 4,
   },
 
   field: { marginBottom: 16 },

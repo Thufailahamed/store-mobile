@@ -22,7 +22,6 @@ import type { Product } from "@/lib/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { getAddresses, getProducts } from "@/lib/api";
-import { CouponField } from "@/components/cart/CouponField";
 import { ProductCard } from "@/components/product/ProductCard";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -38,19 +37,16 @@ export default function CartScreen() {
     updateQuantity,
     subtotal,
     itemCount,
-    couponCode,
-    setCoupon,
     addItem,
   } = useCart();
   const wishlist = useWishlist();
-  const [couponDiscount, setCouponDiscount] = useState(0);
   const [savedForLater, setSavedForLater] = useState<
     Record<string, { product: Product | null }>
   >({});
 
-  const [addressText, setAddressText] = useState("Vit Vellore, Men's Hostel, D block 123");
+  const [addressText, setAddressText] = useState("Add delivery address");
+  const [hasSavedAddress, setHasSavedAddress] = useState(false);
   const [buyAgainProducts, setBuyAgainProducts] = useState<Product[]>([]);
-  const [promoExpanded, setPromoExpanded] = useState(false);
 
   const [productDetails, setProductDetails] = useState<Record<string, Product>>({});
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
@@ -225,6 +221,12 @@ export default function CartScreen() {
 
   // Intercept checkout to move unselected items temporarily out of the cart store
   const handlePlaceOrder = async () => {
+    if (!user) {
+      toast("Sign in to place your order", "info");
+      router.push("/(auth)/login");
+      return;
+    }
+
     const unselectedItems: Record<string, typeof items[string]> = {};
     const selectedItems: Record<string, typeof items[string]> = {};
 
@@ -248,7 +250,14 @@ export default function CartScreen() {
           removeItem(key);
         });
       }
-      router.push("/(main)/checkout");
+
+      const addressRes = await getAddresses(user.id);
+      const hasAddress = addressRes.ok && (addressRes.data?.length ?? 0) > 0;
+      router.push(
+        hasAddress
+          ? "/(main)/checkout"
+          : "/(main)/checkout?openAddress=1",
+      );
     } catch (err) {
       toast("Something went wrong. Please try again.", "error");
     }
@@ -270,8 +279,8 @@ export default function CartScreen() {
   const discountOnMrp = Math.max(0, totalMrp - sub);
   const platformFee = 23;
   const shippingFee = sub === 0 ? 0 : (sub >= FREE_SHIPPING_THRESHOLD ? 0 : 350);
-  const tax = Math.round((sub - couponDiscount) * TAX_RATE);
-  const totalAmount = Math.max(0, sub - couponDiscount) + platformFee;
+  const tax = Math.round(sub * TAX_RATE);
+  const totalAmount = sub + platformFee;
   const total = totalAmount;
   const count = useMemo(() => {
     return selectedCartItems.reduce((sum, [_, item]) => sum + item.quantity, 0);
@@ -304,15 +313,22 @@ export default function CartScreen() {
 
   // Load address
   useEffect(() => {
-    if (user?.id) {
-      getAddresses(user.id).then((res) => {
-        if (res.ok && res.data && res.data.length > 0) {
-          const defaultAddr = res.data.find((a) => a.is_default) || res.data[0];
-          const text = `${defaultAddr.line1}${defaultAddr.city ? `, ${defaultAddr.city}` : ""}`;
-          setAddressText(text);
-        }
-      });
+    if (!user?.id) {
+      setAddressText("Sign in to add delivery address");
+      setHasSavedAddress(false);
+      return;
     }
+    getAddresses(user.id).then((res) => {
+      if (res.ok && res.data && res.data.length > 0) {
+        const defaultAddr = res.data.find((a) => a.is_default) || res.data[0];
+        const text = `${defaultAddr.line1}${defaultAddr.city ? `, ${defaultAddr.city}` : ""}`;
+        setAddressText(text);
+        setHasSavedAddress(true);
+      } else {
+        setAddressText("Add delivery address");
+        setHasSavedAddress(false);
+      }
+    });
   }, [user?.id]);
 
   // Load "Buy It Again" items
@@ -327,9 +343,13 @@ export default function CartScreen() {
   const handleAddressPress = () => {
     if (!user) {
       router.push("/(auth)/login");
-    } else {
-      router.push("/(main)/account/addresses");
+      return;
     }
+    router.push(
+      hasSavedAddress
+        ? "/(main)/checkout"
+        : "/(main)/checkout?openAddress=1",
+    );
   };
 
   // Lazily fetch products for the saved-for-later rail.
@@ -462,12 +482,9 @@ export default function CartScreen() {
                 <TouchableOpacity onPress={handleToggleSelectAll} style={styles.selectionLeft} activeOpacity={0.7}>
                   <View style={[
                     styles.checkbox,
-                    {
-                      borderColor: allSelected ? theme.colors.primary : "#d1d5db",
-                      backgroundColor: allSelected ? theme.colors.primary : "transparent"
-                    }
+                    allSelected ? styles.checkboxSelected : styles.checkboxUnselected,
                   ]}>
-                    {allSelected && <Ionicons name="checkmark" size={12} color={theme.colors.primaryForeground} />}
+                    {allSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
                   </View>
                   <Body style={[styles.selectedCountText, { color: theme.colors.foreground }]}>
                     {selectedCount}/{cartItems.length} Items Selected
@@ -490,41 +507,20 @@ export default function CartScreen() {
           </View>
         }
         renderItem={({ item: [key, cartItem] }) => (
-          <View style={{ marginHorizontal: 20, marginBottom: 12 }}>
-            <CartItemCard
-              item={cartItem}
-              product={productDetails[cartItem.productId]}
-              selected={!!selectedKeys[key]}
-              onToggleSelect={() => handleToggleSelect(key)}
-              onIncrement={() => updateQuantity(key, cartItem.quantity + 1)}
-              onDecrement={() => updateQuantity(key, cartItem.quantity - 1)}
-              onRemove={() => handleRemove(key, cartItem.name)}
-              onUpdateQuantity={(quantity) => updateQuantity(key, quantity)}
-              onUpdateVariant={(newVariantId, newVariantLabel) => handleUpdateVariant(key, newVariantId, newVariantLabel)}
-            />
-          </View>
+          <CartItemCard
+            item={cartItem}
+            product={productDetails[cartItem.productId]}
+            selected={!!selectedKeys[key]}
+            onToggleSelect={() => handleToggleSelect(key)}
+            onIncrement={() => updateQuantity(key, cartItem.quantity + 1)}
+            onDecrement={() => updateQuantity(key, cartItem.quantity - 1)}
+            onRemove={() => handleRemove(key, cartItem.name)}
+            onUpdateQuantity={(quantity) => updateQuantity(key, quantity)}
+            onUpdateVariant={(newVariantId, newVariantLabel) => handleUpdateVariant(key, newVariantId, newVariantLabel)}
+          />
         )}
         ListFooterComponent={
           <View style={{ paddingBottom: 24 }}>
-
-            {/* Coupon / Promo Code */}
-            <View style={[styles.couponSectionCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, marginHorizontal: 16, marginBottom: 12 }]}>
-              <Body style={[styles.couponSectionTitle, { color: theme.colors.foreground }]}>Coupons &amp; Bank Offers</Body>
-              <CouponField
-                userId={user?.id}
-                subtotal={sub}
-                appliedCode={couponCode}
-                onApply={(code, discount) => {
-                  setCoupon(code);
-                  setCouponDiscount(discount);
-                }}
-                onClear={() => {
-                  setCoupon(null);
-                  setCouponDiscount(0);
-                }}
-              />
-            </View>
-
 
             {/* Price Details Card */}
             <View style={[styles.priceCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, marginHorizontal: 16, marginBottom: 12 }]}>
@@ -540,15 +536,6 @@ export default function CartScreen() {
                   <View style={styles.pdRow}>
                     <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Discount on MRP</Body>
                     <Body style={[styles.priceRowValue, { color: "#16a34a" }]}>- {formatPrice(discountOnMrp)}</Body>
-                  </View>
-
-                  <View style={styles.pdRow}>
-                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Coupon Discount</Body>
-                    {couponDiscount > 0 ? (
-                      <Body style={[styles.priceRowValue, { color: "#16a34a" }]}>- {formatPrice(couponDiscount)}</Body>
-                    ) : (
-                      <Body style={[styles.priceRowValue, { color: theme.colors.primary }]}>Apply Coupon</Body>
-                    )}
                   </View>
 
                   <View style={styles.pdRow}>
@@ -573,7 +560,7 @@ export default function CartScreen() {
                 <View style={styles.savingsPill}>
                   <Body style={styles.savingsPillEmoji}>🎉</Body>
                   <Body style={styles.savingsPillText}>
-                    You're saving <Body style={styles.savingsPillBold}>{formatPrice(discountOnMrp + couponDiscount)}</Body> on this order
+                    You're saving <Body style={styles.savingsPillBold}>{formatPrice(discountOnMrp)}</Body> on this order
                   </Body>
                 </View>
               )}
@@ -927,17 +914,6 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
-  couponSectionCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-  },
-  couponSectionTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-    fontSize: 15,
-  },
   priceDetailsContent: {
     padding: 16,
     gap: 12,
@@ -1155,12 +1131,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1.5,
     justifyContent: "center",
     alignItems: "center",
+  },
+  checkboxSelected: {
+    backgroundColor: "#E02020",
+    borderColor: "#E02020",
+  },
+  checkboxUnselected: {
+    backgroundColor: "transparent",
+    borderColor: "#C4C4C4",
   },
   selectedCountText: {
     fontFamily: fontFamilies.sans.medium,

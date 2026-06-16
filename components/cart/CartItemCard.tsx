@@ -1,20 +1,36 @@
-import React, { useState, useMemo } from "react";
-import { View, Pressable, StyleSheet, type ViewStyle, TouchableOpacity } from "react-native";
+import React, { useMemo } from "react";
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  type ViewStyle,
+  TouchableOpacity,
+  Text,
+} from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useTheme } from "@/lib/hooks/useTheme";
-import { Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { CartItem } from "@/lib/stores/cart-store";
 import type { Product } from "@/lib/types";
-import { QuantityPickerSheet } from "@/components/cart/QuantityPickerSheet";
 import { SizePickerSheet } from "@/components/cart/SizePickerSheet";
 import {
   buildAvailableSizeOptions,
   getVariantStock,
 } from "@/components/cart/variant-utils";
+
+const ACCENT = "#E02020";
+const INK = "#161823";
+const MUTED = "#8A8B91";
+const PILL_BG = "#F1F1F2";
+const DEAL_BG = "#FFF0F3";
+const DEAL_TEXT = "#E02020";
+
+const CHECKBOX_SIZE = 22;
+const MEDIA_GAP = 10;
+const IMAGE_SIZE = 88;
+const LEADING_OFFSET = CHECKBOX_SIZE + MEDIA_GAP;
 
 interface CartItemCardProps {
   item: CartItem;
@@ -37,29 +53,25 @@ export function CartItemCard({
   onIncrement,
   onDecrement,
   onRemove,
-  onUpdateQuantity,
   onUpdateVariant,
   style,
 }: CartItemCardProps) {
   const router = useRouter();
-  const theme = useTheme();
-
-  const [qtyModalVisible, setQtyModalVisible] = useState(false);
-  const [sizeModalVisible, setSizeModalVisible] = useState(false);
+  const [sizeModalVisible, setSizeModalVisible] = React.useState(false);
 
   const goToProduct = () => {
-    if (item.productId) {
-      router.push({
-        pathname: "/(main)/products/[slug]",
-        params: { slug: item.productId },
-      });
-    }
+    const slug = product?.slug ?? item.productId;
+    router.push(`/(main)/products/${slug}`);
   };
 
-  // Available sizes (in stock only)
+  const goToStore = () => {
+    const slug = product?.store?.slug;
+    if (slug) router.push(`/(main)/stores/${slug}`);
+  };
+
   const availableSizes = useMemo(
     () => buildAvailableSizeOptions(product?.variants, item.variantId),
-    [product?.variants, item.variantId]
+    [product?.variants, item.variantId],
   );
 
   const activeVariant = useMemo(() => {
@@ -69,7 +81,7 @@ export function CartItemCard({
 
   const availableStock = useMemo(
     () => getVariantStock(activeVariant, item.stock ?? 99),
-    [activeVariant, item.stock]
+    [activeVariant, item.stock],
   );
 
   const handleSelectSize = (variantId: string, variantLabel: string) => {
@@ -77,157 +89,196 @@ export function CartItemCard({
   };
 
   const mrp = activeVariant?.mrp || product?.mrp || item.price * 1.5;
-  const discount = Math.round(((mrp - item.price) / mrp) * 100);
+  const discount =
+    mrp > item.price ? Math.round(((mrp - item.price) / mrp) * 100) : 0;
 
-  // Extract size part from variantLabel (e.g. "Black 32" -> "32")
-  const sizeLabel = useMemo(() => {
-    if (!item.variantLabel) return "Free";
-    const parts = item.variantLabel.split(" ");
-    return parts[parts.length - 1] || "Free";
-  }, [item.variantLabel]);
+  const variantDisplay = useMemo(() => {
+    if (activeVariant?.color && activeVariant?.size) {
+      return `${activeVariant.color}, ${activeVariant.size}`;
+    }
+    if (item.variantLabel) return item.variantLabel;
+    if (activeVariant?.size) return activeVariant.size;
+    if (activeVariant?.color) return activeVariant.color;
+    return "1PC";
+  }, [activeVariant, item.variantLabel]);
 
   const imageUrl =
+    activeVariant?.image_url ||
     product?.images?.find((i) => i.is_primary)?.url ||
     product?.images?.[0]?.url ||
     item.image;
 
+  const storeName = product?.store?.name || "Luxe Boutique";
+  const isFlashSale = discount >= 30;
+  const lowStock = availableStock > 0 && availableStock <= 10;
+  const socialProof =
+    !lowStock && (product?.total_sales ?? 0) > 0
+      ? `${Math.max(1, (product?.total_sales ?? 0) % 99)} purchased yesterday`
+      : null;
+
+  const atMaxQty = item.quantity >= availableStock;
+
   return (
-    <View style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, style]}>
-      {/* Top Right Close Button */}
-      <TouchableOpacity onPress={onRemove} style={styles.closeBtn}>
-        <Ionicons name="close" size={18} color={theme.colors.mutedForeground} />
-      </TouchableOpacity>
-
-      {/* Left Checkbox */}
-      {onToggleSelect && (
-        <TouchableOpacity onPress={onToggleSelect} style={styles.checkboxContainer}>
-          <View style={[
-            styles.checkbox,
-            {
-              borderColor: selected ? theme.colors.primary : theme.colors.border,
-              backgroundColor: selected ? theme.colors.primary : "transparent"
-            }
-          ]}>
-            {selected && <Ionicons name="checkmark" size={12} color={theme.colors.primaryForeground} />}
-          </View>
-        </TouchableOpacity>
-      )}
-
-      {/* Image */}
-      <Pressable onPress={goToProduct} style={[styles.imageWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.image}
-            contentFit="cover"
-            transition={250}
-          />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Ionicons
-              name="image-outline"
-              size={20}
-              color={theme.colors.mutedForeground}
-            />
-          </View>
-        )}
-      </Pressable>
-
-      {/* Right Info Section */}
-      <View style={styles.info}>
-        {/* Brand */}
-        <Body style={[styles.brand, { color: theme.colors.foreground }]} numberOfLines={1}>
-          {product?.brand?.name || "Luxe Boutique"}
-        </Body>
-
-        {/* Product Description */}
-        <Body style={[styles.name, { color: theme.colors.mutedForeground }]} numberOfLines={1}>
-          {item.name}
-        </Body>
-
-        {/* Dropdown Selectors Row */}
-        <View style={styles.selectorRow}>
-          {/* Size Selector */}
-          {(availableSizes.length > 0 || item.variantLabel) && (
+    <View style={[styles.card, style]}>
+      <View style={styles.topRow}>
+        <View style={styles.mediaRow}>
+          {onToggleSelect ? (
             <TouchableOpacity
-              onPress={() => {
-                if (availableSizes.length > 0) {
-                  setSizeModalVisible(true);
-                }
-              }}
-              disabled={availableSizes.length === 0}
-              style={[
-                styles.selectorChip,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                }
-              ]}
+              onPress={onToggleSelect}
+              style={styles.checkboxHit}
+              activeOpacity={0.8}
+              hitSlop={6}
             >
-              <Body style={[styles.selectorText, { color: theme.colors.foreground }]}>
-                Size: {sizeLabel}
-              </Body>
-              <Ionicons name="chevron-down" size={12} color={theme.colors.mutedForeground} />
+              <View
+                style={[
+                  styles.checkbox,
+                  selected
+                    ? styles.checkboxSelected
+                    : styles.checkboxUnselected,
+                ]}
+              >
+                {selected ? (
+                  <Ionicons name="checkmark" size={14} color="#fff" />
+                ) : null}
+              </View>
             </TouchableOpacity>
+          ) : (
+            <View style={styles.checkboxSpacer} />
           )}
 
-          {/* Qty Selector */}
+          <Pressable onPress={goToProduct} style={styles.imageWrap}>
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.image}
+                contentFit="cover"
+                transition={200}
+              />
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <Ionicons name="image-outline" size={22} color={MUTED} />
+              </View>
+            )}
+          </Pressable>
+        </View>
+
+        <View style={styles.info}>
+          <Pressable onPress={goToProduct}>
+            <Text style={styles.title} numberOfLines={2}>
+              {item.name}
+            </Text>
+          </Pressable>
+
           <TouchableOpacity
-            onPress={() => setQtyModalVisible(true)}
-            style={[
-              styles.selectorChip,
-              {
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border,
-              }
-            ]}
+            style={styles.soldByRow}
+            activeOpacity={0.7}
+            onPress={goToStore}
           >
-            <Body style={[styles.selectorText, { color: theme.colors.foreground }]}>
-              Qty: {item.quantity}
-            </Body>
-            <Ionicons name="chevron-down" size={12} color={theme.colors.mutedForeground} />
+            <Text style={styles.soldByText} numberOfLines={1}>
+              Sold by {storeName}
+            </Text>
+            <Ionicons name="chevron-forward" size={12} color={MUTED} />
           </TouchableOpacity>
-        </View>
 
-        {/* Price & Discount Row */}
-        <View style={styles.priceRow}>
-          <Price size="md" style={{ color: theme.colors.foreground }}>
-            {formatPrice(item.price)}
-          </Price>
-          {mrp > item.price && (
-            <>
-              <Body style={[styles.originalPrice, { color: theme.colors.mutedForeground }]}>
-                {formatPrice(mrp)}
-              </Body>
-              <Body style={[styles.discountText, { color: theme.isDark ? theme.olive[400] : theme.olive[600] }]}>
-                {discount}% Off
-              </Body>
-            </>
-          )}
-          <Ionicons name="information-circle-outline" size={13} color={theme.colors.mutedForeground} style={{ marginLeft: 4 }} />
-        </View>
+          <TouchableOpacity
+            style={styles.variantPill}
+            activeOpacity={0.8}
+            onPress={() => {
+              if (availableSizes.length > 0) setSizeModalVisible(true);
+            }}
+            disabled={availableSizes.length === 0}
+          >
+            <Text style={styles.variantText} numberOfLines={1}>
+              {variantDisplay}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color={INK} />
+          </TouchableOpacity>
 
-        {/* Return policy */}
-        <View style={styles.returnContainer}>
-          <Ionicons name="arrow-undo-outline" size={11} color={theme.colors.mutedForeground} />
-          <Body style={[styles.returnText, { color: theme.colors.mutedForeground }]}>7 days return</Body>
+          <View style={styles.badgeRow}>
+            <View style={styles.badge}>
+              <Ionicons name="car-outline" size={11} color={INK} />
+              <Text style={styles.badgeText}>Free Returns</Text>
+            </View>
+            {isFlashSale ? (
+              <View style={[styles.badge, styles.dealBadge]}>
+                <Ionicons name="flash" size={11} color={DEAL_TEXT} />
+                <Text style={[styles.badgeText, styles.dealBadgeText]}>
+                  Flash Sale
+                </Text>
+              </View>
+            ) : discount > 0 ? (
+              <View style={[styles.badge, styles.dealBadge]}>
+                <Text style={[styles.badgeText, styles.dealBadgeText]}>
+                  New customer deal
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {lowStock ? (
+            <Text style={styles.urgencyRed}>Only {availableStock} left</Text>
+          ) : socialProof ? (
+            <Text style={styles.urgencyMuted}>{socialProof}</Text>
+          ) : null}
+
+          <View style={styles.priceRow}>
+            <Text style={styles.priceCurrent}>{formatPrice(item.price)}</Text>
+            {mrp > item.price ? (
+              <>
+                <Text style={styles.priceOriginal}>{formatPrice(mrp)}</Text>
+                <Text style={styles.priceDiscount}>(-{discount}%)</Text>
+              </>
+            ) : null}
+          </View>
         </View>
       </View>
 
-      {/* Picker Modals */}
-      <QuantityPickerSheet
-        visible={qtyModalVisible}
-        currentQuantity={item.quantity}
-        stock={availableStock}
-        onConfirm={onUpdateQuantity}
-        onClose={() => setQtyModalVisible(false)}
-      />
+      <View style={styles.bottomRow}>
+        <View style={styles.stepperSlot}>
+          <View style={styles.qtyStepper}>
+            <TouchableOpacity
+              style={styles.qtyBtn}
+              onPress={item.quantity <= 1 ? onRemove : onDecrement}
+              activeOpacity={0.7}
+              hitSlop={6}
+            >
+              <Ionicons
+                name={item.quantity <= 1 ? "trash-outline" : "remove"}
+                size={16}
+                color={INK}
+              />
+            </TouchableOpacity>
+            <Text style={styles.qtyValue}>{item.quantity}</Text>
+            <TouchableOpacity
+              style={styles.qtyBtn}
+              onPress={onIncrement}
+              activeOpacity={0.7}
+              disabled={atMaxQty}
+              hitSlop={6}
+            >
+              <Ionicons
+                name="add"
+                size={16}
+                color={atMaxQty ? MUTED : INK}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={onRemove}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.deleteText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
 
       <SizePickerSheet
         visible={sizeModalVisible}
         product={product}
         currentVariantId={item.variantId}
-        sellerName={product?.store?.name}
+        sellerName={storeName}
         onConfirm={handleSelectSize}
         onClose={() => setSizeModalVisible(false)}
       />
@@ -237,44 +288,58 @@ export function CartItemCard({
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: "row",
-    borderRadius: 16,
+    backgroundColor: "#fff",
+    paddingTop: 14,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 10,
     borderWidth: 1,
-    padding: 12,
-    marginBottom: 12,
-    position: "relative",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    borderColor: "#E5E7EB",
   },
-  closeBtn: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    zIndex: 10,
-    padding: 4,
+  topRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
   },
-  checkboxContainer: {
-    justifyContent: "center",
+  mediaRow: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingRight: 8,
+    gap: MEDIA_GAP,
+    width: LEADING_OFFSET + IMAGE_SIZE,
+  },
+  checkboxHit: {
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxSpacer: {
+    width: CHECKBOX_SIZE,
   },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    justifyContent: "center",
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: CHECKBOX_SIZE / 2,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxSelected: {
+    backgroundColor: ACCENT,
+    borderWidth: 0,
+  },
+  checkboxUnselected: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: "#C4C4C4",
   },
   imageWrap: {
-    width: 76,
-    height: 96,
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
     borderRadius: 8,
     overflow: "hidden",
-    borderWidth: 1,
+    backgroundColor: PILL_BG,
   },
   image: {
     width: "100%",
@@ -287,62 +352,160 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    paddingLeft: 12,
-    gap: 2,
+    minWidth: 0,
+    paddingTop: 2,
+    gap: 6,
   },
-  brand: {
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
+  title: {
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 14,
-    marginRight: 24, // Leave space for close btn
+    lineHeight: 19,
+    color: INK,
   },
-  name: {
+  soldByRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+  },
+  soldByText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
+    fontSize: 12,
     lineHeight: 16,
+    color: MUTED,
+    flexShrink: 1,
   },
-  selectorRow: {
+  variantPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-  },
-  selectorChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    alignSelf: "flex-start",
     gap: 4,
+    backgroundColor: PILL_BG,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    maxWidth: "100%",
   },
-  selectorText: {
+  variantText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: INK,
+    flexShrink: 1,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: PILL_BG,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  badgeText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    lineHeight: 14,
+    color: INK,
+  },
+  dealBadge: {
+    backgroundColor: DEAL_BG,
+  },
+  dealBadgeText: {
+    color: DEAL_TEXT,
+    fontFamily: fontFamilies.sans.medium,
+  },
+  urgencyRed: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
+    lineHeight: 16,
+    color: ACCENT,
+  },
+  urgencyMuted: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: MUTED,
   },
   priceRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginTop: 6,
+    alignItems: "baseline",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 2,
   },
-  originalPrice: {
-    textDecorationLine: "line-through",
-    fontSize: 12.5,
-    marginLeft: 6,
-  },
-  discountText: {
+  priceCurrent: {
     fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-    fontSize: 12.5,
-    marginLeft: 6,
+    fontSize: 16,
+    lineHeight: 20,
+    color: ACCENT,
   },
-  returnContainer: {
+  priceOriginal: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    lineHeight: 17,
+    color: MUTED,
+    textDecorationLine: "line-through",
+  },
+  priceDiscount: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    lineHeight: 17,
+    color: ACCENT,
+  },
+  bottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    gap: 4,
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingLeft: LEADING_OFFSET,
+    gap: 12,
   },
-  returnText: {
-    fontSize: 11,
+  stepperSlot: {
+    width: IMAGE_SIZE,
+  },
+  qtyStepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: PILL_BG,
+    borderRadius: 8,
+    height: 32,
+    paddingHorizontal: 2,
+  },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qtyValue: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    lineHeight: 18,
+    color: INK,
+    minWidth: 20,
+    textAlign: "center",
+  },
+  deleteBtn: {
+    backgroundColor: PILL_BG,
+    borderRadius: 8,
+    paddingHorizontal: 18,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  deleteText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    lineHeight: 18,
+    color: INK,
   },
 });

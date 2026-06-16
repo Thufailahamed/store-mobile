@@ -57,7 +57,11 @@ export const useWishlist = create<WishlistStore>()(
 
       count: () => Object.keys(get().items).length,
 
-      clear: () => set({ items: {}, hydrated: false }),
+      clear: () => {
+        const { items, hydrated } = get();
+        if (Object.keys(items).length === 0 && !hydrated) return;
+        set({ items: {}, hydrated: false });
+      },
 
       syncToServer: async (userId) => {
         try {

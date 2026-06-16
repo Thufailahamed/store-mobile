@@ -1041,17 +1041,68 @@ export async function markAllNotificationsRead(userId: string): Promise<Result<v
 /*  Seller — Store                                                     */
 /* ------------------------------------------------------------------ */
 
+function slugFromName(name: string): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return base || `store-${Date.now()}`;
+}
+
+function scopeOrderToStore(order: Order, storeId: string): Order | null {
+  const items = (order.items ?? []).filter((i) => i.store_id === storeId);
+  if (items.length === 0) return null;
+  const subtotal = items.reduce((s, i) => s + (i.total ?? 0), 0);
+  return {
+    ...order,
+    items,
+    subtotal,
+    total: subtotal,
+    discount: 0,
+    shipping_fee: 0,
+    tax: 0,
+  };
+}
+
 export async function getSellerStore(ownerId: string): Promise<Result<Store | null>> {
   try {
     const { data, error } = await supabase
       .from("stores")
       .select("*")
       .eq("owner_id", ownerId)
-      .single();
+      .maybeSingle();
     if (error) return fail(error.message);
-    return ok(data as Store | null);
+    return ok((data as Store | null) ?? null);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch store");
+  }
+}
+
+export async function createSellerStore(
+  ownerId: string,
+  input: { name: string; slug?: string; description?: string },
+): Promise<Result<Store>> {
+  try {
+    const name = input.name.trim();
+    if (!name) return fail("Store name is required");
+
+    const slug = (input.slug?.trim() || slugFromName(name)).toLowerCase();
+    const { data, error } = await supabase
+      .from("stores")
+      .insert({
+        owner_id: ownerId,
+        name,
+        slug,
+        description: input.description?.trim() || null,
+        status: "pending",
+      })
+      .select()
+      .single();
+    if (error) return fail(error.message);
+    return ok(data as Store);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to create store");
   }
 }
 
@@ -1100,9 +1151,21 @@ export async function getSellerProducts(storeId: string, opts: {
 
 export async function createSellerProduct(product: Partial<Product>): Promise<Result<Product>> {
   try {
+    const slug =
+      product.slug?.trim() ||
+      (await ensureUniqueProductSlug(product.name ?? "product"));
+    const row = {
+      product_type: "simple" as const,
+      tax_rate: 0,
+      currency: "LKR",
+      is_featured: false,
+      discount_pct: 0,
+      ...product,
+      slug,
+    };
     const { data, error } = await supabase
       .from("products")
-      .insert(product)
+      .insert(row)
       .select()
       .single();
     if (error) return fail(error.message);
@@ -1151,6 +1214,154 @@ export async function getSellerProductById(productId: string): Promise<Result<Pr
   }
 }
 
+function slugifyProductName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || `product-${Date.now()}`
+  );
+}
+
+async function ensureUniqueProductSlug(
+  name: string,
+  excludeId?: string,
+): Promise<string> {
+  const base = slugifyProductName(name);
+  let candidate = base;
+  let suffix = 1;
+  while (true) {
+    let query = supabase.from("products").select("id").eq("slug", candidate);
+    if (excludeId) query = query.neq("id", excludeId);
+    const { data } = await query.maybeSingle();
+    if (!data) return candidate;
+    suffix += 1;
+    candidate = `${base}-${suffix}`;
+  }
+}
+
+export async function deleteSellerProductImage(imageId: string): Promise<Result<void>> {
+  try {
+    const { error } = await supabase.from("product_images").delete().eq("id", imageId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to delete image");
+  }
+}
+
+export async function setSellerProductImagePrimary(
+  productId: string,
+  imageId: string,
+): Promise<Result<void>> {
+  try {
+    const { error: clearError } = await supabase
+      .from("product_images")
+      .update({ is_primary: false })
+      .eq("product_id", productId);
+    if (clearError) return fail(clearError.message);
+
+    const { error } = await supabase
+      .from("product_images")
+      .update({ is_primary: true })
+      .eq("id", imageId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to set primary image");
+  }
+}
+
+export interface SellerVariantInput {
+  id?: string;
+  sku?: string;
+  size?: string;
+  color?: string;
+  price?: number;
+  mrp?: number;
+  stock: number;
+  position: number;
+  is_active?: boolean;
+}
+
+export async function saveSellerVariants(
+  productId: string,
+  storeId: string,
+  variants: SellerVariantInput[],
+  removedIds: string[] = [],
+): Promise<Result<void>> {
+  try {
+    if (removedIds.length > 0) {
+      const { error } = await supabase
+        .from("product_variants")
+        .delete()
+        .in("id", removedIds);
+      if (error) return fail(error.message);
+    }
+
+    for (let i = 0; i < variants.length; i++) {
+      const variant = variants[i];
+      const payload = {
+        product_id: productId,
+        sku: variant.sku?.trim() || null,
+        size: variant.size?.trim() || null,
+        color: variant.color?.trim() || null,
+        price: variant.price ?? null,
+        mrp: variant.mrp ?? null,
+        position: variant.position ?? i,
+        is_active: variant.is_active ?? true,
+      };
+
+      let variantId = variant.id;
+      if (variantId) {
+        const { error } = await supabase
+          .from("product_variants")
+          .update(payload)
+          .eq("id", variantId);
+        if (error) return fail(error.message);
+      } else {
+        const { data, error } = await supabase
+          .from("product_variants")
+          .insert(payload)
+          .select("id")
+          .single();
+        if (error) return fail(error.message);
+        variantId = data.id;
+      }
+
+      const { data: existingInv, error: lookupError } = await supabase
+        .from("inventory")
+        .select("id")
+        .eq("variant_id", variantId)
+        .eq("store_id", storeId)
+        .maybeSingle();
+      if (lookupError) return fail(lookupError.message);
+
+      if (existingInv) {
+        const { error } = await supabase
+          .from("inventory")
+          .update({ quantity: variant.stock })
+          .eq("variant_id", variantId)
+          .eq("store_id", storeId);
+        if (error) return fail(error.message);
+      } else {
+        const { error } = await supabase.from("inventory").insert({
+          variant_id: variantId,
+          store_id: storeId,
+          quantity: variant.stock,
+        });
+        if (error) return fail(error.message);
+      }
+    }
+
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to save variants");
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Seller — Orders                                                    */
 /* ------------------------------------------------------------------ */
@@ -1164,33 +1375,40 @@ export async function getSellerOrders(storeId: string, opts: {
   const { status, search, limit = 50, offset = 0 } = opts;
   try {
     let query = supabase
-      .from("order_items")
-      .select("*, order:orders(*, items:order_items(*), address:addresses(*))")
-      .eq("store_id", storeId)
-      .order("created_at", { ascending: false });
+      .from("orders")
+      .select("*, items:order_items!inner(*), address:addresses(*)")
+      .eq("items.store_id", storeId)
+      .order("placed_at", { ascending: false });
     if (status && status !== "all") {
       query = query.eq("status", status);
+    }
+    if (search) {
+      query = query.ilike("order_number", `%${search}%`);
     }
     query = query.range(offset, offset + limit - 1);
     const { data, error } = await query;
     if (error) return fail(error.message);
 
-    // Deduplicate orders (same order can have multiple items from same store)
-    const orderMap = new Map<string, Order>();
-    for (const row of (data ?? []) as any[]) {
-      const order = row.order as Order;
-      if (order && !orderMap.has(order.id)) {
-        orderMap.set(order.id, order);
-      }
-    }
-    let orders = Array.from(orderMap.values());
-    if (search) {
-      const q = search.toLowerCase();
-      orders = orders.filter(o => o.order_number?.toLowerCase().includes(q));
-    }
+    const orders = ((data ?? []) as Order[])
+      .map((order) => scopeOrderToStore(order, storeId))
+      .filter((order): order is Order => order !== null);
     return ok(orders);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch seller orders");
+  }
+}
+
+export async function getSellerOrderById(
+  orderId: string,
+  storeId: string,
+): Promise<Result<Order | null>> {
+  try {
+    const res = await getOrderById(orderId);
+    if (!res.ok) return res;
+    if (!res.data) return ok(null);
+    return ok(scopeOrderToStore(res.data, storeId));
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch seller order");
   }
 }
 
@@ -1238,11 +1456,34 @@ export async function getSellerInventory(storeId: string): Promise<Result<{
 
 export async function updateVariantStock(variantId: string, stock: number): Promise<Result<void>> {
   try {
-    const { error } = await supabase
+    const { data: existing, error: lookupError } = await supabase
       .from("inventory")
-      .update({ quantity: stock })
-      .eq("variant_id", variantId);
-    if (error) return fail(error.message);
+      .select("id")
+      .eq("variant_id", variantId)
+      .maybeSingle();
+    if (lookupError) return fail(lookupError.message);
+
+    if (existing) {
+      const { error } = await supabase
+        .from("inventory")
+        .update({ quantity: stock })
+        .eq("variant_id", variantId);
+      if (error) return fail(error.message);
+    } else {
+      const { data: variantRow, error: variantLookupError } = await supabase
+        .from("product_variants")
+        .select("product_id, product:products(store_id)")
+        .eq("id", variantId)
+        .maybeSingle();
+      if (variantLookupError) return fail(variantLookupError.message);
+      const storeId = (variantRow as any)?.product?.store_id;
+      if (!storeId) return fail("Store not found for variant");
+
+      const { error } = await supabase
+        .from("inventory")
+        .insert({ variant_id: variantId, store_id: storeId, quantity: stock });
+      if (error) return fail(error.message);
+    }
     return ok(undefined);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to update stock");
@@ -1283,12 +1524,13 @@ export async function getSellerKPIs(storeId: string): Promise<Result<{
 
     const items = (ordersRes.data ?? []) as any[];
     const orderMap = new Map<string, any>();
+    let totalRevenue = 0;
     for (const row of items) {
+      totalRevenue += row.total ?? 0;
       const o = row.order;
       if (o && !orderMap.has(o.id)) orderMap.set(o.id, o);
     }
     const orders = Array.from(orderMap.values());
-    const totalRevenue = orders.reduce((s: number, o: any) => s + (o.total ?? 0), 0);
     const pendingOrders = orders.filter((o: any) => ["pending", "confirmed", "processing"].includes(o.status)).length;
 
     const totalProducts = (productsRes.count ?? 0);
@@ -1301,7 +1543,15 @@ export async function getSellerKPIs(storeId: string): Promise<Result<{
       }
     }
 
-    const recentOrders = orders.slice(0, 5).map((o: any) => o as Order);
+    const recentOrders = Array.from(orderMap.entries())
+      .map(([orderId, order]) => {
+        const sellerTotal = items
+          .filter((row) => row.order?.id === orderId)
+          .reduce((sum, row) => sum + (row.total ?? 0), 0);
+        return { ...order, total: sellerTotal } as Order;
+      })
+      .sort((a, b) => new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime())
+      .slice(0, 5);
 
     return ok({
       totalRevenue,
@@ -2253,10 +2503,40 @@ export interface ContactSubmission {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
   subject: string;
-  body: string;
+  message: string;
   status: "new" | "in_progress" | "resolved";
   created_at: string;
+}
+
+export interface SubmitContactInput {
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+  userId?: string;
+}
+
+export async function submitContactSubmission(
+  input: SubmitContactInput,
+): Promise<Result<{ submitted: true }>> {
+  try {
+    const { error } = await supabase.from("contact_submissions").insert({
+      name: input.name.trim(),
+      email: input.email.trim(),
+      phone: input.phone?.trim() || null,
+      subject: input.subject.trim(),
+      message: input.message.trim(),
+      user_id: input.userId ?? null,
+      status: "new",
+    });
+    if (error) return fail(error.message);
+    return ok({ submitted: true });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to submit message");
+  }
 }
 
 export async function getAdminContactSubmissions(): Promise<Result<ContactSubmission[]>> {

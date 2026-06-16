@@ -12,8 +12,9 @@ import { useCart, useWishlist } from "@/lib/stores";
  */
 export function useSyncStores() {
   const { user, session, loading } = useAuth();
-  const cart = useCart();
-  const wishlist = useWishlist();
+  const cartItems = useCart((s) => s.items);
+  const cartCouponCode = useCart((s) => s.couponCode);
+  const wishlistItems = useWishlist((s) => s.items);
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wishlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
@@ -23,11 +24,13 @@ export function useSyncStores() {
     if (loading) return;
     const userId = user?.id ?? null;
 
-    // Sign-out: clear local state and stop syncing.
+    // Sign-out: clear local state once when transitioning away from a signed-in user.
     if (!userId || !session) {
-      lastUserIdRef.current = null;
-      cart.clear();
-      wishlist.clear();
+      if (lastUserIdRef.current !== null) {
+        lastUserIdRef.current = null;
+        useCart.getState().clear();
+        useWishlist.getState().clear();
+      }
       return;
     }
 
@@ -36,14 +39,14 @@ export function useSyncStores() {
     lastUserIdRef.current = userId;
 
     // Fire-and-forget; errors are swallowed in the store.
-    cart.loadFromServer(userId);
-    wishlist.loadFromServer(userId);
-  }, [user?.id, session, loading, cart, wishlist]);
+    useCart.getState().loadFromServer(userId);
+    useWishlist.getState().loadFromServer(userId);
+  }, [user?.id, session, loading]);
 
   // Debounced push whenever cart items / coupon change.
-  const cartSnapshot = `${Object.keys(cart.items).length}|${cart.couponCode ?? ""}|${JSON.stringify(
+  const cartSnapshot = `${Object.keys(cartItems).length}|${cartCouponCode ?? ""}|${JSON.stringify(
     Object.fromEntries(
-      Object.entries(cart.items).map(([k, v]) => [k, v.quantity, v.price])
+      Object.entries(cartItems).map(([k, v]) => [k, v.quantity, v.price])
     )
   )}`;
 
@@ -51,7 +54,7 @@ export function useSyncStores() {
     if (!user?.id) return;
     if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
     cartTimerRef.current = setTimeout(() => {
-      cart.syncToServer(user.id);
+      useCart.getState().syncToServer(user.id);
     }, 800);
     return () => {
       if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
@@ -60,12 +63,12 @@ export function useSyncStores() {
   }, [cartSnapshot, user?.id]);
 
   // Debounced push whenever wishlist changes.
-  const wishlistSnapshot = `${Object.keys(wishlist.items).length}|${Object.keys(wishlist.items).join(",")}`;
+  const wishlistSnapshot = `${Object.keys(wishlistItems).length}|${Object.keys(wishlistItems).join(",")}`;
   useEffect(() => {
     if (!user?.id) return;
     if (wishlistTimerRef.current) clearTimeout(wishlistTimerRef.current);
     wishlistTimerRef.current = setTimeout(() => {
-      wishlist.syncToServer(user.id);
+      useWishlist.getState().syncToServer(user.id);
     }, 800);
     return () => {
       if (wishlistTimerRef.current) clearTimeout(wishlistTimerRef.current);

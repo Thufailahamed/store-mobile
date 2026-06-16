@@ -66,6 +66,16 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "storeApiUrl": "https://store-three-xi-58.vercel.app",
+      "supabaseUrl": "https://fipjjsbzrugqvobnwewm.supabase.co",
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "4b1502a3-9f16-40de-9081-c7bf39fea7df"
+      }
     }
   }
 }

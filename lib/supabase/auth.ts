@@ -21,20 +21,38 @@ export function useAuth(): AuthState {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string>("customer");
   const [loading, setLoading] = useState(true);
-  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleLoading, setRoleLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let cancelled = false;
+
+    const applySession = (session: Session | null) => {
+      if (cancelled) return;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchRole(session.user.id);
+        fetchRole(session.user);
       } else {
         setRole("customer");
         setRoleLoading(false);
       }
       setLoading(false);
-    });
+    };
+
+    const sessionTimeout = setTimeout(() => {
+      applySession(null);
+    }, 8000);
+
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        clearTimeout(sessionTimeout);
+        applySession(session);
+      })
+      .catch(() => {
+        clearTimeout(sessionTimeout);
+        applySession(null);
+      });
 
     const {
       data: { subscription },
@@ -42,7 +60,7 @@ export function useAuth(): AuthState {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchRole(session.user.id);
+        fetchRole(session.user);
       } else {
         setRole("customer");
         setRoleLoading(false);
@@ -50,20 +68,26 @@ export function useAuth(): AuthState {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(sessionTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const fetchRole = async (userId: string) => {
+  const fetchRole = async (authUser: User) => {
     setRoleLoading(true);
     try {
       const { data } = await supabase
         .from("users")
         .select("role")
-        .eq("id", userId)
+        .eq("id", authUser.id)
         .maybeSingle();
-      setRole(data?.role ?? "customer");
+      const metaRole = authUser.user_metadata?.role as string | undefined;
+      setRole(data?.role ?? metaRole ?? "customer");
     } catch {
-      setRole("customer");
+      const metaRole = authUser.user_metadata?.role as string | undefined;
+      setRole(metaRole ?? "customer");
     } finally {
       setRoleLoading(false);
     }

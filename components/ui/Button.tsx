@@ -1,7 +1,6 @@
 import React from "react";
 import {
   TouchableOpacity,
-  Text,
   ActivityIndicator,
   StyleSheet,
   type TouchableOpacityProps,
@@ -11,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { colors, radii, typography, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { AppText } from "./AppText";
 
 type ButtonVariant = "default" | "brand" | "destructive" | "outline" | "ghost" | "link";
 type ButtonSize = "sm" | "md" | "lg" | "icon";
@@ -78,12 +78,12 @@ const sizeStyles: Record<ButtonSize, { container: ViewStyle; text: TextStyle }> 
 
 function wrapTextChildren(children: React.ReactNode, textStyle: TextStyle[]) {
   if (typeof children === "string" || typeof children === "number") {
-    return <Text style={textStyle}>{String(children)}</Text>;
+    return <AppText style={textStyle}>{String(children)}</AppText>;
   }
 
   return React.Children.map(children, (child) => {
     if (typeof child === "string" || typeof child === "number") {
-      return <Text style={textStyle}>{String(child)}</Text>;
+      return <AppText style={textStyle}>{String(child)}</AppText>;
     }
     return child;
   });
@@ -140,7 +140,6 @@ const styles = StyleSheet.create({
   },
   text: {
     fontFamily: fontFamilies.sans.semibold,
-    fontWeight: typography.fontWeights.semibold,
     letterSpacing: typography.letterSpacing.wide,
     textTransform: "uppercase",
   },
