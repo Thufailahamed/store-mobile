@@ -40,7 +40,7 @@ import { pickImage, takePhoto } from "@/lib/upload";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 10;
-const GRID_PADDING = 16;
+const GRID_PADDING = 20;
 const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
 
 const INK = "#1b1c1c";
@@ -286,16 +286,19 @@ export default function SearchScreen() {
     // Color filter
     if (filters.colors && filters.colors.length > 0) {
       list = list.filter((p) => {
-        const have = new Set((p.variants ?? []).map((v) => v.color));
-        return filters.colors!.some((c) => have.has(c));
+        const pColors = (p.variants ?? []).map((v) => (v.color ?? "").toLowerCase());
+        return filters.colors!.some((c) => {
+          const cl = c.toLowerCase();
+          return pColors.some((pc) => pc.includes(cl) || cl.includes(pc));
+        });
       });
     }
 
     // Size filter
     if (filters.sizes && filters.sizes.length > 0) {
       list = list.filter((p) => {
-        const have = new Set((p.variants ?? []).map((v) => v.size));
-        return filters.sizes!.some((s) => have.has(s));
+        const pSizes = (p.variants ?? []).map((v) => (v.size ?? "").toUpperCase());
+        return filters.sizes!.some((s) => pSizes.includes(s.toUpperCase()));
       });
     }
 
@@ -834,7 +837,7 @@ function Price({ size = "base", style, children }: { size?: string; style?: any;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#fbf9f8",
+    backgroundColor: colors.paper.DEFAULT,
   },
   /* Body */
   body: {
@@ -883,18 +886,25 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing[2],
+    marginRight: -spacing[2],
+    marginBottom: -spacing[2],
   },
   suggestionChip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: radii.full,
+    marginRight: spacing[2],
+    marginBottom: spacing[2],
+    maxWidth: "100%",
     ...GLASS,
   },
   recentChip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: radii.full,
+    marginRight: spacing[2],
+    marginBottom: spacing[2],
+    maxWidth: "100%",
     ...GLASS,
   },
 

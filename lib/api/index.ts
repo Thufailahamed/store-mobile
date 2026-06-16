@@ -2849,13 +2849,90 @@ export type V2Suggestion = {
  * Backed by the `search_suggestions_v2` RPC so it stays fast at 250ms debounce.
  */
 export async function getSearchSuggestionsV2(term: string): Promise<Result<V2Suggestion[]>> {
-  if (term.trim().length < 1) return ok([]);
+  const cleanTerm = term.trim();
+  if (cleanTerm.length < 1) return ok([]);
   try {
     const { data, error } = await supabase.rpc("search_suggestions_v2", {
-      p_term: term.trim(),
+      p_term: cleanTerm,
     });
-    if (error) return fail(error.message);
-    return ok((data ?? []) as V2Suggestion[]);
+    if (!error) {
+      return ok((data ?? []) as V2Suggestion[]);
+    }
+    
+    // If the RPC function is missing/fails, query the tables directly.
+    if (typeof supabase.from === "function") {
+      const [productsRes, storesRes, brandsRes] = await Promise.all([
+        supabase
+          .from("products")
+          .select("name, slug")
+          .eq("status", "active")
+          .eq("is_active", true)
+          .ilike("name", `${cleanTerm}%`)
+          .order("total_sales", { ascending: false })
+          .limit(6),
+        supabase
+          .from("stores")
+          .select("name, slug, logo_url, total_followers, is_featured")
+          .eq("status", "approved")
+          .ilike("name", `%${cleanTerm}%`)
+          .order("total_followers", { ascending: false })
+          .limit(3),
+        supabase
+          .from("brands")
+          .select("name, slug, logo_url, total_followers")
+          .eq("status", "approved")
+          .ilike("name", `%${cleanTerm}%`)
+          .order("total_followers", { ascending: false })
+          .limit(2),
+      ]);
+
+      const suggestions: V2Suggestion[] = [];
+
+      if (productsRes.data && productsRes.data.length > 0) {
+        const kwCount = productsRes.data.length;
+        for (const p of productsRes.data) {
+          suggestions.push({
+            kind: "keyword",
+            label: p.name,
+            slug: p.slug,
+            count: kwCount,
+            trend_pct: 0,
+          });
+        }
+      }
+
+      if (storesRes.data) {
+        for (const s of storesRes.data) {
+          suggestions.push({
+            kind: "store",
+            label: s.name,
+            slug: s.slug,
+            logo_url: s.logo_url ?? undefined,
+            followers: s.total_followers ?? 0,
+            is_verified: !!s.is_featured,
+            trend_pct: 0,
+          });
+        }
+      }
+
+      if (brandsRes.data) {
+        for (const b of brandsRes.data) {
+          suggestions.push({
+            kind: "brand",
+            label: b.name,
+            slug: b.slug,
+            logo_url: b.logo_url ?? undefined,
+            followers: b.total_followers ?? 0,
+            is_verified: true,
+            trend_pct: 0,
+          });
+        }
+      }
+
+      return ok(suggestions);
+    }
+    
+    return fail(error.message);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch suggestions");
   }

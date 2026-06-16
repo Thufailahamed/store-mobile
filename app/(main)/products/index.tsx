@@ -78,14 +78,17 @@ export default function ProductsScreen() {
     }
     if (filters.colors?.length) {
       list = list.filter((p) => {
-        const have = new Set((p.variants ?? []).map((v) => v.color).filter(Boolean) as string[]);
-        return filters.colors!.some((c) => have.has(c));
+        const pColors = (p.variants ?? []).map((v) => (v.color ?? "").toLowerCase());
+        return filters.colors!.some((c) => {
+          const cl = c.toLowerCase();
+          return pColors.some((pc) => pc.includes(cl) || cl.includes(pc));
+        });
       });
     }
     if (filters.sizes?.length) {
       list = list.filter((p) => {
-        const have = new Set((p.variants ?? []).map((v) => v.size).filter(Boolean) as string[]);
-        return filters.sizes!.some((s) => have.has(s));
+        const pSizes = (p.variants ?? []).map((v) => (v.size ?? "").toUpperCase());
+        return filters.sizes!.some((s) => pSizes.includes(s.toUpperCase()));
       });
     }
     if (filters.minRating && filters.minRating > 0) {

@@ -33,12 +33,7 @@ interface SearchOrbitChromeProps {
 }
 
 export function SearchOrbitBackground() {
-  return (
-    <>
-      <Image source={{ uri: ORBIT_BG_URI }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-      <View style={styles.bgOverlay} />
-    </>
-  );
+  return null;
 }
 
 export function SearchOrbitChrome({
@@ -143,10 +138,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(255, 255, 255, 0.42)",
+    backgroundColor: "rgba(255, 255, 255, 0.88)",
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.55)",
+    borderColor: "rgba(27, 28, 28, 0.08)",
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
     marginBottom: spacing[6],
@@ -156,9 +151,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.55)",
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(27, 28, 28, 0.08)",
   },
   brand: {
     flex: 1,
@@ -189,10 +186,10 @@ const styles = StyleSheet.create({
   searchPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.42)",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.55)",
+    borderColor: "rgba(27, 28, 28, 0.08)",
     minHeight: 88,
     paddingHorizontal: spacing[6],
     marginBottom: spacing[8],
@@ -227,10 +224,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    backgroundColor: "rgba(255, 255, 255, 0.55)",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.6)",
+    borderColor: "rgba(27, 28, 28, 0.08)",
     paddingHorizontal: spacing[4],
     height: 52,
   },

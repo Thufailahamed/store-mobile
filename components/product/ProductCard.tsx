@@ -274,11 +274,11 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
+    width: "100%",
     marginBottom: 24,
   },
   imageWrap: {
-    width: CARD_WIDTH,
+    width: "100%",
     height: IMAGE_HEIGHT,
     borderRadius: radii.xl,
     backgroundColor: colors.light.card,
