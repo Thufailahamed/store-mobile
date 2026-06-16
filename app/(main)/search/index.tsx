@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   StyleSheet,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -13,9 +12,14 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { PaperBackground, HomeBackButton } from "@/components/layout";
 import { ProductCard } from "@/components/product/ProductCard";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
+import {
+  SearchOrbitBackground,
+  SearchOrbitChrome,
+} from "@/components/search/SearchOrbitChrome";
+import { SearchOrbitDiscovery } from "@/components/search/SearchOrbitDiscovery";
+import { SearchSuggestions } from "@/components/search/SearchSuggestions";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";
 import { Avatar } from "@/components/ui";
@@ -25,19 +29,28 @@ import { formatPrice, discountPct } from "@/lib/utils";
 import { SORTS, PRICE_BOUNDS } from "@/lib/api/facets";
 import type { ProductFilters } from "@/lib/api/facets";
 import * as api from "@/lib/api";
+import type { SearchSuggestion } from "@/lib/api";
 import type { Product, Brand, Store, Category } from "@/lib/types";
+import { useDebounce } from "@/lib/hooks/useDebounce";
+import { useTrackEvent, getForYouRail } from "@/lib/recommender";
+import { tokenizeQuery } from "@/lib/utils/search-utils";
+import { useAuth } from "@/lib/supabase/auth";
+import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 10;
 const GRID_PADDING = 16;
 const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
 
+const INK = "#1b1c1c";
+const MUTED = "#5e5e5d";
+const GLASS = {
+  backgroundColor: "rgba(255, 255, 255, 0.55)",
+  borderWidth: 1,
+  borderColor: "rgba(255, 255, 255, 0.65)",
+};
+
 const SUGGESTIONS = ["Linen blazer", "Leather loafers", "Silk scarf", "Resort '26", "Vintage denim", "Hoodie"];
-const TRENDING = [
-  { q: "Oversized hoodie", delta: 124 },
-  { q: "Linen co-ord", delta: 88 },
-  { q: "White sneakers", delta: 64 },
-];
 
 const TABS = [
   { key: "all" as const, label: "All", icon: "sparkles" as const },
@@ -64,6 +77,8 @@ export default function SearchScreen() {
   const [sort, setSort] = useState("newest");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<ProductFilters>({
     price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max],
@@ -74,6 +89,13 @@ export default function SearchScreen() {
     minRating: 0,
     minDiscount: 0,
   });
+
+  const debouncedDraft = useDebounce(draft, 300);
+
+  const { user } = useAuth();
+  const tracker = useTrackEvent();
+  const [recs, setRecs] = useState<Product[]>([]);
+  const [recsLoading, setRecsLoading] = useState(false);
 
   // Load recent searches from AsyncStorage
   useEffect(() => {
@@ -113,12 +135,89 @@ export default function SearchScreen() {
       api.getCategories(20),
     ]);
 
+    const productCount = productRes.ok ? productRes.data.length : 0;
     if (productRes.ok) setResults(productRes.data);
     if (brandRes.ok) setBrands(brandRes.data.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())));
     if (storeRes.ok) setStores(storeRes.data.filter((s) => s.name.toLowerCase().includes(q.toLowerCase())));
     if (catRes.ok) setCategories(catRes.data.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())));
     setLoading(false);
-  }, [recentSearches]);
+
+    // Track the search for personalization.
+    tracker.search(q, tokenizeQuery(q), productCount);
+  }, [recentSearches, tracker]);
+
+  const localSuggestions = useMemo<SearchSuggestion[]>(() => {
+    const term = draft.trim().toLowerCase();
+    if (!term) return [];
+
+    const items: SearchSuggestion[] = [];
+
+    for (const label of recentSearches) {
+      if (label.toLowerCase().includes(term)) {
+        items.push({ id: `recent-${label}`, label, type: "recent" });
+      }
+    }
+
+    for (const label of SUGGESTIONS) {
+      if (
+        label.toLowerCase().includes(term) &&
+        !items.some((item) => item.label.toLowerCase() === label.toLowerCase())
+      ) {
+        items.push({ id: `trending-${label}`, label, type: "trending" });
+      }
+    }
+
+    return items.slice(0, 4);
+  }, [draft, recentSearches]);
+
+  useEffect(() => {
+    const term = debouncedDraft.trim();
+    if (term.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSuggestionsLoading(true);
+
+    api.getSearchSuggestions(term).then((res) => {
+      if (cancelled) return;
+      setSuggestions(res.ok ? res.data : []);
+      setSuggestionsLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedDraft]);
+
+  const showSuggestions =
+    draft.trim().length >= 1 &&
+    (!searched || draft.trim().toLowerCase() !== query.trim().toLowerCase());
+
+  const handleSuggestionSelect = useCallback(
+    (suggestion: SearchSuggestion) => {
+      if (suggestion.type === "product" && suggestion.slug) {
+        router.push(`/(main)/products/${suggestion.slug}`);
+        return;
+      }
+      if (suggestion.type === "store" && suggestion.slug) {
+        router.push(`/(main)/stores/${suggestion.slug}`);
+        return;
+      }
+      if (suggestion.type === "brand" && suggestion.slug) {
+        router.push(`/(main)/products?brand=${suggestion.slug}`);
+        return;
+      }
+      if (suggestion.type === "category" && suggestion.slug) {
+        router.push(`/(main)/products?category=${suggestion.slug}`);
+        return;
+      }
+      doSearch(suggestion.label);
+    },
+    [doSearch, router],
+  );
 
   // Client-side filter + sort pipeline
   const filtered = useMemo(() => {
@@ -195,109 +294,75 @@ export default function SearchScreen() {
     (filters.minDiscount ? 1 : 0) +
     (filters.price && (filters.price[0] > PRICE_BOUNDS.min || filters.price[1] < PRICE_BOUNDS.max) ? 1 : 0);
 
+  const resetSearch = () => {
+    setDraft("");
+    setQuery("");
+    setResults([]);
+    setSuggestions([]);
+    setRecs([]);
+    setSearched(false);
+    setTab("all");
+  };
+
+  // Load personalized recs when there's a search with zero results, so the
+  // empty state has something useful to suggest.
+  useEffect(() => {
+    if (!searched || loading || totalCount > 0) {
+      setRecs([]);
+      return;
+    }
+    let cancelled = false;
+    setRecsLoading(true);
+    getForYouRail(user?.id ?? null, 8).then((res) => {
+      if (cancelled) return;
+      setRecs(res.ok ? res.data.products : []);
+      setRecsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searched, loading, totalCount, user?.id]);
+
   return (
-    <PaperBackground>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <View style={styles.headerBg} />
-        <View style={styles.headerContent}>
-          <View style={styles.headerTopRow}>
-            <HomeBackButton style={styles.headerBackBtn} />
-          </View>
-          <Label style={styles.kicker}>
-            <Ionicons name="sparkles" size={11} color={colors.olive[600]} />
-            {" "}Search the Edit
-          </Label>
+    <View style={styles.screen}>
+      <SearchOrbitBackground />
 
-          {searched ? (
-            <Display size="2xl" style={styles.headline}>
-              {totalCount > 0 ? (
-                <>
-                  <Body style={styles.headlineNum}>{totalCount}</Body>
-                  {" "}matches for{" "}
-                  <Display size="2xl" italic style={styles.headlineQuery}>"{query}"</Display>
-                </>
-              ) : (
-                <>
-                  Nothing for{" "}
-                  <Display size="2xl" italic style={styles.headlineQuery}>"{query}"</Display>
-                </>
-              )}
-            </Display>
-          ) : (
-            <Display size="2xl" style={styles.headline}>
-              What are you{" "}
-              <Display size="2xl" italic style={styles.headlineQuery}>looking for?</Display>
-            </Display>
-          )}
+      <SearchOrbitChrome
+        topInset={insets.top}
+        draft={draft}
+        onDraftChange={setDraft}
+        onSubmit={() => doSearch(draft)}
+        onClear={resetSearch}
+        searched={searched}
+        query={query}
+        totalCount={totalCount}
+      />
 
-          {/* Search bar */}
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={18} color={colors.light.mutedForeground} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search products, brands, stores…"
-              placeholderTextColor={`${colors.light.mutedForeground}99`}
-              value={draft}
-              onChangeText={setDraft}
-              onSubmitEditing={() => doSearch(draft)}
-              returnKeyType="search"
-              autoFocus
-            />
-            {draft.length > 0 && (
-              <TouchableOpacity
-                onPress={() => { setDraft(""); setResults([]); setSearched(false); setTab("all"); }}
-                style={styles.clearBtn}
-              >
-                <Ionicons name="close-circle" size={18} color={colors.light.mutedForeground} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={styles.submitBtn}
-              onPress={() => doSearch(draft)}
-            >
-              <Ionicons name="arrow-forward" size={16} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+      {showSuggestions ? (
+        <SearchSuggestions
+          draft={draft}
+          suggestions={suggestions}
+          localSuggestions={localSuggestions}
+          loading={suggestionsLoading}
+          onSelect={handleSuggestionSelect}
+          onSearchDraft={() => doSearch(draft)}
+        />
+      ) : null}
 
-      {/* Body */}
       <View style={styles.body}>
-        {!searched ? (
-          /* ─── Empty state ─── */
+        {!searched && !showSuggestions ? (
           <ScrollViewWrapper>
-            {/* Suggestions */}
-            <View style={styles.section}>
-              <Label style={styles.sectionKicker}>
-                <Ionicons name="sparkles" size={11} color={colors.olive[600]} /> Try one of these
-              </Label>
-              <View style={styles.chipRow}>
-                {SUGGESTIONS.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={styles.suggestionChip}
-                    onPress={() => doSearch(s)}
-                  >
-                    <Body size="sm">{s}</Body>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Recent searches */}
-            {recentSearches.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Label style={styles.sectionKicker}>
-                    <Ionicons name="time-outline" size={11} color={colors.olive[600]} /> Recent
-                  </Label>
+            <SearchOrbitDiscovery onSearch={doSearch} />
+            {recentSearches.length > 0 ? (
+              <View style={styles.recentSection}>
+                <View style={styles.recentHeader}>
+                  <Label style={styles.recentKicker}>RECENT SEARCHES</Label>
                   <TouchableOpacity onPress={clearRecent}>
-                    <Label style={styles.clearLabel}>Clear all</Label>
+                    <Label style={styles.clearLabel}>Clear</Label>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.chipRow}>
-                  {recentSearches.slice(0, 8).map((s) => (
+                  {recentSearches.slice(0, 6).map((s) => (
                     <TouchableOpacity
                       key={s}
                       style={styles.recentChip}
@@ -308,59 +373,67 @@ export default function SearchScreen() {
                   ))}
                 </View>
               </View>
-            )}
-
-            {/* Trending */}
-            <View style={styles.section}>
-              <Label style={styles.sectionKicker}>
-                <Ionicons name="trending-up" size={11} color={colors.olive[600]} /> Trending now
-              </Label>
-              <View style={styles.trendingCard}>
-                {TRENDING.map((t, i) => (
-                  <TouchableOpacity
-                    key={t.q}
-                    style={styles.trendingItem}
-                    onPress={() => doSearch(t.q)}
-                  >
-                    <Body style={styles.trendingNum}>0{i + 1}</Body>
-                    <Body size="sm" style={styles.trendingQuery}>{t.q}</Body>
-                    <Label style={styles.trendingDelta}>+{t.delta}%</Label>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+            ) : null}
           </ScrollViewWrapper>
-        ) : loading ? (
+        ) : showSuggestions ? null : loading ? (
           /* ─── Loading ─── */
           <View style={styles.center}>
-            <ActivityIndicator size="large" color={colors.olive[600]} />
-            <Body muted style={{ marginTop: spacing[3] }}>Searching the atelier…</Body>
+            <ActivityIndicator size="large" color={INK} />
+            <Body muted style={{ marginTop: spacing[3], color: MUTED }}>Searching the atelier…</Body>
           </View>
         ) : totalCount === 0 ? (
           /* ─── No results ─── */
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="search-outline" size={40} color={`${colors.olive[600]}60`} />
+          <ScrollViewWrapper>
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="search-outline" size={40} color={`${MUTED}99`} />
+              </View>
+              <Display size="xl">No matches in the Edit</Display>
+              <Body muted style={styles.emptyDesc}>
+                We couldn't find anything for "{query}". Try a different spelling, or browse the suggestions.
+              </Body>
+              <View style={styles.chipRow}>
+                {SUGGESTIONS.slice(0, 4).map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={styles.suggestionChip}
+                    onPress={() => doSearch(s)}
+                  >
+                    <Body size="sm">{s}</Body>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Button variant="outline" onPress={() => router.push("/(main)/products")}>
+                Browse the full edit →
+              </Button>
             </View>
-            <Display size="xl">No matches in the Edit</Display>
-            <Body muted style={styles.emptyDesc}>
-              We couldn't find anything for "{query}". Try a different spelling, or browse the suggestions.
-            </Body>
-            <View style={styles.chipRow}>
-              {SUGGESTIONS.slice(0, 4).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={styles.suggestionChip}
-                  onPress={() => doSearch(s)}
+
+            {recsLoading ? (
+              <View style={styles.recsLoading}>
+                <ActivityIndicator size="small" color={INK} />
+              </View>
+            ) : recs.length > 0 ? (
+              <View style={styles.recsSection}>
+                <View style={styles.sectionHeader}>
+                  <Body style={styles.sectionNum}>★</Body>
+                  <View style={styles.sectionTitles}>
+                    <Display size="lg">Based on what you love</Display>
+                    <Body size="xs" muted>Pieces you might enjoy instead</Body>
+                  </View>
+                  <View style={styles.sectionLine} />
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recsScroll}
                 >
-                  <Body size="sm">{s}</Body>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Button variant="outline" onPress={() => router.push("/(main)/products")}>
-              Browse the full edit →
-            </Button>
-          </View>
+                  {recs.map((p) => (
+                    <HomeProductCard key={p.id} product={p} showSaleBadge />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+          </ScrollViewWrapper>
         ) : (
           /* ─── Results ─── */
           <View style={styles.resultsContainer}>
@@ -661,14 +734,17 @@ export default function SearchScreen() {
         filters={filters}
         onApply={setFilters}
       />
-    </PaperBackground>
+    </View>
   );
 }
 
 /* ─── ScrollView wrapper for empty state ─── */
 function ScrollViewWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing[24] }}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: spacing[24] }}
+    >
       {children}
     </ScrollView>
   );
@@ -697,79 +773,30 @@ function Price({ size = "base", style, children }: { size?: string; style?: any;
 }
 
 const styles = StyleSheet.create({
-  /* Header */
-  header: {
-    position: "relative",
-    paddingBottom: spacing[4],
-    overflow: "hidden",
-  },
-  headerBg: {
-    position: "absolute",
-    inset: 0,
-    backgroundColor: `${colors.olive[600]}10`,
-  },
-  headerContent: {
-    paddingHorizontal: spacing[5],
-    gap: spacing[3],
-  },
-  headerTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  headerBackBtn: {
-    backgroundColor: colors.light.card,
-  },
-  kicker: {
-    color: colors.olive[600],
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  headline: {
-    letterSpacing: -0.02,
-  },
-  headlineNum: {
-    fontFamily: fontFamilies.display.semibold,
-    color: colors.olive[600],
-  },
-  headlineQuery: {
-    color: colors.olive[600],
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    backgroundColor: colors.light.card,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}20`,
-    height: 52,
-    paddingHorizontal: spacing[4],
-    marginTop: spacing[2],
-    ...shadows.soft,
-  },
-  searchInput: {
+  screen: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 15,
-    color: colors.light.foreground,
+    backgroundColor: "#fbf9f8",
   },
-  clearBtn: {
-    padding: 4,
-  },
-  submitBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.olive[700],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   /* Body */
   body: {
     flex: 1,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  recentSection: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
+    marginTop: spacing[2],
+    marginBottom: spacing[6],
+  },
+  recentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing[3],
+  },
+  recentKicker: {
+    color: MUTED,
+    letterSpacing: 1,
   },
 
   /* Sections */
@@ -784,13 +811,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing[1],
   },
   sectionKicker: {
-    color: colors.olive[600],
+    color: MUTED,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
   clearLabel: {
-    color: colors.olive[600],
+    color: INK,
   },
 
   /* Chips */
@@ -803,15 +830,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}18`,
+    ...GLASS,
   },
   recentChip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: radii.full,
-    backgroundColor: `${colors.olive[600]}08`,
+    ...GLASS,
   },
 
   /* Trending */
@@ -852,17 +877,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing[10],
+    paddingHorizontal: spacing[5],
   },
   emptyState: {
     alignItems: "center",
     gap: spacing[3],
     paddingVertical: spacing[8],
+    paddingHorizontal: spacing[5],
   },
   emptyIcon: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: `${colors.olive[600]}10`,
+    ...GLASS,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing[2],
@@ -876,6 +903,7 @@ const styles = StyleSheet.create({
   /* Results */
   resultsContainer: {
     gap: spacing[4],
+    paddingHorizontal: spacing[5],
   },
 
   /* Tabs */
@@ -890,10 +918,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radii.full,
-    backgroundColor: `${colors.light.primary}08`,
+    ...GLASS,
   },
   tabActive: {
-    backgroundColor: colors.light.foreground,
+    backgroundColor: INK,
+    borderColor: INK,
   },
   tabText: {
     color: colors.light.mutedForeground,
@@ -933,9 +962,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}15`,
+    ...GLASS,
   },
   filterBtn: {
     width: 32,
@@ -943,14 +970,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}15`,
+    ...GLASS,
     position: "relative",
   },
   filterBtnActive: {
-    backgroundColor: colors.olive[700],
-    borderColor: colors.olive[700],
+    backgroundColor: INK,
+    borderColor: INK,
   },
   filterBadge: {
     position: "absolute",
@@ -970,10 +995,8 @@ const styles = StyleSheet.create({
   },
   viewToggle: {
     flexDirection: "row",
-    backgroundColor: colors.light.card,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}15`,
+    ...GLASS,
     padding: 2,
   },
   viewBtn: {
@@ -984,7 +1007,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   viewBtnActive: {
-    backgroundColor: colors.light.foreground,
+    backgroundColor: INK,
   },
 
   /* Active chips */
@@ -1001,10 +1024,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radii.full,
-    backgroundColor: colors.light.foreground,
+    backgroundColor: INK,
   },
   clearChipLabel: {
-    color: colors.olive[600],
+    color: INK,
     textDecorationLine: "underline",
   },
 
@@ -1025,7 +1048,7 @@ const styles = StyleSheet.create({
   sectionLine: {
     flex: 1,
     height: 1,
-    backgroundColor: `${colors.olive[600]}25`,
+    backgroundColor: "rgba(27, 28, 28, 0.12)",
   },
 
   /* Grid */
@@ -1042,12 +1065,10 @@ const styles = StyleSheet.create({
   listItem: {
     flexDirection: "row",
     gap: spacing[3],
-    backgroundColor: colors.light.card,
     borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}10`,
     padding: spacing[3],
     marginBottom: spacing[2],
+    ...GLASS,
   },
   listImage: {
     width: 90,
@@ -1107,10 +1128,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[3],
     padding: spacing[3],
-    backgroundColor: colors.light.card,
     borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}10`,
+    ...GLASS,
   },
   brandInfo: {
     flex: 1,
@@ -1123,10 +1142,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[3],
     padding: spacing[3],
-    backgroundColor: colors.light.card,
     borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: `${colors.light.primary}10`,
+    ...GLASS,
   },
   storeInfo: {
     flex: 1,
@@ -1144,7 +1161,22 @@ const styles = StyleSheet.create({
     marginTop: spacing[4],
     paddingTop: spacing[4],
     borderTopWidth: 1,
-    borderTopColor: `${colors.light.primary}12`,
+    borderTopColor: "rgba(27, 28, 28, 0.08)",
     gap: spacing[3],
+  },
+
+  /* Recs (no-results fallback) */
+  recsSection: {
+    marginTop: spacing[6],
+    paddingHorizontal: spacing[5],
+    gap: spacing[3],
+  },
+  recsScroll: {
+    gap: spacing[3],
+    paddingRight: spacing[5],
+  },
+  recsLoading: {
+    paddingVertical: spacing[6],
+    alignItems: "center",
   },
 });

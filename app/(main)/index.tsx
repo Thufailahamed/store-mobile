@@ -10,8 +10,20 @@ import {
   FeaturedStoresRow,
   FeaturedBrandsRow,
   HomeJournalRail,
+  ForYouRail,
+  ForYouProductCard,
 } from "@/components/home/premium";
 import * as api from "@/lib/api";
+import {
+  getForYouRail,
+  refreshForYouRail,
+  getRecentlyViewedRail,
+  getFromWishlistRail,
+  humanReason,
+  type ForYouResult,
+} from "@/lib/recommender";
+import { useAuth } from "@/lib/supabase/auth";
+import { useWishlist } from "@/lib/stores";
 import type { Banner, BlogPost, Brand, Category, Product, Store } from "@/lib/types";
 
 /** Keep each rail unique — skip products already shown in earlier sections. */
@@ -31,6 +43,8 @@ function dedupeProductRails(...rails: Product[][]): Product[][] {
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const wishlistItems = useWishlist((s) => s.items);
   const [refreshing, setRefreshing] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -42,6 +56,14 @@ export default function HomeScreen() {
   const [stores, setStores] = useState<Store[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [journalPosts, setJournalPosts] = useState<BlogPost[]>([]);
+  const [forYou, setForYou] = useState<ForYouResult | null>(null);
+  const [forYouLoading, setForYouLoading] = useState(false);
+  const [forYouReasons, setForYouReasons] = useState<Record<string, string>>({});
+  const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
+  const [wishlistRail, setWishlistRail] = useState<{ wishlist: Product[]; companions: Product[] }>({
+    wishlist: [],
+    companions: [],
+  });
 
   const fetchData = useCallback(async () => {
     const [
@@ -100,18 +122,76 @@ export default function HomeScreen() {
     fetchData();
   }, [fetchData]);
 
-  const onRefresh = useCallback(async () => {
+  // Load personalized "For you" rail.
+  const fetchForYou = useCallback(async () => {
+    setForYouLoading(true);
+    const res = await getForYouRail(user?.id ?? null, 10);
+    if (res.ok) {
+      setForYou(res.data);
+      // Compute "why" reasons client-side.
+      const reasons: Record<string, string> = {};
+      res.data.products.forEach((p, i) => {
+        // Lightweight reason inference — full profile-based reasons come
+        // from the ranker but the engine returned products only.
+        const salePct = p.mrp > p.price ? Math.round(((p.mrp - p.price) / p.mrp) * 100) : 0;
+        if (salePct >= 30) reasons[p.id] = `${salePct}% off`;
+        else if ((p.rating ?? 0) >= 4.5) reasons[p.id] = "Top rated";
+        else if (i === 0) reasons[p.id] = "Best match";
+        else if ((p.total_sales ?? 0) > 200) reasons[p.id] = "Popular pick";
+      });
+      setForYouReasons(reasons);
+    }
+    setForYouLoading(false);
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchForYou();
+  }, [fetchForYou]);
+
+  // Recently viewed rail.
+  const fetchRecently = useCallback(async () => {
+    const res = await getRecentlyViewedRail(user?.id ?? null, 8);
+    if (res.ok) setRecentlyViewed(res.data);
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchRecently();
+  }, [fetchRecently]);
+
+  // Wishlist rail.
+  const fetchWishlist = useCallback(async () => {
+    const ids = Object.keys(wishlistItems);
+    if (ids.length === 0) {
+      setWishlistRail({ wishlist: [], companions: [] });
+      return;
+    }
+    const res = await getFromWishlistRail(user?.id ?? null, ids, 6);
+    if (res.ok) setWishlistRail(res.data);
+  }, [user?.id, wishlistItems]);
+
+  useEffect(() => {
+    fetchWishlist();
+  }, [fetchWishlist]);
+
+  const handleRefreshForYou = useCallback(async () => {
+    setForYouLoading(true);
+    const res = await refreshForYouRail(user?.id ?? null, 10);
+    if (res.ok) setForYou(res.data);
+    setForYouLoading(false);
+  }, [user?.id]);
+
+  const onRefreshAll = useCallback(async () => {
     setRefreshing(true);
-    await fetchData();
+    await Promise.all([fetchData(), fetchForYou(), fetchRecently(), fetchWishlist()]);
     setRefreshing(false);
-  }, [fetchData]);
+  }, [fetchData, fetchForYou, fetchRecently, fetchWishlist]);
 
   return (
     <PaperBackground>
       <AppHeader showSearch />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshAll} />}
         contentContainerStyle={[
           styles.scroll,
           { paddingBottom: insets.bottom + 24 },
@@ -119,6 +199,39 @@ export default function HomeScreen() {
       >
         <CategoryScroller categories={categories} />
         <PromoCarousel banners={banners} />
+
+        {forYou?.products?.length || forYouLoading ? (
+          <ForYouRail
+            title={forYou?.hasSignal ? "Recommended for you" : "Trending in the Edit"}
+            products={forYou?.products ?? []}
+            hasSignal={forYou?.hasSignal ?? false}
+            loading={forYouLoading}
+            onRefresh={handleRefreshForYou}
+            onSeeAll={() => router.push("/(main)/products?sort=newest")}
+          />
+        ) : null}
+
+        {wishlistRail.wishlist.length > 0 ? (
+          <>
+            <ProductRail
+              kicker="From your wishlist"
+              title="Saved for you"
+              products={wishlistRail.wishlist}
+              showSaleBadge
+              onSeeAll={() => router.push("/(main)/wishlist")}
+            />
+            {wishlistRail.companions.length > 0 ? (
+              <ProductRail
+                kicker="Pairs with your saves"
+                title="You might also like these"
+                products={wishlistRail.companions}
+                showSaleBadge
+                onSeeAll={() => router.push("/(main)/products?sort=newest")}
+              />
+            ) : null}
+          </>
+        ) : null}
+
         <ProductRail
           title="On sale"
           products={saleProducts}
@@ -131,6 +244,15 @@ export default function HomeScreen() {
           showSaleBadge={false}
           onSeeAll={() => router.push("/(main)/products?sort=newest")}
         />
+        {recentlyViewed.length > 0 ? (
+          <ProductRail
+            kicker="Pick up where you left off"
+            title="Recently viewed"
+            products={recentlyViewed}
+            showSaleBadge={false}
+            onSeeAll={() => router.push("/(main)/products?sort=newest")}
+          />
+        ) : null}
         <FeaturedStoresRow stores={stores} />
         <ProductRail
           title="Trending now"

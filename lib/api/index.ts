@@ -562,6 +562,146 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
   }
 }
 
+export type SearchSuggestion = {
+  id: string;
+  label: string;
+  type: "product" | "brand" | "category" | "store" | "recent" | "trending";
+  slug?: string;
+  count?: number;
+  logo_url?: string;
+  followers?: number;
+  is_verified?: boolean;
+};
+
+export async function getSearchSuggestions(query: string): Promise<Result<SearchSuggestion[]>> {
+  const term = query.trim();
+  if (term.length < 2) return ok([]);
+
+  try {
+    const [productsRes, brandsRes, categoriesRes, storesRes] = await Promise.all([
+      supabase
+        .from("products")
+        .select("id, name, slug")
+        .eq("status", "active")
+        .eq("is_active", true)
+        .ilike("name", `%${term}%`)
+        .limit(5),
+      supabase
+        .from("brands")
+        .select("id, name, slug, logo_url, total_followers, is_featured")
+        .eq("status", "approved")
+        .ilike("name", `%${term}%`)
+        .limit(3),
+      supabase
+        .from("categories")
+        .select("id, name, slug")
+        .eq("is_active", true)
+        .ilike("name", `%${term}%`)
+        .limit(3),
+      supabase
+        .from("stores")
+        .select("id, name, slug, logo_url, total_followers, is_featured")
+        .eq("status", "approved")
+        .ilike("name", `%${term}%`)
+        .limit(3),
+    ]);
+
+    const suggestions: SearchSuggestion[] = [];
+
+    const productData = productsRes.data ?? [];
+    const productCounts = await Promise.all(
+      productData.map(async (p) => {
+        try {
+          const { count } = await supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "active")
+            .eq("is_active", true)
+            .ilike("name", `%${p.name}%`);
+          return count ?? 1;
+        } catch {
+          return 1;
+        }
+      })
+    );
+
+    const categoryData = categoriesRes.data ?? [];
+    const categoryCounts = await Promise.all(
+      categoryData.map(async (c) => {
+        try {
+          const { count } = await supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "active")
+            .eq("is_active", true)
+            .eq("category_id", c.id);
+          return count ?? 0;
+        } catch {
+          return 0;
+        }
+      })
+    );
+
+    for (let i = 0; i < productData.length; i++) {
+      const p = productData[i];
+      suggestions.push({
+        id: `p-${p.id}`,
+        label: p.name,
+        type: "product",
+        slug: p.slug,
+        count: productCounts[i],
+      });
+    }
+
+    for (const b of brandsRes.data ?? []) {
+      suggestions.push({
+        id: `b-${b.id}`,
+        label: b.name,
+        type: "brand",
+        slug: b.slug,
+        logo_url: b.logo_url ?? undefined,
+        followers: b.total_followers ?? 0,
+        is_verified: true,
+      });
+    }
+
+    for (let i = 0; i < categoryData.length; i++) {
+      const c = categoryData[i];
+      suggestions.push({
+        id: `c-${c.id}`,
+        label: c.name,
+        type: "category",
+        slug: c.slug,
+        count: categoryCounts[i],
+      });
+    }
+
+    for (const s of storesRes.data ?? []) {
+      suggestions.push({
+        id: `s-${s.id}`,
+        label: s.name,
+        type: "store",
+        slug: s.slug,
+        logo_url: s.logo_url ?? undefined,
+        followers: s.total_followers ?? 0,
+        is_verified: true,
+      });
+    }
+
+    const seen = new Set<string>();
+    const unique = suggestions.filter((s) => {
+      const key = s.label.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return ok(unique.slice(0, 10));
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch suggestions");
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Orders                                                             */
 /* ------------------------------------------------------------------ */

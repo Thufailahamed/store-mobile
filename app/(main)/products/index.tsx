@@ -31,6 +31,8 @@ import {
 } from "@/lib/api/facets";
 import * as api from "@/lib/api";
 import type { Product } from "@/lib/types";
+import { getPersonalizedSearch } from "@/lib/recommender";
+import { useAuth } from "@/lib/supabase/auth";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 12;
@@ -48,6 +50,7 @@ export default function ProductsScreen() {
     sort?: string;
     search?: string;
   }>();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -117,17 +120,27 @@ export default function ProductsScreen() {
   const fetchProducts = useCallback(
     async (reset = false) => {
       const off = reset ? 0 : offset;
+      // "for_you" is a client-side re-rank — fetch a server sort first
+      // (newest gives stable, full set), then personalize the loaded page.
+      const serverSort: string = sort === "for_you" ? "newest" : sort;
       const res = await api.getProducts({
         limit: LIMIT,
         offset: off,
-        sort: sort as any,
+        sort: serverSort as any,
         categorySlug: params.category,
         brandSlug: params.brand,
         gender: filters.gender,
         search: params.search,
       });
       if (res.ok) {
-        setProducts((prev) => (reset ? res.data.products : [...prev, ...res.data.products]));
+        let page = res.data.products;
+        if (sort === "for_you") {
+          // Re-rank the loaded page using the recommender. When no user
+          // signal, the ranker still returns a popularity-sorted fallback.
+          const reranked = await getPersonalizedSearch(user?.id ?? null, page);
+          page = reranked.ok ? reranked.data : page;
+        }
+        setProducts((prev) => (reset ? page : [...prev, ...page]));
         setTotal(res.data.total);
       } else {
         if (reset) {
@@ -139,7 +152,7 @@ export default function ProductsScreen() {
       setLoadingMore(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sort, params.category, params.brand, params.search, filters.gender, offset]
+    [sort, params.category, params.brand, params.search, filters.gender, offset, user?.id]
   );
 
   useEffect(() => {

@@ -22,6 +22,14 @@ import { formatPrice } from "@/lib/utils";
 import { navigateHome } from "@/lib/navigation";
 import { recordRecentlyViewed } from "@/lib/account-local";
 import * as api from "@/lib/api";
+import {
+  useTrackView,
+  useTrackEvent,
+  getSimilarProducts,
+  getYouMayAlsoLike,
+  getPairsWellWithRail,
+  getRecentlyViewedRail,
+} from "@/lib/recommender";
 import type { Product, ProductVariant, Review } from "@/lib/types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -43,6 +51,13 @@ export default function ProductDetailScreen() {
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [youMayAlsoLike, setYouMayAlsoLike] = useState<Product[]>([]);
+  const [pairsWellWith, setPairsWellWith] = useState<Product[]>([]);
+  const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
+
+  // Track view + dwell time.
+  useTrackView(product);
+  const tracker = useTrackEvent();
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const AnimatedTouchableOpacity = useMemo(() => Animated.createAnimatedComponent(TouchableOpacity), []);
@@ -60,13 +75,21 @@ export default function ProductDetailScreen() {
       }
       const r = await api.getReviews(res.data.id);
       if (r.ok) setReviews(r.data);
-      if (res.data.category_id) {
-        const rel = await api.getRelatedProducts(res.data.id, res.data.category_id, 8);
-        if (rel.ok) setRelatedProducts(rel.data);
-      }
+      // Content-similar products (no profile required).
+      const similar = await getSimilarProducts(res.data, 8);
+      if (similar.ok) setRelatedProducts(similar.data);
+      // Personalized "you may also like" (falls back to similar for new users).
+      const ymal = await getYouMayAlsoLike(user?.id ?? null, res.data, 8);
+      if (ymal.ok) setYouMayAlsoLike(ymal.data);
+      // Co-occurrence / pairs well with.
+      const pairs = await getPairsWellWithRail(user?.id ?? null, res.data, 6);
+      if (pairs.ok) setPairsWellWith(pairs.data);
+      // Recently viewed (excluding current product).
+      const recent = await getRecentlyViewedRail(user?.id ?? null, 8, [res.data.id]);
+      if (recent.ok) setRecentlyViewed(recent.data);
     }
     setLoading(false);
-  }, [slug]);
+  }, [slug, user?.id]);
 
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
 
@@ -115,6 +138,7 @@ export default function ProductDetailScreen() {
       stock: currentStock,
       quantity,
     });
+    tracker.cartAdd(product);
     toast("Added to basket", "success");
   };
 
@@ -253,7 +277,10 @@ export default function ProductDetailScreen() {
             product={product}
             unitPrice={unitPrice}
             isWishlisted={isWishlisted}
-            onWishlistToggle={() => toggle(product.id)}
+            onWishlistToggle={() => {
+              tracker.wishlist(product, isWishlisted ? "remove" : "add");
+              toggle(product.id);
+            }}
             onShare={handleShare}
           />
         </View>
@@ -351,7 +378,7 @@ export default function ProductDetailScreen() {
           />
         </View>
 
-        {/* Related products */}
+        {/* Related products — content-similar (always shown) */}
         {relatedProducts.length > 0 && (
           <View style={styles.relatedSection}>
             <SectionHeader
@@ -362,6 +389,65 @@ export default function ProductDetailScreen() {
             />
             <FlatList
               data={relatedProducts}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.relatedList}
+              renderItem={({ item }) => <ProductCard product={item} horizontal />}
+            />
+          </View>
+        )}
+
+        {/* Personalized "You may also like" — only when we have a non-empty
+            recommendation set distinct from the content-similar rail. */}
+        {youMayAlsoLike.length > 0 && (
+          <View style={styles.relatedSection}>
+            <SectionHeader
+              kicker="Picked for you"
+              title="You May Also Like"
+              actionLabel="View all"
+              onAction={() => router.push("/(main)/products?sort=newest")}
+            />
+            <FlatList
+              data={youMayAlsoLike}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.relatedList}
+              renderItem={({ item }) => <ProductCard product={item} horizontal />}
+            />
+          </View>
+        )}
+
+        {/* Pairs well with — co-occurrence / complementary. */}
+        {pairsWellWith.length > 0 && (
+          <View style={styles.relatedSection}>
+            <SectionHeader
+              kicker="Complete the look"
+              title="Pairs Well With"
+              actionLabel="View all"
+              onAction={() => router.push("/(main)/products")}
+            />
+            <FlatList
+              data={pairsWellWith}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.relatedList}
+              renderItem={({ item }) => <ProductCard product={item} horizontal />}
+            />
+          </View>
+        )}
+
+        {/* Recently viewed. */}
+        {recentlyViewed.length > 0 && (
+          <View style={styles.relatedSection}>
+            <SectionHeader
+              kicker="Pick up where you left off"
+              title="Recently Viewed"
+            />
+            <FlatList
+              data={recentlyViewed}
               keyExtractor={(item) => item.id}
               horizontal
               showsHorizontalScrollIndicator={false}

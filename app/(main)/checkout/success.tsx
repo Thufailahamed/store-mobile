@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { getOrderById } from "@/lib/api";
 import { mapProducts } from "@/lib/api/product-mapper";
+import { trackEvent, snapshotProduct } from "@/lib/recommender";
 import { Button, Avatar, useToast } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -110,6 +111,18 @@ export default function OrderSuccessScreen() {
   const fetchRecommendations = async (orderItems: OrderItem[]) => {
     setLoadingRecs(true);
     try {
+      // Track purchase events for the recommender.
+      for (const item of orderItems) {
+        if (item.product) {
+          trackEvent(user?.id ?? null, {
+            type: "purchase",
+            t: Date.now(),
+            product: snapshotProduct(item.product),
+            quantity: item.quantity,
+          });
+        }
+      }
+
       const categoryIds = orderItems
         .map((item) => item.product?.category_id)
         .filter(Boolean) as string[];
@@ -128,7 +141,7 @@ export default function OrderSuccessScreen() {
 
       const { data } = await query;
       const orderProductIds = orderItems.map((item) => item.product_id);
-      
+
       let filtered = mapProducts((data as Product[]) || []).filter(
         (p) => !orderProductIds.includes(p.id)
       );

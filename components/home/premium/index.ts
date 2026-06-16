@@ -1,8 +1,10 @@
 export { HomeSectionHeader } from "./HomeSectionHeader";
 export { CategoryScroller } from "./CategoryScroller";
 export { PromoCarousel } from "./PromoCarousel";
-export { HomeProductCard } from "./HomeProductCard";
+export { HomeProductCard, HOME_PRODUCT_CARD_WIDTH } from "./HomeProductCard";
 export { ProductRail } from "./ProductRail";
 export { FeaturedStoresRow } from "./FeaturedStoresRow";
 export { FeaturedBrandsRow } from "./FeaturedBrandsRow";
 export { HomeJournalRail } from "./HomeJournalRail";
+export { ForYouRail } from "./ForYouRail";
+export { ForYouProductCard } from "./ForYouProductCard";

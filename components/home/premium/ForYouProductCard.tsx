@@ -1,5 +1,5 @@
 import React from "react";
-import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -9,26 +9,27 @@ import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
+import { HOME_PRODUCT_CARD_WIDTH } from "./HomeProductCard";
 
-export const HOME_PRODUCT_CARD_WIDTH = 148;
-
-interface HomeProductCardProps {
+interface ForYouProductCardProps {
   product: Product;
-  showSaleBadge?: boolean;
+  /** Short human-readable reason — shown as a chip on the card. */
+  reason?: string | null;
 }
 
-export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCardProps) {
+/**
+ * Variant of the home product card with a "why" chip. Used in the
+ * personalized rail to make the recommendation transparent.
+ */
+export function ForYouProductCard({ product, reason }: ForYouProductCardProps) {
   const router = useRouter();
   const { toggle, items: wishlistItems } = useWishlist();
   const tracker = useTrackEvent();
   const isWishlisted = !!wishlistItems[product.id];
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-  const onSale = product.mrp > product.price;
   const storeOrBrandName = product.store?.name || product.brand?.name;
-  const discount =
-    product.mrp > product.price
-      ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
-      : 0;
+  const onSale = product.mrp > product.price;
+  const discount = onSale ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
 
   return (
     <TouchableOpacity
@@ -59,9 +60,15 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
             color={isWishlisted ? colors.light.destructive : colors.light.foreground}
           />
         </TouchableOpacity>
-        {showSaleBadge && onSale ? (
+        {onSale ? (
           <View style={styles.saleBadge}>
             <Text style={styles.saleText}>Sale</Text>
+          </View>
+        ) : null}
+        {reason ? (
+          <View style={styles.reasonChip}>
+            <Ionicons name="sparkles" size={9} color={colors.olive[600]} />
+            <Text style={styles.reasonText} numberOfLines={1}>{reason}</Text>
           </View>
         ) : null}
       </View>
@@ -71,41 +78,20 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
       </Text>
 
       {storeOrBrandName ? (
-        <View style={styles.storeRow}>
-          {product.store?.logo_url || product.brand?.logo_url ? (
-            <Image 
-              source={{ uri: product.store?.logo_url || product.brand?.logo_url }} 
-              style={styles.storeLogo} 
-              contentFit="cover" 
-            />
-          ) : (
-            <View style={styles.storeLogoFallback}>
-              <Text style={styles.storeInitial}>{storeOrBrandName.charAt(0)}</Text>
-            </View>
-          )}
-          <Text style={styles.storeName} numberOfLines={1}>
-            {storeOrBrandName}
-          </Text>
-        </View>
+        <Text style={styles.storeName} numberOfLines={1}>
+          {storeOrBrandName}
+        </Text>
       ) : null}
 
       <View style={styles.priceRow}>
         {discount > 0 ? (
           <>
-            <Text style={styles.originalPrice}>
-              {formatPrice(product.mrp)}
-            </Text>
-            <Text style={styles.sellingPrice}>
-              {product.price ? formatPrice(product.price) : "Price on request"}
-            </Text>
-            <Text style={styles.discountPct}>
-              {discount}% OFF
-            </Text>
+            <Text style={styles.originalPrice}>{formatPrice(product.mrp)}</Text>
+            <Text style={styles.sellingPrice}>{formatPrice(product.price)}</Text>
+            <Text style={styles.discountPct}>{discount}% OFF</Text>
           </>
         ) : (
-          <Text style={styles.sellingPrice}>
-            {product.price ? formatPrice(product.price) : "Price on request"}
-          </Text>
+          <Text style={styles.sellingPrice}>{formatPrice(product.price)}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -158,35 +144,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.light.destructive,
   },
-  storeRow: {
+  reasonChip: {
+    position: "absolute",
+    top: 8,
+    left: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    marginBottom: 3,
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(250, 248, 241, 0.92)",
+    maxWidth: HOME_PRODUCT_CARD_WIDTH - 16,
   },
-  storeLogo: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-  },
-  storeLogoFallback: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: colors.olive[100],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  storeInitial: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8,
-    color: colors.light.primary,
-  },
-  storeName: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
+  reasonText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9,
+    color: colors.olive[600],
+    flexShrink: 1,
   },
   productName: {
     fontFamily: fontFamilies.sans.bold,
@@ -194,6 +169,12 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
     marginBottom: 2,
     lineHeight: 17,
+  },
+  storeName: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    marginBottom: 3,
   },
   priceRow: {
     flexDirection: "row",

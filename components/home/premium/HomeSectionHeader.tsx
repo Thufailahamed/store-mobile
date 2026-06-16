@@ -7,12 +7,17 @@ import { fontFamilies } from "@/lib/theme/fonts";
 interface HomeSectionHeaderProps {
   title: string;
   onPress?: () => void;
+  kicker?: string;
+  accent?: boolean;
 }
 
-export function HomeSectionHeader({ title, onPress }: HomeSectionHeaderProps) {
+export function HomeSectionHeader({ title, onPress, kicker, accent }: HomeSectionHeaderProps) {
   const content = (
     <>
-      <Text style={styles.title}>{title}</Text>
+      <View style={styles.left}>
+        {kicker ? <Text style={styles.kicker}>{kicker}</Text> : null}
+        <Text style={[styles.title, accent && styles.titleAccent]}>{title}</Text>
+      </View>
       {onPress ? (
         <Ionicons name="chevron-forward" size={18} color={colors.light.foreground} />
       ) : null}
@@ -38,10 +43,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[5],
     marginBottom: spacing[3],
   },
+  left: {
+    flex: 1,
+    gap: 2,
+  },
+  kicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
   title: {
     fontFamily: fontFamilies.sans.bold,
     fontSize: 18,
     color: colors.light.foreground,
     letterSpacing: -0.3,
+  },
+  titleAccent: {
+    color: colors.light.primary,
   },
 });

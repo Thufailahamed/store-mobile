@@ -10,15 +10,24 @@ interface ProductRailProps {
   products: Product[];
   onSeeAll?: () => void;
   showSaleBadge?: boolean;
+  kicker?: string;
+  accent?: boolean;
 }
 
-export function ProductRail({ title, products, onSeeAll, showSaleBadge }: ProductRailProps) {
+export function ProductRail({
+  title,
+  products,
+  onSeeAll,
+  showSaleBadge,
+  kicker,
+  accent,
+}: ProductRailProps) {
   const list = products.slice(0, 12);
   if (!list.length) return null;
 
   return (
     <View style={styles.wrap}>
-      <HomeSectionHeader title={title} onPress={onSeeAll} />
+      <HomeSectionHeader title={title} onPress={onSeeAll} kicker={kicker} accent={accent} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

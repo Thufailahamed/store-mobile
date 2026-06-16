@@ -28,6 +28,7 @@ import {
   type NotificationPrefs,
   DEFAULT_NOTIFICATION_PREFS,
 } from "@/lib/api";
+import { readEvents, clearEvents, clearNotInterested } from "@/lib/recommender";
 import {
   DEFAULT_LOCAL_PREFS,
   getLocalSettingsPrefs,
@@ -135,6 +136,10 @@ export default function SettingsScreen() {
   // Device-local
   const [local, setLocal] = useState<LocalSettingsPrefs>(DEFAULT_LOCAL_PREFS);
 
+  // Recommendation data (event log + not-interested list)
+  const [recEventCount, setRecEventCount] = useState<number>(0);
+  const [recLoading, setRecLoading] = useState<boolean>(true);
+
   // Dirty tracking
   const initialSnapshot = useRef<string>("");
   const [dirty, setDirty] = useState(false);
@@ -158,6 +163,17 @@ export default function SettingsScreen() {
       try {
         const localPrefs = await getLocalSettingsPrefs();
         if (!cancelled) setLocal(localPrefs);
+
+        // Load recommendation event count (guest + per-user).
+        try {
+          const events = await readEvents(user?.id ?? null);
+          if (!cancelled) {
+            setRecEventCount(events.length);
+            setRecLoading(false);
+          }
+        } catch {
+          if (!cancelled) setRecLoading(false);
+        }
 
         if (!user?.id) {
           if (!cancelled) {
@@ -427,6 +443,17 @@ export default function SettingsScreen() {
       );
     } catch (error: any) {
       toast(error?.message ?? "Could not clear cache", "error");
+    }
+  };
+
+  const clearRecData = async () => {
+    try {
+      await clearEvents(user?.id ?? null);
+      await clearNotInterested(user?.id ?? null);
+      setRecEventCount(0);
+      toast("Recommendation data cleared", "success");
+    } catch (error: any) {
+      toast(error?.message ?? "Could not clear recommendation data", "error");
     }
   };
 
@@ -771,6 +798,30 @@ export default function SettingsScreen() {
             onPress={exportData}
           />
           <CommsRow
+            icon="sparkles-outline"
+            label="Recommendation data"
+            value={
+              recLoading
+                ? "Loading…"
+                : recEventCount > 0
+                  ? `${recEventCount} event${recEventCount === 1 ? "" : "s"} tracked`
+                  : "No activity yet"
+            }
+            onPress={
+              recEventCount > 0
+                ? () =>
+                    Alert.alert(
+                      "Clear recommendation data?",
+                      "This resets the personalized picks on home, product, and search. Recently viewed stays.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Clear", style: "destructive", onPress: clearRecData },
+                      ]
+                    )
+                : undefined
+            }
+          />
+          <CommsRow
             icon="trash-outline"
             label="Clear local cache"
             value="Keeps payments & recent"
@@ -1034,9 +1085,26 @@ function CommsRow({
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string;
-  onPress: () => void;
+  onPress?: () => void;
   isLast?: boolean;
 }) {
+  if (!onPress) {
+    return (
+      <View style={[styles.commsRow, isLast && styles.commsRowLast]}>
+        <View style={styles.commsIcon}>
+          <Ionicons name={icon} size={16} color={colors.light.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Body size="sm" style={styles.commsLabel}>
+            {label}
+          </Body>
+          <Body muted size="xs" numberOfLines={1}>
+            {value || "—"}
+          </Body>
+        </View>
+      </View>
+    );
+  }
   return (
     <TouchableOpacity
       style={[styles.commsRow, isLast && styles.commsRowLast]}

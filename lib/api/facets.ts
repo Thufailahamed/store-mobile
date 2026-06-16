@@ -49,6 +49,7 @@ export interface SortOption {
 
 export const SORTS: SortOption[] = [
   { value: "newest", label: "Newest" },
+  { value: "for_you", label: "For you", hint: "personalized" },
   { value: "rating", label: "Top Rated" },
   { value: "sale", label: "Biggest Sale" },
   { value: "price_asc", label: "Price: Low" },

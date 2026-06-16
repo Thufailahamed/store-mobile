@@ -7,6 +7,7 @@ import { Label, Price, Body } from "@/components/ui/Typography";
 import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { useTrackEvent } from "@/lib/recommender";
 import type { Product } from "@/lib/types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -26,6 +27,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
   const router = useRouter();
   const { addItem } = useCart();
   const { toggle, items: wishlistItems } = useWishlist();
+  const tracker = useTrackEvent();
   const isWishlisted = !!wishlistItems[product.id];
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const storeOrBrandName = product.store?.name || product.brand?.name;
@@ -59,6 +61,12 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
       stock: variant?.stock ?? 99,
       quantity: 1,
     });
+    tracker.cartAdd(product);
+  };
+
+  const handleWishlist = () => {
+    tracker.wishlist(product, isWishlisted ? "remove" : "add");
+    toggle(product.id);
   };
 
   if (listMode) {
@@ -111,7 +119,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
             <View style={styles.listActions}>
               <TouchableOpacity
                 style={styles.listActionBtn}
-                onPress={() => toggle(product.id)}
+                onPress={handleWishlist}
                 activeOpacity={0.7}
               >
                 <Ionicons
@@ -149,7 +157,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           )}
           <TouchableOpacity
             style={styles.wishlistBtn}
-            onPress={() => toggle(product.id)}
+            onPress={handleWishlist}
             activeOpacity={0.7}
           >
             <Ionicons
@@ -210,7 +218,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         )}
         <TouchableOpacity
           style={styles.wishlistBtn}
-          onPress={() => toggle(product.id)}
+          onPress={handleWishlist}
           activeOpacity={0.7}
         >
           <Ionicons
