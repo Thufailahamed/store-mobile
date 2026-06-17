@@ -25,6 +25,7 @@ import type {
   Review, Order, OrderItem, Address, Banner, Notification, User,
   Testimonial, Tenet, HeroMeta, ApprovalStatus, HomepageSection,
 } from "@/lib/types";
+import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance } from "@/lib/seller-access";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
@@ -1116,6 +1117,69 @@ export async function updateSellerStore(id: string, patch: Partial<Store>): Prom
   }
 }
 
+export async function getSellerPayoutSettings(
+  storeId: string
+): Promise<Result<SellerPayoutCompliance | null>> {
+  try {
+    const { data, error } = await supabase
+      .from("payout_settings")
+      .select("bank_name, account_name, account_number_last4, tax_form_submitted")
+      .eq("store_id", storeId)
+      .maybeSingle();
+    if (error) return fail(error.message);
+    return ok((data as SellerPayoutCompliance | null) ?? null);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch payout settings");
+  }
+}
+
+export async function upsertSellerPayoutSettings(
+  storeId: string,
+  patch: SellerPayoutCompliance & { method?: string; schedule?: string }
+): Promise<Result<SellerPayoutCompliance>> {
+  try {
+    const row = {
+      store_id: storeId,
+      method: patch.method ?? "bank",
+      schedule: patch.schedule ?? "weekly",
+      bank_name: patch.bank_name ?? null,
+      account_name: patch.account_name ?? null,
+      account_number_last4: patch.account_number_last4 ?? null,
+      tax_form_submitted: patch.tax_form_submitted ?? false,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from("payout_settings")
+      .upsert(row, { onConflict: "store_id" })
+      .select("bank_name, account_name, account_number_last4, tax_form_submitted")
+      .single();
+    if (error) return fail(error.message);
+    return ok(data as SellerPayoutCompliance);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to save payout settings");
+  }
+}
+
+async function assertSellerCanOperate(storeId: string): Promise<Result<void>> {
+  const { data: store, error } = await supabase
+    .from("stores")
+    .select("id, status, legal_name, tax_id")
+    .eq("id", storeId)
+    .maybeSingle();
+  if (error) return fail(error.message);
+  if (!store) return fail("Store not found");
+
+  const payoutRes = await getSellerPayoutSettings(storeId);
+  const access = getSellerAccessState(
+    store as Store & Record<string, unknown>,
+    payoutRes.ok ? payoutRes.data : null
+  );
+  if (!access.canAccessSellerTools) {
+    return fail(access.lockReason ?? "Seller account is not active.");
+  }
+  return ok(undefined);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Seller — Products                                                  */
 /* ------------------------------------------------------------------ */
@@ -1146,6 +1210,10 @@ export async function getSellerProducts(storeId: string, opts: {
 
 export async function createSellerProduct(product: Partial<Product>): Promise<Result<Product>> {
   try {
+    if (!product.store_id) return fail("Store is required");
+    const guard = await assertSellerCanOperate(product.store_id);
+    if (!guard.ok) return guard;
+
     const slug =
       product.slug?.trim() ||
       (await ensureUniqueProductSlug(product.name ?? "product"));
@@ -1172,6 +1240,15 @@ export async function createSellerProduct(product: Partial<Product>): Promise<Re
 
 export async function updateSellerProduct(id: string, patch: Partial<Product>): Promise<Result<Product>> {
   try {
+    const { data: existing } = await supabase
+      .from("products")
+      .select("store_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!existing?.store_id) return fail("Product not found");
+    const guard = await assertSellerCanOperate(existing.store_id as string);
+    if (!guard.ok) return guard;
+
     const { data, error } = await supabase
       .from("products")
       .update(patch)
@@ -1187,6 +1264,15 @@ export async function updateSellerProduct(id: string, patch: Partial<Product>): 
 
 export async function deleteSellerProduct(id: string): Promise<Result<void>> {
   try {
+    const { data: existing } = await supabase
+      .from("products")
+      .select("store_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!existing?.store_id) return fail("Product not found");
+    const guard = await assertSellerCanOperate(existing.store_id as string);
+    if (!guard.ok) return guard;
+
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) return fail(error.message);
     return ok(undefined);
@@ -1239,6 +1325,17 @@ async function ensureUniqueProductSlug(
 
 export async function deleteSellerProductImage(imageId: string): Promise<Result<void>> {
   try {
+    const { data: image } = await supabase
+      .from("product_images")
+      .select("product_id, product:products(store_id)")
+      .eq("id", imageId)
+      .maybeSingle();
+    const storeId = (image as { product?: { store_id?: string } } | null)?.product?.store_id;
+    if (storeId) {
+      const guard = await assertSellerCanOperate(storeId);
+      if (!guard.ok) return guard;
+    }
+
     const { error } = await supabase.from("product_images").delete().eq("id", imageId);
     if (error) return fail(error.message);
     return ok(undefined);
@@ -1252,6 +1349,16 @@ export async function setSellerProductImagePrimary(
   imageId: string,
 ): Promise<Result<void>> {
   try {
+    const { data: product } = await supabase
+      .from("products")
+      .select("store_id")
+      .eq("id", productId)
+      .maybeSingle();
+    if (product?.store_id) {
+      const guard = await assertSellerCanOperate(product.store_id as string);
+      if (!guard.ok) return guard;
+    }
+
     const { error: clearError } = await supabase
       .from("product_images")
       .update({ is_primary: false })
@@ -1288,6 +1395,9 @@ export async function saveSellerVariants(
   removedIds: string[] = [],
 ): Promise<Result<void>> {
   try {
+    const guard = await assertSellerCanOperate(storeId);
+    if (!guard.ok) return guard;
+
     if (removedIds.length > 0) {
       const { error } = await supabase
         .from("product_variants")
@@ -1409,6 +1519,17 @@ export async function getSellerOrderById(
 
 export async function transitionOrderStatus(orderId: string, status: string): Promise<Result<void>> {
   try {
+    const { data: item } = await supabase
+      .from("order_items")
+      .select("store_id")
+      .eq("order_id", orderId)
+      .limit(1)
+      .maybeSingle();
+    if (item?.store_id) {
+      const guard = await assertSellerCanOperate(item.store_id as string);
+      if (!guard.ok) return guard;
+    }
+
     const { error } = await supabase
       .from("orders")
       .update({ status })
@@ -1973,14 +2094,92 @@ export async function getAdminStores(opts: {
 
 export async function approveStore(storeId: string, status: "approved" | "rejected"): Promise<Result<void>> {
   try {
+    if (status === "approved") {
+      const { data: store, error: storeErr } = await supabase
+        .from("stores")
+        .select("id, status, legal_name, tax_id")
+        .eq("id", storeId)
+        .maybeSingle();
+      if (storeErr) return fail(storeErr.message);
+      if (!store) return fail("Store not found");
+
+      const payoutRes = await getSellerPayoutSettings(storeId);
+      const gaps = getSellerComplianceGaps(
+        store as Store & Record<string, unknown>,
+        payoutRes.ok ? payoutRes.data : null
+      );
+      if (gaps.length > 0) {
+        return fail(`Cannot approve store — missing: ${gaps.join(", ")}`);
+      }
+    }
+
     const { error } = await supabase
       .from("stores")
-      .update({ status })
+      .update(
+        status === "approved"
+          ? {
+              status,
+              approved_at: new Date().toISOString(),
+              approved_by: (await supabase.auth.getUser()).data.user?.id ?? null,
+            }
+          : { status }
+      )
       .eq("id", storeId);
     if (error) return fail(error.message);
     return ok(undefined);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to update store status");
+  }
+}
+
+export async function updateStoreStatus(storeId: string, status: string): Promise<Result<void>> {
+  if (status === "approved") {
+    return approveStore(storeId, "approved");
+  }
+  try {
+    const { error } = await supabase.from("stores").update({ status }).eq("id", storeId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to update store status");
+  }
+}
+
+export interface AdminStoreDetail {
+  store: Store & {
+    owner?: { id: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
+    products?: { id: string; name: string; status: string; total_sales?: number }[];
+  };
+  payout: SellerPayoutCompliance | null;
+  complianceGaps: string[];
+}
+
+export async function getAdminStoreDetail(id: string): Promise<Result<AdminStoreDetail | null>> {
+  try {
+    const { data: store, error } = await supabase
+      .from("stores")
+      .select(
+        "*, owner:users!stores_owner_id_fkey(id, full_name, email, phone), products:products(id, name, status, total_sales)"
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (error) return fail(error.message);
+    if (!store) return ok(null);
+
+    const payoutRes = await getSellerPayoutSettings(id);
+    const payout = payoutRes.ok ? payoutRes.data : null;
+    const complianceGaps = getSellerComplianceGaps(
+      store as Store & Record<string, unknown>,
+      payout
+    );
+
+    return ok({
+      store: store as AdminStoreDetail["store"],
+      payout,
+      complianceGaps,
+    });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch store detail");
   }
 }
 
@@ -3233,6 +3432,9 @@ export async function decideSellerReturnGroup(
   action: SellerReturnAction,
   opts: { note?: string } = {},
 ): Promise<Result<void>> {
+  const guard = await assertSellerCanOperate(storeId);
+  if (!guard.ok) return guard;
+
   const detail = await getSellerReturnByGroupId(storeId, returnGroupId);
   if (!detail.ok) return detail;
   if (!detail.data) return fail("Return not found");
@@ -3345,6 +3547,10 @@ export async function getStoreCoupons(storeId: string): Promise<Result<AdminCoup
 
 export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
   try {
+    if (coupon.store_id) {
+      const guard = await assertSellerCanOperate(coupon.store_id as string);
+      if (!guard.ok) return guard;
+    }
     const { data, error } = await supabase.from("coupons").insert(coupon).select().single();
     if (error) return fail(error.message);
     return ok(data as AdminCoupon);

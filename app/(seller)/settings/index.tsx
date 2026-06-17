@@ -11,9 +11,10 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, updateSellerStore, createSellerStore } from "@/lib/api";
+import { getSellerStore, updateSellerStore, createSellerStore, getSellerPayoutSettings, upsertSellerPayoutSettings } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Store } from "@/lib/types";
+import { getSellerAccessState } from "@/lib/seller-access";
 
 export default function SellerSettings() {
   const router = useRouter();
@@ -26,6 +27,12 @@ export default function SellerSettings() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [slug, setSlug] = useState("");
+  const [legalName, setLegalName] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [accountLast4, setAccountLast4] = useState("");
+  const [taxFormSubmitted, setTaxFormSubmitted] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -35,6 +42,16 @@ export default function SellerSettings() {
       setName(res.data.name);
       setDescription(res.data.description ?? "");
       setSlug(res.data.slug);
+      const fullStore = res.data as Store & Record<string, unknown>;
+      setLegalName(typeof fullStore.legal_name === "string" ? fullStore.legal_name : "");
+      setTaxId(typeof fullStore.tax_id === "string" ? fullStore.tax_id : "");
+      const payoutRes = await getSellerPayoutSettings(res.data.id);
+      if (payoutRes.ok && payoutRes.data) {
+        setBankName(payoutRes.data.bank_name ?? "");
+        setAccountName(payoutRes.data.account_name ?? "");
+        setAccountLast4(payoutRes.data.account_number_last4 ?? "");
+        setTaxFormSubmitted(Boolean(payoutRes.data.tax_form_submitted));
+      }
     }
     setLoading(false);
   }, [user]);
@@ -52,12 +69,23 @@ export default function SellerSettings() {
       name: name.trim(),
       description: description.trim() || undefined,
       slug: slug.trim() || undefined,
+      ...({
+        legal_name: legalName.trim() || null,
+        tax_id: taxId.trim() || null,
+      } as Record<string, unknown>),
+    } as Partial<Store>);
+    const payoutRes = await upsertSellerPayoutSettings(store.id, {
+      bank_name: bankName.trim() || null,
+      account_name: accountName.trim() || null,
+      account_number_last4: accountLast4.trim() || null,
+      tax_form_submitted: taxFormSubmitted,
     });
     setSaving(false);
-    if (res.ok) {
-      Alert.alert("Success", "Store updated");
+    if (res.ok && payoutRes.ok) {
+      Alert.alert("Success", "Store and compliance details updated");
+      fetchData();
     } else {
-      Alert.alert("Error", res.error);
+      Alert.alert("Error", !res.ok ? res.error : payoutRes.error);
     }
   };
 
@@ -133,6 +161,19 @@ export default function SellerSettings() {
         </View>
       )}
 
+      {store && (() => {
+        const access = getSellerAccessState(store as Store & Record<string, unknown>);
+        if (access.canAccessSellerTools) return null;
+        return (
+          <View style={styles.warningCard}>
+            <Text style={styles.warningTitle}>Action required</Text>
+            <Text style={styles.warningBody}>
+              {access.lockReason ?? "Complete required compliance details to unlock seller tools."}
+            </Text>
+          </View>
+        );
+      })()}
+
       {/* Edit Form */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Store Profile</Text>
@@ -170,6 +211,78 @@ export default function SellerSettings() {
             multiline
             numberOfLines={4}
             placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Legal Business Name</Text>
+          <TextInput
+            style={styles.input}
+            value={legalName}
+            onChangeText={setLegalName}
+            placeholder="Registered company or proprietor name"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Tax ID</Text>
+          <TextInput
+            style={styles.input}
+            value={taxId}
+            onChangeText={setTaxId}
+            placeholder="TIN / VAT number"
+            placeholderTextColor={colors.light.mutedForeground}
+            autoCapitalize="characters"
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>Banking & compliance</Text>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Bank Name</Text>
+          <TextInput
+            style={styles.input}
+            value={bankName}
+            onChangeText={setBankName}
+            placeholder="Your bank"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Account Holder</Text>
+          <TextInput
+            style={styles.input}
+            value={accountName}
+            onChangeText={setAccountName}
+            placeholder="Name on account"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Account Last 4 Digits</Text>
+          <TextInput
+            style={styles.input}
+            value={accountLast4}
+            onChangeText={setAccountLast4}
+            placeholder="1234"
+            keyboardType="number-pad"
+            maxLength={4}
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.label}>Tax declaration submitted</Text>
+            <Text style={styles.switchHint}>Required before payouts and seller tools unlock.</Text>
+          </View>
+          <Switch
+            value={taxFormSubmitted}
+            onValueChange={setTaxFormSubmitted}
+            trackColor={{ false: colors.light.border, true: colors.light.primary }}
           />
         </View>
 
@@ -232,6 +345,37 @@ const styles = StyleSheet.create({
     borderColor: colors.light.border,
     padding: 16,
     marginBottom: 20,
+  },
+  warningCard: {
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    borderRadius: radii.lg,
+    padding: 14,
+    marginBottom: 18,
+  },
+  warningTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: "#9a3412",
+    marginBottom: 4,
+  },
+  warningBody: {
+    fontSize: typography.fontSizes.xs,
+    color: "#9a3412",
+    lineHeight: 18,
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 14,
+  },
+  switchHint: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginTop: 4,
+    lineHeight: 16,
   },
   statusRow: {
     flexDirection: "row",

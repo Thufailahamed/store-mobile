@@ -14,7 +14,8 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore } from "@/lib/api";
+import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings } from "@/lib/api";
+import { getSellerAccessState } from "@/lib/seller-access";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -68,6 +69,7 @@ export default function SellerDashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const [store, setStore] = useState<Store | null>(null);
+  const [accessBlocked, setAccessBlocked] = useState<string | null>(null);
   const [kpis, setKpis] = useState<KPIData | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -82,6 +84,19 @@ export default function SellerDashboard() {
     if (!user) return;
     const storeRes = await getSellerStore(user.id);
     if (storeRes.ok && storeRes.data) {
+      const payoutRes = await getSellerPayoutSettings(storeRes.data.id);
+      const access = getSellerAccessState(
+        storeRes.data as Store & Record<string, unknown>,
+        payoutRes.ok ? payoutRes.data : null
+      );
+      if (!access.canAccessSellerTools) {
+        setAccessBlocked(access.lockReason);
+        setStore(storeRes.data);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      setAccessBlocked(null);
       setStore(storeRes.data);
       const [kpiRes, prodRes, notifRes] = await Promise.all([
         getSellerKPIs(storeRes.data.id),
@@ -216,6 +231,28 @@ export default function SellerDashboard() {
             <Text style={styles.onboardingButtonText}>
               {creatingStore ? "Creating…" : "Create store"}
             </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (accessBlocked) {
+    return (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.onboardingContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
+      >
+        <View style={styles.onboardingCard}>
+          <Ionicons name="lock-closed-outline" size={40} color={colors.olive[700]} />
+          <Text style={styles.onboardingTitle}>Seller tools locked</Text>
+          <Text style={styles.onboardingSub}>{accessBlocked}</Text>
+          <TouchableOpacity
+            style={styles.onboardingButton}
+            onPress={() => router.push("/(seller)/settings")}
+          >
+            <Text style={styles.onboardingButtonText}>Complete store settings</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

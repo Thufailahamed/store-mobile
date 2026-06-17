@@ -54,6 +54,11 @@ export interface Store {
   total_sales: number;
   is_featured?: boolean;
   homepage_order?: number;
+  legal_name?: string | null;
+  tax_id?: string | null;
+  bank_name?: string | null;
+  account_name?: string | null;
+  account_number_last4?: string | null;
 }
 
 export interface Brand {

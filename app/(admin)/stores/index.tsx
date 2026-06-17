@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert } from "react-native";
+import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminStores, approveStore } from "@/lib/api";
 import { Card, Badge, Skeleton, Button } from "@/components/ui";
@@ -8,6 +9,7 @@ import { colors, typography, radii } from "@/lib/theme/tokens";
 const STATUS_TABS = ["all", "pending", "approved", "rejected"];
 
 export default function AdminStores() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
@@ -23,7 +25,11 @@ export default function AdminStores() {
   const approveMutation = useMutation({
     mutationFn: ({ storeId, newStatus }: { storeId: string; newStatus: "approved" | "rejected" }) =>
       approveStore(storeId, newStatus),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Action failed", res.error);
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["admin-stores"] });
     },
   });
@@ -79,6 +85,7 @@ export default function AdminStores() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
+            <Pressable onPress={() => router.push(`/(admin)/stores/${item.id}` as any)}>
             <Card style={styles.storeCard}>
               <View style={styles.storeRow}>
                 <View style={styles.storeInfo}>
@@ -123,6 +130,7 @@ export default function AdminStores() {
                 )}
               </View>
             </Card>
+            </Pressable>
           )}
         />
       )}

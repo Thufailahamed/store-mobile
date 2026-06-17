@@ -1,22 +1,72 @@
-import React, { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
-import { Tabs, useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, View, Text, Pressable, StyleSheet } from "react-native";
+import { Tabs, useRouter, useSegments } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { getSellerStore, getSellerPayoutSettings } from "@/lib/api";
+import { getSellerAccessState } from "@/lib/seller-access";
+import type { SellerPayoutCompliance } from "@/lib/seller-access";
+import type { Store } from "@/lib/types";
 
 export default function SellerLayout() {
-  const { role, roleLoading, loading } = useAuth();
+  const { role, roleLoading, loading, user } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
+  const [store, setStore] = useState<Store | null>(null);
+  const [payout, setPayout] = useState<SellerPayoutCompliance | null>(null);
+  const [storeLoading, setStoreLoading] = useState(true);
 
   useEffect(() => {
-    if (loading || roleLoading) return;
+    let cancelled = false;
+    const loadStore = async () => {
+      if (!user || role !== "store_owner") {
+        if (!cancelled) {
+          setStore(null);
+          setStoreLoading(false);
+        }
+        return;
+      }
+      setStoreLoading(true);
+      const res = await getSellerStore(user.id);
+      if (!cancelled) {
+        const nextStore = res.ok ? res.data : null;
+        setStore(nextStore);
+        if (nextStore) {
+          const payoutRes = await getSellerPayoutSettings(nextStore.id);
+          setPayout(payoutRes.ok ? payoutRes.data : null);
+        } else {
+          setPayout(null);
+        }
+        setStoreLoading(false);
+      }
+    };
+    void loadStore();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, role]);
+
+  const access = useMemo(
+    () => getSellerAccessState(store as (Store & Record<string, unknown>) | null, payout),
+    [store, payout]
+  );
+
+  const isSettingsRoute = segments.includes("settings");
+
+  useEffect(() => {
+    if (loading || roleLoading || storeLoading) return;
     if (role !== "store_owner") {
       router.replace("/(main)");
+      return;
     }
-  }, [role, roleLoading, loading, router]);
+    if (!access.canAccessSellerTools && !isSettingsRoute) {
+      router.replace("/(seller)/settings");
+    }
+  }, [role, roleLoading, loading, storeLoading, access.canAccessSellerTools, isSettingsRoute, router]);
 
-  if (loading || roleLoading) {
+  if (loading || roleLoading || storeLoading) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.light.background }}>
         <ActivityIndicator size="large" color={colors.light.primary} />
@@ -26,6 +76,21 @@ export default function SellerLayout() {
 
   if (role !== "store_owner") {
     return null;
+  }
+
+  if (!access.canAccessSellerTools && !isSettingsRoute) {
+    return (
+      <View style={styles.blockedContainer}>
+        <Ionicons name="shield-checkmark-outline" size={44} color={colors.light.primary} />
+        <Text style={styles.blockedTitle}>Seller access limited</Text>
+        <Text style={styles.blockedBody}>
+          {access.lockReason ?? "Complete seller verification to continue."}
+        </Text>
+        <Pressable style={styles.blockedButton} onPress={() => router.replace("/(seller)/settings")}>
+          <Text style={styles.blockedButtonText}>Open Seller Settings</Text>
+        </Pressable>
+      </View>
+    );
   }
 
   return (
@@ -97,3 +162,38 @@ export default function SellerLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  blockedContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    backgroundColor: colors.light.background,
+    gap: 10,
+  },
+  blockedTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    color: colors.light.foreground,
+  },
+  blockedBody: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+  },
+  blockedButton: {
+    marginTop: 10,
+    backgroundColor: colors.light.primary,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  blockedButtonText: {
+    color: "#fff",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+  },
+});

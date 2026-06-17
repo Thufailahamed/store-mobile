@@ -1,11 +1,23 @@
-import React from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
+import React, { useMemo } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  Alert,
+  RefreshControl,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { getStoreById, approveBrand } from "@/lib/api";
-import { Card, StatTile, EmptyState, Skeleton, Badge, ProgressBar } from "@/components/ui";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import {
+  getAdminStoreDetail,
+  approveStore,
+  updateStoreStatus,
+} from "@/lib/api";
+import { Card, StatTile, EmptyState, Skeleton, Badge, ProgressBar, Button } from "@/components/ui";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
@@ -18,25 +30,138 @@ function rel(s: string) {
   return `${Math.floor(h / 24)}d`;
 }
 
+function hasValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "boolean") return value;
+  return true;
+}
+
+function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "approved" || status === "active") return "default";
+  if (status === "pending" || status === "draft") return "secondary";
+  return "destructive";
+}
+
 export default function AdminStoreDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const qc = useQueryClient();
+
   const q = useQuery({
     queryKey: ["admin-store", id],
     queryFn: async () => {
-      const r = await getStoreById(id!);
+      const r = await getAdminStoreDetail(id!);
       return r.ok ? r.data : null;
     },
     enabled: !!id,
   });
 
-  if (q.isLoading) return <View style={styles.container}><Skeleton height={200} /></View>;
-  const s: any = q.data;
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["admin-store", id] });
+    qc.invalidateQueries({ queryKey: ["admin-stores"] });
+    qc.invalidateQueries({ queryKey: ["admin-approvals"] });
+  };
+
+  const approveM = useMutation({
+    mutationFn: () => approveStore(id!, "approved"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Cannot approve", res.error);
+        return;
+      }
+      invalidate();
+      Alert.alert("Approved", "Store is now active.");
+    },
+  });
+
+  const rejectM = useMutation({
+    mutationFn: () => approveStore(id!, "rejected"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Failed", res.error);
+        return;
+      }
+      invalidate();
+    },
+  });
+
+  const suspendM = useMutation({
+    mutationFn: () => updateStoreStatus(id!, "rejected"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Failed", res.error);
+        return;
+      }
+      invalidate();
+      Alert.alert("Suspended", "Seller tools are now locked.");
+    },
+  });
+
+  const reactivateM = useMutation({
+    mutationFn: () => updateStoreStatus(id!, "approved"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Cannot reactivate", res.error);
+        return;
+      }
+      invalidate();
+      Alert.alert("Reactivated", "Store is active again.");
+    },
+  });
+
+  const confirm = (title: string, message: string, onConfirm: () => void) => {
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Confirm", onPress: onConfirm },
+    ]);
+  };
+
+  const s = q.data?.store;
+  const payout = q.data?.payout ?? null;
+  const complianceGaps = q.data?.complianceGaps ?? [];
+
+  const complianceItems = useMemo(
+    () => [
+      { label: "Legal name", ok: hasValue(s?.legal_name), value: s?.legal_name },
+      { label: "Tax ID", ok: hasValue(s?.tax_id), value: s?.tax_id ? "••••" + String(s.tax_id).slice(-4) : null },
+      { label: "Bank name", ok: hasValue(payout?.bank_name), value: payout?.bank_name },
+      { label: "Account holder", ok: hasValue(payout?.account_name), value: payout?.account_name },
+      {
+        label: "Account number",
+        ok: hasValue(payout?.account_number_last4),
+        value: payout?.account_number_last4 ? `••••${payout.account_number_last4}` : null,
+      },
+      { label: "Tax declaration", ok: payout?.tax_form_submitted === true, value: payout?.tax_form_submitted ? "Submitted" : null },
+    ],
+    [s, payout]
+  );
+
+  if (q.isLoading) {
+    return (
+      <View style={styles.container}>
+        <Skeleton height={200} style={{ margin: 20 }} />
+      </View>
+    );
+  }
+
   if (!s) return <EmptyState icon="storefront-outline" title="Store not found" />;
 
-  const commission = 8.0;
+  const isPending = s.status === "pending" || s.status === "draft";
+  const isActive = s.status === "approved" || s.status === "active";
+  const isBlocked = s.status === "rejected" || s.status === "suspended" || s.status === "banned";
+  const complianceComplete = complianceGaps.length === 0;
+  const busy =
+    approveM.isPending || rejectM.isPending || suspendM.isPending || reactivateM.isPending;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />
+      }
+    >
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.back}>
           <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
@@ -44,49 +169,152 @@ export default function AdminStoreDetail() {
         <View style={{ flex: 1 }}>
           <Text style={styles.eyebrow}>STORE</Text>
           <Text style={styles.title} numberOfLines={2}>{s.name}</Text>
+          <Text style={styles.slug}>@{s.slug}</Text>
         </View>
       </View>
 
       <Card style={styles.heroCard}>
         <View style={styles.statusRow}>
-          <Badge variant={s.status === "approved" || s.status === "active" ? "default" : s.status === "pending" ? "secondary" : "destructive"}>
-            {s.status}
-          </Badge>
-          <Text style={styles.since}>since {rel(s.created_at)} ago</Text>
+          <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
+          <Text style={styles.since}>{rel(s.created_at)} ago</Text>
         </View>
-        <Text style={styles.subtitle}>{s.tagline ?? s.description ?? "—"}</Text>
+        <Text style={styles.subtitle}>{s.description ?? "No description"}</Text>
       </Card>
 
+      <Card style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Compliance</Text>
+          <Badge variant={complianceComplete ? "default" : "destructive"}>
+            {complianceComplete ? "Complete" : `${complianceGaps.length} missing`}
+          </Badge>
+        </View>
+        {!complianceComplete ? (
+          <Text style={styles.warning}>
+            Approval requires: {complianceGaps.join(", ")}
+          </Text>
+        ) : null}
+        <View style={styles.complianceList}>
+          {complianceItems.map((item) => (
+            <View key={item.label} style={styles.complianceRow}>
+              <Ionicons
+                name={item.ok ? "checkmark-circle" : "close-circle"}
+                size={18}
+                color={item.ok ? colors.olive[600] : colors.light.destructive}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.complianceLabel}>{item.label}</Text>
+                {item.value ? (
+                  <Text style={styles.complianceValue} numberOfLines={1}>{item.value}</Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={styles.sectionTitle}>Actions</Text>
+        <View style={styles.actions}>
+          {isPending ? (
+            <>
+              <Button
+                variant="brand"
+                size="sm"
+                loading={approveM.isPending}
+                disabled={busy || !complianceComplete}
+                onPress={() =>
+                  confirm("Approve store", `Approve "${s.name}"?`, () => approveM.mutate())
+                }
+              >
+                Approve
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                loading={rejectM.isPending}
+                disabled={busy}
+                onPress={() =>
+                  confirm("Reject store", `Reject "${s.name}"?`, () => rejectM.mutate())
+                }
+              >
+                Reject
+              </Button>
+            </>
+          ) : null}
+          {isActive ? (
+            <Button
+              variant="outline"
+              size="sm"
+              loading={suspendM.isPending}
+              disabled={busy}
+              onPress={() =>
+                confirm("Suspend store", `Suspend "${s.name}"? Seller tools will be locked.`, () =>
+                  suspendM.mutate()
+                )
+              }
+            >
+              Suspend
+            </Button>
+          ) : null}
+          {isBlocked && !isPending ? (
+            <Button
+              variant="brand"
+              size="sm"
+              loading={reactivateM.isPending}
+              disabled={busy || !complianceComplete}
+              onPress={() =>
+                confirm(
+                  "Reactivate store",
+                  complianceComplete
+                    ? `Reactivate "${s.name}"?`
+                    : "Compliance must be complete before reactivation.",
+                  () => reactivateM.mutate()
+                )
+              }
+            >
+              Reactivate
+            </Button>
+          ) : null}
+        </View>
+        {isPending && !complianceComplete ? (
+          <Text style={styles.hint}>Complete compliance before approving this store.</Text>
+        ) : null}
+      </Card>
+
+      {(s as any).owner ? (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Owner</Text>
+          <View style={{ marginTop: 8, gap: 4 }}>
+            <Text style={styles.contact}>{(s as any).owner.full_name ?? "—"}</Text>
+            {(s as any).owner.email ? <Text style={styles.muted}>{(s as any).owner.email}</Text> : null}
+            {(s as any).owner.phone ? <Text style={styles.muted}>{(s as any).owner.phone}</Text> : null}
+          </View>
+        </Card>
+      ) : null}
+
       <View style={styles.statRow}>
-        <StatTile label="GMV" value={formatPrice(s.lifetime_gmv ?? 0)} sub="lifetime" size="md" />
-        <StatTile label="Orders" value={String(s.order_count ?? 0)} sub="lifetime" size="md" />
-        <StatTile label="Rating" value={s.rating_avg ? s.rating_avg.toFixed(1) : "—"} sub="avg" size="md" />
+        <StatTile label="Products" value={String(s.total_products ?? 0)} sub="listed" size="md" />
+        <StatTile label="Sales" value={formatPrice(s.total_sales ?? 0)} sub="lifetime" size="md" />
+        <StatTile label="Rating" value={s.rating ? s.rating.toFixed(1) : "—"} sub="avg" size="md" />
       </View>
 
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Health</Text>
         <View style={{ marginTop: 12, gap: 12 }}>
-          <Health label="Fulfilment" value={`${(s.fulfilment_rate ?? 95).toFixed(0)}%`} progress={s.fulfilment_rate ?? 95} />
-          <Health label="On-time delivery" value={`${(s.ontime_rate ?? 88).toFixed(0)}%`} progress={s.ontime_rate ?? 88} />
-          <Health label="Returns" value={`${(s.return_rate ?? 3).toFixed(1)}%`} progress={Math.min(100, s.return_rate ?? 3 * 10)} />
+          <Health label="Fulfilment" value="95%" progress={95} />
+          <Health label="On-time delivery" value="88%" progress={88} />
         </View>
       </Card>
 
-      <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Commission</Text>
-        <View style={styles.commissionRow}>
-          <Text style={styles.commission}>{commission.toFixed(1)}%</Text>
-          <Text style={styles.commissionSub}>applied to seller revenue</Text>
-        </View>
-      </Card>
-
-      {s.contact_email || s.contact_phone ? (
+      {s.products && s.products.length > 0 ? (
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact</Text>
-          <View style={{ marginTop: 8, gap: 6 }}>
-            {s.contact_email ? <Text style={styles.contact}>{s.contact_email}</Text> : null}
-            {s.contact_phone ? <Text style={styles.contact}>{s.contact_phone}</Text> : null}
-          </View>
+          <Text style={styles.sectionTitle}>Catalogue ({s.products.length})</Text>
+          {s.products.slice(0, 8).map((p) => (
+            <View key={p.id} style={styles.productRow}>
+              <Text style={styles.productName} numberOfLines={1}>{p.name}</Text>
+              <Badge variant={p.status === "active" ? "default" : "outline"}>{p.status}</Badge>
+            </View>
+          ))}
         </Card>
       ) : null}
     </ScrollView>
@@ -109,21 +337,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   content: { paddingBottom: 100 },
   header: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 20, paddingBottom: 12 },
-  back: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.light.card, alignItems: "center", justifyContent: "center", marginTop: 18 },
+  back: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.light.card,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 18,
+  },
   eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.primary, letterSpacing: 1.4 },
   title: { fontFamily: fontFamilies.display.regular, fontSize: 24, color: colors.light.foreground, marginTop: 4, letterSpacing: -0.4 },
+  slug: { fontFamily: fontFamilies.mono.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 2 },
   heroCard: { marginHorizontal: 20, padding: 16, ...shadows.soft },
   statusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   since: { fontFamily: fontFamilies.mono.regular, fontSize: 11, color: colors.light.mutedForeground, letterSpacing: 0.5, textTransform: "uppercase" },
   subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.mutedForeground, marginTop: 8, lineHeight: 18 },
-  statRow: { flexDirection: "row", gap: 8, padding: 20, paddingBottom: 0 },
-  section: { margin: 20, marginBottom: 0, padding: 16, ...shadows.soft },
+  section: { marginHorizontal: 20, marginTop: 16, padding: 16, ...shadows.soft },
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.light.foreground, letterSpacing: 0.5 },
+  warning: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.destructive, marginTop: 10, lineHeight: 18 },
+  hint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 10 },
+  complianceList: { marginTop: 12, gap: 10 },
+  complianceRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  complianceLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.light.foreground },
+  complianceValue: { fontFamily: fontFamilies.mono.regular, fontSize: 11, color: colors.light.mutedForeground, marginTop: 2 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  statRow: { flexDirection: "row", gap: 8, padding: 20, paddingBottom: 0 },
   healthRow: { flexDirection: "row", justifyContent: "space-between" },
   healthLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.foreground },
   healthValue: { fontFamily: fontFamilies.mono.semibold, fontSize: 12, color: colors.light.foreground },
-  commissionRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 12 },
-  commission: { fontFamily: fontFamilies.display.semibold, fontSize: 28, color: colors.olive[500], letterSpacing: -0.5 },
-  commissionSub: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground, letterSpacing: 0.5, textTransform: "uppercase" },
   contact: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.foreground },
+  muted: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
+  productRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 },
+  productName: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.foreground },
 });
