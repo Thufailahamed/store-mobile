@@ -11,6 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
 import { getRiderOrders } from "@/lib/api";
+import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Order } from "@/lib/types";
 
@@ -83,6 +84,8 @@ export default function DeliveryOrders() {
   }, [user]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  useRiderRealtime(user?.id, fetchOrders);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

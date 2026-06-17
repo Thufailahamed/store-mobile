@@ -9,6 +9,11 @@ import {
 } from "@/lib/api/product-mapper";
 import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
 import {
+  deliveryTransition,
+  deliveryVerify,
+  hasStoreApi,
+} from "@/lib/api/delivery-api";
+import {
   tokenizeQuery,
   buildSearchOrParts,
   expandColorTerms,
@@ -1560,6 +1565,21 @@ export async function getSellerKPIs(storeId: string): Promise<Result<{
 /*  Delivery — Rider orders                                            */
 /* ------------------------------------------------------------------ */
 
+export {
+  deliveryTransition,
+  deliveryVerify,
+  deliveryPickupVerify,
+  deliveryProofUpload,
+  getReturnPickups,
+  getOrderPackage,
+  resolvePackageQr,
+  scanPackage,
+  verifyPackageDelivery,
+  extractPackageToken,
+  hasStoreApi,
+} from "./delivery-api";
+export type { ReturnPickup, PackageMeta, PackageScanAction } from "./delivery-api";
+
 export async function getRiderOrders(riderId: string): Promise<Result<Order[]>> {
   try {
     const { data, error } = await supabase
@@ -1574,7 +1594,34 @@ export async function getRiderOrders(riderId: string): Promise<Result<Order[]>> 
   }
 }
 
+/** Store pickup runs assigned to this rider (pickup_driver_id). */
+export async function getRiderPickupRuns(riderId: string): Promise<Result<Order[]>> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, items:order_items(*), address:addresses(*)")
+      .eq("pickup_driver_id", riderId)
+      .order("placed_at", { ascending: false });
+    if (error) return fail(error.message);
+    const terminal = new Set(["delivered", "returned", "refunded", "cancelled"]);
+    return ok(((data as Order[]) ?? []).filter((o) => !terminal.has(o.status)));
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch pickup runs");
+  }
+}
+
 export async function riderStartDelivery(orderId: string): Promise<Result<{ otp: string }>> {
+  if (hasStoreApi()) {
+    const res = await deliveryTransition(orderId, "out_for_delivery");
+    if (!res.ok) return fail(res.error);
+    const { data: order } = await supabase
+      .from("orders")
+      .select("delivery_otp")
+      .eq("id", orderId)
+      .single();
+    return ok({ otp: order?.delivery_otp ?? "------" });
+  }
+
   try {
     const { data: existing, error: fetchErr } = await supabase
       .from("orders")
@@ -1606,6 +1653,11 @@ export async function riderStartDelivery(orderId: string): Promise<Result<{ otp:
 }
 
 export async function riderVerifyDelivery(orderId: string, otp: string): Promise<Result<void>> {
+  if (hasStoreApi()) {
+    const res = await deliveryVerify(orderId, otp);
+    return res.ok ? ok(undefined) : fail(res.error);
+  }
+
   try {
     const { data: order, error: fetchErr } = await supabase
       .from("orders")
@@ -1657,6 +1709,11 @@ export async function riderVerifyDelivery(orderId: string, otp: string): Promise
 }
 
 export async function riderReportIssue(orderId: string, reason: string, status: "returned" | "cancelled"): Promise<Result<void>> {
+  if (hasStoreApi()) {
+    const res = await deliveryTransition(orderId, status, reason);
+    return res.ok ? ok(undefined) : fail(res.error);
+  }
+
   try {
     const { error } = await supabase
       .from("orders")

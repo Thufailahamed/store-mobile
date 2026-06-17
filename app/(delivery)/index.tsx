@@ -10,8 +10,10 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
-import { getRiderOrders, riderStartDelivery } from "@/lib/api";
+import { getRiderOrders, getRiderPickupRuns, riderStartDelivery } from "@/lib/api";
+import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Order } from "@/lib/types";
 
@@ -71,25 +73,26 @@ export default function DeliveryDashboard() {
   const router = useRouter();
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [pickupRuns, setPickupRuns] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
-    const res = await getRiderOrders(user.id);
-    if (res.ok) setOrders(res.data);
+    const [ordersRes, pickupRes] = await Promise.all([
+      getRiderOrders(user.id),
+      getRiderPickupRuns(user.id),
+    ]);
+    if (ordersRes.ok) setOrders(ordersRes.data);
+    if (pickupRes.ok) setPickupRuns(pickupRes.data);
     setLoading(false);
     setRefreshing(false);
   }, [user]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  // Auto-refresh every 30s
-  useEffect(() => {
-    const id = setInterval(() => fetchOrders(), 30_000);
-    return () => clearInterval(id);
-  }, [fetchOrders]);
+  useRiderRealtime(user?.id, fetchOrders);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -164,6 +167,36 @@ export default function DeliveryDashboard() {
           <Text style={styles.kpiLabel}>Cash to collect</Text>
         </View>
       </View>
+
+      {/* Quick actions */}
+      <View style={styles.quickRow}>
+        <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(delivery)/scan" as any)}>
+          <Ionicons name="qr-code-outline" size={20} color={colors.light.primary} />
+          <Text style={styles.quickBtnText}>Scan QR</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/(delivery)/pickups" as any)}>
+          <Ionicons name="return-down-back-outline" size={20} color={colors.light.primary} />
+          <Text style={styles.quickBtnText}>Return pickups</Text>
+        </TouchableOpacity>
+      </View>
+
+      {pickupRuns.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Store pickups</Text>
+          {pickupRuns.slice(0, 3).map((o) => (
+            <TouchableOpacity
+              key={o.id}
+              style={[styles.routeCard, { flexDirection: "column", alignItems: "flex-start" }]}
+              onPress={() => router.push(`/(delivery)/orders/${o.id}` as any)}
+            >
+              <Text style={styles.routeOrder}>{o.order_number}</Text>
+              <Text style={styles.pickupMeta} numberOfLines={1}>
+                Pick up from seller · {(o as any).pickup_decision?.replace(/_/g, " ") ?? "pending decision"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
 
       {/* Active Delivery */}
       <View style={styles.section}>
@@ -311,6 +344,23 @@ const styles = StyleSheet.create({
   kpiCard: { flex: 1, padding: 14, borderRadius: radii.lg, alignItems: "center" },
   kpiValue: { fontSize: 24, fontWeight: typography.fontWeights.bold as any, color: colors.light.foreground },
   kpiLabel: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 2, textAlign: "center" },
+
+  quickRow: { flexDirection: "row", gap: 10, paddingHorizontal: 16, marginBottom: 8 },
+  quickBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    paddingVertical: 12,
+  },
+  quickBtnText: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.medium as any, color: colors.light.foreground },
+  routeOrder: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold as any, color: colors.light.foreground, flex: 1 },
+  pickupMeta: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 2, flex: 1 },
 
   section: { padding: 16 },
   sectionTitle: {

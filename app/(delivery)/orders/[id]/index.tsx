@@ -18,7 +18,11 @@ import {
   riderStartDelivery,
   riderVerifyDelivery,
   riderReportIssue,
+  deliveryProofUpload,
+  getOrderPackage,
+  hasStoreApi,
 } from "@/lib/api";
+import { takePhoto, uploadDeliveryProof } from "@/lib/upload";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Order } from "@/lib/types";
 
@@ -71,6 +75,7 @@ export default function DeliveryDetail() {
   const [issueReason, setIssueReason] = useState("");
   const [issueNote, setIssueNote] = useState("");
   const [reporting, setReporting] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -125,6 +130,47 @@ export default function DeliveryDetail() {
     } else {
       Alert.alert("Error", res.error);
     }
+  };
+
+  const handleOpenScan = async () => {
+    if (!order || !hasStoreApi()) {
+      router.push("/(delivery)/scan" as any);
+      return;
+    }
+    const res = await getOrderPackage(order.id);
+    if (res.ok && res.data.signed_token) {
+      router.push(`/(delivery)/scan?token=${encodeURIComponent(res.data.signed_token)}` as any);
+    } else {
+      router.push("/(delivery)/scan" as any);
+    }
+  };
+
+  const handleUploadProof = async () => {
+    if (!order || !user?.id) return;
+    const pick = await takePhoto({ quality: 0.8 });
+    if (!pick || pick.canceled || !pick.assets?.[0]?.uri) return;
+
+    setUploadingProof(true);
+    const uploaded = await uploadDeliveryProof(user.id, order.id, pick.assets[0].uri);
+    if (uploaded.error || !uploaded.url) {
+      setUploadingProof(false);
+      Alert.alert("Upload failed", uploaded.error ?? "Could not upload photo");
+      return;
+    }
+
+    if (hasStoreApi()) {
+      const res = await deliveryProofUpload(order.id, uploaded.url, "Delivery proof photo");
+      setUploadingProof(false);
+      if (res.ok) {
+        Alert.alert("Proof saved", "Delivery photo uploaded successfully.");
+      } else {
+        Alert.alert("Error", res.error);
+      }
+      return;
+    }
+
+    setUploadingProof(false);
+    Alert.alert("Proof saved locally", "Configure EXPO_PUBLIC_STORE_API_URL to sync proof to the server.");
   };
 
   if (loading) {
@@ -289,6 +335,10 @@ export default function DeliveryDetail() {
 
         {/* Action Buttons */}
         <View style={styles.actionSection}>
+          <TouchableOpacity style={styles.scanButton} onPress={handleOpenScan}>
+            <Text style={styles.scanButtonText}>📷 Scan package QR</Text>
+          </TouchableOpacity>
+
           {canStart && (
             <TouchableOpacity
               style={[styles.startButton, starting && { opacity: 0.6 }]}
@@ -356,6 +406,15 @@ export default function DeliveryDetail() {
               <Text style={styles.infoLabel}>Delivered at</Text>
               <Text style={styles.infoValue}>{formatDate(order.delivered_at)}</Text>
             </View>
+            <TouchableOpacity
+              style={[styles.verifyButton, uploadingProof && { opacity: 0.6 }]}
+              onPress={handleUploadProof}
+              disabled={uploadingProof}
+            >
+              <Text style={styles.verifyButtonText}>
+                {uploadingProof ? "Uploading…" : "📸 Upload delivery proof"}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -577,6 +636,19 @@ const styles = StyleSheet.create({
   },
 
   actionSection: { gap: 10, marginBottom: 16 },
+  scanButton: {
+    padding: 14,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    backgroundColor: colors.light.card,
+  },
+  scanButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+  },
   startButton: {
     backgroundColor: colors.light.primary,
     padding: 16,

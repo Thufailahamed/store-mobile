@@ -213,9 +213,24 @@ export async function uploadReviewPhoto(
     );
     const path = `reviews/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-    return uploadImageToBucket("review-photos", path, uri, {
+    return uploadImageToBucket("review-media", path, uri, {
       mimeType: options?.mimeType,
     });
+  } catch (e: any) {
+    return { url: "", error: e?.message ?? "Upload failed" };
+  }
+}
+
+/** Delivery proof photos — stored under review-media/{userId}/ for RLS. */
+export async function uploadDeliveryProof(
+  userId: string,
+  orderId: string,
+  uri: string,
+): Promise<UploadResult> {
+  try {
+    const ext = normalizeExtension(uri.split(".").pop(), "image/jpeg");
+    const path = `${userId}/delivery-${orderId}-${Date.now()}.${ext}`;
+    return uploadImageToBucket("review-media", path, uri, { mimeType: mimeForExtension(ext) });
   } catch (e: any) {
     return { url: "", error: e?.message ?? "Upload failed" };
   }

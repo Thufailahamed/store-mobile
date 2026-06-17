@@ -36,6 +36,7 @@ import {
   addNotificationResponseListener,
 } from "@/lib/notifications";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
+import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -83,8 +84,16 @@ function RootLayoutNav() {
             router.replace("/(brand)");
             break;
           case "delivery":
-          case "delivery_company":
             router.replace("/(delivery)");
+            break;
+          case "delivery_company":
+            if (user?.id) {
+              resolveDeliveryHomeRoute(user.id, role).then((home) => {
+                router.replace(home);
+              });
+            } else {
+              router.replace("/(delivery-company)");
+            }
             break;
           default:
             router.replace("/(main)");
@@ -100,7 +109,7 @@ function RootLayoutNav() {
       }
       return;
     }
-  }, [session, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete]);
+  }, [session, user?.id, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete]);
 
   // Hide splash once onboarding + auth bootstrap finish. Role lookup continues in background.
   useEffect(() => {
@@ -160,6 +169,12 @@ function RootLayoutNav() {
       if (parsed.hostname === "order" && parsed.path) {
         const orderId = parsed.path.replace("/", "");
         if (orderId) router.push(`/(main)/account/orders/${orderId}` as any);
+      }
+
+      // Driver invite: luxe://delivery-company/accept?token=...
+      if (parsed.hostname === "delivery-company" && parsed.path?.includes("accept")) {
+        const token = parsed.queryParams?.token as string | undefined;
+        if (token) router.push(`/(delivery-company)/accept?token=${token}` as any);
       }
     };
 
