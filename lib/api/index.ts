@@ -1697,27 +1697,63 @@ export async function getSellerOrderById(
   }
 }
 
-export async function transitionOrderStatus(orderId: string, status: string): Promise<Result<void>> {
+export async function transitionOrderStatus(
+  orderId: string,
+  status: string,
+  opts?: { reason?: string; adminOverride?: boolean; skipSellerGuard?: boolean },
+): Promise<Result<{ status: string }>> {
   try {
-    const { data: item } = await supabase
-      .from("order_items")
-      .select("store_id")
-      .eq("order_id", orderId)
-      .limit(1)
-      .maybeSingle();
-    if (item?.store_id) {
-      const guard = await assertSellerCanOperate(item.store_id as string);
-      if (!guard.ok) return guard;
+    if (!opts?.skipSellerGuard) {
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      let isAdmin = false;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", userId)
+          .maybeSingle();
+        isAdmin = profile?.role === "admin";
+      }
+
+      if (!isAdmin) {
+        const { data: item } = await supabase
+          .from("order_items")
+          .select("store_id")
+          .eq("order_id", orderId)
+          .limit(1)
+          .maybeSingle();
+        if (item?.store_id) {
+          const guard = await assertSellerCanOperate(item.store_id as string);
+          if (!guard.ok) return guard;
+        }
+      }
     }
 
-    const { error } = await supabase
-      .from("orders")
-      .update({ status })
-      .eq("id", orderId);
+    const { data, error } = await supabase.rpc("transition_order_status", {
+      p_order_id: orderId,
+      p_status: status,
+      p_reason: opts?.reason ?? null,
+      p_admin_override: opts?.adminOverride ?? false,
+    });
     if (error) return fail(error.message);
-    return ok(undefined);
+    const row = (data ?? {}) as { status?: string };
+    return ok({ status: row.status ?? status });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to update order status");
+  }
+}
+
+export async function cancelOrder(orderId: string): Promise<Result<{ status: string }>> {
+  try {
+    const { data, error } = await supabase.rpc("cancel_order", {
+      p_order_id: orderId,
+    });
+    if (error) return fail(error.message);
+    const row = (data ?? {}) as { status?: string };
+    return ok({ status: row.status ?? "cancelled" });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to cancel order");
   }
 }
 
@@ -1944,30 +1980,12 @@ export async function riderStartDelivery(orderId: string): Promise<Result<{ otp:
   }
 
   try {
-    const { data: existing, error: fetchErr } = await supabase
-      .from("orders")
-      .select("status, delivery_otp")
-      .eq("id", orderId)
-      .single();
-    if (fetchErr) return fail(fetchErr.message);
-
-    if (!["shipped", "processing", "confirmed"].includes(existing.status)) {
-      return fail(`Cannot start delivery from status "${existing.status}"`);
-    }
-
-    const otp = existing.delivery_otp ?? String(Math.floor(100000 + Math.random() * 900000));
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: "out_for_delivery", delivery_otp: otp })
-      .eq("id", orderId);
+    const { data, error } = await supabase.rpc("start_order_delivery", {
+      p_order_id: orderId,
+    });
     if (error) return fail(error.message);
-
-    await supabase
-      .from("order_items")
-      .update({ status: "out_for_delivery" })
-      .eq("order_id", orderId);
-
-    return ok({ otp });
+    const row = (data ?? {}) as { delivery_otp?: string };
+    return ok({ otp: row.delivery_otp ?? "------" });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to start delivery");
   }
@@ -1980,49 +1998,11 @@ export async function riderVerifyDelivery(orderId: string, otp: string): Promise
   }
 
   try {
-    const { data: order, error: fetchErr } = await supabase
-      .from("orders")
-      .select("status, delivery_otp, payment_method, payment_status")
-      .eq("id", orderId)
-      .single();
-    if (fetchErr) return fail(fetchErr.message);
-
-    if (order.status === "delivered") return ok(undefined);
-
-    const cleanedOtp = otp.replace(/\s/g, "");
-    const orderOtp = order.delivery_otp ? order.delivery_otp.replace(/\s/g, "") : "";
-    if (!orderOtp || cleanedOtp !== orderOtp) {
-      return fail("Invalid verification code");
-    }
-
-    const now = new Date().toISOString();
-    const isCOD = order.payment_method === "cod";
-    const nextPaymentStatus = isCOD ? "paid" : order.payment_status;
-
-    const { error } = await supabase
-      .from("orders")
-      .update({
-        status: "delivered",
-        payment_status: nextPaymentStatus,
-        delivered_at: now,
-        delivery_otp: null,
-      })
-      .eq("id", orderId);
+    const { error } = await supabase.rpc("verify_order_delivery", {
+      p_order_id: orderId,
+      p_otp: otp,
+    });
     if (error) return fail(error.message);
-
-    await supabase
-      .from("order_items")
-      .update({ status: "delivered", delivered_at: now })
-      .eq("order_id", orderId);
-
-    if (isCOD && order.payment_status !== "paid") {
-      await supabase
-        .from("payments")
-        .update({ status: "paid", paid_at: now })
-        .eq("order_id", orderId)
-        .eq("status", "pending");
-    }
-
     return ok(undefined);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to verify delivery");
@@ -2036,17 +2016,12 @@ export async function riderReportIssue(orderId: string, reason: string, status: 
   }
 
   try {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status, notes: reason })
-      .eq("id", orderId);
+    const { error } = await supabase.rpc("rider_fail_delivery", {
+      p_order_id: orderId,
+      p_status: status,
+      p_reason: reason,
+    });
     if (error) return fail(error.message);
-
-    await supabase
-      .from("order_items")
-      .update({ status })
-      .eq("order_id", orderId);
-
     return ok(undefined);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to report issue");

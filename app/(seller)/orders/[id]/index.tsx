@@ -11,19 +11,8 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { getSellerStore, getSellerOrderById, transitionOrderStatus } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { CUSTOMER_STATUS_STEPS, getSellerNextStatus } from "@/lib/order-lifecycle";
 import type { Order, OrderStatus } from "@/lib/types";
-
-const TRANSITIONS: Record<OrderStatus, OrderStatus | null> = {
-  pending: "confirmed",
-  confirmed: "processing",
-  processing: "shipped",
-  shipped: "out_for_delivery",
-  out_for_delivery: "delivered",
-  delivered: null,
-  cancelled: null,
-  returned: null,
-  refunded: null,
-};
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   pending: { bg: "#fef3c7", text: "#92400e" },
@@ -37,9 +26,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   refunded: { bg: "#fce7f3", text: "#be185d" },
 };
 
-const STATUSES: OrderStatus[] = [
-  "pending", "confirmed", "processing", "shipped", "out_for_delivery", "delivered",
-];
+const STATUSES: OrderStatus[] = CUSTOMER_STATUS_STEPS;
 
 function formatPrice(n: number) {
   return `Rs. ${n.toLocaleString("en-LK")}`;
@@ -92,7 +79,7 @@ export default function SellerOrderDetail() {
             const res = await transitionOrderStatus(order.id, nextStatus);
             setUpdating(false);
             if (res.ok) {
-              setOrder({ ...order, status: nextStatus });
+              setOrder({ ...order, status: res.data.status as OrderStatus });
             } else {
               Alert.alert("Error", res.error);
             }
@@ -118,7 +105,7 @@ export default function SellerOrderDetail() {
     );
   }
 
-  const nextStatus = TRANSITIONS[order.status];
+  const nextStatus = getSellerNextStatus(order.status);
   const sc = STATUS_COLORS[order.status] ?? STATUS_COLORS.pending;
   const itemsCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const ship = order.shipping_address;

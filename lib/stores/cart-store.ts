@@ -217,7 +217,7 @@ export const useCart = create<CartStore>()(
           const { data: rows, error: rowsError } = await supabase
             .from("cart_items")
             .select(
-              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary), variants:product_variants(id, label, is_active, inventory(quantity, reserved))), variant:product_variants(id, label, is_active, inventory(quantity, reserved))",
+              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary), variants:product_variants(*, inventory(quantity, reserved))), variant:product_variants(*, inventory(quantity, reserved))",
             )
             .eq("cart_id", cart.id);
 
@@ -256,7 +256,9 @@ export const useCart = create<CartStore>()(
               variantId,
               storeId: row.store_id,
               name: product?.name ?? "Product",
-              variantLabel: variant?.label,
+              variantLabel: variant
+                ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim() || undefined
+                : undefined,
               price: row.unit_price,
               quantity: row.quantity,
               stock: getVariantAvailableStock({ inventory: variant?.inventory }, 99),

@@ -10,6 +10,7 @@ import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { typography, spacing, colors, radii, shadows } from "@/lib/theme/tokens";
 import { computeCartTotals } from "@/lib/cart-pricing";
+import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { CartItemCard } from "@/components/cart/CartItemCard";
 import { getVariantStock } from "@/components/cart/variant-utils";

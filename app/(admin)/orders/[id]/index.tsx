@@ -3,11 +3,12 @@ import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOrderById, transitionOrderStatus } from "@/lib/api";
-import type { Order } from "@/lib/types";
+import type { Order, OrderStatus } from "@/lib/types";
 import { Card, Badge, Button, Skeleton } from "@/components/ui";
 import { colors, typography } from "@/lib/theme/tokens";
+import { CUSTOMER_STATUS_STEPS, getCustomerStepIndex, getSellerNextStatus } from "@/lib/order-lifecycle";
 
-const STATUS_FLOW = ["pending", "confirmed", "processing", "shipped", "delivered"];
+const STATUS_FLOW = CUSTOMER_STATUS_STEPS;
 
 export default function AdminOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,7 +26,7 @@ export default function AdminOrderDetail() {
   });
 
   const transitionMutation = useMutation({
-    mutationFn: (status: string) => transitionOrderStatus(id!, status),
+    mutationFn: (status: string) => transitionOrderStatus(id!, status, { skipSellerGuard: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-order", id] });
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
@@ -62,8 +63,8 @@ export default function AdminOrderDetail() {
     );
   }
 
-  const currentIdx = STATUS_FLOW.indexOf(order.status);
-  const nextStatus = currentIdx >= 0 && currentIdx < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIdx + 1] : null;
+  const currentIdx = getCustomerStepIndex(order.status as OrderStatus);
+  const nextStatus = getSellerNextStatus(order.status as OrderStatus);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

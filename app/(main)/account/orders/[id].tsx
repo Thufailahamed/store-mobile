@@ -14,8 +14,8 @@ import { ScreenHeader } from "@/components/layout";
 import { Avatar, Badge, Button, useToast } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
-import { supabase } from "@/lib/supabase/client";
-import { getOrderById } from "@/lib/api";
+import { getOrderById, cancelOrder as cancelOrderRpc } from "@/lib/api";
+import { canBuyerCancel, CUSTOMER_STATUS_STEPS } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -33,7 +33,7 @@ const STATUS_TONE: Record<OrderStatus, { label: string; bg: string; fg: string; 
   refunded: { label: "Refunded", bg: colors.accent2.ochre + "20", fg: colors.accent2.ochre, copy: "Refund issued to your original payment.", icon: "card-outline" },
 };
 
-const STATUS_STEPS: OrderStatus[] = ["pending", "confirmed", "processing", "shipped", "out_for_delivery", "delivered"];
+const STATUS_STEPS: OrderStatus[] = CUSTOMER_STATUS_STEPS;
 
 const PAYMENT_TONE: Record<string, { bg: string; fg: string }> = {
   paid: { bg: colors.olive[100], fg: colors.olive[700] },
@@ -66,7 +66,7 @@ export default function OrderDetailScreen() {
     };
   }, [id]);
 
-  const cancelOrder = async () => {
+  const handleCancelOrder = async () => {
     if (!order) return;
     Alert.alert("Cancel order", "Are you sure you want to cancel this order? This cannot be undone.", [
       { text: "Keep order", style: "cancel" },
@@ -75,13 +75,10 @@ export default function OrderDetailScreen() {
         style: "destructive",
         onPress: async () => {
           setCancelling(true);
-          const { error } = await supabase
-            .from("orders")
-            .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
-            .eq("id", order.id);
+          const res = await cancelOrderRpc(order.id);
           setCancelling(false);
-          if (error) {
-            toast(error.message, "error");
+          if (!res.ok) {
+            toast(res.error, "error");
             return;
           }
           setOrder({ ...order, status: "cancelled" });
@@ -115,7 +112,7 @@ export default function OrderDetailScreen() {
   const tone = STATUS_TONE[order.status] || STATUS_TONE.pending;
   const paymentTone = PAYMENT_TONE[order.payment_status] || PAYMENT_TONE.pending;
   const currentStepIndex = STATUS_STEPS.indexOf(order.status);
-  const canCancel = ["pending", "confirmed", "processing"].includes(order.status);
+  const canCancel = canBuyerCancel(order.status) || order.status === "processing";
   const canReturn = order.status === "delivered";
 
   return (
@@ -205,7 +202,7 @@ export default function OrderDetailScreen() {
           )}
           <ActionChip icon="document-text-outline" label="Invoice" onPress={shareOrder} />
           {canCancel && (
-            <ActionChip icon="close-circle-outline" label="Cancel" danger onPress={cancelOrder} />
+            <ActionChip icon="close-circle-outline" label="Cancel" danger onPress={handleCancelOrder} />
           )}
         </View>
 
