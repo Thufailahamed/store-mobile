@@ -13,17 +13,21 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
 import { deliveryPickupVerify, getReturnPickups, type ReturnPickup } from "@/lib/api";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { useTheme } from "@/lib/hooks/useTheme";
+import { typography, radii } from "@/lib/theme/tokens";
 
 export default function ReturnPickupDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const [pickup, setPickup] = useState<ReturnPickup | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [otp, setOtp] = useState("");
   const [failReason, setFailReason] = useState("");
+
+  const styles = makeStyles(colors, isDark);
 
   const load = useCallback(async () => {
     const res = await getReturnPickups();
@@ -74,7 +78,7 @@ export default function ReturnPickupDetail() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.light.primary} />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -82,7 +86,7 @@ export default function ReturnPickupDetail() {
   if (!pickup) {
     return (
       <View style={styles.center}>
-        <Text>Pickup not found</Text>
+        <Text style={styles.muted}>Pickup not found</Text>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backLink}>← Back</Text>
         </TouchableOpacity>
@@ -144,7 +148,7 @@ export default function ReturnPickupDetail() {
             keyboardType="number-pad"
             maxLength={6}
             placeholder="6-digit code"
-            placeholderTextColor={colors.light.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
           />
         </View>
       ) : null}
@@ -157,7 +161,7 @@ export default function ReturnPickupDetail() {
             value={failReason}
             onChangeText={setFailReason}
             placeholder="Why did the pickup fail?"
-            placeholderTextColor={colors.light.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
           />
         </View>
       ) : null}
@@ -188,30 +192,58 @@ export default function ReturnPickupDetail() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 40 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  backLink: { color: colors.light.primary, marginBottom: 16 },
-  title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold as any },
-  status: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4, textTransform: "capitalize", marginBottom: 20 },
-  section: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold as any, color: colors.light.mutedForeground, textTransform: "uppercase", marginBottom: 8 },
-  body: { fontSize: typography.fontSizes.sm, lineHeight: 22, color: colors.light.foreground },
-  linkBtn: { marginTop: 10, paddingVertical: 10, alignItems: "center", borderRadius: radii.lg, borderWidth: 1, borderColor: colors.light.border },
-  linkBtnText: { color: colors.light.primary, fontWeight: typography.fontWeights.medium as any },
-  otpInput: { backgroundColor: colors.light.background, borderWidth: 1, borderColor: colors.light.border, borderRadius: radii.lg, padding: 14, fontSize: 20, textAlign: "center", letterSpacing: 6 },
-  notesInput: { backgroundColor: colors.light.background, borderWidth: 1, borderColor: colors.light.border, borderRadius: radii.lg, padding: 12 },
-  actions: { gap: 10, marginTop: 8 },
-  primaryBtn: { backgroundColor: colors.light.primary, padding: 14, borderRadius: radii.lg, alignItems: "center" },
-  primaryBtnText: { color: colors.light.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
-  dangerBtn: { padding: 14, borderRadius: radii.lg, alignItems: "center", borderWidth: 1, borderColor: "#fecaca" },
-  dangerBtnText: { color: "#dc2626", fontWeight: typography.fontWeights.semibold as any },
-});
+const makeStyles = (
+  colors: ReturnType<typeof useTheme>["colors"],
+  isDark: boolean,
+) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 40 },
+    center: { flex: 1, justifyContent: "center", alignItems: "center" },
+    muted: { color: colors.mutedForeground },
+    backLink: { color: colors.primary, marginBottom: 16 },
+    title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold as any, color: colors.foreground },
+    status: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground, marginTop: 4, textTransform: "capitalize", marginBottom: 20 },
+    section: {
+      backgroundColor: colors.card,
+      borderRadius: radii.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      marginBottom: 16,
+    },
+    sectionTitle: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold as any, color: colors.mutedForeground, textTransform: "uppercase", marginBottom: 8 },
+    body: { fontSize: typography.fontSizes.sm, lineHeight: 22, color: colors.foreground },
+    linkBtn: { marginTop: 10, paddingVertical: 10, alignItems: "center", borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border },
+    linkBtnText: { color: colors.primary, fontWeight: typography.fontWeights.medium as any },
+    otpInput: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.lg,
+      padding: 14,
+      fontSize: 20,
+      textAlign: "center",
+      letterSpacing: 6,
+      color: colors.foreground,
+    },
+    notesInput: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.lg,
+      padding: 12,
+      color: colors.foreground,
+    },
+    actions: { gap: 10, marginTop: 8 },
+    primaryBtn: { backgroundColor: colors.primary, padding: 14, borderRadius: radii.lg, alignItems: "center" },
+    primaryBtnText: { color: colors.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
+    dangerBtn: {
+      padding: 14,
+      borderRadius: radii.lg,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: isDark ? "#7f1d1d" : "#fecaca",
+    },
+    dangerBtnText: { color: isDark ? "#fca5a5" : "#dc2626", fontWeight: typography.fontWeights.semibold as any },
+  });

@@ -1,10 +1,14 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { useAssignmentNotifications } from "@/lib/notifications/assignments";
 
 /** Refetch rider data when assigned orders or return pickups change. */
 export function useRiderRealtime(riderId: string | undefined, onUpdate: () => void) {
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
+
+  // Side-effect: schedule a local push on new assignments.
+  useAssignmentNotifications(riderId);
 
   useEffect(() => {
     if (!riderId) return;

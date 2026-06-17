@@ -20,7 +20,9 @@ import {
   type PackageMeta,
   type PackageScanAction,
 } from "@/lib/api/delivery-api";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { resolveScanAction } from "@/lib/api/__tests__/scan-action";
+import { useTheme } from "@/lib/hooks/useTheme";
+import { typography, radii } from "@/lib/theme/tokens";
 
 const ACTION_LABELS: Record<string, string> = {
   pickup: "Pick up",
@@ -38,6 +40,7 @@ const ACTION_LABELS: Record<string, string> = {
 export default function DeliveryScanScreen() {
   const router = useRouter();
   const { token: deepToken } = useLocalSearchParams<{ token?: string }>();
+  const { colors, isDark } = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(!deepToken);
   const [token, setToken] = useState<string | null>(null);
@@ -48,6 +51,8 @@ export default function DeliveryScanScreen() {
   const [otp, setOtp] = useState("");
   const [notes, setNotes] = useState("");
   const [scannedOnce, setScannedOnce] = useState(false);
+
+  const styles = makeStyles(colors, isDark);
 
   const resolveToken = useCallback(async (raw: string) => {
     const pkgToken = extractPackageToken(raw);
@@ -114,16 +119,9 @@ export default function DeliveryScanScreen() {
     }
 
     setActing(true);
-    const pickupDecision =
-      action === "pickup:direct"
-        ? "direct"
-        : action === "pickup:transit_to_warehouse"
-          ? "transit_to_warehouse"
-          : undefined;
-    const bareAction =
-      action === "pickup:direct" || action === "pickup:transit_to_warehouse" ? "pickup" : action;
+    const { bareAction, pickupDecision } = resolveScanAction(action);
 
-    const res = await scanPackage(token, action, {
+    const res = await scanPackage(token, bareAction as PackageScanAction, {
       pickup_decision: pickupDecision,
       notes: notes.trim() || undefined,
     });
@@ -141,7 +139,7 @@ export default function DeliveryScanScreen() {
   if (!permission) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.light.primary} />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -149,7 +147,7 @@ export default function DeliveryScanScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.center}>
-        <Ionicons name="camera-outline" size={48} color={colors.light.mutedForeground} />
+        <Ionicons name="camera-outline" size={48} color={colors.mutedForeground} />
         <Text style={styles.permText}>Camera access is required to scan package QR codes.</Text>
         <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission}>
           <Text style={styles.primaryBtnText}>Allow camera</Text>
@@ -182,7 +180,7 @@ export default function DeliveryScanScreen() {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.light.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Resolving package…</Text>
         </View>
       ) : null}
@@ -224,7 +222,7 @@ export default function DeliveryScanScreen() {
                 keyboardType="number-pad"
                 maxLength={6}
                 placeholder="6-digit code"
-                placeholderTextColor={colors.light.mutedForeground}
+                placeholderTextColor={colors.mutedForeground}
               />
             </View>
           ) : null}
@@ -234,7 +232,7 @@ export default function DeliveryScanScreen() {
             value={notes}
             onChangeText={setNotes}
             placeholder="Notes (optional)"
-            placeholderTextColor={colors.light.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
           />
 
           <TouchableOpacity
@@ -259,7 +257,7 @@ export default function DeliveryScanScreen() {
             value={manualToken}
             onChangeText={setManualToken}
             placeholder="Package token"
-            placeholderTextColor={colors.light.mutedForeground}
+            placeholderTextColor={colors.mutedForeground}
             autoCapitalize="none"
           />
           <TouchableOpacity
@@ -275,81 +273,88 @@ export default function DeliveryScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 12 },
-  header: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 12 },
-  title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold as any, color: colors.light.foreground },
-  subtitle: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4 },
-  cameraWrap: { marginHorizontal: 24, borderRadius: radii.xl, overflow: "hidden", height: 280 },
-  camera: { flex: 1 },
-  cameraOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
-  scanFrame: { width: 200, height: 200, borderWidth: 2, borderColor: "#fff", borderRadius: radii.lg },
-  scanHint: { color: "#fff", marginTop: 16, fontSize: typography.fontSizes.sm },
-  loadingText: { color: colors.light.mutedForeground },
-  metaScroll: { flex: 1 },
-  metaContent: { padding: 24, gap: 10, paddingBottom: 40 },
-  metaCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 16,
-    marginBottom: 8,
-  },
-  orderNumber: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold as any },
-  metaLine: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4 },
-  actionBtn: {
-    backgroundColor: colors.light.primary,
-    padding: 14,
-    borderRadius: radii.lg,
-    alignItems: "center",
-  },
-  actionBtnText: { color: colors.light.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
-  otpSection: { marginTop: 8 },
-  otpLabel: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginBottom: 6 },
-  otpInput: {
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    padding: 14,
-    fontSize: 20,
-    textAlign: "center",
-    letterSpacing: 6,
-  },
-  notesInput: {
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    padding: 12,
-    marginTop: 8,
-  },
-  manualSection: { padding: 24, gap: 10 },
-  manualLabel: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
-  manualInput: {
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    padding: 12,
-  },
-  primaryBtn: {
-    backgroundColor: colors.light.primary,
-    padding: 14,
-    borderRadius: radii.lg,
-    alignItems: "center",
-  },
-  primaryBtnText: { color: colors.light.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
-  secondaryBtn: {
-    padding: 14,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    marginTop: 8,
-  },
-  secondaryBtnText: { color: colors.light.foreground },
-  permText: { textAlign: "center", color: colors.light.mutedForeground, paddingHorizontal: 24 },
-});
+const makeStyles = (
+  colors: ReturnType<typeof useTheme>["colors"],
+  isDark: boolean,
+) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 12 },
+    header: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 12 },
+    title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold as any, color: colors.foreground },
+    subtitle: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground, marginTop: 4 },
+    cameraWrap: { marginHorizontal: 24, borderRadius: radii.xl, overflow: "hidden", height: 280 },
+    camera: { flex: 1 },
+    cameraOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+    scanFrame: { width: 200, height: 200, borderWidth: 2, borderColor: "#fff", borderRadius: radii.lg },
+    scanHint: { color: "#fff", marginTop: 16, fontSize: typography.fontSizes.sm },
+    loadingText: { color: colors.mutedForeground },
+    metaScroll: { flex: 1 },
+    metaContent: { padding: 24, gap: 10, paddingBottom: 40 },
+    metaCard: {
+      backgroundColor: colors.card,
+      borderRadius: radii.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      marginBottom: 8,
+    },
+    orderNumber: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold as any, color: colors.foreground },
+    metaLine: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground, marginTop: 4 },
+    actionBtn: {
+      backgroundColor: colors.primary,
+      padding: 14,
+      borderRadius: radii.lg,
+      alignItems: "center",
+    },
+    actionBtnText: { color: colors.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
+    otpSection: { marginTop: 8 },
+    otpLabel: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground, marginBottom: 6 },
+    otpInput: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.lg,
+      padding: 14,
+      fontSize: 20,
+      textAlign: "center",
+      letterSpacing: 6,
+      color: colors.foreground,
+    },
+    notesInput: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.lg,
+      padding: 12,
+      marginTop: 8,
+      color: colors.foreground,
+    },
+    manualSection: { padding: 24, gap: 10 },
+    manualLabel: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground },
+    manualInput: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.lg,
+      padding: 12,
+      color: colors.foreground,
+    },
+    primaryBtn: {
+      backgroundColor: colors.primary,
+      padding: 14,
+      borderRadius: radii.lg,
+      alignItems: "center",
+    },
+    primaryBtnText: { color: colors.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
+    secondaryBtn: {
+      padding: 14,
+      borderRadius: radii.lg,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginTop: 8,
+    },
+    secondaryBtnText: { color: colors.foreground },
+    permText: { textAlign: "center", color: colors.mutedForeground, paddingHorizontal: 24 },
+  });

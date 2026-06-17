@@ -215,7 +215,7 @@ export default function AdminStoreDetail() {
       <Card style={styles.heroCard}>
         <View style={styles.statusRow}>
           <Badge variant={statusVariant(s.status)}>{s.status}</Badge>
-          <Text style={styles.since}>{rel(s.created_at)} ago</Text>
+          <Text style={styles.since}>{s.created_at ? rel(s.created_at) : "Recently"} ago</Text>
         </View>
         <Text style={styles.subtitle}>{s.description ?? "No description"}</Text>
       </Card>

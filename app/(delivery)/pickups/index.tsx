@@ -11,33 +11,21 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
 import { getReturnPickups, type ReturnPickup } from "@/lib/api";
 import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { useTheme } from "@/lib/hooks/useTheme";
+import { typography, radii } from "@/lib/theme/tokens";
+import { formatRelative, PICKUP_STATUS_COLORS } from "@/lib/utils/delivery-format";
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  scheduled: { bg: "#fef3c7", text: "#92400e" },
-  out_for_pickup: { bg: "#dbeafe", text: "#1e40af" },
-  picked_up: { bg: "#e0e7ff", text: "#3730a3" },
-  completed: { bg: "#dcfce7", text: "#166534" },
-  failed: { bg: "#fee2e2", text: "#b91c1c" },
-  cancelled: { bg: "#f3f4f6", text: "#6b7280" },
-};
-
-function formatRelative(dateStr: string) {
-  const d = new Date(dateStr);
-  const diff = Date.now() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+const STATUS_COLORS = PICKUP_STATUS_COLORS;
 
 export default function ReturnPickupsScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { colors } = useTheme();
   const [pickups, setPickups] = useState<ReturnPickup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const styles = makeStyles(colors);
 
   const fetchPickups = useCallback(async () => {
     const res = await getReturnPickups();
@@ -93,46 +81,47 @@ export default function ReturnPickupsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPickups(); }} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPickups(); }} tintColor={colors.primary} />
         }
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          !loading ? (
+          loading ? null : (
             <View style={styles.empty}>
               <Text style={styles.emptyIcon}>📦</Text>
               <Text style={styles.emptyTitle}>No return pickups</Text>
               <Text style={styles.emptySub}>Assigned pickups will appear here</Text>
             </View>
-          ) : null
+          )
         }
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  header: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 12 },
-  title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold as any },
-  count: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4 },
-  list: { paddingHorizontal: 24, paddingBottom: 32 },
-  card: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 16,
-    marginBottom: 12,
-  },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { fontSize: typography.fontSizes.base, fontWeight: typography.fontWeights.semibold as any },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
-  badgeText: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold as any, textTransform: "capitalize" },
-  meta: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 6 },
-  address: { fontSize: typography.fontSizes.sm, marginTop: 8, color: colors.light.foreground },
-  scheduled: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 6 },
-  empty: { alignItems: "center", paddingTop: 60, gap: 8 },
-  emptyIcon: { fontSize: 40 },
-  emptyTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold as any },
-  emptySub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
-});
+const makeStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    header: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 12 },
+    title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold as any, color: colors.foreground },
+    count: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground, marginTop: 4 },
+    list: { paddingHorizontal: 24, paddingBottom: 32 },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radii.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      marginBottom: 12,
+    },
+    cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    cardTitle: { fontSize: typography.fontSizes.base, fontWeight: typography.fontWeights.semibold as any, color: colors.foreground },
+    badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
+    badgeText: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold as any, textTransform: "capitalize" },
+    meta: { fontSize: typography.fontSizes.xs, color: colors.mutedForeground, marginTop: 6 },
+    address: { fontSize: typography.fontSizes.sm, marginTop: 8, color: colors.foreground },
+    scheduled: { fontSize: typography.fontSizes.xs, color: colors.mutedForeground, marginTop: 6 },
+    empty: { alignItems: "center", paddingTop: 60, gap: 8 },
+    emptyIcon: { fontSize: 40 },
+    emptyTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold as any, color: colors.foreground },
+    emptySub: { fontSize: typography.fontSizes.sm, color: colors.mutedForeground },
+  });

@@ -119,7 +119,7 @@ export async function getProductCards(opts: {
     query = query.range(offset, offset + limit - 1);
     const { data, error } = await query;
     if (error) return fail(error.message);
-    const rows = ((data as Product[]) ?? []).filter((row) =>
+    const rows = ((data as unknown as Product[]) ?? []).filter((row) =>
       isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0], catalogVisibleStoreIds)
     );
     return ok(mapProducts(rows));
@@ -138,7 +138,7 @@ export async function getProductCardsByIds(ids: string[]): Promise<Result<Produc
       .in("id", ids)
       .eq("is_active", true);
     if (error) return fail(error.message);
-    const rows = ((data as Product[]) ?? []).filter((row) =>
+    const rows = ((data as unknown as Product[]) ?? []).filter((row) =>
       isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0], catalogVisibleStoreIds)
     );
     return ok(mapProducts(rows));

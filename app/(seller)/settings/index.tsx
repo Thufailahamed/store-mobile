@@ -123,7 +123,12 @@ export default function SellerSettings() {
       Alert.alert("Success", "Store and compliance details updated");
       fetchData();
     } else {
-      Alert.alert("Error", !res.ok ? res.error : payoutRes.error);
+      const message = !res.ok
+        ? res.error
+        : !payoutRes.ok
+          ? payoutRes.error
+          : "Failed to save";
+      Alert.alert("Error", message);
     }
   };
 

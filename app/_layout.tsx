@@ -140,13 +140,18 @@ function RootLayoutNav() {
       if (data?.screen) {
         router.push(data.screen as any);
       } else if (data?.order_id) {
-        router.push(`/(main)/account/orders/${data.order_id}` as any);
+        // Route delivery / delivery_company roles into the driver app.
+        const target =
+          role === "delivery" || role === "delivery_company"
+            ? `/(delivery)/orders/${data.order_id}`
+            : `/(main)/account/orders/${data.order_id}`;
+        router.push(target as any);
       }
     });
     return () => {
       notifListenerRef.current?.remove();
     };
-  }, []);
+  }, [role]);
 
   // Deep link handler (password reset, shared URLs, etc.)
   useEffect(() => {
@@ -168,13 +173,29 @@ function RootLayoutNav() {
       // Order deep link: luxe://order/<id>
       if (parsed.hostname === "order" && parsed.path) {
         const orderId = parsed.path.replace("/", "");
-        if (orderId) router.push(`/(main)/account/orders/${orderId}` as any);
+        if (orderId) {
+          const target =
+            role === "delivery" || role === "delivery_company"
+              ? `/(delivery)/orders/${orderId}`
+              : `/(main)/account/orders/${orderId}`;
+          router.push(target as any);
+        }
       }
 
       // Driver invite: luxe://delivery-company/accept?token=...
       if (parsed.hostname === "delivery-company" && parsed.path?.includes("accept")) {
         const token = parsed.queryParams?.token as string | undefined;
         if (token) router.push(`/(delivery-company)/accept?token=${token}` as any);
+      }
+
+      // Signup with role + invite: luxe://register?role=delivery&code=ABC
+      if (parsed.hostname === "register") {
+        const role = parsed.queryParams?.role as string | undefined;
+        const code = parsed.queryParams?.code as string | undefined;
+        const qs = new URLSearchParams();
+        if (role) qs.set("role", role);
+        if (code) qs.set("code", code);
+        router.push(`/(auth)/register?${qs.toString()}` as any);
       }
     };
 

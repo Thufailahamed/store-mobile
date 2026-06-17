@@ -270,6 +270,12 @@ export async function getDeliveryCompanyRoutes(opts?: {
   return storeApiFetch(`/api/delivery-company/routes${q ? `?${q}` : ""}`);
 }
 
+export async function getDeliveryCompanyRoute(
+  routeId: string,
+): Promise<DcApiResult<{ route: DcRoute }>> {
+  return storeApiFetch(`/api/delivery-company/routes/${routeId}`);
+}
+
 export async function dispatchRoute(routeId: string): Promise<DcApiResult<unknown>> {
   return storeApiFetch(`/api/delivery-company/routes/${routeId}/dispatch`, { method: "POST" });
 }

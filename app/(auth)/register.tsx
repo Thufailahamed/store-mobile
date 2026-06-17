@@ -7,7 +7,7 @@ import {
   Platform,
   TouchableOpacity,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { supabase } from "@/lib/supabase/client";
@@ -15,19 +15,24 @@ import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { acceptDriverInvite, hasStoreApi } from "@/lib/api/delivery-company-api";
 
-type UserRole = "customer" | "store_owner" | "brand_owner";
+type UserRole = "customer" | "store_owner" | "brand_owner" | "delivery";
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ role?: string; code?: string }>();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
-  const [role, setRole] = useState<UserRole>("customer");
+  const [role, setRole] = useState<UserRole>(
+    params.role === "delivery" ? "delivery" : "customer",
+  );
+  const [inviteCode, setInviteCode] = useState(params.code ?? "");
   const [terms, setTerms] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -35,6 +40,7 @@ export default function RegisterScreen() {
     { key: "customer", label: "Shop", sub: "Discover & buy", icon: "bag-handle-outline" },
     { key: "store_owner", label: "Sell", sub: "Run your store", icon: "storefront-outline" },
     { key: "brand_owner", label: "Brand", sub: "Scale your label", icon: "pricetag-outline" },
+    { key: "delivery", label: "Deliver", sub: "Join as rider", icon: "bicycle-outline" },
   ];
 
   const handleRegister = async () => {
@@ -53,6 +59,11 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (role === "delivery" && !inviteCode.trim()) {
+      toast("Enter the invite code your company sent you", "error");
+      return;
+    }
+
     setLoading(true);
 
     const { error } = await supabase.auth.signUp({
@@ -67,14 +78,41 @@ export default function RegisterScreen() {
       },
     });
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       toast(error.message, "error");
-    } else {
-      toast("Account created! Check your email for verification.", "success");
-      router.replace("/(auth)/login");
+      return;
     }
+
+    // If this is a delivery signup, immediately accept the invite so the
+    // driver is linked to a company. If this fails, the user can still log
+    // in and accept the invite later via the invite link.
+    if (role === "delivery" && inviteCode.trim() && hasStoreApi()) {
+      const accept = await acceptDriverInvite(inviteCode.trim());
+      if (!accept.ok) {
+        setLoading(false);
+        toast(
+          `Account created but invite could not be redeemed: ${accept.error}. You can accept it from your invite link later.`,
+          "error",
+        );
+        router.replace("/(auth)/login");
+        return;
+      }
+      try {
+        await supabase.auth.refreshSession();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setLoading(false);
+    toast(
+      role === "delivery"
+        ? "Welcome to the team! You can now sign in."
+        : "Account created! Check your email for verification.",
+      "success",
+    );
+    router.replace("/(auth)/login");
   };
 
   return (
@@ -150,6 +188,18 @@ export default function RegisterScreen() {
             autoComplete="name"
             leftIcon={<Ionicons name="person-outline" size={18} color={colors.light.mutedForeground} />}
           />
+
+          {role === "delivery" && (
+            <Input
+              label="Invite code"
+              placeholder="Code from your company"
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              leftIcon={<Ionicons name="key-outline" size={18} color={colors.light.mutedForeground} />}
+            />
+          )}
 
           <Input
             label="Phone (optional)"

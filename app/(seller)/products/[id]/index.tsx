@@ -184,6 +184,8 @@ export default function SellerProductEdit() {
   };
 
   const syncImages = async (productId: string) => {
+    if (!storeId) throw new Error("Store not found");
+
     for (const imageId of removedImageIds) {
       const res = await deleteSellerProductImage(imageId);
       if (!res.ok) throw new Error(res.error);

@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------------ */
 
 export type UserRole = "customer" | "store_owner" | "brand_owner" | "admin" | "influencer" | "delivery" | "delivery_company";
-export type ApprovalStatus = "draft" | "pending" | "approved" | "rejected";
+export type ApprovalStatus = "draft" | "pending" | "approved" | "rejected" | "active" | "suspended" | "banned";
 export type ProductStatus = "draft" | "pending" | "active" | "archived" | "rejected";
 export type ProductType = "simple" | "variable";
 export type Gender = "men" | "women" | "kids" | "unisex";
@@ -54,6 +54,7 @@ export interface Store {
   total_sales: number;
   is_featured?: boolean;
   homepage_order?: number;
+  created_at?: string;
   legal_name?: string | null;
   tax_id?: string | null;
   bank_name?: string | null;
@@ -208,6 +209,8 @@ export interface Order {
   placed_at: string;
   items?: OrderItem[];
   address?: Address;
+  route_id?: string | null;
+  delivery_person_id?: string | null;
   shipping_address?: {
     full_name: string;
     phone: string;
@@ -248,6 +251,44 @@ export interface Banner {
   accent_color?: string | null;
   text_color?: string | null;
   bg_color?: string | null;
+}
+
+/* -------------------- Delivery driver shapes -------------------- */
+
+export type DriverType = "pickup" | "last_mile" | "both";
+
+export interface DriverProfile {
+  member_id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  company_role: "owner" | "manager" | "driver";
+  driver_type: DriverType;
+  vehicle_type: string | null;
+  capacity_max: number;
+  is_active: boolean;
+  joined_at: string | null;
+  last_known_lat: number | null;
+  last_known_lng: number | null;
+  last_ping_at: string | null;
+  serviceable_postal_codes: string[];
+  home_warehouse_id: string | null;
+  home_warehouse: { id: string; name: string } | null;
+  company: { id: string; name: string; slug: string; status: string } | null;
+}
+
+export interface DriverMetrics {
+  delivered: number;
+  failed: number;
+  returned: number;
+  cancelled: number;
+  total_assigned: number;
+  success_rate: number;
+  cod_collected: number;
+  avg_delivery_minutes: number;
+  daily: { date: string; delivered: number; failed: number; cod: number }[];
 }
 
 export interface HomepageSection {

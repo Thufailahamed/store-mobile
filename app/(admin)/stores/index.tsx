@@ -97,9 +97,9 @@ export default function AdminStores() {
                     >
                       {item.status}
                     </Badge>
-                    {(item as { complianceGaps?: string[] }).complianceGaps?.length ? (
+                    {(item.complianceGaps?.length ?? 0) > 0 ? (
                       <Badge variant="destructive">
-                        {(item as { complianceGaps: string[] }).complianceGaps.length} gap{(item as { complianceGaps: string[] }).complianceGaps.length === 1 ? "" : "s"}
+                        {item.complianceGaps.length} gap{item.complianceGaps.length === 1 ? "" : "s"}
                       </Badge>
                     ) : item.status === "pending" ? (
                       <Badge variant="default">Ready</Badge>

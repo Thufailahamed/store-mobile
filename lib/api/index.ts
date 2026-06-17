@@ -2238,7 +2238,7 @@ export async function getAdminStores(opts: {
   search?: string;
   limit?: number;
   offset?: number;
-} = {}): Promise<Result<{ stores: Store[]; total: number }>> {
+} = {}): Promise<Result<{ stores: (Store & { complianceGaps: string[] })[]; total: number }>> {
   const { status, search, limit = 50, offset = 0 } = opts;
   try {
     let query = supabase

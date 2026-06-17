@@ -1,7 +1,9 @@
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { Alert } from "react-native";
 import { supabase } from "@/lib/supabase/client";
+import { assertSellerCanOperate } from "@/lib/api";
 import type { ComplianceDocType } from "@/lib/seller-access";
 
 export interface UploadResult {
@@ -127,7 +129,6 @@ export async function pickComplianceFile(): Promise<{
         text: "PDF / File",
         onPress: async () => {
           try {
-            const DocumentPicker = await import("expo-document-picker");
             const result = await DocumentPicker.getDocumentAsync({
               type: ["application/pdf", "image/*"],
               copyToCacheDirectory: true,
@@ -237,7 +238,6 @@ export async function uploadProductImage(
   options?: { mimeType?: string | null; fileName?: string | null }
 ): Promise<UploadResult> {
   try {
-    const { assertSellerCanOperate } = await import("@/lib/api");
     const guard = await assertSellerCanOperate(storeId);
     if (!guard.ok) return { url: "", error: guard.error };
 

@@ -24,43 +24,14 @@ import {
 } from "@/lib/api";
 import { takePhoto, uploadDeliveryProof } from "@/lib/upload";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import {
+  formatPrice,
+  formatDate,
+  mapsUrl,
+  STATUS_COLORS,
+  ISSUE_REASONS,
+} from "@/lib/utils/delivery-format";
 import type { Order } from "@/lib/types";
-
-const ISSUE_REASONS = [
-  { value: "customer_absent", label: "Customer absent" },
-  { value: "wrong_address", label: "Wrong address" },
-  { value: "refused", label: "Customer refused" },
-  { value: "damaged", label: "Package damaged" },
-  { value: "other", label: "Other" },
-];
-
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  pending: { bg: "#fef3c7", text: "#92400e" },
-  confirmed: { bg: "#dbeafe", text: "#1e40af" },
-  processing: { bg: "#e0e7ff", text: "#3730a3" },
-  shipped: { bg: "#fef3c7", text: "#92400e" },
-  out_for_delivery: { bg: "#dcfce7", text: "#166534" },
-  delivered: { bg: "#dcfce7", text: "#166534" },
-  cancelled: { bg: "#f3f4f6", text: "#6b7280" },
-  returned: { bg: "#f3e8ff", text: "#7c3aed" },
-  refunded: { bg: "#fce7f3", text: "#be185d" },
-};
-
-function formatPrice(n: number) {
-  return `Rs. ${n.toLocaleString("en-LK")}`;
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-LK", {
-    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function mapsUrl(addr?: Order["shipping_address"]) {
-  if (!addr) return "#";
-  const parts = [addr.line1, addr.line2, addr.city, addr.state, addr.postal_code, addr.country].filter(Boolean);
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(parts.join(", "))}`;
-}
 
 export default function DeliveryDetail() {
   const router = useRouter();
@@ -335,6 +306,16 @@ export default function DeliveryDetail() {
 
         {/* Action Buttons */}
         <View style={styles.actionSection}>
+          {order.route_id ? (
+            <TouchableOpacity
+              style={[styles.scanButton, { backgroundColor: colors.light.primary + "15" }]}
+              onPress={() => router.push(`/(delivery)/route-map?routeId=${order.route_id}` as any)}
+            >
+              <Text style={[styles.scanButtonText, { color: colors.light.primary }]}>
+                🗺️ View route on map
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.scanButton} onPress={handleOpenScan}>
             <Text style={styles.scanButtonText}>📷 Scan package QR</Text>
           </TouchableOpacity>

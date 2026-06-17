@@ -59,7 +59,7 @@ export default function SellerLayout() {
     [store, payout, documents]
   );
 
-  const isSettingsRoute = segments.includes("settings");
+  const isSettingsRoute = (segments as string[]).includes("settings");
 
   useEffect(() => {
     if (loading || roleLoading || storeLoading) return;

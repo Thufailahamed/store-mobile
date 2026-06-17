@@ -84,9 +84,24 @@ export default function DeliveryLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="time-outline" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="earnings"
+        options={{
+          title: "Earnings",
+          tabBarIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />,
+        }}
+      />
 
       <Tabs.Screen name="orders/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="pickups/[id]/index" options={{ href: null }} />
+      <Tabs.Screen name="route-map" options={{ href: null }} />
     </Tabs>
   );
 }

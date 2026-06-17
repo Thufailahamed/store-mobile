@@ -63,7 +63,9 @@ export default function HomeScreen() {
             products={forYou.data?.products ?? []}
             hasSignal={forYou.data?.hasSignal ?? false}
             loading={forYou.isLoading}
-            onRefresh={() => refreshForYou(user?.id)}
+            onRefresh={() => {
+              void refreshForYou(user?.id);
+            }}
             onSeeAll={() => router.push("/(main)/products?sort=newest")}
           />
         ) : null}
