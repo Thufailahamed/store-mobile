@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "./product-mapper";
+import { getOperationalStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 import type { Product } from "@/lib/types";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -78,7 +79,7 @@ export async function getProductCards(opts: {
         .from("stores")
         .select("id")
         .eq("slug", storeSlug)
-        .in("status", ["approved", "pending"])
+        .in("status", ["approved", "active"])
         .maybeSingle();
       if (storeError) return fail(storeError.message);
       if (store) query = query.eq("store_id", store.id);
@@ -86,6 +87,13 @@ export async function getProductCards(opts: {
     }
 
     if (gender) query = query.eq("gender", gender);
+
+    const opStoreIds = await getOperationalStoreIds();
+    if (opStoreIds.length > 0) {
+      query = query.or(`store_id.in.(${opStoreIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
+    } else {
+      query = query.is("store_id", null).not("brand_id", "is", null);
+    }
 
     switch (sort) {
       case "rating":
@@ -110,7 +118,10 @@ export async function getProductCards(opts: {
     query = query.range(offset, offset + limit - 1);
     const { data, error } = await query;
     if (error) return fail(error.message);
-    return ok(mapProducts((data as Product[]) ?? []));
+    const rows = ((data as Product[]) ?? []).filter((row) =>
+      isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0])
+    );
+    return ok(mapProducts(rows));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch products");
   }
@@ -125,7 +136,10 @@ export async function getProductCardsByIds(ids: string[]): Promise<Result<Produc
       .in("id", ids)
       .eq("is_active", true);
     if (error) return fail(error.message);
-    return ok(mapProducts((data as Product[]) ?? []));
+    const rows = ((data as Product[]) ?? []).filter((row) =>
+      isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0])
+    );
+    return ok(mapProducts(rows));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch products");
   }

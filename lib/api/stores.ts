@@ -93,8 +93,10 @@ export async function toggleFollowStore(
   }
 }
 
+import { isOperationalStoreStatus } from "@/lib/catalog-visibility";
+
 function isPublicStoreStatus(status: string | null | undefined) {
-  return status === "approved" || status === "pending";
+  return isOperationalStoreStatus(status);
 }
 
 export async function getStoreBySlug(slug: string): Promise<Result<Store | null>> {

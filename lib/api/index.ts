@@ -25,7 +25,8 @@ import type {
   Review, Order, OrderItem, Address, Banner, Notification, User,
   Testimonial, Tenet, HeroMeta, ApprovalStatus, HomepageSection,
 } from "@/lib/types";
-import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance } from "@/lib/seller-access";
+import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
+import { getOperationalStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
@@ -94,7 +95,7 @@ export async function getProducts(opts: {
         .from("stores")
         .select("id")
         .eq("slug", storeSlug)
-        .in("status", ["approved", "pending"])
+        .in("status", ["approved", "active"])
         .maybeSingle();
       if (storeError) return fail(storeError.message);
       if (store) {
@@ -105,6 +106,13 @@ export async function getProducts(opts: {
     }
     if (gender) query = query.eq("gender", gender);
     if (search) query = query.textSearch("name", search, { type: "websearch" });
+
+    const opStoreIds = await getOperationalStoreIds();
+    if (opStoreIds.length > 0) {
+      query = query.or(`store_id.in.(${opStoreIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
+    } else {
+      query = query.is("store_id", null).not("brand_id", "is", null);
+    }
 
     switch (sort) {
       case "rating": query = query.order("rating", { ascending: false }); break;
@@ -117,7 +125,8 @@ export async function getProducts(opts: {
     query = query.range(offset, offset + limit - 1);
     const { data, error, count } = await query;
     if (error) return fail(error.message);
-    return ok({ products: mapProducts(data as any[]) ?? [], total: count ?? 0 });
+    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row));
+    return ok({ products: mapProducts(rows) ?? [], total: count ?? rows.length });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch products");
   }
@@ -151,6 +160,7 @@ export async function getProductBySlug(slug: string): Promise<Result<Product | n
       .eq("slug", slug)
       .single();
     if (error) return fail(error.message);
+    if (!isPublicCatalogProduct(data)) return ok(null);
     return ok(mapProduct(data));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch product by slug");
@@ -1160,7 +1170,77 @@ export async function upsertSellerPayoutSettings(
   }
 }
 
-async function assertSellerCanOperate(storeId: string): Promise<Result<void>> {
+export async function getSellerComplianceDocuments(
+  storeId: string
+): Promise<Result<SellerComplianceDocument[]>> {
+  try {
+    const { data, error } = await supabase
+      .from("store_compliance_documents")
+      .select("id, doc_type, file_url, file_name, status")
+      .eq("store_id", storeId);
+    if (error) return fail(error.message);
+    return ok((data as SellerComplianceDocument[]) ?? []);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch compliance documents");
+  }
+}
+
+export async function upsertSellerComplianceDocument(
+  storeId: string,
+  docType: ComplianceDocType,
+  fileUrl: string,
+  fileName?: string
+): Promise<Result<SellerComplianceDocument>> {
+  try {
+    const { data, error } = await supabase
+      .from("store_compliance_documents")
+      .upsert(
+        {
+          store_id: storeId,
+          doc_type: docType,
+          file_url: fileUrl,
+          file_name: fileName ?? null,
+          status: "pending",
+          uploaded_at: new Date().toISOString(),
+          reviewed_at: null,
+          reviewed_by: null,
+          review_notes: null,
+        },
+        { onConflict: "store_id,doc_type" }
+      )
+      .select("id, doc_type, file_url, file_name, status")
+      .single();
+    if (error) return fail(error.message);
+    return ok(data as SellerComplianceDocument);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to save compliance document");
+  }
+}
+
+export async function reviewComplianceDocument(
+  docId: string,
+  status: "approved" | "rejected",
+  reviewNotes?: string
+): Promise<Result<void>> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from("store_compliance_documents")
+      .update({
+        status,
+        review_notes: reviewNotes ?? null,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user?.id ?? null,
+      })
+      .eq("id", docId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to review document");
+  }
+}
+
+export async function assertSellerCanOperate(storeId: string): Promise<Result<void>> {
   const { data: store, error } = await supabase
     .from("stores")
     .select("id, status, legal_name, tax_id")
@@ -1170,9 +1250,11 @@ async function assertSellerCanOperate(storeId: string): Promise<Result<void>> {
   if (!store) return fail("Store not found");
 
   const payoutRes = await getSellerPayoutSettings(storeId);
+  const docsRes = await getSellerComplianceDocuments(storeId);
   const access = getSellerAccessState(
     store as Store & Record<string, unknown>,
-    payoutRes.ok ? payoutRes.data : null
+    payoutRes.ok ? payoutRes.data : null,
+    docsRes.ok ? docsRes.data : null
   );
   if (!access.canAccessSellerTools) {
     return fail(access.lockReason ?? "Seller account is not active.");
@@ -1572,6 +1654,18 @@ export async function getSellerInventory(storeId: string): Promise<Result<{
 
 export async function updateVariantStock(variantId: string, stock: number): Promise<Result<void>> {
   try {
+    const { data: variantRow, error: variantLookupError } = await supabase
+      .from("product_variants")
+      .select("product_id, product:products(store_id)")
+      .eq("id", variantId)
+      .maybeSingle();
+    if (variantLookupError) return fail(variantLookupError.message);
+    const storeId = (variantRow as { product?: { store_id?: string } } | null)?.product?.store_id;
+    if (storeId) {
+      const guard = await assertSellerCanOperate(storeId);
+      if (!guard.ok) return guard;
+    }
+
     const { data: existing, error: lookupError } = await supabase
       .from("inventory")
       .select("id")
@@ -1586,13 +1680,6 @@ export async function updateVariantStock(variantId: string, stock: number): Prom
         .eq("variant_id", variantId);
       if (error) return fail(error.message);
     } else {
-      const { data: variantRow, error: variantLookupError } = await supabase
-        .from("product_variants")
-        .select("product_id, product:products(store_id)")
-        .eq("id", variantId)
-        .maybeSingle();
-      if (variantLookupError) return fail(variantLookupError.message);
-      const storeId = (variantRow as any)?.product?.store_id;
       if (!storeId) return fail("Store not found for variant");
 
       const { error } = await supabase
@@ -2086,10 +2173,54 @@ export async function getAdminStores(opts: {
     query = query.range(offset, offset + limit - 1);
     const { data, error, count } = await query;
     if (error) return fail(error.message);
-    return ok({ stores: (data as Store[]) ?? [], total: count ?? 0 });
+    const rows = (data as Store[]) ?? [];
+    const withCompliance = await attachAdminStoreComplianceGaps(rows);
+    return ok({ stores: withCompliance, total: count ?? 0 });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch stores");
   }
+}
+
+async function attachAdminStoreComplianceGaps(
+  stores: Store[]
+): Promise<(Store & { complianceGaps: string[] })[]> {
+  const reviewIds = stores
+    .filter((s) => ["pending", "rejected", "suspended", "draft"].includes(String(s.status ?? "")))
+    .map((s) => s.id);
+  if (!reviewIds.length) {
+    return stores.map((s) => ({ ...s, complianceGaps: [] as string[] }));
+  }
+
+  const [{ data: payouts }, { data: docs }] = await Promise.all([
+    supabase
+      .from("payout_settings")
+      .select("store_id, bank_name, account_name, account_number_last4, tax_form_submitted")
+      .in("store_id", reviewIds),
+    supabase
+      .from("store_compliance_documents")
+      .select("store_id, doc_type, file_url, file_name, status")
+      .in("store_id", reviewIds),
+  ]);
+
+  const payoutByStore = new Map((payouts ?? []).map((p: { store_id: string }) => [p.store_id, p]));
+  const docsByStore = new Map<string, SellerComplianceDocument[]>();
+  for (const row of docs ?? []) {
+    const sid = (row as { store_id: string }).store_id;
+    const list = docsByStore.get(sid) ?? [];
+    list.push(row as SellerComplianceDocument);
+    docsByStore.set(sid, list);
+  }
+
+  return stores.map((s) => ({
+    ...s,
+    complianceGaps: reviewIds.includes(s.id)
+      ? getSellerComplianceGaps(
+          s as Store & Record<string, unknown>,
+          (payoutByStore.get(s.id) as SellerPayoutCompliance | undefined) ?? null,
+          docsByStore.get(s.id) ?? null
+        )
+      : [],
+  }));
 }
 
 export async function approveStore(storeId: string, status: "approved" | "rejected"): Promise<Result<void>> {
@@ -2104,9 +2235,11 @@ export async function approveStore(storeId: string, status: "approved" | "reject
       if (!store) return fail("Store not found");
 
       const payoutRes = await getSellerPayoutSettings(storeId);
+      const docsRes = await getSellerComplianceDocuments(storeId);
       const gaps = getSellerComplianceGaps(
         store as Store & Record<string, unknown>,
-        payoutRes.ok ? payoutRes.data : null
+        payoutRes.ok ? payoutRes.data : null,
+        docsRes.ok ? docsRes.data : null
       );
       if (gaps.length > 0) {
         return fail(`Cannot approve store — missing: ${gaps.join(", ")}`);
@@ -2151,6 +2284,7 @@ export interface AdminStoreDetail {
     products?: { id: string; name: string; status: string; total_sales?: number }[];
   };
   payout: SellerPayoutCompliance | null;
+  documents: SellerComplianceDocument[];
   complianceGaps: string[];
 }
 
@@ -2168,14 +2302,18 @@ export async function getAdminStoreDetail(id: string): Promise<Result<AdminStore
 
     const payoutRes = await getSellerPayoutSettings(id);
     const payout = payoutRes.ok ? payoutRes.data : null;
+    const docsRes = await getSellerComplianceDocuments(id);
+    const documents = docsRes.ok ? docsRes.data : [];
     const complianceGaps = getSellerComplianceGaps(
       store as Store & Record<string, unknown>,
-      payout
+      payout,
+      documents
     );
 
     return ok({
       store: store as AdminStoreDetail["store"],
       payout,
+      documents,
       complianceGaps,
     });
   } catch (e: any) {
@@ -2404,6 +2542,18 @@ export async function createCoupon(c: Partial<AdminCoupon>): Promise<Result<Admi
 
 export async function toggleCoupon(id: string, isActive: boolean): Promise<Result<void>> {
   try {
+    const { data: coupon } = await supabase
+      .from("coupons")
+      .select("store_id, scope")
+      .eq("id", id)
+      .maybeSingle();
+    const storeId = (coupon as { store_id?: string; scope?: string } | null)?.store_id
+      ?? (coupon as { scope?: string } | null)?.scope;
+    if (storeId) {
+      const guard = await assertSellerCanOperate(storeId);
+      if (!guard.ok) return guard;
+    }
+
     const { error } = await supabase.from("coupons").update({ is_active: isActive }).eq("id", id);
     if (error) return fail(error.message);
     return ok(undefined);
@@ -3547,8 +3697,9 @@ export async function getStoreCoupons(storeId: string): Promise<Result<AdminCoup
 
 export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
   try {
-    if (coupon.store_id) {
-      const guard = await assertSellerCanOperate(coupon.store_id as string);
+    const storeId = (coupon as { store_id?: string }).store_id ?? coupon.scope;
+    if (storeId) {
+      const guard = await assertSellerCanOperate(storeId);
       if (!guard.ok) return guard;
     }
     const { data, error } = await supabase.from("coupons").insert(coupon).select().single();

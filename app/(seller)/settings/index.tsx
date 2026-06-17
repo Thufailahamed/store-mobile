@@ -11,7 +11,9 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, updateSellerStore, createSellerStore, getSellerPayoutSettings, upsertSellerPayoutSettings } from "@/lib/api";
+import { getSellerStore, updateSellerStore, createSellerStore, getSellerPayoutSettings, upsertSellerPayoutSettings, getSellerComplianceDocuments, upsertSellerComplianceDocument } from "@/lib/api";
+import { pickImage, uploadComplianceDocument } from "@/lib/upload";
+import { REQUIRED_COMPLIANCE_DOC_TYPES, type ComplianceDocType, type SellerComplianceDocument } from "@/lib/seller-access";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Store } from "@/lib/types";
 import { getSellerAccessState } from "@/lib/seller-access";
@@ -33,6 +35,8 @@ export default function SellerSettings() {
   const [accountName, setAccountName] = useState("");
   const [accountLast4, setAccountLast4] = useState("");
   const [taxFormSubmitted, setTaxFormSubmitted] = useState(false);
+  const [documents, setDocuments] = useState<SellerComplianceDocument[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState<ComplianceDocType | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -52,11 +56,46 @@ export default function SellerSettings() {
         setAccountLast4(payoutRes.data.account_number_last4 ?? "");
         setTaxFormSubmitted(Boolean(payoutRes.data.tax_form_submitted));
       }
+      const docsRes = await getSellerComplianceDocuments(res.data.id);
+      if (docsRes.ok) setDocuments(docsRes.data);
     }
     setLoading(false);
   }, [user]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleUploadDoc = async (docType: ComplianceDocType) => {
+    if (!store) return;
+    const picked = await pickImage({ quality: 0.85 });
+    if (!picked || picked.canceled || !picked.assets?.[0]?.uri) return;
+    const asset = picked.assets[0];
+    setUploadingDoc(docType);
+    const uploaded = await uploadComplianceDocument(store.id, docType, asset.uri, {
+      mimeType: asset.mimeType,
+      fileName: asset.fileName ?? undefined,
+    });
+    if (uploaded.error || !uploaded.url) {
+      Alert.alert("Upload failed", uploaded.error ?? "Could not upload document");
+      setUploadingDoc(null);
+      return;
+    }
+    const saved = await upsertSellerComplianceDocument(
+      store.id,
+      docType,
+      uploaded.url,
+      asset.fileName ?? undefined
+    );
+    setUploadingDoc(null);
+    if (!saved.ok) {
+      Alert.alert("Save failed", saved.error);
+      return;
+    }
+    setDocuments((prev) => {
+      const next = prev.filter((d) => d.doc_type !== docType);
+      return [...next, saved.data];
+    });
+    Alert.alert("Uploaded", "Document saved for admin review.");
+  };
 
   const handleSave = async () => {
     if (!store) return;
@@ -162,7 +201,12 @@ export default function SellerSettings() {
       )}
 
       {store && (() => {
-        const access = getSellerAccessState(store as Store & Record<string, unknown>);
+        const access = getSellerAccessState(store as Store & Record<string, unknown>, {
+          bank_name: bankName,
+          account_name: accountName,
+          account_number_last4: accountLast4,
+          tax_form_submitted: taxFormSubmitted,
+        }, documents);
         if (access.canAccessSellerTools) return null;
         return (
           <View style={styles.warningCard}>
@@ -286,6 +330,32 @@ export default function SellerSettings() {
           />
         </View>
 
+        <Text style={styles.sectionTitle}>Business documents</Text>
+        {REQUIRED_COMPLIANCE_DOC_TYPES.map((required) => {
+          const doc = documents.find((d) => d.doc_type === required.type);
+          return (
+            <View key={required.type} style={styles.docRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>{required.label}</Text>
+                <Text style={styles.switchHint}>
+                  {doc?.file_url
+                    ? `Uploaded${doc.status ? ` · ${doc.status}` : ""}`
+                    : "Required before approval"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.docButton}
+                onPress={() => handleUploadDoc(required.type)}
+                disabled={!!uploadingDoc}
+              >
+                <Text style={styles.docButtonText}>
+                  {uploadingDoc === required.type ? "Uploading…" : doc?.file_url ? "Replace" : "Upload"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+
         <TouchableOpacity
           style={[styles.saveButton, (saving || creating) && { opacity: 0.6 }]}
           onPress={store ? handleSave : handleCreate}
@@ -376,6 +446,28 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     marginTop: 4,
     lineHeight: 16,
+  },
+  docRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+  },
+  docButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.md,
+    backgroundColor: colors.light.primary,
+  },
+  docButtonText: {
+    color: colors.light.primaryForeground,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
   },
   statusRow: {
     flexDirection: "row",

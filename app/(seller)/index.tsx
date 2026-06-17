@@ -14,7 +14,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings } from "@/lib/api";
+import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
 import { getSellerAccessState } from "@/lib/seller-access";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -85,9 +85,11 @@ export default function SellerDashboard() {
     const storeRes = await getSellerStore(user.id);
     if (storeRes.ok && storeRes.data) {
       const payoutRes = await getSellerPayoutSettings(storeRes.data.id);
+      const docsRes = await getSellerComplianceDocuments(storeRes.data.id);
       const access = getSellerAccessState(
         storeRes.data as Store & Record<string, unknown>,
-        payoutRes.ok ? payoutRes.data : null
+        payoutRes.ok ? payoutRes.data : null,
+        docsRes.ok ? docsRes.data : null
       );
       if (!access.canAccessSellerTools) {
         setAccessBlocked(access.lockReason);

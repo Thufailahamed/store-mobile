@@ -7,6 +7,20 @@ export interface SellerPayoutCompliance {
   tax_form_submitted?: boolean;
 }
 
+export type ComplianceDocType = "business_registration" | "tax_certificate";
+
+export interface SellerComplianceDocument {
+  doc_type: ComplianceDocType | string;
+  file_url: string;
+  file_name?: string | null;
+  status?: "pending" | "approved" | "rejected" | string;
+}
+
+export const REQUIRED_COMPLIANCE_DOC_TYPES: { type: ComplianceDocType; label: string }[] = [
+  { type: "business_registration", label: "business registration document" },
+  { type: "tax_certificate", label: "tax certificate" },
+];
+
 type StoreLike = Partial<Store> & Record<string, unknown>;
 
 export interface SellerAccessState {
@@ -14,6 +28,7 @@ export interface SellerAccessState {
   status: string | null;
   isApproved: boolean;
   isPendingReview: boolean;
+  isRejected: boolean;
   isSuspended: boolean;
   missingComplianceFields: string[];
   canAccessSellerTools: boolean;
@@ -40,9 +55,37 @@ function hasValue(value: unknown): boolean {
   return true;
 }
 
+export function collectComplianceGaps(
+  store: StoreLike | null | undefined,
+  payout?: SellerPayoutCompliance | null,
+  docs?: SellerComplianceDocument[] | null
+): string[] {
+  if (!store) return [];
+
+  const missing: string[] = [
+    ...STORE_FIELDS.filter((field) => !hasValue(store[field.key])).map((field) => field.label),
+    ...BANK_FIELDS.filter((field) => !hasValue(payout?.[field.key])).map((field) => field.label),
+  ];
+
+  if (!hasValue(payout?.tax_form_submitted)) {
+    missing.push("tax declaration");
+  }
+
+  const docByType = new Map((docs ?? []).map((d) => [d.doc_type, d]));
+  for (const required of REQUIRED_COMPLIANCE_DOC_TYPES) {
+    const doc = docByType.get(required.type);
+    if (!doc?.file_url?.trim()) {
+      missing.push(required.label);
+    }
+  }
+
+  return missing;
+}
+
 export function getSellerAccessState(
   store: StoreLike | null,
-  payout?: SellerPayoutCompliance | null
+  payout?: SellerPayoutCompliance | null,
+  docs?: SellerComplianceDocument[] | null
 ): SellerAccessState {
   if (!store) {
     return {
@@ -50,6 +93,7 @@ export function getSellerAccessState(
       status: null,
       isApproved: false,
       isPendingReview: false,
+      isRejected: false,
       isSuspended: false,
       missingComplianceFields: [],
       canAccessSellerTools: false,
@@ -60,23 +104,19 @@ export function getSellerAccessState(
   const status = String(store.status ?? "").toLowerCase();
   const isApproved = status === "approved" || status === "active";
   const isPendingReview = status === "pending" || status === "draft";
-  const isSuspended = status === "rejected" || status === "suspended" || status === "banned";
+  const isRejected = status === "rejected";
+  const isSuspended = status === "suspended" || status === "banned";
 
-  const missingComplianceFields = [
-    ...STORE_FIELDS.filter((field) => !hasValue(store[field.key])).map((field) => field.label),
-    ...BANK_FIELDS.filter((field) => !hasValue(payout?.[field.key])).map((field) => field.label),
-  ];
-
-  if (!hasValue(payout?.tax_form_submitted)) {
-    missingComplianceFields.push("tax declaration");
-  }
+  const missingComplianceFields = collectComplianceGaps(store, payout, docs);
 
   const canAccessSellerTools =
-    isApproved && !isSuspended && missingComplianceFields.length === 0;
+    isApproved && !isRejected && !isSuspended && missingComplianceFields.length === 0;
 
   let lockReason: string | null = null;
   if (isSuspended) {
     lockReason = "Your seller account is suspended. Contact support to reactivate.";
+  } else if (isRejected) {
+    lockReason = "Your store application was rejected. Contact support if you believe this is an error.";
   } else if (isPendingReview) {
     lockReason = "Your store is pending admin approval.";
   } else if (!isApproved) {
@@ -90,6 +130,7 @@ export function getSellerAccessState(
     status: status || null,
     isApproved,
     isPendingReview,
+    isRejected,
     isSuspended,
     missingComplianceFields,
     canAccessSellerTools,
@@ -99,8 +140,9 @@ export function getSellerAccessState(
 
 export function getSellerComplianceGaps(
   store: StoreLike | null,
-  payout?: SellerPayoutCompliance | null
+  payout?: SellerPayoutCompliance | null,
+  docs?: SellerComplianceDocument[] | null
 ): string[] {
   if (!store) return [];
-  return getSellerAccessState({ ...store, status: "approved" }, payout).missingComplianceFields;
+  return collectComplianceGaps({ ...store, status: "approved" }, payout, docs);
 }

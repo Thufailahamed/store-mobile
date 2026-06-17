@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import { supabase } from "./supabase/client";
+import type { ComplianceDocType } from "@/lib/seller-access";
 
 export interface UploadResult {
   url: string;
@@ -176,6 +176,10 @@ export async function uploadProductImage(
   options?: { mimeType?: string | null; fileName?: string | null }
 ): Promise<UploadResult> {
   try {
+    const { assertSellerCanOperate } = await import("@/lib/api");
+    const guard = await assertSellerCanOperate(storeId);
+    if (!guard.ok) return { url: "", error: guard.error };
+
     const ext = normalizeExtension(
       options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
       options?.mimeType
@@ -234,4 +238,43 @@ export async function uploadDeliveryProof(
   } catch (e: any) {
     return { url: "", error: e?.message ?? "Upload failed" };
   }
+}
+
+/** Business compliance document — private bucket; returns storage path in `url`. */
+export async function uploadComplianceDocument(
+  storeId: string,
+  docType: ComplianceDocType,
+  uri: string,
+  options?: { mimeType?: string | null; fileName?: string | null }
+): Promise<UploadResult> {
+  try {
+    const ext = normalizeExtension(
+      options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
+      options?.mimeType
+    );
+    const path = `${storeId}/${docType}-${Date.now()}.${ext}`;
+    const contentType = options?.mimeType ?? mimeForExtension(ext);
+    const body = await readUriAsArrayBuffer(uri);
+
+    const { error: uploadError } = await supabase.storage
+      .from("store-compliance")
+      .upload(path, body, { contentType, upsert: true });
+
+    if (uploadError) return { url: "", error: uploadError.message };
+    return { url: path };
+  } catch (e: any) {
+    return { url: "", error: e?.message ?? "Upload failed" };
+  }
+}
+
+export async function getComplianceDocumentSignedUrl(
+  storagePath: string,
+  expiresIn = 3600
+): Promise<string | null> {
+  if (!storagePath || storagePath.startsWith("http")) return storagePath;
+  const { data, error } = await supabase.storage
+    .from("store-compliance")
+    .createSignedUrl(storagePath, expiresIn);
+  if (error) return null;
+  return data?.signedUrl ?? null;
 }

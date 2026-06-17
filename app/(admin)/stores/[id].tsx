@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,9 @@ import {
   getAdminStoreDetail,
   approveStore,
   updateStoreStatus,
+  reviewComplianceDocument,
 } from "@/lib/api";
+import { REQUIRED_COMPLIANCE_DOC_TYPES } from "@/lib/seller-access";
 import { Card, StatTile, EmptyState, Skeleton, Badge, ProgressBar, Button } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -87,7 +89,7 @@ export default function AdminStoreDetail() {
   });
 
   const suspendM = useMutation({
-    mutationFn: () => updateStoreStatus(id!, "rejected"),
+    mutationFn: () => updateStoreStatus(id!, "suspended"),
     onSuccess: (res) => {
       if (!res.ok) {
         Alert.alert("Failed", res.error);
@@ -110,6 +112,21 @@ export default function AdminStoreDetail() {
     },
   });
 
+  const [reviewingDocId, setReviewingDocId] = useState<string | null>(null);
+  const reviewDocM = useMutation({
+    mutationFn: ({ docId, status }: { docId: string; status: "approved" | "rejected" }) =>
+      reviewComplianceDocument(docId, status),
+    onSuccess: (res) => {
+      setReviewingDocId(null);
+      if (!res.ok) {
+        Alert.alert("Review failed", res.error);
+        return;
+      }
+      invalidate();
+    },
+    onError: () => setReviewingDocId(null),
+  });
+
   const confirm = (title: string, message: string, onConfirm: () => void) => {
     Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
@@ -119,23 +136,8 @@ export default function AdminStoreDetail() {
 
   const s = q.data?.store;
   const payout = q.data?.payout ?? null;
+  const documents = q.data?.documents ?? [];
   const complianceGaps = q.data?.complianceGaps ?? [];
-
-  const complianceItems = useMemo(
-    () => [
-      { label: "Legal name", ok: hasValue(s?.legal_name), value: s?.legal_name },
-      { label: "Tax ID", ok: hasValue(s?.tax_id), value: s?.tax_id ? "••••" + String(s.tax_id).slice(-4) : null },
-      { label: "Bank name", ok: hasValue(payout?.bank_name), value: payout?.bank_name },
-      { label: "Account holder", ok: hasValue(payout?.account_name), value: payout?.account_name },
-      {
-        label: "Account number",
-        ok: hasValue(payout?.account_number_last4),
-        value: payout?.account_number_last4 ? `••••${payout.account_number_last4}` : null,
-      },
-      { label: "Tax declaration", ok: payout?.tax_form_submitted === true, value: payout?.tax_form_submitted ? "Submitted" : null },
-    ],
-    [s, payout]
-  );
 
   if (q.isLoading) {
     return (
@@ -147,9 +149,32 @@ export default function AdminStoreDetail() {
 
   if (!s) return <EmptyState icon="storefront-outline" title="Store not found" />;
 
+  const complianceItems = [
+    { label: "Legal name", ok: hasValue(s.legal_name), value: s.legal_name },
+    { label: "Tax ID", ok: hasValue(s.tax_id), value: s.tax_id ? "••••" + String(s.tax_id).slice(-4) : null },
+    { label: "Bank name", ok: hasValue(payout?.bank_name), value: payout?.bank_name },
+    { label: "Account holder", ok: hasValue(payout?.account_name), value: payout?.account_name },
+    {
+      label: "Account number",
+      ok: hasValue(payout?.account_number_last4),
+      value: payout?.account_number_last4 ? `••••${payout.account_number_last4}` : null,
+    },
+    { label: "Tax declaration", ok: payout?.tax_form_submitted === true, value: payout?.tax_form_submitted ? "Submitted" : null },
+    ...REQUIRED_COMPLIANCE_DOC_TYPES.map((required) => {
+      const doc = documents.find((d) => d.doc_type === required.type) as (typeof documents)[0] & { id?: string };
+      return {
+        label: required.label,
+        ok: Boolean(doc?.file_url),
+        value: doc ? `${doc.file_name ?? "Uploaded"} · ${doc.status ?? "pending"}` : null,
+        docId: doc?.id,
+      };
+    }),
+  ];
+
   const isPending = s.status === "pending" || s.status === "draft";
   const isActive = s.status === "approved" || s.status === "active";
-  const isBlocked = s.status === "rejected" || s.status === "suspended" || s.status === "banned";
+  const isSuspended = s.status === "suspended" || s.status === "banned";
+  const isRejected = s.status === "rejected";
   const complianceComplete = complianceGaps.length === 0;
   const busy =
     approveM.isPending || rejectM.isPending || suspendM.isPending || reactivateM.isPending;
@@ -207,6 +232,33 @@ export default function AdminStoreDetail() {
                   <Text style={styles.complianceValue} numberOfLines={1}>{item.value}</Text>
                 ) : null}
               </View>
+              {"docId" in item && item.docId && item.value?.includes("pending") ? (
+                <View style={styles.docReviewActions}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={reviewingDocId === item.docId && reviewDocM.isPending}
+                    disabled={reviewDocM.isPending}
+                    onPress={() => {
+                      setReviewingDocId(item.docId!);
+                      reviewDocM.mutate({ docId: item.docId!, status: "approved" });
+                    }}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={reviewDocM.isPending}
+                    onPress={() => {
+                      setReviewingDocId(item.docId!);
+                      reviewDocM.mutate({ docId: item.docId!, status: "rejected" });
+                    }}
+                  >
+                    Reject
+                  </Button>
+                </View>
+              ) : null}
             </View>
           ))}
         </View>
@@ -256,7 +308,7 @@ export default function AdminStoreDetail() {
               Suspend
             </Button>
           ) : null}
-          {isBlocked && !isPending ? (
+          {isSuspended && !isPending ? (
             <Button
               variant="brand"
               size="sm"
@@ -360,6 +412,7 @@ const styles = StyleSheet.create({
   hint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 10 },
   complianceList: { marginTop: 12, gap: 10 },
   complianceRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  docReviewActions: { flexDirection: "row", gap: 6, flexShrink: 0 },
   complianceLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.light.foreground },
   complianceValue: { fontFamily: fontFamilies.mono.regular, fontSize: 11, color: colors.light.mutedForeground, marginTop: 2 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },

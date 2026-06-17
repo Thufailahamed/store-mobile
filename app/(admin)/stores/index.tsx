@@ -6,7 +6,7 @@ import { getAdminStores, approveStore } from "@/lib/api";
 import { Card, Badge, Skeleton, Button } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
-const STATUS_TABS = ["all", "pending", "approved", "rejected"];
+const STATUS_TABS = ["all", "pending", "approved", "suspended", "rejected"];
 
 export default function AdminStores() {
   const router = useRouter();
@@ -97,6 +97,13 @@ export default function AdminStores() {
                     >
                       {item.status}
                     </Badge>
+                    {(item as { complianceGaps?: string[] }).complianceGaps?.length ? (
+                      <Badge variant="destructive">
+                        {(item as { complianceGaps: string[] }).complianceGaps.length} gap{(item as { complianceGaps: string[] }).complianceGaps.length === 1 ? "" : "s"}
+                      </Badge>
+                    ) : item.status === "pending" ? (
+                      <Badge variant="default">Compliant</Badge>
+                    ) : null}
                     <Text style={styles.storeRating}>★ {item.rating?.toFixed(1) ?? "0.0"}</Text>
                   </View>
                 </View>

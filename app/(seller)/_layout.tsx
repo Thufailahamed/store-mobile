@@ -5,9 +5,9 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { getSellerStore, getSellerPayoutSettings } from "@/lib/api";
+import { getSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
 import { getSellerAccessState } from "@/lib/seller-access";
-import type { SellerPayoutCompliance } from "@/lib/seller-access";
+import type { SellerPayoutCompliance, SellerComplianceDocument } from "@/lib/seller-access";
 import type { Store } from "@/lib/types";
 
 export default function SellerLayout() {
@@ -16,6 +16,7 @@ export default function SellerLayout() {
   const segments = useSegments();
   const [store, setStore] = useState<Store | null>(null);
   const [payout, setPayout] = useState<SellerPayoutCompliance | null>(null);
+  const [documents, setDocuments] = useState<SellerComplianceDocument[]>([]);
   const [storeLoading, setStoreLoading] = useState(true);
 
   useEffect(() => {
@@ -34,10 +35,15 @@ export default function SellerLayout() {
         const nextStore = res.ok ? res.data : null;
         setStore(nextStore);
         if (nextStore) {
-          const payoutRes = await getSellerPayoutSettings(nextStore.id);
+          const [payoutRes, docsRes] = await Promise.all([
+            getSellerPayoutSettings(nextStore.id),
+            getSellerComplianceDocuments(nextStore.id),
+          ]);
           setPayout(payoutRes.ok ? payoutRes.data : null);
+          setDocuments(docsRes.ok ? docsRes.data : []);
         } else {
           setPayout(null);
+          setDocuments([]);
         }
         setStoreLoading(false);
       }
@@ -49,8 +55,8 @@ export default function SellerLayout() {
   }, [user, role]);
 
   const access = useMemo(
-    () => getSellerAccessState(store as (Store & Record<string, unknown>) | null, payout),
-    [store, payout]
+    () => getSellerAccessState(store as (Store & Record<string, unknown>) | null, payout, documents),
+    [store, payout, documents]
   );
 
   const isSettingsRoute = segments.includes("settings");
