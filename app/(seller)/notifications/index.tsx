@@ -7,6 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
+import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from "@/lib/api";
@@ -14,8 +15,9 @@ import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Notification } from "@/lib/types";
 
-const TYPE_ICONS: Record<string, { name: "receipt-outline" | "pricetag-outline" | "settings-outline" | "star-outline" | "bicycle-outline" | "wallet-outline" | "alert-circle-outline" | "notifications-outline"; color: string }> = {
+const TYPE_ICONS: Record<string, { name: "receipt-outline" | "pricetag-outline" | "settings-outline" | "star-outline" | "bicycle-outline" | "wallet-outline" | "alert-circle-outline" | "notifications-outline" | "return-down-back-outline"; color: string }> = {
   order: { name: "receipt-outline", color: colors.olive[600] },
+  return: { name: "return-down-back-outline", color: colors.accent2.rust },
   promo: { name: "pricetag-outline", color: colors.accent2.ochre },
   system: { name: "settings-outline", color: colors.light.mutedForeground },
   review: { name: "star-outline", color: "#f59e0b" },
@@ -38,6 +40,7 @@ function formatRelative(dateStr: string) {
 }
 
 export default function SellerNotifications() {
+  const router = useRouter();
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +74,14 @@ export default function SellerNotifications() {
     setNotifications((prev) =>
       prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() }))
     );
+  };
+
+  const handlePress = async (item: Notification) => {
+    if (!item.read_at) await handleMarkRead(item.id);
+    const groupId = item.data?.return_group_id as string | undefined;
+    if (item.type === "return" && groupId) {
+      router.push(`/(seller)/returns/${groupId}` as any);
+    }
   };
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
@@ -124,7 +135,7 @@ export default function SellerNotifications() {
             return (
               <TouchableOpacity
                 style={[s.notifCard, isUnread && s.notifCardUnread]}
-                onPress={() => { if (isUnread) handleMarkRead(item.id); }}
+                onPress={() => handlePress(item)}
                 activeOpacity={0.7}
               >
                 <View style={[s.notifIconWrap, { backgroundColor: `${icon.color}15` }]}>

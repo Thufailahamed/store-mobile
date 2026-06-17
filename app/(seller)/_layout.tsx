@@ -88,6 +88,8 @@ export default function SellerLayout() {
       {/* Hidden detail screens — accessed via navigation */}
       <Tabs.Screen name="products/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]/index" options={{ href: null }} />
+      <Tabs.Screen name="returns/index" options={{ href: null }} />
+      <Tabs.Screen name="returns/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="analytics/index" options={{ href: null }} />
       <Tabs.Screen name="reviews/index" options={{ href: null }} />
       <Tabs.Screen name="coupons/index" options={{ href: null }} />

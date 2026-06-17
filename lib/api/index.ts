@@ -2963,57 +2963,79 @@ export type MobileReturnRequest = {
   }[];
 };
 
+export type SellerReturnRequest = MobileReturnRequest & {
+  buyer_name: string | null;
+};
+
+const RETURN_ROW_SELECT =
+  "id, return_group_id, return_number, reason, status, refund_amount, " +
+  "created_at, updated_at, received_at, seller_note, " +
+  "order_item:order_items(id, product_name, variant_label, quantity, unit_price, total, " +
+  "order:orders(id, order_number, total, currency, status, user_id, shipping_address))";
+
+const SELLER_RETURN_ROW_SELECT =
+  "id, return_group_id, return_number, reason, status, refund_amount, " +
+  "created_at, updated_at, received_at, seller_note, " +
+  "order_item:order_items!inner(id, store_id, product_name, variant_label, quantity, unit_price, total, " +
+  "order:orders(id, order_number, total, currency, status, user_id, shipping_address))";
+
+function groupReturnRows(rows: any[]): MobileReturnRequest[] {
+  const groups = new Map<string, MobileReturnRequest>();
+  for (const r of rows) {
+    const existing = groups.get(r.return_group_id) ?? {
+      id: r.return_group_id,
+      return_group_id: r.return_group_id,
+      return_number: r.return_number,
+      order_id: r.order_item?.order?.id ?? "",
+      order_number: r.order_item?.order?.order_number ?? "",
+      order_status: r.order_item?.order?.status ?? "",
+      currency: r.order_item?.order?.currency ?? "LKR",
+      reason: r.reason ?? "",
+      status: r.status,
+      refund_amount: 0,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      received_at: r.received_at ?? null,
+      seller_note: r.seller_note ?? null,
+      items: [] as MobileReturnRequest["items"],
+    };
+    const rank = { requested: 0, approved: 1, received: 2, refunded: 3, rejected: 4 } as const;
+    const statusKey = r.status as keyof typeof rank;
+    const existingStatusKey = existing.status as keyof typeof rank;
+    if (rank[existingStatusKey] < rank[statusKey]) existing.status = r.status;
+    existing.refund_amount += Number(r.refund_amount ?? 0);
+    existing.items.push({
+      return_id: r.id,
+      order_item_id: r.order_item.id,
+      product_name: r.order_item.product_name,
+      variant_label: r.order_item.variant_label ?? null,
+      quantity: r.order_item.quantity,
+      unit_price: r.order_item.unit_price,
+      refund_amount: Number(r.refund_amount ?? 0),
+    });
+    groups.set(r.return_group_id, existing);
+  }
+  return Array.from(groups.values());
+}
+
+function groupSellerReturnRows(rows: any[]): SellerReturnRequest[] {
+  return groupReturnRows(rows).map((group) => {
+    const row = rows.find((r) => r.return_group_id === group.return_group_id);
+    const buyerName =
+      (row?.order_item?.order?.shipping_address as { full_name?: string } | null)?.full_name ?? null;
+    return { ...group, buyer_name: buyerName };
+  });
+}
+
 export async function getReturns(userId: string): Promise<Result<MobileReturnRequest[]>> {
   try {
     const { data, error } = await supabase
       .from("returns")
-      .select(
-        "id, return_group_id, return_number, reason, status, refund_amount, " +
-          "created_at, updated_at, received_at, seller_note, " +
-          "order_item:order_items(id, product_name, variant_label, quantity, unit_price, total, " +
-          "order:orders(id, order_number, total, currency, status, user_id))"
-      )
+      .select(RETURN_ROW_SELECT)
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     if (error) return fail(error.message);
-
-    const groups = new Map<string, MobileReturnRequest>();
-    for (const r of (data as any[]) ?? []) {
-      const existing = groups.get(r.return_group_id) ?? {
-        id: r.return_group_id,
-        return_group_id: r.return_group_id,
-        return_number: r.return_number,
-        order_id: r.order_item?.order?.id ?? "",
-        order_number: r.order_item?.order?.order_number ?? "",
-        order_status: r.order_item?.order?.status ?? "",
-        currency: r.order_item?.order?.currency ?? "LKR",
-        reason: r.reason ?? "",
-        status: r.status,
-        refund_amount: 0,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        received_at: r.received_at ?? null,
-        seller_note: r.seller_note ?? null,
-        items: [] as MobileReturnRequest["items"],
-      };
-      const rank = { requested: 0, approved: 1, received: 2, refunded: 3, rejected: 4 } as const;
-      const statusKey = r.status as keyof typeof rank;
-      const existingStatusKey = existing.status as keyof typeof rank;
-      if (rank[existingStatusKey] < rank[statusKey]) existing.status = r.status;
-      existing.refund_amount += Number(r.refund_amount ?? 0);
-      existing.items.push({
-        return_id: r.id,
-        order_item_id: r.order_item.id,
-        product_name: r.order_item.product_name,
-        variant_label: r.order_item.variant_label ?? null,
-        quantity: r.order_item.quantity,
-        unit_price: r.order_item.unit_price,
-        refund_amount: Number(r.refund_amount ?? 0),
-      });
-      groups.set(r.return_group_id, existing);
-    }
-
-    return ok(Array.from(groups.values()));
+    return ok(groupReturnRows((data as any[]) ?? []));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch returns");
   }
@@ -3074,6 +3096,106 @@ export async function createReturnRequest(
   } catch (e: any) {
     return fail(e?.message ?? "Failed to create return");
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Seller — Returns                                                   */
+/* ------------------------------------------------------------------ */
+
+export type SellerReturnAction = "approve" | "reject" | "receive" | "refund";
+
+export async function getSellerReturns(
+  storeId: string,
+  opts: { status?: string; search?: string } = {},
+): Promise<Result<SellerReturnRequest[]>> {
+  const { status, search } = opts;
+  try {
+    let query = supabase
+      .from("returns")
+      .select(SELLER_RETURN_ROW_SELECT)
+      .eq("order_item.store_id", storeId)
+      .order("created_at", { ascending: false });
+    if (status && status !== "all") {
+      query = query.eq("status", status);
+    }
+    const { data, error } = await query;
+    if (error) return fail(error.message);
+
+    let groups = groupSellerReturnRows((data as any[]) ?? []);
+    if (search?.trim()) {
+      const q = search.trim().toLowerCase();
+      groups = groups.filter(
+        (r) =>
+          r.return_number.toLowerCase().includes(q) ||
+          r.order_number.toLowerCase().includes(q) ||
+          (r.buyer_name?.toLowerCase().includes(q) ?? false) ||
+          r.items.some((i) => i.product_name.toLowerCase().includes(q)),
+      );
+    }
+    return ok(groups);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch seller returns");
+  }
+}
+
+export async function getSellerReturnByGroupId(
+  storeId: string,
+  returnGroupId: string,
+): Promise<Result<SellerReturnRequest | null>> {
+  const res = await getSellerReturns(storeId);
+  if (!res.ok) return res;
+  return ok(res.data.find((r) => r.return_group_id === returnGroupId) ?? null);
+}
+
+export async function decideSellerReturn(
+  actorUserId: string,
+  returnId: string,
+  action: SellerReturnAction,
+  opts: { note?: string; refundAmount?: number } = {},
+): Promise<Result<{ refund_id?: string }>> {
+  try {
+    const { data, error } = await supabase.rpc("decide_return", {
+      p_actor: actorUserId,
+      p_return_id: returnId,
+      p_action: action,
+      p_refund_amount: opts.refundAmount ?? null,
+      p_note: opts.note ?? null,
+    });
+    if (error) return fail(error.message);
+    const row = (data ?? {}) as { refund_id?: string };
+    return ok({ refund_id: row.refund_id });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to update return");
+  }
+}
+
+export async function decideSellerReturnGroup(
+  actorUserId: string,
+  storeId: string,
+  returnGroupId: string,
+  action: SellerReturnAction,
+  opts: { note?: string } = {},
+): Promise<Result<void>> {
+  const detail = await getSellerReturnByGroupId(storeId, returnGroupId);
+  if (!detail.ok) return detail;
+  if (!detail.data) return fail("Return not found");
+
+  const returnIds = detail.data.items.map((i) => i.return_id);
+  if (returnIds.length === 0) return fail("No return items found");
+
+  if (action === "refund") {
+    const res = await decideSellerReturn(actorUserId, returnIds[0], "refund", {
+      note: opts.note,
+      refundAmount: detail.data.refund_amount,
+    });
+    return res.ok ? ok(undefined) : res;
+  }
+
+  for (const returnId of returnIds) {
+    const res = await decideSellerReturn(actorUserId, returnId, action, opts);
+    if (!res.ok) return res;
+  }
+  return ok(undefined);
 }
 
 export async function getMyReviews(userId: string): Promise<Result<Review[]>> {

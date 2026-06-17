@@ -45,6 +45,7 @@ function formatRelative(dateStr: string) {
 
 const QUICK_ACTIONS = [
   { label: "Orders", icon: "receipt-outline" as const, route: "/(seller)/orders", color: colors.olive[600] },
+  { label: "Returns", icon: "return-down-back-outline" as const, route: "/(seller)/returns", color: colors.accent2.rust },
   { label: "Products", icon: "cube-outline" as const, route: "/(seller)/products", color: colors.olive[700] },
   { label: "Inventory", icon: "layers-outline" as const, route: "/(seller)/inventory", color: colors.accent2.ochre },
   { label: "Analytics", icon: "bar-chart-outline" as const, route: "/(seller)/analytics", color: colors.olive[500] },
