@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   getAdminProducts,
   getAdminBrands,
-  getAdminCategories,
+  getAdminCategoriesEnriched,
   getAdminBanners,
   approveBrand,
   approveProduct,
@@ -191,11 +191,11 @@ function BrandsList({ search, status, sub, setSub, statusTabs, onApprove, onReje
 }
 
 function CategoriesList() {
-  const qc = useQueryClient();
+  const router = useRouter();
   const q = useQuery({
     queryKey: ["cat-categories"],
     queryFn: async () => {
-      const r = await getAdminCategories();
+      const r = await getAdminCategoriesEnriched();
       return r.ok ? r.data : [];
     },
   });
@@ -205,6 +205,11 @@ function CategoriesList() {
       keyExtractor={(c: any) => c.id}
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} />}
+      ListHeaderComponent={
+        <Pressable onPress={() => router.push("/(admin)/categories" as never)} style={styles.manageLink}>
+          <Text style={styles.manageLinkText}>Manage tree, ordering & delete impact →</Text>
+        </Pressable>
+      }
       ListEmptyComponent={q.isLoading ? <Skeleton height={64} /> : <EmptyState icon="albums-outline" title="No categories" />}
       renderItem={({ item, index }: any) => (
         <Card style={styles.item}>
@@ -212,7 +217,9 @@ function CategoriesList() {
             <Text style={styles.itemIndex}>{String(item.position ?? index + 1).padStart(2, "0")}</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemMeta}>@{item.slug} · {item.gender ?? "all"}</Text>
+              <Text style={styles.itemMeta}>
+                @{item.slug} · {item.gender ?? "all"} · {item.product_count ?? 0} products
+              </Text>
             </View>
             <Badge variant={item.is_active ? "default" : "outline"}>{item.is_active ? "active" : "inactive"}</Badge>
           </View>
@@ -282,6 +289,8 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.mutedForeground, letterSpacing: 0.5, textTransform: "uppercase" },
   chipTextActive: { color: "#fff" },
   list: { padding: 20, paddingTop: 0, paddingBottom: 100, gap: 10 },
+  manageLink: { marginBottom: 12, paddingVertical: 10 },
+  manageLinkText: { fontFamily: fontFamilies.mono.medium, fontSize: 11, color: colors.light.primary, letterSpacing: 0.4 },
   item: { padding: 14, ...shadows.soft },
   itemRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   itemIndex: { fontFamily: fontFamilies.mono.regular, fontSize: 11, color: colors.light.mutedForeground, width: 24 },

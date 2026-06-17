@@ -1,3 +1,4 @@
+import { getAdminCategoriesEnriched } from "@/lib/api/category-admin";
 import { supabase } from "@/lib/supabase/client";
 import {
   mapProduct,
@@ -81,7 +82,26 @@ export async function getProducts(opts: {
         .maybeSingle();
       if (catError) return fail(catError.message);
       if (cat) {
-        query = query.eq("category_id", cat.id);
+        // Fetch all categories to build recursive descendant tree
+        const { data: allCats, error: allCatsError } = await supabase
+          .from("categories")
+          .select("id, parent_id");
+        if (allCatsError) return fail(allCatsError.message);
+
+        const descendantIds: string[] = [];
+        const queue = [cat.id];
+        while (queue.length > 0) {
+          const currentId = queue.shift()!;
+          const children = (allCats ?? []).filter((c) => c.parent_id === currentId);
+          for (const child of children) {
+            if (!descendantIds.includes(child.id)) {
+              descendantIds.push(child.id);
+              queue.push(child.id);
+            }
+          }
+        }
+        const allowedIds = [cat.id, ...descendantIds];
+        query = query.in("category_id", allowedIds);
       } else {
         return ok({ products: [], total: 0 });
       }
@@ -2482,47 +2502,20 @@ export async function approveProduct(productId: string, status: "active" | "reje
 }
 
 export async function getAdminCategories(): Promise<Result<Category[]>> {
-  try {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .order("position");
-    if (error) return fail(error.message);
-    return ok((data as Category[]) ?? []);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to fetch categories");
-  }
+  const enriched = await getAdminCategoriesEnriched();
+  if (!enriched.ok) return enriched;
+  return ok(enriched.data);
 }
 
-export async function createCategory(c: Partial<Category>): Promise<Result<Category>> {
-  try {
-    const { data, error } = await supabase.from("categories").insert(c).select().single();
-    if (error) return fail(error.message);
-    return ok(data as Category);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to create category");
-  }
-}
-
-export async function updateCategory(id: string, patch: Partial<Category>): Promise<Result<Category>> {
-  try {
-    const { data, error } = await supabase.from("categories").update(patch).eq("id", id).select().single();
-    if (error) return fail(error.message);
-    return ok(data as Category);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to update category");
-  }
-}
-
-export async function deleteCategory(id: string): Promise<Result<void>> {
-  try {
-    const { error } = await supabase.from("categories").delete().eq("id", id);
-    if (error) return fail(error.message);
-    return ok(undefined);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to delete category");
-  }
-}
+export {
+  getAdminCategoriesEnriched,
+  getCategoryDeleteImpact,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  deleteCategoryWithOptions,
+  type AdminCategory,
+} from "./category-admin";
 
 export async function getAdminBanners(): Promise<Result<Banner[]>> {
   try {
