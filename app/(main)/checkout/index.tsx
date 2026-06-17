@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,12 +15,18 @@ import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
-import { getPayHereSession } from "@/lib/api/payments";
+import { getPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
 import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
 import { validateCartForCheckout } from "@/lib/cart-validation";
+import {
+  abandonUnpaidPayHereOrder,
+  cartItemsToReservations,
+  flushCartReservationSync,
+  releaseCartReservations,
+} from "@/lib/inventory-reservations";
 import {
   formatPrice,
   FREE_SHIPPING_THRESHOLD,
@@ -70,6 +76,8 @@ export default function CheckoutScreen() {
   const [payhereVisible, setPayhereVisible] = useState(false);
   const [payhereSession, setPayhereSession] = useState<{ action: string; fields: Record<string, string> } | null>(null);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const pendingLoyaltyPointsRef = useRef(0);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
   const [couponInput, setCouponInput] = useState(couponCode || "");
@@ -207,6 +215,16 @@ export default function CheckoutScreen() {
       return;
     }
 
+    const hold = await flushCartReservationSync(
+      user.id,
+      cartItemsToReservations(freshCartItems),
+    );
+    if (!hold.ok) {
+      toast(hold.error, "error");
+      router.replace("/(main)/cart");
+      return;
+    }
+
     const freshSub = useCart.getState().subtotal();
     const freshAfterCoupon = Math.max(0, freshSub - couponDiscount);
     const freshMaxRedeemablePts = Math.min(loyalty.state.points, Math.floor(freshAfterCoupon));
@@ -266,7 +284,7 @@ export default function CheckoutScreen() {
       const order = parsePlacedOrder(orderData);
       if (!order?.id) throw new Error("Order created but no id returned");
 
-      if (freshPointsToUse > 0) {
+      if (freshPointsToUse > 0 && paymentMethod !== "payhere") {
         const redeemRes = await loyalty.redeem(freshPointsToUse, order.id);
         if (!redeemRes.ok) {
           await supabase.rpc("cancel_order", { p_order_id: order.id });
@@ -275,6 +293,7 @@ export default function CheckoutScreen() {
       }
 
       if (paymentMethod === "payhere") {
+        pendingLoyaltyPointsRef.current = freshPointsToUse;
         const session = await getPayHereSession(order.id);
         if (!session.ok) throw new Error(session.error);
         setPlacedOrderId(order.id);
@@ -287,6 +306,7 @@ export default function CheckoutScreen() {
       await loyalty.reload();
       toast("Order placed", "success");
       router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(order.id)}` as never);
+      await releaseCartReservations();
       clear();
     } catch (e: any) {
       toast(e?.message || "Order failed", "error");
@@ -663,25 +683,63 @@ export default function CheckoutScreen() {
         )}
       </View>
 
-      {payhereSession && (
+      {payhereSession && placedOrderId && (
         <PayHereCheckout
           visible={payhereVisible}
           action={payhereSession.action}
           fields={payhereSession.fields}
-          onClose={() => {
+          orderId={placedOrderId}
+          confirming={confirmingPayment}
+          onClose={async () => {
+            if (confirmingPayment) return;
             setPayhereVisible(false);
-            toast("Payment cancelled", "error");
-            router.replace("/(main)/account/orders");
-          }}
-          onComplete={() => {
-            setPayhereVisible(false);
-            clear();
-            toast("Payment complete", "success");
-            if (placedOrderId) {
-              router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(placedOrderId)}` as never);
-            } else {
-              router.replace("/(main)/account/orders");
+            const orderId = placedOrderId;
+            setPlacedOrderId(null);
+            setPayhereSession(null);
+            pendingLoyaltyPointsRef.current = 0;
+            if (orderId) {
+              const res = await abandonUnpaidPayHereOrder(orderId);
+              if (!res.ok) {
+                toast(res.error ?? "Could not cancel order", "error");
+              } else {
+                clear();
+                toast("Payment cancelled — stock restored", "info");
+              }
             }
+            router.replace("/(main)/cart");
+          }}
+          onReturnFromGateway={async () => {
+            if (confirmingPayment) return;
+            const orderId = placedOrderId;
+            if (!orderId) return;
+
+            setConfirmingPayment(true);
+            const poll = await pollOrderPaymentStatus(orderId);
+            setConfirmingPayment(false);
+
+            if (!poll.ok) {
+              toast(poll.error, "error");
+              router.replace(`/(main)/account/orders/${orderId}` as never);
+              return;
+            }
+
+            const pts = pendingLoyaltyPointsRef.current;
+            pendingLoyaltyPointsRef.current = 0;
+            if (pts > 0) {
+              const redeemRes = await loyalty.redeem(pts, orderId);
+              if (!redeemRes.ok) {
+                toast(redeemRes.error ?? "Points could not be applied", "error");
+              }
+            }
+
+            setPayhereVisible(false);
+            setPayhereSession(null);
+            setPlacedOrderId(null);
+            await releaseCartReservations();
+            clear();
+            await loyalty.reload();
+            toast("Payment complete", "success");
+            router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(orderId)}` as never);
           }}
         />
       )}

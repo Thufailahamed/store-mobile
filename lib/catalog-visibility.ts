@@ -5,8 +5,11 @@ import {
   type SellerPayoutCompliance,
 } from "@/lib/seller-access";
 
-/** Store statuses that may sell on the public marketplace. */
+/** Client-side operational statuses (includes legacy "active" on in-memory rows). */
 export const OPERATIONAL_STORE_STATUSES = ["approved", "active"] as const;
+
+/** Values on the stores.status Postgres enum — "active" is not a valid member. */
+export const BROWSABLE_STORE_DB_STATUSES = ["approved"] as const;
 
 export function isOperationalStoreStatus(status: string | null | undefined): boolean {
   const s = String(status ?? "").toLowerCase();
@@ -42,12 +45,21 @@ export function isStoreCatalogVisible(
   ).length === 0;
 }
 
-/** Operational stores with complete, approved compliance. */
+/** Approved/active stores — used for home, search, and product browse rails. */
+export async function getBrowsableStoreIds(): Promise<Set<string>> {
+  const { data: stores } = await supabase
+    .from("stores")
+    .select("id")
+    .in("status", [...BROWSABLE_STORE_DB_STATUSES]);
+  return new Set((stores ?? []).map((s) => s.id));
+}
+
+/** Operational stores with complete, approved compliance — used at cart/checkout. */
 export async function getCatalogVisibleStoreIds(): Promise<Set<string>> {
   const { data: stores } = await supabase
     .from("stores")
     .select("id, status, legal_name, tax_id")
-    .in("status", [...OPERATIONAL_STORE_STATUSES]);
+    .in("status", [...BROWSABLE_STORE_DB_STATUSES]);
 
   const rows = (stores ?? []) as StoreComplianceRow[];
   if (!rows.length) return new Set();
@@ -88,12 +100,12 @@ export async function getCatalogVisibleStoreIds(): Promise<Set<string>> {
   return visible;
 }
 
-/** @deprecated Use getCatalogVisibleStoreIds */
+/** @deprecated Use getBrowsableStoreIds */
 export async function getOperationalStoreIds(): Promise<string[]> {
-  return [...(await getCatalogVisibleStoreIds())];
+  return [...(await getBrowsableStoreIds())];
 }
 
-/** True when a product may appear in public browse/search. */
+/** True when a product may appear in browse/search (pass getBrowsableStoreIds). */
 export function isPublicCatalogProduct(
   row: CatalogRow | null | undefined,
   catalogVisibleStoreIds?: Set<string>

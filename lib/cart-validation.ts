@@ -35,26 +35,31 @@ export interface CartReconciliation {
 }
 
 const PRODUCT_SNAPSHOT_SELECT =
-  "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)";
+  "*, images:product_images(*), variants:product_variants(*, inventory(quantity, reserved)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)";
 
 /** Fetch current product rows for cart validation (includes inactive/deleted gaps). */
 export async function fetchCartProductSnapshots(
   productIds: string[],
-): Promise<Record<string, Product>> {
-  if (productIds.length === 0) return {};
+): Promise<
+  | { ok: true; products: Record<string, Product> }
+  | { ok: false; error: string }
+> {
+  if (productIds.length === 0) return { ok: true, products: {} };
 
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_SNAPSHOT_SELECT)
     .in("id", productIds);
 
-  if (error || !data) return {};
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Could not load product stock" };
+  }
 
-  const byId: Record<string, Product> = {};
+  const products: Record<string, Product> = {};
   mapProducts(data as Product[]).forEach((product) => {
-    byId[product.id] = product;
+    products[product.id] = product;
   });
-  return byId;
+  return { ok: true, products };
 }
 
 function variantLabel(variant: ProductVariant): string | undefined {
@@ -193,14 +198,18 @@ export async function refreshCartFromCatalog(): Promise<CartReconciliation> {
     return { remove: [], update: [] };
   }
 
-  const [productsById, catalogVisibleStoreIds] = await Promise.all([
+  const [productsResult, catalogVisibleStoreIds] = await Promise.all([
     fetchCartProductSnapshots(productIds),
     getCatalogVisibleStoreIds(),
   ]);
 
+  if (!productsResult.ok) {
+    return { remove: [], update: [] };
+  }
+
   const reconciliation = buildCartReconciliation(
     items,
-    productsById,
+    productsResult.products,
     catalogVisibleStoreIds,
   );
 
@@ -220,27 +229,54 @@ export type CartCheckoutValidation =
  * checkout when items were removed or the bag is empty.
  */
 export async function validateCartForCheckout(): Promise<CartCheckoutValidation> {
-  const reconciliation = await refreshCartFromCatalog();
-  const remaining = Object.keys(useCart.getState().items).length;
+  const items = useCart.getState().items;
+  const productIds = [...new Set(Object.values(items).map((item) => item.productId))];
 
-  if (reconciliation.remove.length > 0) {
-    const names = reconciliation.remove.map((issue) => issue.message).slice(0, 2);
-    const suffix =
-      reconciliation.remove.length > 2
-        ? ` (+${reconciliation.remove.length - 2} more)`
-        : "";
-    return {
-      ok: false,
-      error: `${names.join(" ")}${suffix}`,
-      reconciliation,
-    };
+  if (productIds.length > 0) {
+    const [productsResult, catalogVisibleStoreIds] = await Promise.all([
+      fetchCartProductSnapshots(productIds),
+      getCatalogVisibleStoreIds(),
+    ]);
+
+    if (!productsResult.ok) {
+      return {
+        ok: false,
+        error: "Could not verify stock. Check your connection and try again.",
+        reconciliation: { remove: [], update: [] },
+      };
+    }
+
+    const reconciliation = buildCartReconciliation(
+      items,
+      productsResult.products,
+      catalogVisibleStoreIds,
+    );
+
+    if (reconciliation.remove.length > 0 || reconciliation.update.length > 0) {
+      applyCartReconciliation(reconciliation);
+    }
+
+    if (reconciliation.remove.length > 0) {
+      const names = reconciliation.remove.map((issue) => issue.message).slice(0, 2);
+      const suffix =
+        reconciliation.remove.length > 2
+          ? ` (+${reconciliation.remove.length - 2} more)`
+          : "";
+      return {
+        ok: false,
+        error: `${names.join(" ")}${suffix}`,
+        reconciliation,
+      };
+    }
   }
+
+  const remaining = Object.keys(useCart.getState().items).length;
 
   if (remaining === 0) {
     return {
       ok: false,
       error: "Your bag is empty. Unavailable items were removed.",
-      reconciliation,
+      reconciliation: { remove: [], update: [] },
     };
   }
 

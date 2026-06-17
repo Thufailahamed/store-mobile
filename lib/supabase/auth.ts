@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { supabase } from "./client";
 import type { Session, User } from "@supabase/supabase-js";
+import { releaseCartReservations } from "@/lib/inventory-reservations";
 
 export interface AuthState {
   session: Session | null;
@@ -130,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     roleUserIdRef.current = null;
+    await releaseCartReservations();
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);

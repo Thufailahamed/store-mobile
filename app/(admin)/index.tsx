@@ -508,11 +508,11 @@ export default function AdminOverview() {
                   </View>
                 }
                 title={item.variant?.product?.name ?? "Variant"}
-                subtitle={`${item.quantity} left · threshold ${item.low_stock_threshold}`}
+                subtitle={`${item.available ?? item.quantity} available · threshold ${item.low_stock_threshold}`}
                 right={
                   <View style={{ width: 56 }}>
                     <ProgressBar
-                      value={item.low_stock_threshold ? (item.quantity / item.low_stock_threshold) * 100 : 0}
+                      value={item.low_stock_threshold ? ((item.available ?? item.quantity) / item.low_stock_threshold) * 100 : 0}
                       fillColor={colors.light.destructive}
                     />
                   </View>

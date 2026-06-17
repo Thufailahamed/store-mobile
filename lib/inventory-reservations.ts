@@ -1,0 +1,131 @@
+import { supabase } from "@/lib/supabase/client";
+
+export type CartReservationItem = {
+  variant_id: string;
+  store_id: string;
+  quantity: number;
+};
+
+export type CartReservationSyncResult =
+  | { ok: true; synced: number; expiresAt?: string }
+  | { ok: false; error: string };
+
+const DEFAULT_TTL_MINUTES = 15;
+const DEBOUNCE_MS = 450;
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingUserId: string | null = null;
+let pendingItems: CartReservationItem[] = [];
+let syncErrorHandler: ((message: string) => void) | null = null;
+
+export function setCartReservationSyncErrorHandler(
+  handler: ((message: string) => void) | null,
+): void {
+  syncErrorHandler = handler;
+}
+
+function normalizeItems(items: CartReservationItem[]): CartReservationItem[] {
+  const byKey = new Map<string, CartReservationItem>();
+  for (const item of items) {
+    if (!item.variant_id || !item.store_id || item.quantity <= 0) continue;
+    const key = `${item.variant_id}:${item.store_id}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.quantity = Math.max(existing.quantity, item.quantity);
+    } else {
+      byKey.set(key, { ...item });
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+/** Atomically hold cart quantities on the server (authenticated users only). */
+export async function syncCartReservations(
+  items: CartReservationItem[],
+  ttlMinutes = DEFAULT_TTL_MINUTES,
+): Promise<CartReservationSyncResult> {
+  const payload = normalizeItems(items);
+  const { data, error } = await supabase.rpc("sync_cart_reservations", {
+    p_items: payload,
+    p_ttl_minutes: ttlMinutes,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  const row = (data ?? {}) as { synced?: number; expires_at?: string };
+  return {
+    ok: true,
+    synced: Number(row.synced ?? payload.length),
+    expiresAt: row.expires_at,
+  };
+}
+
+/** Release all holds for the signed-in user (e.g. after checkout or sign-out). */
+export async function releaseCartReservations(): Promise<void> {
+  await supabase.rpc("release_cart_reservations");
+}
+
+/** Debounced sync after cart mutations. No-op when userId is null. */
+export function scheduleCartReservationSync(
+  userId: string | null,
+  items: CartReservationItem[],
+): void {
+  pendingUserId = userId;
+  pendingItems = items;
+
+  if (!userId) return;
+
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const uid = pendingUserId;
+    const nextItems = pendingItems;
+    debounceTimer = null;
+    if (!uid) return;
+    void syncCartReservations(nextItems).then((result) => {
+      if (!result.ok) {
+        syncErrorHandler?.(result.error);
+      }
+    });
+  }, DEBOUNCE_MS);
+}
+
+/** Cancel an unpaid PayHere order and release cart holds (mobile checkout abandon). */
+export async function abandonUnpaidPayHereOrder(
+  orderId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("cancel_order", { p_order_id: orderId });
+  if (error) return { ok: false, error: error.message };
+  await releaseCartReservations();
+  return { ok: true };
+}
+
+/** Flush any pending reservation sync immediately (checkout). */
+export async function flushCartReservationSync(
+  userId: string | null,
+  items: CartReservationItem[],
+): Promise<CartReservationSyncResult> {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (!userId) return { ok: true, synced: 0 };
+  return syncCartReservations(items);
+}
+
+export function cartItemsToReservations(
+  items: Array<{
+    variantId: string | null;
+    storeId: string;
+    quantity: number;
+  }>,
+): CartReservationItem[] {
+  return items
+    .filter((i) => i.variantId && i.quantity > 0)
+    .map((i) => ({
+      variant_id: i.variantId!,
+      store_id: i.storeId,
+      quantity: i.quantity,
+    }));
+}

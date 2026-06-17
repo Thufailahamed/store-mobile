@@ -26,7 +26,7 @@ import {
   filterOrders,
   countByFilter,
   type OrdersFilter,
-} from "@/lib/hooks/__tests__/rider-filters";
+} from "@/lib/utils/rider-filters";
 import type { Order } from "@/lib/types";
 
 const FILTERS: { key: OrdersFilter; label: string }[] = [

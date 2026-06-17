@@ -24,7 +24,9 @@ interface InventoryRow {
   sku: string;
   size?: string;
   color?: string;
-  stock: number;
+  onHand: number;
+  reserved: number;
+  available: number;
   price: number;
   image?: string;
 }
@@ -62,7 +64,15 @@ export default function SellerInventory() {
     setRefreshing(false);
   }, [user, storeId]);
 
-  const flattenRows = (data: { product: Product; variants: (ProductVariant & { stock: number })[] }[]) => {
+  const flattenRows = (data: {
+    product: Product;
+    variants: (ProductVariant & {
+      quantity: number;
+      reserved: number;
+      available: number;
+      stock: number;
+    })[];
+  }[]) => {
     const all: InventoryRow[] = [];
     for (const item of data) {
       for (const v of item.variants) {
@@ -73,7 +83,9 @@ export default function SellerInventory() {
           sku: v.sku ?? item.product.sku ?? `${item.product.slug}-${v.size}-${v.color}`,
           size: v.size ?? undefined,
           color: v.color ?? undefined,
-          stock: v.stock ?? 0,
+          onHand: v.quantity ?? v.stock ?? 0,
+          reserved: v.reserved ?? 0,
+          available: v.available ?? Math.max(0, (v.quantity ?? v.stock ?? 0) - (v.reserved ?? 0)),
           price: v.price ?? item.product.price,
           image: item.product.images?.[0]?.url,
         });
@@ -93,28 +105,50 @@ export default function SellerInventory() {
     const matchSearch = !search ||
       r.productName.toLowerCase().includes(search.toLowerCase()) ||
       r.sku.toLowerCase().includes(search.toLowerCase());
-    if (filter === "low") return matchSearch && r.stock > 0 && r.stock < LOW_STOCK_THRESHOLD;
-    if (filter === "out") return matchSearch && r.stock === 0;
-    if (filter === "healthy") return matchSearch && r.stock >= LOW_STOCK_THRESHOLD;
+    if (filter === "low") return matchSearch && r.available > 0 && r.available < LOW_STOCK_THRESHOLD;
+    if (filter === "out") return matchSearch && r.available === 0;
+    if (filter === "healthy") return matchSearch && r.available >= LOW_STOCK_THRESHOLD;
     return matchSearch;
   });
 
   const stats = {
     total: rows.length,
-    healthy: rows.filter((r) => r.stock >= LOW_STOCK_THRESHOLD).length,
-    low: rows.filter((r) => r.stock > 0 && r.stock < LOW_STOCK_THRESHOLD).length,
-    out: rows.filter((r) => r.stock === 0).length,
+    healthy: rows.filter((r) => r.available >= LOW_STOCK_THRESHOLD).length,
+    low: rows.filter((r) => r.available > 0 && r.available < LOW_STOCK_THRESHOLD).length,
+    out: rows.filter((r) => r.available === 0).length,
   };
 
   const handleSaveStock = async (row: InventoryRow) => {
     const newStock = Math.max(0, Number(draftStock) || 0);
+    if (newStock < row.reserved) {
+      const available = Math.max(0, newStock - row.reserved);
+      Alert.alert(
+        "Held stock exceeds on-hand",
+        `${row.reserved} units are held in carts. Setting on-hand to ${newStock} makes ${available} available to shoppers.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Save anyway", onPress: () => void saveStock(row, newStock) },
+        ],
+      );
+      return;
+    }
+    await saveStock(row, newStock);
+  };
+
+  const saveStock = async (row: InventoryRow, newStock: number) => {
     setSaving(true);
     const res = await updateVariantStock(row.variantId, newStock);
     setSaving(false);
     if (res.ok) {
       setRows((prev) =>
         prev.map((r) =>
-          r.variantId === row.variantId ? { ...r, stock: newStock } : r
+          r.variantId === row.variantId
+            ? {
+                ...r,
+                onHand: newStock,
+                available: Math.max(0, newStock - r.reserved),
+              }
+            : r
         )
       );
       setEditing(null);
@@ -126,7 +160,7 @@ export default function SellerInventory() {
   const renderRow = ({ item }: { item: InventoryRow }) => {
     const isEditing = editing === item.variantId;
     const stockStatus =
-      item.stock === 0 ? "out" : item.stock < LOW_STOCK_THRESHOLD ? "low" : "healthy";
+      item.available === 0 ? "out" : item.available < LOW_STOCK_THRESHOLD ? "low" : "healthy";
 
     return (
       <View style={[styles.tableRow, stockStatus === "out" && styles.rowOut, stockStatus === "low" && styles.rowLow]}>
@@ -169,9 +203,15 @@ export default function SellerInventory() {
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={[styles.cellStock, stockStatus === "out" && styles.stockOut, stockStatus === "low" && styles.stockLow]}>
-              {item.stock}
-            </Text>
+            <View style={styles.stockStack}>
+              <Text style={[styles.cellStock, stockStatus === "out" && styles.stockOut, stockStatus === "low" && styles.stockLow]}>
+                {item.onHand}
+              </Text>
+              {item.reserved > 0 && (
+                <Text style={styles.cellHeld}>{item.reserved} held</Text>
+              )}
+              <Text style={styles.cellAvail}>{item.available} avail</Text>
+            </View>
           )}
         </View>
         <View style={styles.tableCellStatus}>
@@ -191,7 +231,7 @@ export default function SellerInventory() {
         </View>
         <View style={styles.tableCellAction}>
           {!isEditing && (
-            <TouchableOpacity onPress={() => { setEditing(item.variantId); setDraftStock(String(item.stock)); }}>
+            <TouchableOpacity onPress={() => { setEditing(item.variantId); setDraftStock(String(item.onHand)); }}>
               <Text style={styles.editBtn}>Edit</Text>
             </TouchableOpacity>
           )}
@@ -256,7 +296,7 @@ export default function SellerInventory() {
       <View style={styles.tableHeader}>
         <Text style={[styles.tableHeaderText, { width: 44 }]}> </Text>
         <Text style={[styles.tableHeaderText, { flex: 1 }]}>Product</Text>
-        <Text style={[styles.tableHeaderText, { width: 50 }]}>Stock</Text>
+        <Text style={[styles.tableHeaderText, { width: 72 }]}>Stock</Text>
         <Text style={[styles.tableHeaderText, { width: 50 }]}>Status</Text>
         <Text style={[styles.tableHeaderText, { width: 44 }]}> </Text>
       </View>
@@ -404,11 +444,22 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     textTransform: "capitalize",
   },
-  tableCellStock: { width: 50, alignItems: "center" },
+  tableCellStock: { width: 72, alignItems: "flex-end" },
+  stockStack: { alignItems: "flex-end" },
   cellStock: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.light.foreground,
+  },
+  cellHeld: {
+    fontSize: 9,
+    color: "#7c3aed",
+    marginTop: 1,
+  },
+  cellAvail: {
+    fontSize: 9,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
   },
   stockOut: { color: "#dc2626" },
   stockLow: { color: "#d97706" },

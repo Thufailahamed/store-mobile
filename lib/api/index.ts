@@ -37,7 +37,8 @@ import {
   resolveProductType,
   statusToIsActive,
 } from "@/lib/seller-product-status";
-import { getCatalogVisibleStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
+import { getBrowsableStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
+import { getAvailableStock } from "@/lib/inventory";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
@@ -125,7 +126,7 @@ export async function getProducts(opts: {
         .from("stores")
         .select("id")
         .eq("slug", storeSlug)
-        .in("status", ["approved", "active"])
+        .in("status", ["approved"])
         .maybeSingle();
       if (storeError) return fail(storeError.message);
       if (store) {
@@ -137,10 +138,10 @@ export async function getProducts(opts: {
     if (gender) query = query.eq("gender", gender);
     if (search) query = query.textSearch("name", search, { type: "websearch" });
 
-    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
-    const visibleIds = [...catalogVisibleStoreIds];
+    const browsableStoreIds = await getBrowsableStoreIds();
+    const visibleIds = [...browsableStoreIds];
     if (visibleIds.length > 0) {
-      query = query.or(`store_id.in.(${visibleIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
+      query = query.in("store_id", visibleIds);
     } else {
       query = query.is("store_id", null).not("brand_id", "is", null);
     }
@@ -156,7 +157,7 @@ export async function getProducts(opts: {
     query = query.range(offset, offset + limit - 1);
     const { data, error, count } = await query;
     if (error) return fail(error.message);
-    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds));
+    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row, browsableStoreIds));
     return ok({ products: mapProducts(rows) ?? [], total: count ?? rows.length });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch products");
@@ -185,14 +186,14 @@ export async function getBrands(opts: { limit?: number; search?: string } = {}):
 
 export async function getProductBySlug(slug: string): Promise<Result<Product | null>> {
   try {
-    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
+    const browsableStoreIds = await getBrowsableStoreIds();
     const { data, error } = await supabase
       .from("products")
       .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)")
       .eq("slug", slug)
       .single();
     if (error) return fail(error.message);
-    if (!isPublicCatalogProduct(data, catalogVisibleStoreIds)) return ok(null);
+    if (!isPublicCatalogProduct(data, browsableStoreIds)) return ok(null);
     return ok(mapProduct(data));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch product by slug");
@@ -201,7 +202,7 @@ export async function getProductBySlug(slug: string): Promise<Result<Product | n
 
 export async function getRelatedProducts(productId: string, categoryId?: string, limit = 8): Promise<Result<Product[]>> {
   try {
-    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
+    const browsableStoreIds = await getBrowsableStoreIds();
     let query = supabase
       .from("products")
       .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), store:stores!products_store_id_fkey(*), brand:brands(*)")
@@ -212,7 +213,7 @@ export async function getRelatedProducts(productId: string, categoryId?: string,
     if (categoryId) query = query.eq("category_id", categoryId);
     const { data, error } = await query;
     if (error) return fail(error.message);
-    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds));
+    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row, browsableStoreIds));
     return ok(mapProducts(rows));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch related products");
@@ -551,7 +552,7 @@ export async function getFlashSaleEndsAt(): Promise<string> {
 
 export async function searchProducts(query: string, limit = 20): Promise<Result<Product[]>> {
   try {
-    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
+    const browsableStoreIds = await getBrowsableStoreIds();
     const term = query.trim();
     const words = tokenizeQuery(term);
     if (words.length === 0) return ok([]);
@@ -570,7 +571,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
     }
     
     const productResults = mapProducts(
-      (productData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds))
+      (productData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, browsableStoreIds))
     ) ?? [];
     const resultIds = new Set(productResults.map((p) => p.id));
 
@@ -603,7 +604,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
           .eq("is_active", true)
           .in("id", variantProductIds);
         
-        for (const p of (mapProducts((extraData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds))) ?? [])) {
+        for (const p of (mapProducts((extraData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, browsableStoreIds))) ?? [])) {
           if (!resultIds.has(p.id)) {
             productResults.push(p);
             resultIds.add(p.id);
@@ -621,7 +622,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
         .eq("status", "active")
         .eq("is_active", true);
       
-      const allProducts = mapProducts((allData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds))) ?? [];
+      const allProducts = mapProducts((allData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, browsableStoreIds))) ?? [];
       const fuzzyHits = allProducts.filter((p) => {
         const name = (p.name ?? "").toLowerCase();
         const desc = (p.description ?? "").toLowerCase();
@@ -1726,22 +1727,36 @@ export async function transitionOrderStatus(orderId: string, status: string): Pr
 
 export async function getSellerInventory(storeId: string): Promise<Result<{
   product: Product;
-  variants: (ProductVariant & { stock: number })[];
+  variants: (ProductVariant & {
+    quantity: number;
+    reserved: number;
+    available: number;
+    stock: number;
+  })[];
 }[]>> {
   try {
     const { data: products, error } = await supabase
       .from("products")
-      .select("*, variants:product_variants(*, inventory(*)), images:product_images(url, is_primary)")
+      .select("*, variants:product_variants(*, inventory(quantity, reserved)), images:product_images(url, is_primary)")
       .eq("store_id", storeId)
       .order("name");
     if (error) return fail(error.message);
 
     const result = ((products ?? []) as any[]).map((p) => ({
       product: p as Product,
-      variants: (p.variants ?? []).map((v: any) => ({
-        ...v,
-        stock: v.inventory?.[0]?.quantity ?? v.stock ?? 0,
-      })),
+      variants: (p.variants ?? []).map((v: any) => {
+        const inv = v.inventory?.[0];
+        const quantity = Math.max(0, Number(inv?.quantity ?? 0));
+        const reserved = Math.max(0, Number(inv?.reserved ?? 0));
+        const available = getAvailableStock(inv, quantity - reserved);
+        return {
+          ...v,
+          quantity,
+          reserved,
+          available,
+          stock: quantity,
+        };
+      }),
     }));
     return ok(result);
   } catch (e: any) {
@@ -1816,7 +1831,7 @@ export async function getSellerKPIs(storeId: string): Promise<Result<{
         .eq("store_id", storeId),
       supabase
         .from("products")
-        .select("id, variants:product_variants(id, inventory(quantity))")
+        .select("id, variants:product_variants(id, inventory(quantity, reserved))")
         .eq("store_id", storeId),
     ]);
 
@@ -1839,7 +1854,8 @@ export async function getSellerKPIs(storeId: string): Promise<Result<{
     for (const p of ((inventoryRes.data ?? []) as any[])) {
       for (const v of (p.variants ?? [])) {
         const stock = v.inventory?.[0]?.quantity ?? 0;
-        if (stock > 0 && stock < 5) lowStockVariants++;
+        const available = getAvailableStock(v.inventory?.[0], stock);
+        if (available > 0 && available < 5) lowStockVariants++;
       }
     }
 
@@ -3024,11 +3040,21 @@ export async function getAdminLowStock(limit = 10): Promise<Result<LowStockItem[
   try {
     const { data, error } = await supabase
       .from("inventory")
-      .select("id, variant_id, quantity, low_stock_threshold, variant:product_variants(product:products(name))")
-      .filter("quantity", "lte", 5)
-      .limit(limit);
+      .select("id, variant_id, quantity, reserved, low_stock_threshold, variant:product_variants(product:products(name))")
+      .limit(Math.max(limit * 10, 50));
     if (error) return fail(error.message);
-    return ok((data as any) ?? []);
+    const rows = ((data as any) ?? [])
+      .map((row: any) => ({
+        ...row,
+        available: getAvailableStock(row),
+      }))
+      .filter(
+        (row: any) =>
+          row.available > 0 && row.available <= (row.low_stock_threshold ?? 5),
+      )
+      .sort((a: any, b: any) => a.available - b.available)
+      .slice(0, limit);
+    return ok(rows);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch low stock");
   }

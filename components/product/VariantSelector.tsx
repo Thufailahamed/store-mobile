@@ -12,6 +12,8 @@ interface VariantSelectorProps {
   selectedSize: string | null;
   onColorChange: (color: string) => void;
   onSizeChange: (size: string) => void;
+  /** Live sellable units per size label (overrides variant.stock when set). */
+  stockForSize?: (size: string) => number;
 }
 
 export function VariantSelector({
@@ -20,6 +22,7 @@ export function VariantSelector({
   selectedSize,
   onColorChange,
   onSizeChange,
+  stockForSize,
 }: VariantSelectorProps) {
   const uniqueColors = Array.from(
     new Map(
@@ -38,6 +41,7 @@ export function VariantSelector({
   );
 
   const getVariantStock = (size: string) => {
+    if (stockForSize) return stockForSize(size);
     const v = variants.find(
       (v) => v.size === size && v.is_active && (!selectedColor || v.color === selectedColor)
     );

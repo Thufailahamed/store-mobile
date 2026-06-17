@@ -1,15 +1,12 @@
+import { getVariantAvailableStock } from "@/lib/inventory";
 import type { ProductVariant } from "@/lib/types";
 
+/** Sellable units (quantity − reserved). */
 export function getVariantStock(
   variant: ProductVariant | null | undefined,
   fallback = 0
 ): number {
-  if (!variant) return fallback;
-  const inventoryQty = (variant as ProductVariant & { inventory?: { quantity?: number }[] })
-    .inventory?.[0]?.quantity;
-  if (inventoryQty != null) return inventoryQty;
-  if (variant.stock != null) return variant.stock;
-  return fallback;
+  return getVariantAvailableStock(variant, fallback);
 }
 
 export type AvailableSizeOption = {

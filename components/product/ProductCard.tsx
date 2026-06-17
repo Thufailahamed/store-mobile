@@ -8,6 +8,8 @@ import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens"
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { useTrackEvent } from "@/lib/recommender";
+import { getVariantAvailableStock } from "@/lib/inventory";
+import { useToast } from "@/components/ui";
 import type { Product } from "@/lib/types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -25,6 +27,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, horizontal, listMode }: ProductCardProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const addItem = useCart((s) => s.addItem);
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
   const toggle = useWishlist((s) => s.toggle);
@@ -49,7 +52,14 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
   };
 
   const handleAdd = () => {
-    const variant = product.variants?.[0];
+    const variants = product.variants ?? [];
+    const variant =
+      variants.find((v) => getVariantAvailableStock(v, v.stock ?? 0) > 0) ?? variants[0];
+    const stock = variant ? getVariantAvailableStock(variant, variant.stock ?? 0) : 0;
+    if (stock <= 0) {
+      toast("Out of stock", "error");
+      return;
+    }
     addItem({
       productId: product.id,
       variantId: variant?.id ?? null,
@@ -58,7 +68,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
       variantLabel: variant ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim() : undefined,
       price: product.price,
       image: primaryImage,
-      stock: variant?.stock ?? 99,
+      stock,
       quantity: 1,
     });
     tracker.cartAdd(product);

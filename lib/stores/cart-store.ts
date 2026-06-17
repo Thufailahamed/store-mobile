@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { getVariantAvailableStock } from "@/lib/inventory";
 import type { CartReconciliation } from "@/lib/cart-validation";
 
 export interface CartItem {
@@ -45,6 +46,7 @@ export const useCart = create<CartStore>()(
         const key = cartKey(item.productId, item.variantId);
         set((state) => {
           const existing = state.items[key];
+          const stockCap = item.stock ?? existing?.stock ?? 99;
           const { image: _image, ...rest } = item;
           return {
             items: {
@@ -52,8 +54,9 @@ export const useCart = create<CartStore>()(
               [key]: {
                 ...rest,
                 quantity: existing
-                  ? Math.min(existing.quantity + (item.quantity ?? 1), existing.stock)
+                  ? Math.min(existing.quantity + (item.quantity ?? 1), stockCap)
                   : (item.quantity ?? 1),
+                stock: stockCap,
               },
             },
           };
@@ -146,7 +149,7 @@ export const useCart = create<CartStore>()(
           const { data: rows } = await supabase
             .from("cart_items")
             .select(
-              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary)), variant:product_variants(id, label, stock, is_active)",
+              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary)), variant:product_variants(id, label, is_active, inventory(quantity, reserved))",
             )
             .eq("cart_id", cart.id);
 
@@ -172,7 +175,7 @@ export const useCart = create<CartStore>()(
               variantLabel: variant?.label,
               price: row.unit_price,
               quantity: row.quantity,
-              stock: variant?.stock ?? 99,
+              stock: getVariantAvailableStock({ inventory: variant?.inventory }, 99),
             };
           }
 

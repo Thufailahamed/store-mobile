@@ -2,6 +2,48 @@ import { supabase } from "@/lib/supabase/client";
 
 const STORE_API_URL = process.env.EXPO_PUBLIC_STORE_API_URL ?? "";
 
+export type PaymentPollResult =
+  | { ok: true; paymentStatus: "paid" }
+  | { ok: false; error: string; paymentStatus?: string };
+
+/** Poll until PayHere webhook marks the order paid (or terminal failure). */
+export async function pollOrderPaymentStatus(
+  orderId: string,
+  opts: { intervalMs?: number; maxAttempts?: number } = {},
+): Promise<PaymentPollResult> {
+  const intervalMs = opts.intervalMs ?? 3000;
+  const maxAttempts = opts.maxAttempts ?? 40;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("payment_status, status")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) return { ok: false, error: error.message };
+    if (data?.payment_status === "paid") {
+      return { ok: true, paymentStatus: "paid" };
+    }
+    if (data?.status === "cancelled") {
+      return {
+        ok: false,
+        error: "Order was cancelled",
+        paymentStatus: data.payment_status ?? undefined,
+      };
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  return {
+    ok: false,
+    error: "Payment confirmation timed out. Check your orders for status.",
+  };
+}
+
 export interface PayHereSession {
   action: string;
   fields: Record<string, string>;

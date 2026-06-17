@@ -167,4 +167,32 @@ describe("cart-validation", () => {
 
     expect(reconciliation.remove[0].reason).toBe("out_of_stock");
   });
+
+  it("treats fully reserved inventory as out of stock", () => {
+    const items = { "prod-1-var-1": makeItem({ stock: 5, quantity: 1 }) };
+    const reconciliation = buildCartReconciliation(
+      items,
+      {
+        "prod-1": makeProduct({
+          variants: [
+            {
+              id: "var-1",
+              product_id: "prod-1",
+              size: "M",
+              color: "Black",
+              price: 2500,
+              position: 0,
+              is_active: true,
+              stock: 5,
+              inventory: [{ quantity: 5, reserved: 5 }],
+            } as Product["variants"][number],
+          ],
+        }),
+      },
+      visibleStores,
+    );
+
+    expect(reconciliation.remove).toHaveLength(1);
+    expect(reconciliation.remove[0].reason).toBe("out_of_stock");
+  });
 });

@@ -31,6 +31,7 @@ import {
   getRecentlyViewedRail,
 } from "@/lib/recommender";
 import type { Product, ProductVariant, Review } from "@/lib/types";
+import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -103,8 +104,10 @@ export default function ProductDetailScreen() {
     [product]
   );
 
+  const inventory = useInventoryRealtime(product);
+  const liveVariantStock = getVariantStock(inventory, selectedVariant?.id);
   const unitPrice = selectedVariant?.price ?? product?.price ?? 0;
-  const currentStock = selectedVariant?.stock ?? 0;
+  const currentStock = liveVariantStock?.available ?? selectedVariant?.stock ?? 0;
   const isWishlisted = product ? !!wishlistItems[product.id] : false;
   const soldOut = currentStock <= 0;
   const cartItemKey = product ? `${product.id}-${selectedVariant?.id ?? "default"}` : "";
@@ -304,6 +307,16 @@ export default function ProductDetailScreen() {
                 (v) => v.size === s && (!selectedColor || v.color === selectedColor)
               );
               if (v) setSelectedVariant(v);
+            }}
+            stockForSize={(size) => {
+              const v = product.variants?.find(
+                (variant) =>
+                  variant.size === size &&
+                  variant.is_active &&
+                  (!selectedColor || variant.color === selectedColor),
+              );
+              const live = v ? getVariantStock(inventory, v.id)?.available : undefined;
+              return live ?? v?.stock ?? 0;
             }}
           />
         </View>

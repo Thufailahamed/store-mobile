@@ -1,7 +1,14 @@
 import { useEffect, useRef } from "react";
+import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCart, useWishlist } from "@/lib/stores";
 import { refreshCartFromCatalog } from "@/lib/cart-validation";
+import {
+  cartItemsToReservations,
+  releaseCartReservations,
+  scheduleCartReservationSync,
+  setCartReservationSyncErrorHandler,
+} from "@/lib/inventory-reservations";
 
 /**
  * Bridges the local cart + wishlist stores to their server tables.
@@ -12,6 +19,7 @@ import { refreshCartFromCatalog } from "@/lib/cart-validation";
  * Safe to mount once near the root (e.g. inside RootLayoutNav).
  */
 export function useSyncStores() {
+  const { toast } = useToast();
   const { user, session, loading } = useAuth();
   const cartItems = useCart((s) => s.items);
   const cartCouponCode = useCart((s) => s.couponCode);
@@ -19,6 +27,14 @@ export function useSyncStores() {
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wishlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setCartReservationSyncErrorHandler((message) => {
+      toast("Could not reserve stock", "error");
+      console.warn("[cart-reservations]", message);
+    });
+    return () => setCartReservationSyncErrorHandler(null);
+  }, [toast]);
 
   // Initial load when user signs in (or when user.id changes).
   useEffect(() => {
@@ -28,6 +44,7 @@ export function useSyncStores() {
     // Sign-out: clear local state once when transitioning away from a signed-in user.
     if (!userId || !session) {
       if (lastUserIdRef.current !== null) {
+        void releaseCartReservations();
         lastUserIdRef.current = null;
         useCart.getState().clear();
         useWishlist.getState().clear();
@@ -47,7 +64,14 @@ export function useSyncStores() {
     useWishlist.getState().loadFromServer(userId);
   }, [user?.id, session, loading]);
 
-  // Debounced push whenever cart items / coupon change.
+  useEffect(() => {
+    if (!user?.id) return;
+    scheduleCartReservationSync(
+      user.id,
+      cartItemsToReservations(Object.values(cartItems)),
+    );
+  }, [user?.id, cartItems]);
+
   const cartSnapshot = `${Object.keys(cartItems).length}|${cartCouponCode ?? ""}|${JSON.stringify(
     Object.fromEntries(
       Object.entries(cartItems).map(([k, v]) => [k, v.quantity, v.price])

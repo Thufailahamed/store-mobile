@@ -1,3 +1,4 @@
+import { getVariantAvailableStock } from "@/lib/inventory";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import type { Product } from "@/lib/types";
 
@@ -32,7 +33,7 @@ export function mapProduct(p: any): Product {
   }));
 
   const variants = p.variants?.map((v: any) => {
-    const stock = v.inventory?.[0]?.quantity ?? v.stock ?? 0;
+    const stock = getVariantAvailableStock(v, v.stock ?? 0);
     return { ...v, stock };
   });
 

@@ -83,4 +83,17 @@ describe("seller compliance flow", () => {
       )
     ).toBe(false);
   });
+
+  it("browse visibility is wider than checkout compliance", () => {
+    const browsable = new Set(["store-pending-compliance"]);
+    const checkout = new Set<string>();
+    const product = {
+      store_id: "store-pending-compliance",
+      store: { status: "approved" },
+      status: "active",
+      is_active: true,
+    };
+    expect(isPublicCatalogProduct(product, browsable)).toBe(true);
+    expect(isPublicCatalogProduct(product, checkout)).toBe(false);
+  });
 });

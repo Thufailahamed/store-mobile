@@ -20,7 +20,7 @@ import {
   type PackageMeta,
   type PackageScanAction,
 } from "@/lib/api/delivery-api";
-import { resolveScanAction } from "@/lib/api/__tests__/scan-action";
+import { resolveScanAction } from "@/lib/api/scan-action";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { typography, radii } from "@/lib/theme/tokens";
 

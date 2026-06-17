@@ -9,7 +9,7 @@ export default defineConfig({
       "lib/recommender/**/*.test.ts",
       "lib/recommender/__tests__/**/*.test.ts",
       "lib/api/__tests__/**/*.test.ts",
-      "lib/hooks/__tests__/**/*.test.ts",
+      "lib/api/**/*.test.ts",
       "lib/utils/**/*.test.ts",
       "lib/__tests__/**/*.test.ts",
     ],
