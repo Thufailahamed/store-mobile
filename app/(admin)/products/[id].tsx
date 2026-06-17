@@ -24,6 +24,7 @@ export default function AdminProductDetail() {
   });
 
   const approve = useMutation({ mutationFn: () => approveProduct(id!, "active"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-product", id] }) });
+  const reject = useMutation({ mutationFn: () => approveProduct(id!, "rejected"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-product", id] }) });
 
   if (q.isLoading) return <View style={styles.container}><Skeleton height={200} /></View>;
   const p: any = q.data;
@@ -44,7 +45,7 @@ export default function AdminProductDetail() {
       <Card style={styles.heroCard}>
         <Text style={styles.eyebrow2}>STATUS</Text>
         <View style={styles.statusRow}>
-          <Badge variant={p.status === "approved" ? "default" : p.status === "pending" ? "secondary" : "destructive"}>{p.status}</Badge>
+          <Badge variant={p.status === "active" ? "default" : p.status === "pending" ? "secondary" : "destructive"}>{p.status}</Badge>
           <Text style={styles.sku}>SKU {p.sku ?? "—"}</Text>
         </View>
         <View style={styles.priceRow}>
@@ -64,7 +65,7 @@ export default function AdminProductDetail() {
           <Pressable onPress={() => approve.mutate()} style={styles.approve}>
             <Text style={styles.approveText}>Approve</Text>
           </Pressable>
-          <Pressable style={styles.reject}>
+          <Pressable onPress={() => reject.mutate()} style={styles.reject}>
             <Text style={styles.rejectText}>Reject</Text>
           </Pressable>
         </View>

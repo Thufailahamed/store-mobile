@@ -10,6 +10,7 @@ export default defineConfig({
       "lib/recommender/__tests__/**/*.test.ts",
       "lib/api/__tests__/**/*.test.ts",
       "lib/hooks/__tests__/**/*.test.ts",
+      "lib/__tests__/**/*.test.ts",
     ],
     setupFiles: ["./vitest.setup.ts"],
   },

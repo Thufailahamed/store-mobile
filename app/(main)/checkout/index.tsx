@@ -20,6 +20,7 @@ import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
+import { validateCartForCheckout } from "@/lib/cart-validation";
 import {
   formatPrice,
   FREE_SHIPPING_THRESHOLD,
@@ -192,12 +193,37 @@ export default function CheckoutScreen() {
       return;
     }
 
+    const checkoutValidation = await validateCartForCheckout();
+    if (!checkoutValidation.ok) {
+      toast(checkoutValidation.error, "error");
+      router.replace("/(main)/cart");
+      return;
+    }
+
+    const freshCartItems = Object.values(useCart.getState().items);
+    if (freshCartItems.length === 0) {
+      toast("Your bag is empty", "error");
+      router.replace("/(main)/cart");
+      return;
+    }
+
+    const freshSub = useCart.getState().subtotal();
+    const freshAfterCoupon = Math.max(0, freshSub - couponDiscount);
+    const freshMaxRedeemablePts = Math.min(loyalty.state.points, Math.floor(freshAfterCoupon));
+    const freshPointsToUse = usePoints ? Math.floor(freshMaxRedeemablePts / 100) * 100 : 0;
+    const freshPointsValue = freshPointsToUse;
+    const freshShippingFee =
+      freshSub >= FREE_SHIPPING_THRESHOLD || freeShippingCoupon ? 0 : shippingOption.fee || 350;
+    const freshTax = Math.round(Math.max(0, freshAfterCoupon - freshPointsValue) * TAX_RATE);
+    const freshTotal =
+      Math.max(0, freshAfterCoupon - freshPointsValue) + freshShippingFee + freshTax;
+
     setLoading(true);
     try {
       const addressId: string | null =
         selectedAddressId === "new" ? null : selectedAddressId;
 
-      const rpcItems = cartItems.map((item) => ({
+      const rpcItems = freshCartItems.map((item) => ({
         product_id: item.productId,
         variant_id: item.variantId,
         store_id: item.storeId,
@@ -223,11 +249,11 @@ export default function CheckoutScreen() {
         p_user_id: user.id,
         p_address_id: addressId,
         p_shipping_address: shippingAddress,
-        p_subtotal: sub,
-        p_discount: couponDiscount + pointsValue,
-        p_shipping_fee: shippingFee,
-        p_tax: tax,
-        p_total: total,
+        p_subtotal: freshSub,
+        p_discount: couponDiscount + freshPointsValue,
+        p_shipping_fee: freshShippingFee,
+        p_tax: freshTax,
+        p_total: freshTotal,
         p_currency: "LKR",
         p_payment_method: paymentMethod,
         p_coupon_id: couponId,
@@ -240,8 +266,8 @@ export default function CheckoutScreen() {
       const order = parsePlacedOrder(orderData);
       if (!order?.id) throw new Error("Order created but no id returned");
 
-      if (pointsToUse > 0) {
-        const redeemRes = await loyalty.redeem(pointsToUse, order.id);
+      if (freshPointsToUse > 0) {
+        const redeemRes = await loyalty.redeem(freshPointsToUse, order.id);
         if (!redeemRes.ok) {
           await supabase.rpc("cancel_order", { p_order_id: order.id });
           throw new Error(redeemRes.error);

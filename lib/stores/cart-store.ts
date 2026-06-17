@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import type { CartReconciliation } from "@/lib/cart-validation";
 
 export interface CartItem {
   productId: string;
@@ -25,6 +26,7 @@ export interface CartStore {
   clear: () => void;
   syncToServer: (userId: string) => Promise<void>;
   loadFromServer: (userId: string) => Promise<void>;
+  applyReconciliation: (reconciliation: CartReconciliation) => void;
   itemCount: () => number;
   subtotal: () => number;
 }
@@ -143,21 +145,34 @@ export const useCart = create<CartStore>()(
 
           const { data: rows } = await supabase
             .from("cart_items")
-            .select("*, product:products(name, images:product_images(url, is_primary)), variant:product_variants(label, stock)")
+            .select(
+              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary)), variant:product_variants(id, label, stock, is_active)",
+            )
             .eq("cart_id", cart.id);
 
           const serverItems: Record<string, CartItem> = {};
           for (const row of (rows ?? []) as any[]) {
+            const product = row.product;
+            const variant = row.variant;
+            const productMissing = !product?.id;
+            const productInactive =
+              product?.status !== "active" || product?.is_active === false;
+            const variantMissing = row.variant_id && !variant?.id;
+            const variantInactive = variant?.is_active === false;
+            if (productMissing || productInactive || variantMissing || variantInactive) {
+              continue;
+            }
+
             const key = cartKey(row.product_id, row.variant_id);
             serverItems[key] = {
               productId: row.product_id,
               variantId: row.variant_id,
               storeId: row.store_id,
-              name: row.product?.name ?? "Product",
-              variantLabel: row.variant?.label,
+              name: product?.name ?? "Product",
+              variantLabel: variant?.label,
               price: row.unit_price,
               quantity: row.quantity,
-              stock: row.variant?.stock ?? 99,
+              stock: variant?.stock ?? 99,
             };
           }
 
@@ -172,6 +187,40 @@ export const useCart = create<CartStore>()(
         } catch {
           // Silent fail — local cart still works
         }
+      },
+
+      applyReconciliation: (reconciliation) => {
+        set((state) => {
+          if (reconciliation.remove.length === 0 && reconciliation.update.length === 0) {
+            return state;
+          }
+
+          const items = { ...state.items };
+
+          for (const issue of reconciliation.remove) {
+            delete items[issue.key];
+          }
+
+          for (const patch of reconciliation.update) {
+            const item = items[patch.key];
+            if (!item) continue;
+            const nextStock = patch.stock ?? item.stock;
+            items[patch.key] = {
+              ...item,
+              ...(patch.price !== undefined ? { price: patch.price } : {}),
+              ...(patch.stock !== undefined ? { stock: patch.stock } : {}),
+              ...(patch.quantity !== undefined
+                ? { quantity: Math.min(patch.quantity, nextStock) }
+                : {}),
+              ...(patch.name !== undefined ? { name: patch.name } : {}),
+              ...(patch.variantLabel !== undefined
+                ? { variantLabel: patch.variantLabel }
+                : {}),
+            };
+          }
+
+          return { items };
+        });
       },
 
       itemCount: () => {

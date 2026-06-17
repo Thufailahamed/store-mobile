@@ -26,6 +26,16 @@ import type {
   Testimonial, Tenet, HeroMeta, ApprovalStatus, HomepageSection,
 } from "@/lib/types";
 import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
+import {
+  formatSkuPersistenceError,
+  validateStoreSkus,
+  type SkuDraftVariant,
+} from "@/lib/product-sku";
+import {
+  coerceSellerProductStatus,
+  resolveProductType,
+  statusToIsActive,
+} from "@/lib/seller-product-status";
 import { getCatalogVisibleStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -1303,16 +1313,29 @@ export async function createSellerProduct(product: Partial<Product>): Promise<Re
     const guard = await assertSellerCanOperate(product.store_id);
     if (!guard.ok) return guard;
 
+    const skuCheck = await validateStoreSkus({
+      storeId: product.store_id,
+      productSku: product.sku,
+      variants: [],
+    });
+    if (!skuCheck.ok) return fail(skuCheck.error);
+
+    const requestedStatus = product.status as Product["status"] | undefined;
+    const resolvedStatus = coerceSellerProductStatus(requestedStatus);
+    const variantCount = 0;
+
     const slug =
       product.slug?.trim() ||
       (await ensureUniqueProductSlug(product.name ?? "product"));
     const row = {
-      product_type: "simple" as const,
+      product_type: resolveProductType(variantCount),
       tax_rate: 0,
       currency: "LKR",
       is_featured: false,
       discount_pct: 0,
       ...product,
+      status: resolvedStatus,
+      is_active: statusToIsActive(resolvedStatus),
       slug,
     };
     const { data, error } = await supabase
@@ -1320,7 +1343,7 @@ export async function createSellerProduct(product: Partial<Product>): Promise<Re
       .insert(row)
       .select()
       .single();
-    if (error) return fail(error.message);
+    if (error) return fail(formatSkuPersistenceError(error.message));
     return ok(data as Product);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to create product");
@@ -1331,20 +1354,40 @@ export async function updateSellerProduct(id: string, patch: Partial<Product>): 
   try {
     const { data: existing } = await supabase
       .from("products")
-      .select("store_id")
+      .select("store_id, sku, status")
       .eq("id", id)
       .maybeSingle();
     if (!existing?.store_id) return fail("Product not found");
     const guard = await assertSellerCanOperate(existing.store_id as string);
     if (!guard.ok) return guard;
 
+    const patchPayload = { ...patch };
+    if (patch.status !== undefined) {
+      const resolvedStatus = coerceSellerProductStatus(
+        patch.status,
+        existing.status as Product["status"],
+      );
+      patchPayload.status = resolvedStatus;
+      patchPayload.is_active = statusToIsActive(resolvedStatus);
+    }
+
+    if (patch.sku !== undefined) {
+      const skuCheck = await validateStoreSkus({
+        storeId: existing.store_id as string,
+        productId: id,
+        productSku: patch.sku,
+        variants: [],
+      });
+      if (!skuCheck.ok) return fail(skuCheck.error);
+    }
+
     const { data, error } = await supabase
       .from("products")
-      .update(patch)
+      .update(patchPayload)
       .eq("id", id)
       .select()
       .single();
-    if (error) return fail(error.message);
+    if (error) return fail(formatSkuPersistenceError(error.message));
     return ok(data as Product);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to update product");
@@ -1487,6 +1530,33 @@ export async function saveSellerVariants(
     const guard = await assertSellerCanOperate(storeId);
     if (!guard.ok) return guard;
 
+    const { data: productRow, error: productError } = await supabase
+      .from("products")
+      .select("sku")
+      .eq("id", productId)
+      .maybeSingle();
+    if (productError) return fail(productError.message);
+    if (!productRow) return fail("Product not found");
+
+    const skuVariants: SkuDraftVariant[] = variants.map((variant) => ({
+      id: variant.id,
+      sku: variant.sku,
+    }));
+    const skuCheck = await validateStoreSkus({
+      storeId,
+      productId,
+      productSku: productRow.sku ?? undefined,
+      variants: skuVariants,
+    });
+    if (!skuCheck.ok) return fail(skuCheck.error);
+
+    if (variants.length > 0) {
+      await supabase
+        .from("products")
+        .update({ product_type: resolveProductType(variants.length) })
+        .eq("id", productId);
+    }
+
     if (removedIds.length > 0) {
       const { error } = await supabase
         .from("product_variants")
@@ -1514,14 +1584,14 @@ export async function saveSellerVariants(
           .from("product_variants")
           .update(payload)
           .eq("id", variantId);
-        if (error) return fail(error.message);
+        if (error) return fail(formatSkuPersistenceError(error.message));
       } else {
         const { data, error } = await supabase
           .from("product_variants")
           .insert(payload)
           .select("id")
           .single();
-        if (error) return fail(error.message);
+        if (error) return fail(formatSkuPersistenceError(error.message));
         variantId = data.id;
       }
 

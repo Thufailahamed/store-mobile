@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCart, useWishlist } from "@/lib/stores";
+import { refreshCartFromCatalog } from "@/lib/cart-validation";
 
 /**
  * Bridges the local cart + wishlist stores to their server tables.
@@ -39,7 +40,10 @@ export function useSyncStores() {
     lastUserIdRef.current = userId;
 
     // Fire-and-forget; errors are swallowed in the store.
-    useCart.getState().loadFromServer(userId);
+    void useCart
+      .getState()
+      .loadFromServer(userId)
+      .then(() => refreshCartFromCatalog());
     useWishlist.getState().loadFromServer(userId);
   }, [user?.id, session, loading]);
 

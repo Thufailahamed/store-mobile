@@ -35,6 +35,7 @@ const LEADING_OFFSET = CHECKBOX_SIZE + MEDIA_GAP;
 interface CartItemCardProps {
   item: CartItem;
   product?: Product;
+  unavailableMessage?: string;
   selected?: boolean;
   onToggleSelect?: () => void;
   onIncrement: () => void;
@@ -48,6 +49,7 @@ interface CartItemCardProps {
 export function CartItemCard({
   item,
   product,
+  unavailableMessage,
   selected = true,
   onToggleSelect,
   onIncrement,
@@ -117,9 +119,16 @@ export function CartItemCard({
       : null;
 
   const atMaxQty = item.quantity >= availableStock;
+  const isUnavailable = Boolean(unavailableMessage);
 
   return (
-    <View style={[styles.card, style]}>
+    <View style={[styles.card, isUnavailable && styles.cardUnavailable, style]}>
+      {unavailableMessage ? (
+        <View style={styles.unavailableBanner}>
+          <Ionicons name="alert-circle" size={14} color="#B45309" />
+          <Text style={styles.unavailableText}>{unavailableMessage}</Text>
+        </View>
+      ) : null}
       <View style={styles.topRow}>
         <View style={styles.mediaRow}>
           {onToggleSelect ? (
@@ -253,13 +262,13 @@ export function CartItemCard({
               style={styles.qtyBtn}
               onPress={onIncrement}
               activeOpacity={0.7}
-              disabled={atMaxQty}
+              disabled={atMaxQty || isUnavailable}
               hitSlop={6}
             >
               <Ionicons
                 name="add"
                 size={16}
-                color={atMaxQty ? MUTED : INK}
+                color={atMaxQty || isUnavailable ? MUTED : INK}
               />
             </TouchableOpacity>
           </View>
@@ -297,6 +306,28 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#E5E7EB",
+  },
+  cardUnavailable: {
+    opacity: 0.72,
+    borderColor: "#FCD34D",
+    backgroundColor: "#FFFBEB",
+  },
+  unavailableBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#FEF3C7",
+  },
+  unavailableText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: "#92400E",
   },
   topRow: {
     flexDirection: "row",

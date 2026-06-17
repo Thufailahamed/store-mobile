@@ -17,12 +17,15 @@ import {
   getSellerProductById,
   createSellerProduct,
   updateSellerProduct,
+  deleteSellerProduct,
   deleteSellerProductImage,
   setSellerProductImagePrimary,
   saveSellerVariants,
+  getAllCategories,
   type SellerVariantInput,
 } from "@/lib/api";
 import { uploadProductImage } from "@/lib/upload";
+import { validateStoreSkus } from "@/lib/product-sku";
 import {
   ProductMediaSection,
   type PendingProductImage,
@@ -33,7 +36,7 @@ import {
   type VariantDraft,
 } from "@/components/seller/ProductVariantsSection";
 import { colors, typography, radii } from "@/lib/theme/tokens";
-import type { Product, ProductImage } from "@/lib/types";
+import type { Product, ProductImage, Category } from "@/lib/types";
 
 export default function SellerProductEdit() {
   const router = useRouter();
@@ -53,7 +56,10 @@ export default function SellerProductEdit() {
   const [price, setPrice] = useState("");
   const [discountPct, setDiscountPct] = useState("0");
   const [gender, setGender] = useState<string>("unisex");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [status, setStatus] = useState<string>("draft");
+  const [initialStatus, setInitialStatus] = useState<string>("draft");
   const [tags, setTags] = useState("");
 
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
@@ -72,6 +78,11 @@ export default function SellerProductEdit() {
         setStoreId(storeRes.data.id);
       }
 
+      const categoriesRes = await getAllCategories();
+      if (categoriesRes.ok) {
+        setCategories(categoriesRes.data);
+      }
+
       if (!isNew && id) {
         const productRes = await getSellerProductById(id);
         if (productRes.ok && productRes.data) {
@@ -83,7 +94,9 @@ export default function SellerProductEdit() {
           setPrice(String(p.price));
           setDiscountPct(String(p.discount_pct));
           setGender(p.gender ?? "unisex");
+          setCategoryId(p.category_id ?? null);
           setStatus(p.status);
+          setInitialStatus(p.status);
           setTags(p.tags?.join(", ") ?? "");
           setExistingImages(p.images ?? []);
 
@@ -224,6 +237,17 @@ export default function SellerProductEdit() {
       return;
     }
 
+    const skuCheck = await validateStoreSkus({
+      storeId,
+      productId: isNew ? undefined : id,
+      productSku: sku.trim() || undefined,
+      variants: variants.map((variant) => ({ id: variant.id, sku: variant.sku })),
+    });
+    if (!skuCheck.ok) {
+      Alert.alert("Duplicate SKU", skuCheck.error);
+      return;
+    }
+
     setSaving(true);
     try {
       const productData: Partial<Product> = {
@@ -234,6 +258,7 @@ export default function SellerProductEdit() {
         price: Number(price),
         discount_pct: Number(discountPct) || 0,
         gender: gender as Product["gender"],
+        category_id: categoryId ?? undefined,
         status: status as Product["status"],
         tags: tags
           ? tags
@@ -243,7 +268,6 @@ export default function SellerProductEdit() {
           : [],
         store_id: storeId,
         currency: "LKR",
-        is_active: status === "active",
       };
 
       let productId = isNew ? undefined : id;
@@ -296,7 +320,29 @@ export default function SellerProductEdit() {
   };
 
   const genders = ["men", "women", "kids", "unisex"];
-  const statuses = ["draft", "pending", "active"];
+  const statuses = ["draft", "pending"];
+  const isLive = initialStatus === "active";
+
+  const handleDeleteProduct = () => {
+    if (isNew || !id) return;
+    Alert.alert("Delete product?", "This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          setSaving(true);
+          const res = await deleteSellerProduct(id);
+          setSaving(false);
+          if (res.ok) {
+            router.back();
+          } else {
+            Alert.alert("Error", res.error);
+          }
+        },
+      },
+    ]);
+  };
 
   if (loading) {
     return (
@@ -412,6 +458,34 @@ export default function SellerProductEdit() {
         </View>
 
         <View style={styles.field}>
+          <Text style={styles.label}>Category</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+            <TouchableOpacity
+              style={[styles.chip, !categoryId && styles.chipActive]}
+              onPress={() => setCategoryId(null)}
+            >
+              <Text style={[styles.chipText, !categoryId && styles.chipTextActive]}>None</Text>
+            </TouchableOpacity>
+            {categories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={[styles.chip, categoryId === category.id && styles.chipActive]}
+                onPress={() => setCategoryId(category.id)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    categoryId === category.id && styles.chipTextActive,
+                  ]}
+                >
+                  {category.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.field}>
           <Text style={styles.label}>Gender</Text>
           <View style={styles.chipRow}>
             {genders.map((g) => (
@@ -429,7 +503,16 @@ export default function SellerProductEdit() {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Status</Text>
+          <Text style={styles.label}>Listing status</Text>
+          {isLive ? (
+            <Text style={styles.liveStatusNote}>
+              This product is live. Updates stay published; major changes may require re-approval.
+            </Text>
+          ) : (
+            <Text style={styles.liveStatusNote}>
+              Choose draft to keep private or pending to submit for admin review.
+            </Text>
+          )}
           <View style={styles.chipRow}>
             {statuses.map((s) => (
               <TouchableOpacity
@@ -442,6 +525,11 @@ export default function SellerProductEdit() {
                 </Text>
               </TouchableOpacity>
             ))}
+            {isLive ? (
+              <View style={[styles.chip, styles.chipLive]}>
+                <Text style={[styles.chipText, styles.chipTextActive]}>Active</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -471,6 +559,12 @@ export default function SellerProductEdit() {
                 : "Save Changes"}
           </Text>
         </TouchableOpacity>
+
+        {!isNew ? (
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProduct}>
+            <Text style={styles.deleteButtonText}>Delete product</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -543,6 +637,16 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
   },
   chipTextActive: { color: colors.light.card },
+  chipLive: {
+    backgroundColor: "#dcfce7",
+    borderColor: "#166534",
+  },
+  liveStatusNote: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
 
   saveButton: {
     backgroundColor: colors.light.primary,
@@ -556,5 +660,19 @@ const styles = StyleSheet.create({
     color: colors.light.card,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.bold as any,
+  },
+  deleteButton: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  deleteButtonText: {
+    color: "#dc2626",
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
   },
 });

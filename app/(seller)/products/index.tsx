@@ -82,10 +82,11 @@ export default function SellerProducts() {
   const renderProduct = ({ item }: { item: Product }) => {
     const stock = item.variants?.reduce((s, v) => s + (v.stock ?? 0), 0) ?? 0;
     return (
-      <TouchableOpacity
-        style={styles.productCard}
-        onPress={() => router.push(`/(seller)/products/${item.id}` as any)}
-      >
+      <View style={styles.productCard}>
+        <TouchableOpacity
+          style={styles.productCardMain}
+          onPress={() => router.push(`/(seller)/products/${item.id}` as any)}
+        >
         {item.images?.[0]?.url ? (
           <Image source={{ uri: item.images[0].url }} style={styles.productImage} />
         ) : (
@@ -110,7 +111,15 @@ export default function SellerProducts() {
             </Text>
           </View>
         </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteIconBtn}
+          onPress={() => handleDelete(item)}
+          disabled={busyId === item.id}
+        >
+          <Text style={styles.deleteIconText}>{busyId === item.id ? "…" : "🗑"}</Text>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -251,7 +260,21 @@ const styles = StyleSheet.create({
     borderColor: colors.light.border,
     marginBottom: 10,
     overflow: "hidden",
+    alignItems: "stretch",
   },
+  productCardMain: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  deleteIconBtn: {
+    width: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderLeftWidth: 1,
+    borderLeftColor: colors.light.border,
+    backgroundColor: colors.light.muted,
+  },
+  deleteIconText: { fontSize: 16 },
   productImage: { width: 90, height: 90 },
   productImagePlaceholder: {
     backgroundColor: colors.light.muted,

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { getAdminProducts } from "@/lib/api";
 import { Card, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
@@ -8,6 +9,7 @@ import { colors, typography, radii } from "@/lib/theme/tokens";
 const STATUS_TABS = ["all", "active", "pending", "draft", "archived"];
 
 export default function AdminProducts() {
+  const router = useRouter();
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -70,7 +72,8 @@ export default function AdminProducts() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <Card style={styles.productCard}>
+            <Pressable onPress={() => router.push(`/(admin)/products/${item.id}` as any)}>
+              <Card style={styles.productCard}>
               <View style={styles.productRow}>
                 <View style={styles.productInfo}>
                   <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
@@ -88,6 +91,7 @@ export default function AdminProducts() {
                 <Text style={styles.sales}>{item.total_sales ?? 0} sales</Text>
               </View>
             </Card>
+            </Pressable>
           )}
         />
       )}

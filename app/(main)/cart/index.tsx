@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { View, FlatList, StyleSheet, Pressable, TouchableOpacity, Share } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { navigateHome } from "@/lib/navigation";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { PaperBackground } from "@/components/layout";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { useCart, useWishlist } from "@/lib/stores";
@@ -22,6 +22,12 @@ import type { Product } from "@/lib/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { getAddresses, getProducts } from "@/lib/api";
+import { getCatalogVisibleStoreIds } from "@/lib/catalog-visibility";
+import {
+  buildCartReconciliation,
+  refreshCartFromCatalog,
+  validateCartForCheckout,
+} from "@/lib/cart-validation";
 import { ProductCard } from "@/components/product/ProductCard";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -38,6 +44,7 @@ export default function CartScreen() {
     subtotal,
     itemCount,
     addItem,
+    applyReconciliation,
   } = useCart();
   const wishlist = useWishlist();
   const [savedForLater, setSavedForLater] = useState<
@@ -49,6 +56,7 @@ export default function CartScreen() {
   const [buyAgainProducts, setBuyAgainProducts] = useState<Product[]>([]);
 
   const [productDetails, setProductDetails] = useState<Record<string, Product>>({});
+  const [catalogVisibleStoreIds, setCatalogVisibleStoreIds] = useState<Set<string>>(new Set());
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
 
   const cartItems = Object.entries(items);
@@ -81,6 +89,42 @@ export default function CartScreen() {
       cancelled = true;
     };
   }, [cartProductIds.join(",")]);
+
+  useEffect(() => {
+    getCatalogVisibleStoreIds().then(setCatalogVisibleStoreIds);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshCartFromCatalog();
+    }, []),
+  );
+
+  useEffect(() => {
+    if (cartProductIds.length === 0 || catalogVisibleStoreIds.size === 0) return;
+    if (Object.keys(productDetails).length === 0) return;
+
+    const reconciliation = buildCartReconciliation(
+      items,
+      productDetails,
+      catalogVisibleStoreIds,
+    );
+
+    if (reconciliation.remove.length === 0 && reconciliation.update.length === 0) {
+      return;
+    }
+
+    applyReconciliation(reconciliation);
+
+    if (reconciliation.remove.length > 0) {
+      toast(
+        `${reconciliation.remove.length} unavailable item${reconciliation.remove.length === 1 ? "" : "s"} removed from your bag`,
+        "info",
+      );
+    } else if (reconciliation.update.some((patch) => patch.price !== undefined)) {
+      toast("Bag prices updated to match current listings", "info");
+    }
+  }, [items, productDetails, catalogVisibleStoreIds, applyReconciliation, toast]);
 
   // Keep selectedKeys in sync with cartItems
   useEffect(() => {
@@ -224,6 +268,12 @@ export default function CartScreen() {
     if (!user) {
       toast("Sign in to place your order", "info");
       router.push("/(auth)/login");
+      return;
+    }
+
+    const checkoutValidation = await validateCartForCheckout();
+    if (!checkoutValidation.ok) {
+      toast(checkoutValidation.error, "error");
       return;
     }
 
