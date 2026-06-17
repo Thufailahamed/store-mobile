@@ -12,7 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, updateSellerStore, createSellerStore, getSellerPayoutSettings, upsertSellerPayoutSettings, getSellerComplianceDocuments, upsertSellerComplianceDocument } from "@/lib/api";
-import { pickImage, uploadComplianceDocument } from "@/lib/upload";
+import { pickComplianceFile, uploadComplianceDocument } from "@/lib/upload";
 import { REQUIRED_COMPLIANCE_DOC_TYPES, type ComplianceDocType, type SellerComplianceDocument } from "@/lib/seller-access";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Store } from "@/lib/types";
@@ -66,13 +66,12 @@ export default function SellerSettings() {
 
   const handleUploadDoc = async (docType: ComplianceDocType) => {
     if (!store) return;
-    const picked = await pickImage({ quality: 0.85 });
-    if (!picked || picked.canceled || !picked.assets?.[0]?.uri) return;
-    const asset = picked.assets[0];
+    const picked = await pickComplianceFile();
+    if (!picked) return;
     setUploadingDoc(docType);
-    const uploaded = await uploadComplianceDocument(store.id, docType, asset.uri, {
-      mimeType: asset.mimeType,
-      fileName: asset.fileName ?? undefined,
+    const uploaded = await uploadComplianceDocument(store.id, docType, picked.uri, {
+      mimeType: picked.mimeType,
+      fileName: picked.fileName ?? undefined,
     });
     if (uploaded.error || !uploaded.url) {
       Alert.alert("Upload failed", uploaded.error ?? "Could not upload document");
@@ -83,7 +82,7 @@ export default function SellerSettings() {
       store.id,
       docType,
       uploaded.url,
-      asset.fileName ?? undefined
+      picked.fileName ?? undefined
     );
     setUploadingDoc(null);
     if (!saved.ok) {

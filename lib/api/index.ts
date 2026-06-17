@@ -26,7 +26,7 @@ import type {
   Testimonial, Tenet, HeroMeta, ApprovalStatus, HomepageSection,
 } from "@/lib/types";
 import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
-import { getOperationalStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
+import { getCatalogVisibleStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
@@ -107,9 +107,10 @@ export async function getProducts(opts: {
     if (gender) query = query.eq("gender", gender);
     if (search) query = query.textSearch("name", search, { type: "websearch" });
 
-    const opStoreIds = await getOperationalStoreIds();
-    if (opStoreIds.length > 0) {
-      query = query.or(`store_id.in.(${opStoreIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
+    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
+    const visibleIds = [...catalogVisibleStoreIds];
+    if (visibleIds.length > 0) {
+      query = query.or(`store_id.in.(${visibleIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
     } else {
       query = query.is("store_id", null).not("brand_id", "is", null);
     }
@@ -125,7 +126,7 @@ export async function getProducts(opts: {
     query = query.range(offset, offset + limit - 1);
     const { data, error, count } = await query;
     if (error) return fail(error.message);
-    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row));
+    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds));
     return ok({ products: mapProducts(rows) ?? [], total: count ?? rows.length });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch products");
@@ -154,13 +155,14 @@ export async function getBrands(opts: { limit?: number; search?: string } = {}):
 
 export async function getProductBySlug(slug: string): Promise<Result<Product | null>> {
   try {
+    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
     const { data, error } = await supabase
       .from("products")
       .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)")
       .eq("slug", slug)
       .single();
     if (error) return fail(error.message);
-    if (!isPublicCatalogProduct(data)) return ok(null);
+    if (!isPublicCatalogProduct(data, catalogVisibleStoreIds)) return ok(null);
     return ok(mapProduct(data));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch product by slug");
@@ -169,9 +171,10 @@ export async function getProductBySlug(slug: string): Promise<Result<Product | n
 
 export async function getRelatedProducts(productId: string, categoryId?: string, limit = 8): Promise<Result<Product[]>> {
   try {
+    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
     let query = supabase
       .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*))")
+      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), store:stores!products_store_id_fkey(*), brand:brands(*)")
       .eq("status", "active")
       .eq("is_active", true)
       .neq("id", productId)
@@ -179,7 +182,8 @@ export async function getRelatedProducts(productId: string, categoryId?: string,
     if (categoryId) query = query.eq("category_id", categoryId);
     const { data, error } = await query;
     if (error) return fail(error.message);
-    return ok(mapProducts(data as any[]));
+    const rows = (data as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds));
+    return ok(mapProducts(rows));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch related products");
   }
@@ -517,6 +521,7 @@ export async function getFlashSaleEndsAt(): Promise<string> {
 
 export async function searchProducts(query: string, limit = 20): Promise<Result<Product[]>> {
   try {
+    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
     const term = query.trim();
     const words = tokenizeQuery(term);
     if (words.length === 0) return ok([]);
@@ -534,7 +539,9 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
       return fail(productError.message);
     }
     
-    const productResults = mapProducts(productData as any[]) ?? [];
+    const productResults = mapProducts(
+      (productData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds))
+    ) ?? [];
     const resultIds = new Set(productResults.map((p) => p.id));
 
     // --- Step 2: find products with matching variant colors ---
@@ -566,7 +573,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
           .eq("is_active", true)
           .in("id", variantProductIds);
         
-        for (const p of (mapProducts(extraData as any[]) ?? [])) {
+        for (const p of (mapProducts((extraData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds))) ?? [])) {
           if (!resultIds.has(p.id)) {
             productResults.push(p);
             resultIds.add(p.id);
@@ -584,7 +591,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
         .eq("status", "active")
         .eq("is_active", true);
       
-      const allProducts = mapProducts(allData as any[]) ?? [];
+      const allProducts = mapProducts((allData as any[] ?? []).filter((row) => isPublicCatalogProduct(row, catalogVisibleStoreIds))) ?? [];
       const fuzzyHits = allProducts.filter((p) => {
         const name = (p.name ?? "").toLowerCase();
         const desc = (p.description ?? "").toLowerCase();
@@ -2184,22 +2191,18 @@ export async function getAdminStores(opts: {
 async function attachAdminStoreComplianceGaps(
   stores: Store[]
 ): Promise<(Store & { complianceGaps: string[] })[]> {
-  const reviewIds = stores
-    .filter((s) => ["pending", "rejected", "suspended", "draft"].includes(String(s.status ?? "")))
-    .map((s) => s.id);
-  if (!reviewIds.length) {
-    return stores.map((s) => ({ ...s, complianceGaps: [] as string[] }));
-  }
+  if (!stores.length) return [];
 
+  const ids = stores.map((s) => s.id);
   const [{ data: payouts }, { data: docs }] = await Promise.all([
     supabase
       .from("payout_settings")
       .select("store_id, bank_name, account_name, account_number_last4, tax_form_submitted")
-      .in("store_id", reviewIds),
+      .in("store_id", ids),
     supabase
       .from("store_compliance_documents")
       .select("store_id, doc_type, file_url, file_name, status")
-      .in("store_id", reviewIds),
+      .in("store_id", ids),
   ]);
 
   const payoutByStore = new Map((payouts ?? []).map((p: { store_id: string }) => [p.store_id, p]));
@@ -2213,13 +2216,11 @@ async function attachAdminStoreComplianceGaps(
 
   return stores.map((s) => ({
     ...s,
-    complianceGaps: reviewIds.includes(s.id)
-      ? getSellerComplianceGaps(
-          s as Store & Record<string, unknown>,
-          (payoutByStore.get(s.id) as SellerPayoutCompliance | undefined) ?? null,
-          docsByStore.get(s.id) ?? null
-        )
-      : [],
+    complianceGaps: getSellerComplianceGaps(
+      s as Store & Record<string, unknown>,
+      (payoutByStore.get(s.id) as SellerPayoutCompliance | undefined) ?? null,
+      docsByStore.get(s.id) ?? null
+    ),
   }));
 }
 

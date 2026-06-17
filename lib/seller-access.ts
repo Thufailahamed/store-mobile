@@ -55,6 +55,23 @@ function hasValue(value: unknown): boolean {
   return true;
 }
 
+export function isComplianceDocumentApproved(
+  doc: SellerComplianceDocument | undefined
+): boolean {
+  return Boolean(doc?.file_url?.trim()) && String(doc?.status ?? "").toLowerCase() === "approved";
+}
+
+function complianceDocumentGap(
+  doc: SellerComplianceDocument | undefined,
+  label: string
+): string | null {
+  if (!doc?.file_url?.trim()) return label;
+  const status = String(doc.status ?? "pending").toLowerCase();
+  if (status === "rejected") return `${label} (rejected — re-upload required)`;
+  if (status !== "approved") return `${label} (pending admin review)`;
+  return null;
+}
+
 export function collectComplianceGaps(
   store: StoreLike | null | undefined,
   payout?: SellerPayoutCompliance | null,
@@ -73,10 +90,8 @@ export function collectComplianceGaps(
 
   const docByType = new Map((docs ?? []).map((d) => [d.doc_type, d]));
   for (const required of REQUIRED_COMPLIANCE_DOC_TYPES) {
-    const doc = docByType.get(required.type);
-    if (!doc?.file_url?.trim()) {
-      missing.push(required.label);
-    }
+    const gap = complianceDocumentGap(docByType.get(required.type), required.label);
+    if (gap) missing.push(gap);
   }
 
   return missing;

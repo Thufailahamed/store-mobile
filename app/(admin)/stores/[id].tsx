@@ -7,6 +7,7 @@ import {
   Pressable,
   Alert,
   RefreshControl,
+  Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,11 +18,12 @@ import {
   updateStoreStatus,
   reviewComplianceDocument,
 } from "@/lib/api";
-import { REQUIRED_COMPLIANCE_DOC_TYPES } from "@/lib/seller-access";
+import { REQUIRED_COMPLIANCE_DOC_TYPES, isComplianceDocumentApproved } from "@/lib/seller-access";
 import { Card, StatTile, EmptyState, Skeleton, Badge, ProgressBar, Button } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { getComplianceDocumentSignedUrl } from "@/lib/upload";
 
 function rel(s: string) {
   const d = new Date(s).getTime();
@@ -149,6 +151,16 @@ export default function AdminStoreDetail() {
 
   if (!s) return <EmptyState icon="storefront-outline" title="Store not found" />;
 
+  const handleViewDocument = async (storagePath?: string | null) => {
+    if (!storagePath) return;
+    const url = await getComplianceDocumentSignedUrl(storagePath);
+    if (!url) {
+      Alert.alert("Unable to open document", "Could not generate a secure download link.");
+      return;
+    }
+    await Linking.openURL(url);
+  };
+
   const complianceItems = [
     { label: "Legal name", ok: hasValue(s.legal_name), value: s.legal_name },
     { label: "Tax ID", ok: hasValue(s.tax_id), value: s.tax_id ? "••••" + String(s.tax_id).slice(-4) : null },
@@ -164,9 +176,11 @@ export default function AdminStoreDetail() {
       const doc = documents.find((d) => d.doc_type === required.type) as (typeof documents)[0] & { id?: string };
       return {
         label: required.label,
-        ok: Boolean(doc?.file_url),
+        ok: isComplianceDocumentApproved(doc),
         value: doc ? `${doc.file_name ?? "Uploaded"} · ${doc.status ?? "pending"}` : null,
         docId: doc?.id,
+        docStatus: doc?.status ?? null,
+        filePath: doc?.file_url ?? null,
       };
     }),
   ];
@@ -232,7 +246,16 @@ export default function AdminStoreDetail() {
                   <Text style={styles.complianceValue} numberOfLines={1}>{item.value}</Text>
                 ) : null}
               </View>
-              {"docId" in item && item.docId && item.value?.includes("pending") ? (
+              {"filePath" in item && item.filePath ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onPress={() => handleViewDocument(item.filePath)}
+                >
+                  View
+                </Button>
+              ) : null}
+              {"docId" in item && item.docId && item.docStatus === "pending" ? (
                 <View style={styles.docReviewActions}>
                   <Button
                     variant="outline"
@@ -306,6 +329,25 @@ export default function AdminStoreDetail() {
               }
             >
               Suspend
+            </Button>
+          ) : null}
+          {isRejected && !isPending ? (
+            <Button
+              variant="brand"
+              size="sm"
+              loading={approveM.isPending}
+              disabled={busy || !complianceComplete}
+              onPress={() =>
+                confirm(
+                  "Re-approve store",
+                  complianceComplete
+                    ? `Re-approve "${s.name}" after compliance review?`
+                    : "Compliance must be complete before re-approval.",
+                  () => approveM.mutate()
+                )
+              }
+            >
+              Re-approve
             </Button>
           ) : null}
           {isSuspended && !isPending ? (

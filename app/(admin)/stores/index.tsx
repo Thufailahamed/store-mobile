@@ -102,7 +102,7 @@ export default function AdminStores() {
                         {(item as { complianceGaps: string[] }).complianceGaps.length} gap{(item as { complianceGaps: string[] }).complianceGaps.length === 1 ? "" : "s"}
                       </Badge>
                     ) : item.status === "pending" ? (
-                      <Badge variant="default">Compliant</Badge>
+                      <Badge variant="default">Ready</Badge>
                     ) : null}
                     <Text style={styles.storeRating}>★ {item.rating?.toFixed(1) ?? "0.0"}</Text>
                   </View>

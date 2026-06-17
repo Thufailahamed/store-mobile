@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "./product-mapper";
-import { getOperationalStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
+import { getCatalogVisibleStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 import type { Product } from "@/lib/types";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -88,9 +88,10 @@ export async function getProductCards(opts: {
 
     if (gender) query = query.eq("gender", gender);
 
-    const opStoreIds = await getOperationalStoreIds();
-    if (opStoreIds.length > 0) {
-      query = query.or(`store_id.in.(${opStoreIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
+    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
+    const visibleIds = [...catalogVisibleStoreIds];
+    if (visibleIds.length > 0) {
+      query = query.or(`store_id.in.(${visibleIds.join(",")}),and(store_id.is.null,brand_id.not.is.null)`);
     } else {
       query = query.is("store_id", null).not("brand_id", "is", null);
     }
@@ -119,7 +120,7 @@ export async function getProductCards(opts: {
     const { data, error } = await query;
     if (error) return fail(error.message);
     const rows = ((data as Product[]) ?? []).filter((row) =>
-      isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0])
+      isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0], catalogVisibleStoreIds)
     );
     return ok(mapProducts(rows));
   } catch (e: any) {
@@ -130,6 +131,7 @@ export async function getProductCards(opts: {
 export async function getProductCardsByIds(ids: string[]): Promise<Result<Product[]>> {
   if (ids.length === 0) return ok([]);
   try {
+    const catalogVisibleStoreIds = await getCatalogVisibleStoreIds();
     const { data, error } = await supabase
       .from("products")
       .select(PRODUCT_CARD_SELECT)
@@ -137,7 +139,7 @@ export async function getProductCardsByIds(ids: string[]): Promise<Result<Produc
       .eq("is_active", true);
     if (error) return fail(error.message);
     const rows = ((data as Product[]) ?? []).filter((row) =>
-      isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0])
+      isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0], catalogVisibleStoreIds)
     );
     return ok(mapProducts(rows));
   } catch (e: any) {

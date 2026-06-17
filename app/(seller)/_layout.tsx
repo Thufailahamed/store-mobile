@@ -84,7 +84,9 @@ export default function SellerLayout() {
     return null;
   }
 
-  if (!access.canAccessSellerTools && !isSettingsRoute) {
+  const locked = !access.canAccessSellerTools;
+
+  if (locked && !isSettingsRoute) {
     return (
       <View style={styles.blockedContainer}>
         <Ionicons name="shield-checkmark-outline" size={44} color={colors.light.primary} />
@@ -124,6 +126,7 @@ export default function SellerLayout() {
         name="index"
         options={{
           title: "Dashboard",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />,
         }}
       />
@@ -131,6 +134,7 @@ export default function SellerLayout() {
         name="products/index"
         options={{
           title: "Products",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,
         }}
       />
@@ -138,6 +142,7 @@ export default function SellerLayout() {
         name="orders/index"
         options={{
           title: "Orders",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="receipt-outline" size={size} color={color} />,
         }}
       />
@@ -145,6 +150,7 @@ export default function SellerLayout() {
         name="inventory/index"
         options={{
           title: "Inventory",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="list-outline" size={size} color={color} />,
         }}
       />

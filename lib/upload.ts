@@ -1,5 +1,7 @@
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
+import { Alert } from "react-native";
+import { supabase } from "@/lib/supabase/client";
 import type { ComplianceDocType } from "@/lib/seller-access";
 
 export interface UploadResult {
@@ -18,7 +20,8 @@ function normalizeExtension(ext?: string | null, mimeType?: string | null): stri
 
   const raw = (ext ?? "jpg").toLowerCase().split("?")[0];
   if (raw === "jpeg") return "jpg";
-  if (["jpg", "png", "webp", "heic", "heif"].includes(raw)) {
+  if (raw === "pdf") return "pdf";
+  if (["jpg", "png", "webp", "heic", "heif", "pdf"].includes(raw)) {
     return raw === "heif" ? "heic" : raw;
   }
   return "jpg";
@@ -32,6 +35,8 @@ function mimeForExtension(ext: string): string {
       return "image/webp";
     case "heic":
       return "image/heic";
+    case "pdf":
+      return "application/pdf";
     default:
       return "image/jpeg";
   }
@@ -90,6 +95,62 @@ async function uploadImageToBucket(
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
   return { url: data?.publicUrl ?? "" };
+}
+
+export async function pickComplianceFile(): Promise<{
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+} | null> {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== "granted") return null;
+
+  return new Promise((resolve) => {
+    Alert.alert("Upload document", "Choose a file type", [
+      {
+        text: "Photo",
+        onPress: async () => {
+          const result = await pickImage({ quality: 0.85 });
+          if (!result || result.canceled || !result.assets[0]) {
+            resolve(null);
+            return;
+          }
+          const asset = result.assets[0];
+          resolve({
+            uri: asset.uri,
+            mimeType: asset.mimeType ?? "image/jpeg",
+            fileName: asset.fileName ?? `document.jpg`,
+          });
+        },
+      },
+      {
+        text: "PDF / File",
+        onPress: async () => {
+          try {
+            const DocumentPicker = await import("expo-document-picker");
+            const result = await DocumentPicker.getDocumentAsync({
+              type: ["application/pdf", "image/*"],
+              copyToCacheDirectory: true,
+            });
+            if (result.canceled || !result.assets?.[0]) {
+              resolve(null);
+              return;
+            }
+            const asset = result.assets[0];
+            resolve({
+              uri: asset.uri,
+              mimeType: asset.mimeType ?? "application/pdf",
+              fileName: asset.name,
+            });
+          } catch {
+            Alert.alert("Document picker unavailable", "Restart the Expo app after installing dependencies.");
+            resolve(null);
+          }
+        },
+      },
+      { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
+    ]);
+  });
 }
 
 export async function pickImage(options?: {
