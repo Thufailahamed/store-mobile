@@ -13,6 +13,7 @@ import { ProductStoreCard } from "@/components/product/ProductStoreCard";
 import { ProductDetails } from "@/components/product/ProductDetails";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ReviewForm } from "@/components/product/ReviewForm";
+import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast, Button, Skeleton } from "@/components/ui";
@@ -110,7 +111,13 @@ export default function ProductDetailScreen() {
   const currentStock = liveVariantStock?.available ?? selectedVariant?.stock ?? 0;
   const isWishlisted = product ? !!wishlistItems[product.id] : false;
   const soldOut = currentStock <= 0;
-  const cartItemKey = product ? `${product.id}-${selectedVariant?.id ?? "default"}` : "";
+  const cartItemKey = product
+    ? buildCartLineKeyFromItem({
+        storeId: product.store_id,
+        productId: product.id,
+        variantId: selectedVariant?.id ?? null,
+      })
+    : "";
   const isInCart = product ? !!cartItems[cartItemKey] : false;
 
   const handleAddToCart = () => {

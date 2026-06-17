@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { View, FlatList, StyleSheet, Pressable, TouchableOpacity, Share } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { navigateHome } from "@/lib/navigation";
 import { useRouter, useFocusEffect } from "expo-router";
 import { PaperBackground } from "@/components/layout";
@@ -10,7 +9,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { typography, spacing, colors, radii, shadows } from "@/lib/theme/tokens";
-import { formatPrice, FREE_SHIPPING_THRESHOLD, TAX_RATE } from "@/lib/utils";
+import { computeCartTotals } from "@/lib/cart-pricing";
 import { useToast } from "@/components/ui";
 import { CartItemCard } from "@/components/cart/CartItemCard";
 import { getVariantStock } from "@/components/cart/variant-utils";
@@ -24,10 +23,13 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { getAddresses, getProducts } from "@/lib/api";
 import { getCatalogVisibleStoreIds } from "@/lib/catalog-visibility";
 import {
-  buildCartReconciliation,
   refreshCartFromCatalog,
-  validateCartForCheckout,
+  assessCartItemIssue,
 } from "@/lib/cart-validation";
+import {
+  prepareCartForCheckout,
+  restoreUnselectedCartItems,
+} from "@/lib/cart-checkout-session";
 import { ProductCard } from "@/components/product/ProductCard";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -44,7 +46,6 @@ export default function CartScreen() {
     subtotal,
     itemCount,
     addItem,
-    applyReconciliation,
   } = useCart();
   const wishlist = useWishlist();
   const [savedForLater, setSavedForLater] = useState<
@@ -96,35 +97,23 @@ export default function CartScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshCartFromCatalog();
-    }, []),
+      void refreshCartFromCatalog().then((result) => {
+        if (!result.ok) {
+          toast(result.error, "error");
+          return;
+        }
+        const { reconciliation } = result;
+        if (reconciliation.remove.length > 0) {
+          toast(
+            `${reconciliation.remove.length} unavailable item${reconciliation.remove.length === 1 ? "" : "s"} removed from your bag`,
+            "info",
+          );
+        } else if (reconciliation.update.some((patch) => patch.price !== undefined)) {
+          toast("Bag prices updated to match current listings", "info");
+        }
+      });
+    }, [toast]),
   );
-
-  useEffect(() => {
-    if (cartProductIds.length === 0 || catalogVisibleStoreIds.size === 0) return;
-    if (Object.keys(productDetails).length === 0) return;
-
-    const reconciliation = buildCartReconciliation(
-      items,
-      productDetails,
-      catalogVisibleStoreIds,
-    );
-
-    if (reconciliation.remove.length === 0 && reconciliation.update.length === 0) {
-      return;
-    }
-
-    applyReconciliation(reconciliation);
-
-    if (reconciliation.remove.length > 0) {
-      toast(
-        `${reconciliation.remove.length} unavailable item${reconciliation.remove.length === 1 ? "" : "s"} removed from your bag`,
-        "info",
-      );
-    } else if (reconciliation.update.some((patch) => patch.price !== undefined)) {
-      toast("Bag prices updated to match current listings", "info");
-    }
-  }, [items, productDetails, catalogVisibleStoreIds, applyReconciliation, toast]);
 
   // Keep selectedKeys in sync with cartItems
   useEffect(() => {
@@ -244,26 +233,34 @@ export default function CartScreen() {
     [items, productDetails, removeItem, addItem]
   );
 
-  // Restore unselected items on cart screen mount
+  // Restore unselected items if checkout was abandoned (e.g. app restart).
   useEffect(() => {
-    const restoreUnselected = async () => {
-      try {
-        const backupStr = await AsyncStorage.getItem("cart_unselected_backup");
-        if (backupStr) {
-          const backupItems: Record<string, typeof items[string]> = JSON.parse(backupStr);
-          Object.values(backupItems).forEach((item) => {
-            addItem(item);
-          });
-          await AsyncStorage.removeItem("cart_unselected_backup");
-        }
-      } catch (err) {
-        console.error("Failed to restore unselected cart items:", err);
-      }
-    };
-    restoreUnselected();
-  }, []);
+    void restoreUnselectedCartItems(addItem);
+  }, [addItem]);
 
-  // Intercept checkout to move unselected items temporarily out of the cart store
+  const navigateToCheckout = useCallback(
+    async (openAddress: boolean) => {
+      const prep = await prepareCartForCheckout({
+        items,
+        selectedKeys,
+        removeItem,
+      });
+      if (!prep.ok) {
+        toast(prep.error, "error");
+        return;
+      }
+
+      const addressRes = await getAddresses(user!.id);
+      const hasAddress = addressRes.ok && (addressRes.data?.length ?? 0) > 0;
+      router.push(
+        hasAddress && !openAddress
+          ? "/(main)/checkout"
+          : "/(main)/checkout?openAddress=1",
+      );
+    },
+    [items, selectedKeys, removeItem, router, toast, user],
+  );
+
   const handlePlaceOrder = async () => {
     if (!user) {
       toast("Sign in to place your order", "info");
@@ -271,46 +268,7 @@ export default function CartScreen() {
       return;
     }
 
-    const checkoutValidation = await validateCartForCheckout();
-    if (!checkoutValidation.ok) {
-      toast(checkoutValidation.error, "error");
-      return;
-    }
-
-    const unselectedItems: Record<string, typeof items[string]> = {};
-    const selectedItems: Record<string, typeof items[string]> = {};
-
-    cartItems.forEach(([key, item]) => {
-      if (!selectedKeys[key]) {
-        unselectedItems[key] = item;
-      } else {
-        selectedItems[key] = item;
-      }
-    });
-
-    if (Object.keys(selectedItems).length === 0) {
-      toast("Please select at least one item to place order", "error");
-      return;
-    }
-
-    try {
-      if (Object.keys(unselectedItems).length > 0) {
-        await AsyncStorage.setItem("cart_unselected_backup", JSON.stringify(unselectedItems));
-        Object.keys(unselectedItems).forEach((key) => {
-          removeItem(key);
-        });
-      }
-
-      const addressRes = await getAddresses(user.id);
-      const hasAddress = addressRes.ok && (addressRes.data?.length ?? 0) > 0;
-      router.push(
-        hasAddress
-          ? "/(main)/checkout"
-          : "/(main)/checkout?openAddress=1",
-      );
-    } catch (err) {
-      toast("Something went wrong. Please try again.", "error");
-    }
+    await navigateToCheckout(false);
   };
 
   const sub = useMemo(() => {
@@ -327,10 +285,22 @@ export default function CartScreen() {
   }, [selectedCartItems, productDetails]);
 
   const discountOnMrp = Math.max(0, totalMrp - sub);
-  const platformFee = 23;
-  const shippingFee = sub === 0 ? 0 : (sub >= FREE_SHIPPING_THRESHOLD ? 0 : 350);
-  const tax = Math.round(sub * TAX_RATE);
-  const totalAmount = sub + platformFee;
+  const selectedPricingLines = useMemo(
+    () =>
+      selectedCartItems.map(([_, item]) => ({
+        storeId: item.storeId,
+        quantity: item.quantity,
+        unitPrice: item.price,
+      })),
+    [selectedCartItems],
+  );
+  const cartTotals = useMemo(
+    () => computeCartTotals({ lines: selectedPricingLines }),
+    [selectedPricingLines],
+  );
+  const shippingFee = cartTotals.shipping;
+  const tax = cartTotals.tax;
+  const totalAmount = cartTotals.total;
   const total = totalAmount;
   const count = useMemo(() => {
     return selectedCartItems.reduce((sum, [_, item]) => sum + item.quantity, 0);
@@ -395,11 +365,11 @@ export default function CartScreen() {
       router.push("/(auth)/login");
       return;
     }
-    router.push(
-      hasSavedAddress
-        ? "/(main)/checkout"
-        : "/(main)/checkout?openAddress=1",
-    );
+    if (selectedCartItems.length === 0) {
+      toast("Please select at least one item to checkout", "error");
+      return;
+    }
+    void navigateToCheckout(true);
   };
 
   // Lazily fetch products for the saved-for-later rail.
@@ -527,6 +497,11 @@ export default function CartScreen() {
               <Display size="xl" style={[styles.yourBagTitle, { color: theme.colors.foreground }]}>
                 Your Bag
               </Display>
+              {!user ? (
+                <Body size="sm" muted style={styles.guestStockNote}>
+                  Sign in to reserve stock while you shop. Guest bags are not held at checkout.
+                </Body>
+              ) : null}
 
               <View style={styles.selectionBar}>
                 <TouchableOpacity onPress={handleToggleSelectAll} style={styles.selectionLeft} activeOpacity={0.7}>
@@ -556,10 +531,17 @@ export default function CartScreen() {
             </View>
           </View>
         }
-        renderItem={({ item: [key, cartItem] }) => (
+        renderItem={({ item: [key, cartItem] }) => {
+          const issue = assessCartItemIssue(
+            cartItem,
+            productDetails[cartItem.productId],
+            catalogVisibleStoreIds,
+          );
+          return (
           <CartItemCard
             item={cartItem}
             product={productDetails[cartItem.productId]}
+            unavailableMessage={issue?.message}
             selected={!!selectedKeys[key]}
             onToggleSelect={() => handleToggleSelect(key)}
             onIncrement={() => updateQuantity(key, cartItem.quantity + 1)}
@@ -568,7 +550,8 @@ export default function CartScreen() {
             onUpdateQuantity={(quantity) => updateQuantity(key, quantity)}
             onUpdateVariant={(newVariantId, newVariantLabel) => handleUpdateVariant(key, newVariantId, newVariantLabel)}
           />
-        )}
+          );
+        }}
         ListFooterComponent={
           <View style={{ paddingBottom: 24 }}>
 
@@ -589,11 +572,15 @@ export default function CartScreen() {
                   </View>
 
                   <View style={styles.pdRow}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Platform Fee</Body>
-                      <Body style={{ fontSize: 12, textDecorationLine: "underline", color: theme.colors.mutedForeground }}>Know More</Body>
-                    </View>
-                    <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(platformFee)}</Body>
+                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Shipping</Body>
+                    <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>
+                      {shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
+                    </Body>
+                  </View>
+
+                  <View style={styles.pdRow}>
+                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Tax</Body>
+                    <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(tax)}</Body>
                   </View>
                 </>
               )}
@@ -1168,6 +1155,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
     fontSize: 18,
     fontWeight: "700",
+  },
+  guestStockNote: {
+    marginBottom: 4,
   },
   selectionBar: {
     flexDirection: "row",

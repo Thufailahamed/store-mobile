@@ -4,6 +4,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
 import { getVariantAvailableStock } from "@/lib/inventory";
 import type { CartReconciliation } from "@/lib/cart-validation";
+import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords } from "@/lib/cart-line-key";
+import { clearCheckoutSession } from "@/lib/cart-checkout-session";
+import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
 
 export interface CartItem {
   productId: string;
@@ -17,23 +20,25 @@ export interface CartItem {
   stock: number;
 }
 
+export type CartLoadResult =
+  | { ok: true; quantityConflicts?: number }
+  | { ok: false; error: string };
+
 export interface CartStore {
   items: Record<string, CartItem>;
   couponCode: string | null;
+  /** False until the first server load finishes for the signed-in user. */
+  hydrated: boolean;
   addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;
   removeItem: (key: string) => void;
   updateQuantity: (key: string, quantity: number) => void;
   setCoupon: (code: string | null) => void;
   clear: () => void;
-  syncToServer: (userId: string) => Promise<void>;
-  loadFromServer: (userId: string) => Promise<void>;
+  syncToServer: (userId: string) => Promise<import("@/lib/cart-sync").CartSyncResult>;
+  loadFromServer: (userId: string) => Promise<CartLoadResult>;
   applyReconciliation: (reconciliation: CartReconciliation) => void;
   itemCount: () => number;
   subtotal: () => number;
-}
-
-function cartKey(productId: string, variantId: string | null) {
-  return `${productId}-${variantId ?? "default"}`;
 }
 
 export const useCart = create<CartStore>()(
@@ -41,9 +46,10 @@ export const useCart = create<CartStore>()(
     (set, get) => ({
       items: {},
       couponCode: null,
+      hydrated: false,
 
       addItem: (item) => {
-        const key = cartKey(item.productId, item.variantId);
+        const key = buildCartLineKeyFromItem(item);
         set((state) => {
           const existing = state.items[key];
           const stockCap = item.stock ?? existing?.stock ?? 99;
@@ -90,86 +96,164 @@ export const useCart = create<CartStore>()(
       setCoupon: (code) => set({ couponCode: code }),
 
       clear: () => {
-        const { items, couponCode } = get();
-        if (Object.keys(items).length === 0 && couponCode == null) return;
-        set({ items: {}, couponCode: null });
+        const { items, couponCode, hydrated } = get();
+        if (Object.keys(items).length === 0 && couponCode == null && !hydrated) return;
+        set({ items: {}, couponCode: null, hydrated: false });
+        void clearCheckoutSession();
       },
 
-      syncToServer: async (userId) => {
+      syncToServer: async (userId): Promise<CartSyncResult> => {
+        if (!get().hydrated) return { ok: true };
+
         try {
-          const { data: existingCart } = await supabase
+          const { data: existingCart, error: cartLookupError } = await supabase
             .from("cart")
             .select("id")
             .eq("user_id", userId)
-            .single();
+            .maybeSingle();
+
+          if (cartLookupError) {
+            console.warn("[cart] sync lookup failed:", cartLookupError.message);
+            return { ok: false, error: "Could not sync your bag. Try again shortly." };
+          }
 
           let cartId = existingCart?.id;
 
           if (!cartId) {
-            const { data: newCart } = await supabase
+            const { data: newCart, error: createError } = await supabase
               .from("cart")
               .insert({ user_id: userId })
               .select("id")
               .single();
-            cartId = newCart?.id;
+            if (createError || !newCart?.id) {
+              console.warn("[cart] sync create cart failed:", createError?.message);
+              return { ok: false, error: "Could not sync your bag. Try again shortly." };
+            }
+            cartId = newCart.id;
           }
 
-          if (!cartId) return;
+          const { data: remoteRows, error: remoteError } = await supabase
+            .from("cart_items")
+            .select("id, product_id, variant_id, store_id, quantity, unit_price")
+            .eq("cart_id", cartId);
 
-          await supabase.from("cart_items").delete().eq("cart_id", cartId);
+          if (remoteError) {
+            console.warn("[cart] sync read failed:", remoteError.message);
+            return { ok: false, error: "Could not sync your bag. Try again shortly." };
+          }
 
-          const cartItems = Object.values(get().items);
-          if (cartItems.length === 0) return;
+          const localItems = Object.values(get().items);
+          const plan = planCartSync(localItems, remoteRows ?? []);
 
-          const rows = cartItems.map((item) => ({
-            cart_id: cartId,
-            product_id: item.productId,
-            variant_id: item.variantId,
-            store_id: item.storeId,
-            quantity: item.quantity,
-            unit_price: item.price,
-          }));
+          if (plan.toDelete.length > 0) {
+            const { error } = await supabase
+              .from("cart_items")
+              .delete()
+              .in(
+                "id",
+                plan.toDelete.map((row) => row.id),
+              );
+            if (error) {
+              console.warn("[cart] sync delete failed:", error.message);
+              return { ok: false, error: "Could not sync your bag. Try again shortly." };
+            }
+          }
 
-          await supabase.from("cart_items").insert(rows);
-        } catch {
-          // Silent fail — local cart still works
+          for (const patch of plan.toUpdate) {
+            const { error } = await supabase
+              .from("cart_items")
+              .update({ quantity: patch.quantity, unit_price: patch.unit_price })
+              .eq("id", patch.id);
+            if (error) {
+              console.warn("[cart] sync update failed:", error.message);
+              return { ok: false, error: "Could not sync your bag. Try again shortly." };
+            }
+          }
+
+          if (plan.toInsert.length > 0) {
+            const { error } = await supabase.from("cart_items").insert(
+              plan.toInsert.map((item) => ({
+                cart_id: cartId,
+                product_id: item.productId,
+                variant_id: item.variantId,
+                store_id: item.storeId,
+                quantity: item.quantity,
+                unit_price: item.price,
+              })),
+            );
+            if (error) {
+              console.warn("[cart] sync insert failed:", error.message);
+              return { ok: false, error: "Could not sync your bag. Try again shortly." };
+            }
+          }
+
+          return { ok: true };
+        } catch (err) {
+          console.warn("[cart] sync failed:", err);
+          return { ok: false, error: "Could not sync your bag. Try again shortly." };
         }
       },
 
-      loadFromServer: async (userId) => {
+      loadFromServer: async (userId): Promise<CartLoadResult> => {
+        const loadFailed = "Could not load your bag. Showing items saved on this device.";
         try {
-          const { data: cart } = await supabase
+          const { data: cart, error: cartLookupError } = await supabase
             .from("cart")
             .select("id")
             .eq("user_id", userId)
-            .single();
+            .maybeSingle();
 
-          if (!cart) return;
+          if (cartLookupError) {
+            console.warn("[cart] load lookup failed:", cartLookupError.message);
+            set({ hydrated: true });
+            return { ok: false, error: loadFailed };
+          }
 
-          const { data: rows } = await supabase
+          if (!cart) {
+            set({ hydrated: true });
+            return { ok: true };
+          }
+
+          const { data: rows, error: rowsError } = await supabase
             .from("cart_items")
             .select(
-              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary)), variant:product_variants(id, label, is_active, inventory(quantity, reserved))",
+              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary), variants:product_variants(id, label, is_active, inventory(quantity, reserved))), variant:product_variants(id, label, is_active, inventory(quantity, reserved))",
             )
             .eq("cart_id", cart.id);
+
+          if (rowsError) {
+            console.warn("[cart] load rows failed:", rowsError.message);
+            set({ hydrated: true });
+            return { ok: false, error: loadFailed };
+          }
 
           const serverItems: Record<string, CartItem> = {};
           for (const row of (rows ?? []) as any[]) {
             const product = row.product;
-            const variant = row.variant;
+            const productVariants = product?.variants ?? [];
+            let variant = row.variant;
+            let variantId = row.variant_id as string | null;
+            if (!variantId && productVariants.length === 1) {
+              variantId = productVariants[0].id;
+              variant = productVariants[0];
+            }
             const productMissing = !product?.id;
             const productInactive =
               product?.status !== "active" || product?.is_active === false;
-            const variantMissing = row.variant_id && !variant?.id;
+            const variantMissing = variantId && !variant?.id;
             const variantInactive = variant?.is_active === false;
             if (productMissing || productInactive || variantMissing || variantInactive) {
               continue;
             }
 
-            const key = cartKey(row.product_id, row.variant_id);
+            const key = buildCartLineKeyFromItem({
+              storeId: row.store_id,
+              productId: row.product_id,
+              variantId,
+            });
             serverItems[key] = {
               productId: row.product_id,
-              variantId: row.variant_id,
+              variantId,
               storeId: row.store_id,
               name: product?.name ?? "Product",
               variantLabel: variant?.label,
@@ -181,14 +265,14 @@ export const useCart = create<CartStore>()(
 
           // Merge: any local items the server doesn't know about get added
           // (covers the "added to cart while signed out" case).
-          const local = get().items;
-          const merged: Record<string, CartItem> = { ...serverItems };
-          for (const [key, item] of Object.entries(local)) {
-            if (!merged[key]) merged[key] = item;
-          }
-          set({ items: merged });
-        } catch {
-          // Silent fail — local cart still works
+          const local = migrateCartItemRecord(get().items);
+          const { items: merged, quantityConflicts } = mergeCartItemRecords(serverItems, local);
+          set({ items: merged, hydrated: true });
+          return { ok: true, quantityConflicts };
+        } catch (err) {
+          console.warn("[cart] load failed:", err);
+          set({ hydrated: true });
+          return { ok: false, error: loadFailed };
         }
       },
 
@@ -239,15 +323,18 @@ export const useCart = create<CartStore>()(
     }),
     {
       name: "cart-v1",
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as { items?: Record<string, CartItem>; couponCode?: string | null };
+        if (version < 2 && state.items) {
+          return { ...state, items: migrateCartItemRecord(state.items) };
+        }
+        return state;
+      },
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         couponCode: state.couponCode,
-        items: Object.fromEntries(
-          Object.entries(state.items).map(([key, item]) => {
-            const { image: _image, ...rest } = item;
-            return [key, rest];
-          })
-        ),
+        items: state.items,
       }),
     }
   )

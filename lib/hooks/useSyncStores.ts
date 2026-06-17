@@ -23,6 +23,7 @@ export function useSyncStores() {
   const { user, session, loading } = useAuth();
   const cartItems = useCart((s) => s.items);
   const cartCouponCode = useCart((s) => s.couponCode);
+  const cartHydrated = useCart((s) => s.hydrated);
   const wishlistItems = useWishlist((s) => s.items);
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wishlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -41,13 +42,31 @@ export function useSyncStores() {
     if (loading) return;
     const userId = user?.id ?? null;
 
-    // Sign-out: clear local state once when transitioning away from a signed-in user.
+    // Sign-out: flush pending sync, then clear local state.
     if (!userId || !session) {
       if (lastUserIdRef.current !== null) {
-        void releaseCartReservations();
-        lastUserIdRef.current = null;
-        useCart.getState().clear();
-        useWishlist.getState().clear();
+        const uid = lastUserIdRef.current;
+        if (cartTimerRef.current) {
+          clearTimeout(cartTimerRef.current);
+          cartTimerRef.current = null;
+        }
+        if (wishlistTimerRef.current) {
+          clearTimeout(wishlistTimerRef.current);
+          wishlistTimerRef.current = null;
+        }
+        void (async () => {
+          if (useCart.getState().hydrated) {
+            const syncResult = await useCart.getState().syncToServer(uid);
+            if (!syncResult.ok) {
+              toast(syncResult.error, "error");
+            }
+          }
+          await useWishlist.getState().syncToServer(uid);
+          await releaseCartReservations();
+          lastUserIdRef.current = null;
+          useCart.getState().clear();
+          useWishlist.getState().clear();
+        })();
       }
       return;
     }
@@ -56,11 +75,34 @@ export function useSyncStores() {
     if (lastUserIdRef.current === userId) return;
     lastUserIdRef.current = userId;
 
-    // Fire-and-forget; errors are swallowed in the store.
+    useCart.setState({ hydrated: false });
     void useCart
       .getState()
       .loadFromServer(userId)
-      .then(() => refreshCartFromCatalog());
+      .then((loadResult) => {
+        if (!loadResult.ok) {
+          toast(loadResult.error, "error");
+          return null;
+        }
+        if (loadResult.quantityConflicts && loadResult.quantityConflicts > 0) {
+          toast("Your bag was updated to match saved quantities.", "info");
+        }
+        return refreshCartFromCatalog();
+      })
+      .then((result) => {
+        if (!result) return;
+        if (!result.ok) {
+          toast(result.error, "error");
+          return;
+        }
+        const { reconciliation } = result;
+        if (reconciliation.remove.length > 0) {
+          toast(
+            `${reconciliation.remove.length} unavailable item${reconciliation.remove.length === 1 ? "" : "s"} removed from your bag`,
+            "info",
+          );
+        }
+      });
     useWishlist.getState().loadFromServer(userId);
   }, [user?.id, session, loading]);
 
@@ -79,16 +121,20 @@ export function useSyncStores() {
   )}`;
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !cartHydrated) return;
     if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
     cartTimerRef.current = setTimeout(() => {
-      useCart.getState().syncToServer(user.id);
+      void useCart.getState().syncToServer(user.id).then((result) => {
+        if (!result.ok) {
+          toast(result.error, "error");
+        }
+      });
     }, 800);
     return () => {
       if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartSnapshot, user?.id]);
+  }, [cartSnapshot, user?.id, cartHydrated]);
 
   // Debounced push whenever wishlist changes.
   const wishlistSnapshot = `${Object.keys(wishlistItems).length}|${Object.keys(wishlistItems).join(",")}`;

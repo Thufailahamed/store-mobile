@@ -56,6 +56,15 @@ export async function getBrowsableStoreIds(): Promise<Set<string>> {
 
 /** Operational stores with complete, approved compliance — used at cart/checkout. */
 export async function getCatalogVisibleStoreIds(): Promise<Set<string>> {
+  try {
+    const { data, error } = await supabase.rpc("get_catalog_visible_store_ids");
+    if (!error && Array.isArray(data)) {
+      return new Set((data as string[]).filter(Boolean));
+    }
+  } catch {
+    // Fall through to direct query (e.g. before migration is applied).
+  }
+
   const { data: stores } = await supabase
     .from("stores")
     .select("id, status, legal_name, tax_id")

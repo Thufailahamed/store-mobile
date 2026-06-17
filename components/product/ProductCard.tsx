@@ -66,7 +66,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
       storeId: product.store_id,
       name: product.name,
       variantLabel: variant ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim() : undefined,
-      price: product.price,
+      price: variant?.price ?? product.price,
       image: primaryImage,
       stock,
       quantity: 1,

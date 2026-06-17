@@ -114,18 +114,34 @@ export async function flushCartReservationSync(
   return syncCartReservations(items);
 }
 
+/** Map cart lines to reservation rows (authenticated users only). */
 export function cartItemsToReservations(
   items: Array<{
     variantId: string | null;
+    productId?: string;
     storeId: string;
     quantity: number;
   }>,
+  productsById?: Record<string, { variants?: Array<{ id: string; is_active?: boolean }> }>,
 ): CartReservationItem[] {
   return items
-    .filter((i) => i.variantId && i.quantity > 0)
-    .map((i) => ({
-      variant_id: i.variantId!,
-      store_id: i.storeId,
-      quantity: i.quantity,
-    }));
+    .filter((i) => i.quantity > 0)
+    .map((item) => {
+      let variantId = item.variantId;
+      if (!variantId && item.productId && productsById) {
+        const variants = (productsById[item.productId]?.variants ?? []).filter(
+          (v) => v.is_active !== false,
+        );
+        if (variants.length === 1) {
+          variantId = variants[0].id;
+        }
+      }
+      if (!variantId) return null;
+      return {
+        variant_id: variantId,
+        store_id: item.storeId,
+        quantity: item.quantity,
+      };
+    })
+    .filter((row): row is CartReservationItem => row !== null);
 }

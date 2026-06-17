@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pressable } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground, ScreenHeader, SectionHeader } from "@/components/layout";
@@ -11,6 +11,7 @@ import {
   AddressFormSheet,
   type AddressFormPayload,
 } from "@/components/address/AddressFormSheet";
+import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
@@ -20,7 +21,12 @@ import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
-import { validateCartForCheckout } from "@/lib/cart-validation";
+import { validateCartForCheckout, refreshCartFromCatalog, fetchCartProductSnapshots } from "@/lib/cart-validation";
+import {
+  clearCheckoutSession,
+  isCheckoutPrepared,
+  restoreUnselectedCartItems,
+} from "@/lib/cart-checkout-session";
 import {
   abandonUnpaidPayHereOrder,
   cartItemsToReservations,
@@ -29,11 +35,10 @@ import {
 } from "@/lib/inventory-reservations";
 import {
   formatPrice,
-  FREE_SHIPPING_THRESHOLD,
-  TAX_RATE,
   SHIPPING_OPTIONS,
   type ShippingKey,
 } from "@/lib/utils";
+import { computeCartTotals } from "@/lib/cart-pricing";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
@@ -69,7 +74,7 @@ export default function CheckoutScreen() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const loyalty = useLoyalty();
-  const { items, subtotal, couponCode, setCoupon, clear } = useCart();
+  const { items, subtotal, couponCode, setCoupon, clear, addItem } = useCart();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
@@ -98,18 +103,45 @@ export default function CheckoutScreen() {
   const [addressSheetOpen, setAddressSheetOpen] = useState(false);
 
   const cartItems = Object.values(items);
-  const sub = subtotal();
-  const shippingOption = SHIPPING_OPTIONS.find((o) => o.key === shippingKey) ?? SHIPPING_OPTIONS[0];
-  const baseShipping =
-    sub >= FREE_SHIPPING_THRESHOLD || freeShippingCoupon ? 0 : shippingOption.fee || 350;
-  const shippingFee = baseShipping;
-  const afterCoupon = Math.max(0, sub - couponDiscount);
-  const maxRedeemablePts = Math.min(loyalty.state.points, Math.floor(afterCoupon));
-  const pointsToUse = usePoints ? Math.floor(maxRedeemablePts / 100) * 100 : 0;
+  const pricingLines = useMemo(
+    () =>
+      cartItems.map((item) => ({
+        storeId: item.storeId,
+        quantity: item.quantity,
+        unitPrice: item.price,
+      })),
+    [cartItems],
+  );
+  const pointsToUse = usePoints
+    ? Math.floor(
+        Math.min(
+          loyalty.state.points,
+          Math.floor(Math.max(0, subtotal() - couponDiscount)),
+        ) / 100,
+      ) * 100
+    : 0;
+  const checkoutTotals = useMemo(
+    () =>
+      computeCartTotals({
+        lines: pricingLines,
+        shippingKey,
+        couponDiscount,
+        pointsValue: pointsToUse,
+        freeShippingCoupon,
+      }),
+    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon],
+  );
+  const sub = checkoutTotals.sub;
+  const shippingFee = checkoutTotals.shipping;
+  const afterCoupon = checkoutTotals.afterCoupon;
   const pointsValue = pointsToUse;
-  const tax = Math.round(Math.max(0, afterCoupon - pointsValue) * TAX_RATE);
-  const total = Math.max(0, afterCoupon - pointsValue) + shippingFee + tax;
+  const tax = checkoutTotals.tax;
+  const total = checkoutTotals.total;
   const earnEstimate = Math.floor(afterCoupon * 0.05);
+  // Max redeemable points: capped at balance and post-coupon subtotal (100-pt blocks).
+  const maxRedeemablePts =
+    Math.floor(Math.min(loyalty.state.points, Math.floor(Math.max(0, sub - couponDiscount))) / 100) * 100;
+  const shippingOption = SHIPPING_OPTIONS.find((o) => o.key === shippingKey) ?? SHIPPING_OPTIONS[0];
 
   useEffect(() => {
     if (authLoading) return;
@@ -117,6 +149,36 @@ export default function CheckoutScreen() {
       router.replace("/(auth)/login");
       return;
     }
+
+    let cancelled = false;
+    void (async () => {
+      const prepared = await isCheckoutPrepared();
+      if (cancelled) return;
+      if (!prepared || Object.keys(items).length === 0) {
+        toast("Select items in your bag before checkout", "info");
+        router.replace("/(main)/cart");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user, items, router, toast]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      void refreshCartFromCatalog().then((result) => {
+        if (!result.ok) {
+          toast(result.error, "error");
+        }
+      });
+    }, [user, toast]),
+  );
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
     api.getAddresses(user.id).then((res) => {
       if (res.ok && res.data.length) {
         setSavedAddresses(res.data);
@@ -215,9 +277,14 @@ export default function CheckoutScreen() {
       return;
     }
 
+    const productIds = [...new Set(freshCartItems.map((item) => item.productId))];
+    const productsResult = await fetchCartProductSnapshots(productIds);
     const hold = await flushCartReservationSync(
       user.id,
-      cartItemsToReservations(freshCartItems),
+      cartItemsToReservations(
+        freshCartItems,
+        productsResult.ok ? productsResult.products : undefined,
+      ),
     );
     if (!hold.ok) {
       toast(hold.error, "error");
@@ -225,16 +292,34 @@ export default function CheckoutScreen() {
       return;
     }
 
-    const freshSub = useCart.getState().subtotal();
-    const freshAfterCoupon = Math.max(0, freshSub - couponDiscount);
-    const freshMaxRedeemablePts = Math.min(loyalty.state.points, Math.floor(freshAfterCoupon));
-    const freshPointsToUse = usePoints ? Math.floor(freshMaxRedeemablePts / 100) * 100 : 0;
+    let reservationsHeld = true;
+    let orderPlaced = false;
+
+    const freshPricingLines = freshCartItems.map((item) => ({
+      storeId: item.storeId,
+      quantity: item.quantity,
+      unitPrice: item.price,
+    }));
+    const freshPointsToUse = usePoints
+      ? Math.floor(
+          Math.min(
+            loyalty.state.points,
+            Math.floor(Math.max(0, useCart.getState().subtotal() - couponDiscount)),
+          ) / 100,
+        ) * 100
+      : 0;
+    const freshTotals = computeCartTotals({
+      lines: freshPricingLines,
+      shippingKey,
+      couponDiscount,
+      pointsValue: freshPointsToUse,
+      freeShippingCoupon,
+    });
+    const freshSub = freshTotals.sub;
     const freshPointsValue = freshPointsToUse;
-    const freshShippingFee =
-      freshSub >= FREE_SHIPPING_THRESHOLD || freeShippingCoupon ? 0 : shippingOption.fee || 350;
-    const freshTax = Math.round(Math.max(0, freshAfterCoupon - freshPointsValue) * TAX_RATE);
-    const freshTotal =
-      Math.max(0, freshAfterCoupon - freshPointsValue) + freshShippingFee + freshTax;
+    const freshShippingFee = freshTotals.shipping;
+    const freshTax = freshTotals.tax;
+    const freshTotal = freshTotals.total;
 
     setLoading(true);
     try {
@@ -283,11 +368,13 @@ export default function CheckoutScreen() {
 
       const order = parsePlacedOrder(orderData);
       if (!order?.id) throw new Error("Order created but no id returned");
+      orderPlaced = true;
 
       if (freshPointsToUse > 0 && paymentMethod !== "payhere") {
         const redeemRes = await loyalty.redeem(freshPointsToUse, order.id);
         if (!redeemRes.ok) {
           await supabase.rpc("cancel_order", { p_order_id: order.id });
+          orderPlaced = false;
           throw new Error(redeemRes.error);
         }
       }
@@ -307,8 +394,12 @@ export default function CheckoutScreen() {
       toast("Order placed", "success");
       router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(order.id)}` as never);
       await releaseCartReservations();
+      reservationsHeld = false;
       clear();
     } catch (e: any) {
+      if (reservationsHeld && !orderPlaced) {
+        await releaseCartReservations();
+      }
       toast(e?.message || "Order failed", "error");
     } finally {
       setLoading(false);
@@ -316,8 +407,12 @@ export default function CheckoutScreen() {
   };
 
   const goBack = () => {
-    if (step === 1) router.back();
-    else setStep(step - 1);
+    if (step === 1) {
+      void restoreUnselectedCartItems(addItem).then(() => clearCheckoutSession());
+      router.back();
+      return;
+    }
+    setStep(step - 1);
   };
 
   const handleAddressContinue = () => {
@@ -527,7 +622,7 @@ export default function CheckoutScreen() {
                 <Label style={styles.itemsCount}>{cartItems.length} item{cartItems.length === 1 ? "" : "s"}</Label>
               </View>
               {cartItems.map((item, i) => (
-                <View key={`${item.productId}-${item.variantId ?? i}`} style={styles.reviewItem}>
+                <View key={buildCartLineKeyFromItem(item)} style={styles.reviewItem}>
                   <View style={styles.reviewThumb}>
                     {item.image ? (
                       <Image source={{ uri: item.image }} style={styles.reviewImage} contentFit="cover" />

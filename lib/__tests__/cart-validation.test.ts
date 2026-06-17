@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { buildCartReconciliation } from "@/lib/cart-validation";
 import type { CartItem } from "@/lib/stores/cart-store";
 import type { Product } from "@/lib/types";
@@ -70,8 +71,11 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
 }
 
 describe("cart-validation", () => {
+  const lineKey = (item: CartItem) => buildCartLineKeyFromItem(item);
+
   it("removes deleted products from the bag", () => {
-    const items = { "prod-1-var-1": makeItem() };
+    const item = makeItem();
+    const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(items, {}, visibleStores);
 
     expect(reconciliation.remove).toHaveLength(1);
@@ -79,7 +83,8 @@ describe("cart-validation", () => {
   });
 
   it("removes inactive or delisted products", () => {
-    const items = { "prod-1-var-1": makeItem() };
+    const item = makeItem();
+    const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
       items,
       { "prod-1": makeProduct({ status: "archived", is_active: false }) },
@@ -91,7 +96,8 @@ describe("cart-validation", () => {
   });
 
   it("removes missing or inactive variants", () => {
-    const items = { "prod-1-var-1": makeItem() };
+    const item = makeItem();
+    const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
       items,
       {
@@ -114,7 +120,8 @@ describe("cart-validation", () => {
   });
 
   it("clamps quantity and updates price when listing changed", () => {
-    const items = { "prod-1-var-1": makeItem({ price: 2000, quantity: 5, stock: 10 }) };
+    const item = makeItem({ price: 2000, quantity: 5, stock: 10 });
+    const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
       items,
       {
@@ -146,7 +153,8 @@ describe("cart-validation", () => {
   });
 
   it("removes out-of-stock items", () => {
-    const items = { "prod-1-var-1": makeItem() };
+    const item = makeItem();
+    const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
       items,
       {
@@ -169,7 +177,8 @@ describe("cart-validation", () => {
   });
 
   it("treats fully reserved inventory as out of stock", () => {
-    const items = { "prod-1-var-1": makeItem({ stock: 5, quantity: 1 }) };
+    const item = makeItem({ stock: 5, quantity: 1 });
+    const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
       items,
       {

@@ -11,6 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run lib/__tests__/e2e",
+    "grandfather-stores": "node scripts/grandfather-existing-store-compliance.mjs",
+    "verify-stores": "node scripts/verify-store-compliance.mjs",
     "android:apk": "bash scripts/build-android-apk.sh",
     "android:install": "bash scripts/install-android-apk.sh"
   },

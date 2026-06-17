@@ -149,6 +149,27 @@ async function main() {
     );
   }
 
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
+  if (anonKey) {
+    const anon = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await anon.rpc("get_catalog_visible_store_ids");
+    if (error) {
+      console.log(
+        "\n⚠ Checkout visibility RPC is not deployed yet.",
+      );
+      console.log(
+        "  Run this SQL in the Supabase dashboard (SQL editor) once:",
+      );
+      console.log(
+        "  store/supabase/migrations/0095_catalog_visible_store_ids_rpc.sql",
+      );
+    } else {
+      console.log(`\nCheckout-ready stores (via RPC): ${data?.length ?? 0}`);
+    }
+  }
+
   console.log("\nDone. New stores must complete compliance through the normal flow.");
 }
 

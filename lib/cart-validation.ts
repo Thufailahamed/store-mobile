@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { getCatalogVisibleStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 import { getVariantStock } from "@/components/cart/variant-utils";
+import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import type { CartItem } from "@/lib/stores/cart-store";
 import { useCart } from "@/lib/stores/cart-store";
 import type { Product, ProductVariant } from "@/lib/types";
@@ -33,6 +34,12 @@ export interface CartReconciliation {
   remove: CartItemIssue[];
   update: CartItemPatch[];
 }
+
+export type CartRefreshResult =
+  | { ok: true; reconciliation: CartReconciliation }
+  | { ok: false; error: string; reconciliation: CartReconciliation };
+
+const EMPTY_RECONCILIATION: CartReconciliation = { remove: [], update: [] };
 
 const PRODUCT_SNAPSHOT_SELECT =
   "*, images:product_images(*), variants:product_variants(*, inventory(quantity, reserved)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)";
@@ -107,7 +114,9 @@ export function buildCartReconciliation(
     const variants = product.variants ?? [];
     const variant = item.variantId
       ? variants.find((v) => v.id === item.variantId)
-      : null;
+      : variants.length === 1
+        ? variants[0]
+        : null;
 
     if (item.variantId && !variant) {
       remove.push({
@@ -190,12 +199,12 @@ export function applyCartReconciliation(reconciliation: CartReconciliation): voi
 }
 
 /** Load catalog data, reconcile the cart, and return what changed. */
-export async function refreshCartFromCatalog(): Promise<CartReconciliation> {
+export async function refreshCartFromCatalog(): Promise<CartRefreshResult> {
   const items = useCart.getState().items;
   const productIds = [...new Set(Object.values(items).map((item) => item.productId))];
 
   if (productIds.length === 0) {
-    return { remove: [], update: [] };
+    return { ok: true, reconciliation: EMPTY_RECONCILIATION };
   }
 
   const [productsResult, catalogVisibleStoreIds] = await Promise.all([
@@ -204,7 +213,11 @@ export async function refreshCartFromCatalog(): Promise<CartReconciliation> {
   ]);
 
   if (!productsResult.ok) {
-    return { remove: [], update: [] };
+    return {
+      ok: false,
+      error: "Could not refresh your bag. Check your connection and try again.",
+      reconciliation: EMPTY_RECONCILIATION,
+    };
   }
 
   const reconciliation = buildCartReconciliation(
@@ -217,7 +230,7 @@ export async function refreshCartFromCatalog(): Promise<CartReconciliation> {
     applyCartReconciliation(reconciliation);
   }
 
-  return reconciliation;
+  return { ok: true, reconciliation };
 }
 
 export type CartCheckoutValidation =
@@ -290,7 +303,7 @@ export function assessCartItemIssue(
   catalogVisibleStoreIds: Set<string>,
 ): CartItemIssue | null {
   const reconciliation = buildCartReconciliation(
-    { [`${item.productId}-${item.variantId ?? "default"}`]: item },
+    { [buildCartLineKeyFromItem(item)]: item },
     product ? { [product.id]: product } : {},
     catalogVisibleStoreIds,
   );
