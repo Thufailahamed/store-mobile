@@ -1,4 +1,10 @@
 import { getAdminCategoriesEnriched } from "@/lib/api/category-admin";
+import {
+  deliveryTransition,
+  deliveryVerify,
+  hasStoreApi,
+  storeApiFetch,
+} from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
 import {
   mapProduct,
@@ -9,11 +15,6 @@ import {
   mapBanner,
 } from "@/lib/api/product-mapper";
 import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
-import {
-  deliveryTransition,
-  deliveryVerify,
-  hasStoreApi,
-} from "@/lib/api/delivery-api";
 import {
   tokenizeQuery,
   buildSearchOrParts,
@@ -2836,6 +2837,11 @@ export interface DeliveryCompany {
 }
 
 export async function getAdminDeliveryCompanies(): Promise<Result<DeliveryCompany[]>> {
+  if (hasStoreApi()) {
+    const res = await storeApiFetch<{ companies: DeliveryCompany[] }>("/api/admin/delivery-companies");
+    if (!res.ok) return fail(res.error);
+    return ok(res.data.companies ?? []);
+  }
   try {
     const { data, error } = await supabase
       .from("delivery_companies")
@@ -2846,6 +2852,21 @@ export async function getAdminDeliveryCompanies(): Promise<Result<DeliveryCompan
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch delivery companies");
   }
+}
+
+export async function updateAdminDeliveryCompanyStatus(
+  id: string,
+  status: "pending" | "active" | "suspended" | "rejected",
+): Promise<Result<DeliveryCompany>> {
+  if (!hasStoreApi()) {
+    return fail("EXPO_PUBLIC_STORE_API_URL is not configured");
+  }
+  const res = await storeApiFetch<{ company: DeliveryCompany }>("/api/admin/delivery-companies", {
+    method: "PATCH",
+    body: JSON.stringify({ id, status }),
+  });
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.company);
 }
 
 export interface CommissionTier {

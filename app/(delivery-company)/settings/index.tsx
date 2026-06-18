@@ -67,7 +67,7 @@ export default function CompanySettingsScreen() {
     const s = company?.status;
     if (!s || s === "active") return null;
     const messages: Record<string, string> = {
-      pending: "Awaiting admin approval. You can still set up profile and invite drivers.",
+      pending: "Awaiting admin approval. Profile and driver setup are available; assignments stay locked until approved.",
       suspended: "Suspended by admin. Contact support to reactivate.",
       rejected: "Application rejected. Contact support for details.",
     };

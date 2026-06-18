@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, View, Text, Pressable, StyleSheet } from "react-native";
 import { Tabs, useRouter, useSegments } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 import { getDeliveryCompanyMe, hasStoreApi } from "@/lib/api/delivery-company-api";
+import {
+  getDeliveryCompanyAccessState,
+  isDeliveryCompanyAccessibleRoute,
+} from "@/lib/delivery-company-access";
+import type { DeliveryCompany } from "@/lib/api/delivery-company-api";
 import { colors, typography } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 
 const PUBLIC_SEGMENTS = new Set(["onboarding", "accept"]);
 
@@ -15,6 +21,11 @@ export default function DeliveryCompanyLayout() {
   const segments = useSegments();
   const [accessChecked, setAccessChecked] = useState(false);
   const [allowed, setAllowed] = useState(false);
+  const [company, setCompany] = useState<DeliveryCompany | null>(null);
+
+  const access = useMemo(() => getDeliveryCompanyAccessState(company), [company]);
+  const locked = role !== "admin" && !access.canUseCompanyTools;
+  const isAccessibleRoute = isDeliveryCompanyAccessibleRoute(segments as string[], access);
 
   const segmentLeaf = segments[segments.length - 1] ?? "";
   const isPublicRoute = PUBLIC_SEGMENTS.has(segmentLeaf as string);
@@ -45,12 +56,18 @@ export default function DeliveryCompanyLayout() {
           router.replace("/(delivery-company)/onboarding");
           return;
         }
+        if (me.ok) setCompany(me.data.company);
       }
 
       setAllowed(true);
       setAccessChecked(true);
     });
   }, [user?.id, role, roleLoading, loading, router, isPublicRoute]);
+
+  useEffect(() => {
+    if (!accessChecked || isPublicRoute || !locked || isAccessibleRoute) return;
+    router.replace("/(delivery-company)/settings");
+  }, [accessChecked, isPublicRoute, locked, isAccessibleRoute, router]);
 
   if ((loading || roleLoading || !accessChecked) && !isPublicRoute) {
     return (
@@ -68,6 +85,24 @@ export default function DeliveryCompanyLayout() {
   }
 
   if (!allowed && !isPublicRoute) return null;
+
+  if (locked && !isPublicRoute && !isAccessibleRoute) {
+    return (
+      <View style={styles.blockedContainer}>
+        <Ionicons name="business-outline" size={44} color={colors.light.primary} />
+        <Text style={styles.blockedTitle}>Logistics access limited</Text>
+        <Text style={styles.blockedBody}>
+          {access.lockReason ?? "Your delivery company is not active yet."}
+        </Text>
+        <Pressable
+          style={styles.blockedButton}
+          onPress={() => router.replace("/(delivery-company)/settings")}
+        >
+          <Text style={styles.blockedButtonText}>Open Company Settings</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <Tabs
@@ -96,6 +131,7 @@ export default function DeliveryCompanyLayout() {
         name="index"
         options={{
           title: "HQ",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="business-outline" size={size} color={color} />,
         }}
       />
@@ -103,6 +139,7 @@ export default function DeliveryCompanyLayout() {
         name="packages/index"
         options={{
           title: "Packages",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,
         }}
       />
@@ -110,6 +147,7 @@ export default function DeliveryCompanyLayout() {
         name="routes/index"
         options={{
           title: "Routes",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="map-outline" size={size} color={color} />,
         }}
       />
@@ -117,6 +155,7 @@ export default function DeliveryCompanyLayout() {
         name="assignments/index"
         options={{
           title: "Assign",
+          href: locked ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="git-branch-outline" size={size} color={color} />,
         }}
       />
@@ -142,3 +181,38 @@ export default function DeliveryCompanyLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  blockedContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    backgroundColor: colors.light.background,
+    gap: 10,
+  },
+  blockedTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    color: colors.light.foreground,
+  },
+  blockedBody: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+  },
+  blockedButton: {
+    marginTop: 10,
+    backgroundColor: colors.light.primary,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  blockedButtonText: {
+    color: "#fff",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+  },
+});
