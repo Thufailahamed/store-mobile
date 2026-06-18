@@ -111,10 +111,11 @@ export async function deliveryTransition(
 export async function deliveryVerify(
   orderId: string,
   otp: string,
+  opts?: { proof_url?: string | null },
 ): Promise<DeliveryApiResult<{ ok: boolean; status: string }>> {
   return storeApiFetch("/api/delivery/verify", {
     method: "POST",
-    body: JSON.stringify({ order_id: orderId, otp }),
+    body: JSON.stringify({ order_id: orderId, otp, proof_url: opts?.proof_url ?? null }),
   });
 }
 
@@ -185,11 +186,16 @@ export async function scanPackage(
 
 export async function verifyPackageDelivery(
   token: string,
-  opts: { otp?: string; customer_qr_token?: string },
+  opts: { otp?: string; customer_qr_token?: string; proof_url?: string | null },
 ): Promise<DeliveryApiResult<unknown>> {
   return storeApiFetch("/api/packages/verify-delivery", {
     method: "POST",
-    body: JSON.stringify({ token, otp: opts.otp, customer_qr_token: opts.customer_qr_token }),
+    body: JSON.stringify({
+      token,
+      otp: opts.otp,
+      customer_qr_token: opts.customer_qr_token,
+      proof_url: opts.proof_url ?? null,
+    }),
   });
 }
 

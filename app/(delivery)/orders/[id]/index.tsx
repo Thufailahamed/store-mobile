@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,12 @@ import {
 import { takePhoto, uploadDeliveryProof } from "@/lib/upload";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import {
+  canStartDelivery,
+  canVerifyDelivery,
+  isDeliveryTerminal,
+  isValidOtp,
+} from "@/lib/delivery-workflow";
+import {
   formatPrice,
   formatDate,
   mapsUrl,
@@ -48,9 +54,25 @@ export default function DeliveryDetail() {
   const [issueNote, setIssueNote] = useState("");
   const [reporting, setReporting] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
+  // Proof-of-delivery photo state. Required before handleVerify.
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [capturingProof, setCapturingProof] = useState(false);
+
+  const refetchOrder = useCallback(async () => {
+    if (!id) return;
+    const res = await getOrderById(id);
+    if (res.ok && res.data) setOrder(res.data);
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
+    // Reset proof + OTP state when the order id changes so we don't carry
+    // state from a previous order (e.g. back-nav then open another).
+    setProofUrl(null);
+    setOtp("");
+    setShowReport(false);
+    setIssueReason("");
+    setIssueNote("");
     (async () => {
       const res = await getOrderById(id);
       if (res.ok && res.data) setOrder(res.data);
@@ -60,23 +82,85 @@ export default function DeliveryDetail() {
 
   const handleStartDelivery = async () => {
     if (!order) return;
+    // Workflow guard: can only start from "shipped".
+    if (!canStartDelivery(order.status)) {
+      Alert.alert(
+        "Cannot start",
+        `Order must be shipped before delivery can start (current: ${order.status}).`,
+      );
+      return;
+    }
     setStarting(true);
     const res = await riderStartDelivery(order.id);
     setStarting(false);
     if (res.ok) {
-      setOrder({ ...order, status: "out_for_delivery" } as any);
+      // Refetch from server to get the canonical post-transition state.
+      await refetchOrder();
       Alert.alert("Out for delivery", `OTP: ${res.data.otp}`);
     } else {
       Alert.alert("Error", res.error);
     }
   };
 
+  const handleCaptureProof = async () => {
+    if (!order || !user?.id) return;
+    const pick = await takePhoto({ quality: 0.8 });
+    if (!pick || pick.canceled || !pick.assets?.[0]?.uri) return;
+
+    setCapturingProof(true);
+    const uploaded = await uploadDeliveryProof(user.id, order.id, pick.assets[0].uri);
+    if (uploaded.error || !uploaded.url) {
+      setCapturingProof(false);
+      Alert.alert("Upload failed", uploaded.error ?? "Could not upload proof");
+      return;
+    }
+    setProofUrl(uploaded.url);
+    // Sync the proof URL to the server-side proof record so verify RPCs can
+    // enforce proof-required-at-deliver. Awaited — we surface failures so
+    // the rider can retry before verifying.
+    if (hasStoreApi()) {
+      const res = await deliveryProofUpload(order.id, uploaded.url, "Delivery proof photo");
+      setCapturingProof(false);
+      if (!res.ok) {
+        Alert.alert(
+          "Proof record sync failed",
+          `${res.error}\n\nYou can retry the photo or contact support.`,
+        );
+        // Drop the URL — without the server record the verify would reject.
+        setProofUrl(null);
+        return;
+      }
+    } else {
+      setCapturingProof(false);
+    }
+  };
+
   const handleVerify = async () => {
-    if (!order || !otp.trim()) return;
+    if (!order) return;
+    if (!isValidOtp(otp)) {
+      Alert.alert("OTP required", "Enter the 6-digit code from the customer.");
+      return;
+    }
+    if (!proofUrl) {
+      Alert.alert(
+        "Proof required",
+        "Upload a delivery proof photo before verifying delivery.",
+      );
+      return;
+    }
+    if (!canVerifyDelivery(order.status)) {
+      Alert.alert(
+        "Cannot verify",
+        `Order must be out_for_delivery before verify (current: ${order.status}).`,
+      );
+      return;
+    }
     setVerifying(true);
-    const res = await riderVerifyDelivery(order.id, otp.trim());
+    const res = await riderVerifyDelivery(order.id, otp.trim(), proofUrl);
     setVerifying(false);
     if (res.ok) {
+      // Refetch so local state matches the canonical post-transition state.
+      await refetchOrder();
       Alert.alert("Delivered!", `${order.order_number} marked as delivered`, [
         { text: "OK", onPress: () => router.back() },
       ]);
@@ -165,9 +249,12 @@ export default function DeliveryDetail() {
   const sc = STATUS_COLORS[order.status] ?? STATUS_COLORS.pending;
   const isCOD = order.payment_method === "cod";
   const isCODUnpaid = isCOD && order.payment_status !== "paid";
-  const canStart = ["shipped", "processing", "confirmed"].includes(order.status);
-  const canVerify = order.status === "out_for_delivery";
-  const isCompleted = ["delivered", "returned", "cancelled", "refunded"].includes(order.status);
+  // Strict no-skip enforcement via the workflow module.
+  const canStart = canStartDelivery(order.status);
+  const canVerify = canVerifyDelivery(order.status);
+  const isCompleted = isDeliveryTerminal(order.status);
+  const otpValid = isValidOtp(otp);
+  const canSubmitVerify = canVerify && Boolean(proofUrl) && otpValid;
 
   return (
     <KeyboardAvoidingView
@@ -304,6 +391,28 @@ export default function DeliveryDetail() {
         {canVerify && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Verify Delivery</Text>
+
+            {/* Step 1: proof photo (required). */}
+            {proofUrl ? (
+              <View style={styles.proofOkCard}>
+                <Text style={styles.proofOkText}>✓ Delivery proof uploaded</Text>
+                <TouchableOpacity onPress={handleCaptureProof} disabled={capturingProof}>
+                  <Text style={styles.proofReplace}>Replace photo</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.proofCaptureBtn, capturingProof && { opacity: 0.6 }]}
+                onPress={handleCaptureProof}
+                disabled={capturingProof}
+              >
+                <Text style={styles.proofCaptureBtnText}>
+                  {capturingProof ? "Uploading…" : "📸 Take delivery proof photo (required)"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Step 2: OTP. */}
             <Text style={styles.otpHint}>Ask customer for their 6-digit OTP code</Text>
             <TextInput
               style={styles.otpInput}
@@ -315,9 +424,9 @@ export default function DeliveryDetail() {
               placeholderTextColor={colors.light.mutedForeground}
             />
             <TouchableOpacity
-              style={[styles.verifyButton, (verifying || otp.length < 6) && { opacity: 0.5 }]}
+              style={[styles.verifyButton, (!canSubmitVerify || verifying) && { opacity: 0.5 }]}
               onPress={handleVerify}
-              disabled={verifying || otp.length < 6}
+              disabled={!canSubmitVerify || verifying}
             >
               <Text style={styles.verifyButtonText}>
                 {verifying ? "Verifying..." : "Verify & Mark Delivered"}
@@ -631,6 +740,43 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     marginBottom: 10,
   },
+
+  proofCaptureBtn: {
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fbbf24",
+    padding: 14,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  proofCaptureBtnText: {
+    color: "#92400e",
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+  proofOkCard: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#16a34a",
+    padding: 12,
+    borderRadius: radii.lg,
+    marginBottom: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  proofOkText: {
+    color: "#166534",
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+  proofReplace: {
+    color: "#166534",
+    fontSize: typography.fontSizes.xs,
+    textDecorationLine: "underline",
+  },
+
   otpInput: {
     backgroundColor: colors.light.card,
     borderWidth: 2,

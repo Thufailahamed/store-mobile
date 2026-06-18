@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { deliveryPickupVerify, getReturnPickups, type ReturnPickup } from "@/lib/api";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { typography, radii } from "@/lib/theme/tokens";
+import { isValidOtp } from "@/lib/delivery-workflow";
 
 export default function ReturnPickupDetail() {
   const router = useRouter();
@@ -67,8 +68,8 @@ export default function ReturnPickupDetail() {
       return;
     }
 
-    if (action === "verify" && otp.trim().length < 4) {
-      Alert.alert("OTP required", "Enter the pickup verification code.");
+    if (action === "verify" && !isValidOtp(otp)) {
+      Alert.alert("OTP required", "Enter the 6-digit pickup verification code.");
       return;
     }
 
@@ -173,7 +174,11 @@ export default function ReturnPickupDetail() {
           </TouchableOpacity>
         ) : null}
         {canVerify ? (
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => runAction("verify")} disabled={acting}>
+          <TouchableOpacity
+            style={[styles.primaryBtn, (!isValidOtp(otp) || acting) && { opacity: 0.5 }]}
+            onPress={() => runAction("verify")}
+            disabled={!isValidOtp(otp) || acting}
+          >
             <Text style={styles.primaryBtnText}>Verify & collect items</Text>
           </TouchableOpacity>
         ) : null}

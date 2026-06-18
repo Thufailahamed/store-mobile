@@ -2016,9 +2016,9 @@ export async function riderStartDelivery(orderId: string): Promise<Result<{ otp:
   }
 }
 
-export async function riderVerifyDelivery(orderId: string, otp: string): Promise<Result<void>> {
+export async function riderVerifyDelivery(orderId: string, otp: string, proofUrl?: string | null): Promise<Result<void>> {
   if (hasStoreApi()) {
-    const res = await deliveryVerify(orderId, otp);
+    const res = await deliveryVerify(orderId, otp, { proof_url: proofUrl });
     return res.ok ? ok(undefined) : fail(res.error);
   }
 
@@ -2026,6 +2026,7 @@ export async function riderVerifyDelivery(orderId: string, otp: string): Promise
     const { error } = await supabase.rpc("verify_order_delivery", {
       p_order_id: orderId,
       p_otp: otp,
+      p_proof_url: proofUrl ?? null,
     });
     if (error) return fail(error.message);
     return ok(undefined);
