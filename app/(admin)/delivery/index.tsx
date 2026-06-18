@@ -93,6 +93,13 @@ export default function AdminDelivery() {
         <Text style={styles.count}>{(q.data ?? []).length}</Text>
       </View>
 
+      <Pressable
+        style={styles.failuresLink}
+        onPress={() => router.push("/(admin)/delivery/failures" as any)}
+      >
+        <Text style={styles.failuresLinkText}>⚠️  Failed deliveries inbox →</Text>
+      </Pressable>
+
       <TextInput
         style={styles.search}
         placeholder="Search by name, slug, email..."
@@ -248,4 +255,18 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  failuresLink: {
+    marginHorizontal: 20,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  failuresLinkText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: "#dc2626",
+  },
 });

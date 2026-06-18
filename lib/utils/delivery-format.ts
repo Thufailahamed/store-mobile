@@ -67,6 +67,7 @@ export const STATUS_COLORS: Record<string, StatusTone> = {
   cancelled: { bg: "#f3f4f6", text: "#6b7280" },
   returned: { bg: "#f3e8ff", text: "#7c3aed" },
   refunded: { bg: "#fce7f3", text: "#be185d" },
+  failed_attempt: { bg: "#fef2f2", text: "#dc2626" },
 };
 
 export const PICKUP_STATUS_COLORS: Record<string, StatusTone> = {
@@ -78,20 +79,68 @@ export const PICKUP_STATUS_COLORS: Record<string, StatusTone> = {
   cancelled: { bg: "#f3f4f6", text: "#6b7280" },
 };
 
-export type IssueReason =
-  | "customer_absent"
-  | "wrong_address"
-  | "refused"
-  | "damaged"
-  | "other";
+/**
+ * Categorical failure taxonomy. Each value classifies the failure by severity
+ * (recoverable / terminal / claim), maps to a target server status, and flags
+ * whether a retry is eligible + whether an evidence photo is recommended.
+ *
+ * Server-side enforcement (RLS/RPC) is the authority — these values are the
+ * mobile-side vocabulary that gets sent through `deliveryTransition` /
+ * `scanPackage` / `deliveryPickupVerify`. The legacy free-text `reason` field
+ * is still sent alongside for backward-compat with older servers.
+ */
+export type FailureSeverity = "recoverable" | "terminal" | "claim";
 
-export const ISSUE_REASONS: { value: IssueReason; label: string }[] = [
-  { value: "customer_absent", label: "Customer absent" },
-  { value: "wrong_address", label: "Wrong address" },
-  { value: "refused", label: "Customer refused" },
-  { value: "damaged", label: "Package damaged" },
-  { value: "other", label: "Other" },
+export type IssueReason =
+  | "customer_absent" // recoverable → returned (no contact at door)
+  | "no_safe_location" // recoverable → returned (no safe drop point)
+  | "wrong_address" // recoverable → returned (admin reschedule)
+  | "store_closed" // recoverable → returned (pickup leg)
+  | "refused" // terminal → cancelled
+  | "damaged" // claim → cancelled
+  | "lost_in_transit" // claim → cancelled
+  | "vehicle_breakdown" // recoverable → returned (rider safety)
+  | "security_incident" // claim → cancelled (theft, threat)
+  | "weather_hazard" // recoverable → returned
+  | "other"; // terminal fallback → cancelled
+
+export interface IssueReasonMeta {
+  value: IssueReason;
+  label: string;
+  severity: FailureSeverity;
+  /** Server status to set on the order when this failure is reported. */
+  targetStatus: "returned" | "cancelled";
+  /** Whether the failure is eligible for another delivery attempt. */
+  retryEligible: boolean;
+  /** Whether a failure-evidence photo is recommended (still optional client-side). */
+  evidenceRecommended: boolean;
+}
+
+export const ISSUE_REASONS: IssueReasonMeta[] = [
+  { value: "customer_absent",   label: "Customer absent",              severity: "recoverable", targetStatus: "returned",  retryEligible: true,  evidenceRecommended: true  },
+  { value: "no_safe_location",  label: "No safe drop location",        severity: "recoverable", targetStatus: "returned",  retryEligible: true,  evidenceRecommended: true  },
+  { value: "wrong_address",     label: "Wrong / unreachable address",  severity: "recoverable", targetStatus: "returned",  retryEligible: true,  evidenceRecommended: true  },
+  { value: "store_closed",      label: "Store closed",                 severity: "recoverable", targetStatus: "returned",  retryEligible: true,  evidenceRecommended: false },
+  { value: "refused",           label: "Customer refused",             severity: "terminal",    targetStatus: "cancelled", retryEligible: false, evidenceRecommended: false },
+  { value: "damaged",           label: "Package damaged",              severity: "claim",       targetStatus: "cancelled", retryEligible: false, evidenceRecommended: true  },
+  { value: "lost_in_transit",   label: "Lost in transit",              severity: "claim",       targetStatus: "cancelled", retryEligible: false, evidenceRecommended: true  },
+  { value: "vehicle_breakdown", label: "Vehicle breakdown",            severity: "recoverable", targetStatus: "returned",  retryEligible: true,  evidenceRecommended: false },
+  { value: "security_incident", label: "Security incident",            severity: "claim",       targetStatus: "cancelled", retryEligible: false, evidenceRecommended: true  },
+  { value: "weather_hazard",    label: "Weather hazard",               severity: "recoverable", targetStatus: "returned",  retryEligible: true,  evidenceRecommended: false },
+  { value: "other",             label: "Other",                        severity: "terminal",    targetStatus: "cancelled", retryEligible: false, evidenceRecommended: false },
 ];
+
+export const ISSUE_REASON_BY_VALUE: Record<IssueReason, IssueReasonMeta> =
+  ISSUE_REASONS.reduce((acc, r) => {
+    acc[r.value] = r;
+    return acc;
+  }, {} as Record<IssueReason, IssueReasonMeta>);
+
+export const ISSUE_REASON_VALUES: IssueReason[] = ISSUE_REASONS.map((r) => r.value);
+
+export function isRecoverableReason(reason: IssueReason | null | undefined): boolean {
+  return reason ? ISSUE_REASON_BY_VALUE[reason].severity === "recoverable" : false;
+}
 
 export function isCompleted(s: string): boolean {
   return ["delivered", "returned", "refunded", "cancelled"].includes(s);

@@ -7,7 +7,7 @@ export type ApprovalStatus = "draft" | "pending" | "approved" | "rejected" | "ac
 export type ProductStatus = "draft" | "pending" | "active" | "archived" | "rejected";
 export type ProductType = "simple" | "variable";
 export type Gender = "men" | "women" | "kids" | "unisex";
-export type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded";
+export type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded" | "failed_attempt";
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "partially_refunded";
 export type PaymentMethod = "stripe" | "payhere" | "paypal" | "cod" | "wallet" | "gift_card" | "koko";
 export type CouponType = "percentage" | "fixed" | "free_shipping" | "bxgy";
@@ -231,6 +231,27 @@ export interface Order {
     postal_code: string;
     country: string;
   };
+  /* ---- Failure-recovery fields (Phase 14) ------------------------- *
+   * All optional — server may not yet return them. Mobile reads with  *
+   * `??` defaults and degrades gracefully.                             */
+  /** Categorical reason for the most-recent failure. */
+  failure_reason?: import("@/lib/utils/delivery-format").IssueReason | null;
+  /** Free-text elaboration on the failure. */
+  failure_notes?: string | null;
+  /** Public URL of the uploaded failure-evidence photo (if any). */
+  failure_evidence_url?: string | null;
+  /** ISO timestamp when the order was most recently marked failed. */
+  failed_at?: string | null;
+  /** Number of fail_delivery transitions on this order so far. */
+  attempt_count?: number | null;
+  /** Number of reschedules from `returned` to `out_for_delivery`. */
+  reschedule_count?: number | null;
+  /** ISO timestamp the buyer / system proposed for the next retry. */
+  next_retry_at?: string | null;
+  /** Previous rider id, set when admin reassigned the package. */
+  handoff_rider_id?: string | null;
+  /** ISO timestamp of the most recent rider handoff. */
+  handoff_at?: string | null;
 }
 
 export interface OrderItem {

@@ -12,10 +12,16 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
-import { deliveryPickupVerify, getReturnPickups, type ReturnPickup } from "@/lib/api";
+import {
+  deliveryPickupVerify,
+  getReturnPickups,
+  type ReturnPickup,
+} from "@/lib/api";
+import { takePhoto, uploadDeliveryFailureEvidence } from "@/lib/upload";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { typography, radii } from "@/lib/theme/tokens";
-import { isValidOtp } from "@/lib/delivery-workflow";
+import { isValidOtp, MAX_PICKUP_ATTEMPTS } from "@/lib/delivery-workflow";
+import { ISSUE_REASONS, type IssueReason } from "@/lib/utils/delivery-format";
 
 export default function ReturnPickupDetail() {
   const router = useRouter();
@@ -26,7 +32,11 @@ export default function ReturnPickupDetail() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [otp, setOtp] = useState("");
-  const [failReason, setFailReason] = useState("");
+  // Phase 14 — pickup failure now uses categorical reasons + optional evidence.
+  const [failReason, setFailReason] = useState<IssueReason | "">("");
+  const [failNotes, setFailNotes] = useState("");
+  const [failEvidenceUrl, setFailEvidenceUrl] = useState<string | null>(null);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
   const styles = makeStyles(colors, isDark);
 
@@ -42,18 +52,54 @@ export default function ReturnPickupDetail() {
     load();
   }, [load]);
 
+  const handleCaptureEvidence = async () => {
+    if (!user?.id || !pickup) return;
+    const pick = await takePhoto({ quality: 0.8 });
+    if (!pick || pick.canceled || !pick.assets?.[0]?.uri) return;
+    setUploadingEvidence(true);
+    const uploaded = await uploadDeliveryFailureEvidence(
+      user.id,
+      pickup.id,
+      pick.assets[0].uri,
+      { reason: failReason || undefined },
+    );
+    setUploadingEvidence(false);
+    if (uploaded.error || !uploaded.url) {
+      // Soft fail — evidence is recommended, not required.
+      return;
+    }
+    setFailEvidenceUrl(uploaded.url);
+  };
+
   const runAction = (action: "start" | "verify" | "complete" | "fail") => {
     if (!pickup || !user) return;
 
     const confirmAndRun = async () => {
       setActing(true);
+      // Phase 14 — categorical reason + evidence for fail; free-text reason
+      // is the legacy fallback for older servers.
+      const reasonText = failReason
+        ? ISSUE_REASONS.find((r) => r.value === failReason)?.label ?? failReason
+        : "";
+      const composedReason =
+        action === "fail"
+          ? failNotes.trim()
+            ? `${reasonText} — ${failNotes.trim()}`
+            : reasonText || "Pickup failed"
+          : undefined;
       const res = await deliveryPickupVerify(pickup.id, action, {
         otp: action === "verify" ? otp.trim() : undefined,
-        reason: action === "fail" ? failReason.trim() || "Pickup failed" : undefined,
+        reason: composedReason,
+        failure_reason: action === "fail" ? (failReason || undefined) : undefined,
+        failure_evidence_url: action === "fail" ? failEvidenceUrl : undefined,
+        photo_url: action === "fail" ? failEvidenceUrl ?? undefined : undefined,
       });
       setActing(false);
       if (res.ok) {
         Alert.alert("Updated", `Pickup marked as ${res.data.status}.`);
+        setFailReason("");
+        setFailNotes("");
+        setFailEvidenceUrl(null);
         load();
       } else {
         Alert.alert("Error", res.error);
@@ -61,10 +107,18 @@ export default function ReturnPickupDetail() {
     };
 
     if (action === "fail") {
-      Alert.alert("Mark failed?", "The buyer will be notified and pickup may be rescheduled.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Fail", style: "destructive", onPress: confirmAndRun },
-      ]);
+      if (!failReason) {
+        Alert.alert("Reason required", "Pick a failure reason before submitting.");
+        return;
+      }
+      Alert.alert(
+        "Mark failed?",
+        "The pickup will be marked failed and the buyer notified.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Fail", style: "destructive", onPress: confirmAndRun },
+        ],
+      );
       return;
     }
 
@@ -105,7 +159,11 @@ export default function ReturnPickupDetail() {
   const canStart = pickup.status === "scheduled";
   const canVerify = pickup.status === "out_for_pickup";
   const canComplete = pickup.status === "picked_up";
-  const canFail = !["completed", "cancelled", "failed"].includes(pickup.status);
+  const pickupAttempts =
+    (pickup as { attempt_count?: number | null }).attempt_count ?? 0;
+  const canFail =
+    !["completed", "cancelled", "failed"].includes(pickup.status) &&
+    pickupAttempts < MAX_PICKUP_ATTEMPTS;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -156,14 +214,48 @@ export default function ReturnPickupDetail() {
 
       {canFail ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Failure reason (optional)</Text>
+          <Text style={styles.sectionTitle}>Failure reason</Text>
+          <View style={styles.chipRow}>
+            {ISSUE_REASONS.map((r) => (
+              <TouchableOpacity
+                key={r.value}
+                style={[
+                  styles.chip,
+                  failReason === r.value && styles.chipActive,
+                ]}
+                onPress={() => setFailReason(r.value)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    failReason === r.value && styles.chipTextActive,
+                  ]}
+                >
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <TextInput
-            style={styles.notesInput}
-            value={failReason}
-            onChangeText={setFailReason}
-            placeholder="Why did the pickup fail?"
+            style={[styles.notesInput, { marginTop: 8 }]}
+            value={failNotes}
+            onChangeText={setFailNotes}
+            placeholder="Notes (optional)"
             placeholderTextColor={colors.mutedForeground}
           />
+          {failEvidenceUrl ? (
+            <Text style={styles.evidenceOk}>✓ Evidence photo attached</Text>
+          ) : (
+            <TouchableOpacity
+              style={[styles.evidenceBtn, uploadingEvidence && { opacity: 0.5 }]}
+              onPress={handleCaptureEvidence}
+              disabled={uploadingEvidence}
+            >
+              <Text style={styles.evidenceBtnText}>
+                {uploadingEvidence ? "Uploading…" : "📸 Evidence photo (recommended)"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : null}
 
@@ -251,4 +343,46 @@ const makeStyles = (
       borderColor: isDark ? "#7f1d1d" : "#fecaca",
     },
     dangerBtnText: { color: isDark ? "#fca5a5" : "#dc2626", fontWeight: typography.fontWeights.semibold as any },
+    chipRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    chip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    chipActive: {
+      borderColor: "#dc2626",
+      backgroundColor: "#fef2f2",
+    },
+    chipText: {
+      fontSize: typography.fontSizes.xs,
+      color: colors.foreground,
+    },
+    chipTextActive: {
+      color: "#dc2626",
+      fontWeight: typography.fontWeights.semibold as any,
+    },
+    evidenceBtn: {
+      marginTop: 10,
+      padding: 10,
+      borderRadius: radii.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+    },
+    evidenceBtnText: {
+      color: colors.foreground,
+      fontSize: typography.fontSizes.xs,
+    },
+    evidenceOk: {
+      marginTop: 10,
+      fontSize: typography.fontSizes.xs,
+      color: "#16a34a",
+    },
   });

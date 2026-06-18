@@ -302,6 +302,32 @@ export async function uploadDeliveryProof(
 }
 
 /**
+ * Failure-evidence photo — door / address / package-condition snapshot taken
+ * when the rider reports a delivery failure. Same `review-media` bucket as
+ * `uploadDeliveryProof`, but a distinct `failure-{reason}-{orderId}-{ts}.{ext}`
+ * path so admin dashboards can filter `failure-*` vs `delivery-*` artifacts.
+ *
+ * The reason slug is included in the path so reviewers can group evidence
+ * photos by category without consulting the order row.
+ */
+export async function uploadDeliveryFailureEvidence(
+  userId: string,
+  orderId: string,
+  uri: string,
+  options?: { reason?: string },
+): Promise<UploadResult> {
+  try {
+    const ext = normalizeExtension(uri.split(".").pop(), "image/jpeg");
+    const rawSlug = (options?.reason ?? "other").replace(/[^a-z0-9_]/g, "") || "other";
+    const slug = rawSlug.slice(0, 32);
+    const path = `${userId}/failure-${slug}-${orderId}-${Date.now()}.${ext}`;
+    return uploadImageToBucket("review-media", path, uri, { mimeType: mimeForExtension(ext) });
+  } catch (e: any) {
+    return { url: "", error: e?.message ?? "Upload failed" };
+  }
+}
+
+/**
  * Delivery signature PNG — same RLS bucket as the proof photo.
  * Accepts the raw base64 dataURL emitted by `react-native-signature-canvas`
  * (the lib returns a `data:image/png;base64,...` string), strips the prefix,

@@ -44,6 +44,7 @@ const STATUS_TONE: Record<OrderStatus, { label: string; bg: string; fg: string; 
   cancelled: { label: "Cancelled", bg: colors.light.destructive + "18", fg: colors.light.destructive, stripe: colors.light.destructive, icon: "close-circle-outline" },
   returned: { label: "Returned", bg: colors.accent2.ochre + "20", fg: colors.accent2.ochre, stripe: colors.accent2.ochre, icon: "return-down-back-outline" },
   refunded: { label: "Refunded", bg: colors.accent2.ochre + "20", fg: colors.accent2.ochre, stripe: colors.accent2.rust, icon: "cash-outline" },
+  failed_attempt: { label: "Attempt failed", bg: "#fee2e2", fg: "#b91c1c", stripe: "#dc2626", icon: "alert-circle-outline" },
 };
 
 const ACTIVE_STATUSES: OrderStatus[] = ["pending", "confirmed", "processing"];

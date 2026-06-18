@@ -22,7 +22,12 @@ import {
   type PackageScanAction,
 } from "@/lib/api/delivery-api";
 import { resolveScanAction } from "@/lib/api/scan-action";
-import { takePhoto, uploadDeliveryProof, uploadDeliverySignature } from "@/lib/upload";
+import {
+  takePhoto,
+  uploadDeliveryProof,
+  uploadDeliverySignature,
+  uploadDeliveryFailureEvidence,
+} from "@/lib/upload";
 import { SignatureCanvas } from "@/components/delivery/SignatureCanvas";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { typography, radii } from "@/lib/theme/tokens";
@@ -33,8 +38,11 @@ import {
   isValidOtp,
   legalActions,
   type DeliveryAction,
+  type DeliveryFailureContext,
   type ProofContext,
 } from "@/lib/delivery-workflow";
+import { ISSUE_REASONS, type IssueReason } from "@/lib/utils/delivery-format";
+import { notifyDeliveryFailure } from "@/lib/notifications/assignments";
 
 const ACTION_LABELS: Record<string, string> = {
   pickup: "Pick up",
@@ -74,6 +82,10 @@ export default function DeliveryScanScreen() {
   const [uploadingSignature, setUploadingSignature] = useState(false);
   // Customer-QR sub-scan: when true, the camera is shown waiting for a QR.
   const [awaitingCustomerQr, setAwaitingCustomerQr] = useState(false);
+  // Phase 14 — failure metadata for fail_delivery action.
+  const [failureReason, setFailureReason] = useState<IssueReason | "">("");
+  const [failureEvidenceUrl, setFailureEvidenceUrl] = useState<string | null>(null);
+  const [uploadingFailureEvidence, setUploadingFailureEvidence] = useState(false);
 
   const styles = makeStyles(colors, isDark);
 
@@ -82,6 +94,13 @@ export default function DeliveryScanScreen() {
     proofUrl,
     hasSignature: signatureUrl ? true : undefined,
     signatureUrl,
+  };
+
+  const failureCtx: DeliveryFailureContext = {
+    attemptCount: meta?.attempt_count ?? 0,
+    failureReason: failureReason || null,
+    failureEvidenceUrl,
+    reassignAvailable: false, // scan flow doesn't drive reassign UI
   };
 
   const refreshMeta = useCallback(async (pkgToken: string) => {
@@ -113,6 +132,8 @@ export default function DeliveryScanScreen() {
       setSignatureUrl(null);
       setOtp("");
       setAwaitingCustomerQr(false);
+      setFailureReason("");
+      setFailureEvidenceUrl(null);
     },
     [],
   );
@@ -175,6 +196,25 @@ export default function DeliveryScanScreen() {
     setProofUrl(uploaded.url);
   };
 
+  const handleCaptureFailureEvidence = async () => {
+    if (!token || !user?.id) return;
+    const pick = await takePhoto({ quality: 0.8 });
+    if (!pick || pick.canceled || !pick.assets?.[0]?.uri) return;
+    setUploadingFailureEvidence(true);
+    const uploaded = await uploadDeliveryFailureEvidence(
+      user.id,
+      token,
+      pick.assets[0].uri,
+      { reason: failureReason || undefined },
+    );
+    setUploadingFailureEvidence(false);
+    if (uploaded.error || !uploaded.url) {
+      // Soft fail — failure evidence is recommended, not required.
+      return;
+    }
+    setFailureEvidenceUrl(uploaded.url);
+  };
+
   const handleCaptureSignature = async (dataUrl: string) => {
     if (!token || !user?.id) return;
     setUploadingSignature(true);
@@ -197,11 +237,19 @@ export default function DeliveryScanScreen() {
         meta.package_status,
         meta.order_status,
         proofCtx,
+        failureCtx,
       );
       if (!legality.ok) {
         Alert.alert("Action blocked", legality.reason);
         return;
       }
+    }
+
+    // Phase 14 — fail_delivery requires a categorical reason client-side. The
+    // server may accept "other" as a fallback, but the rider must pick one.
+    if (action === "fail_delivery" && !failureReason) {
+      Alert.alert("Reason required", "Pick a failure reason before submitting.");
+      return;
     }
 
     if (action === "verify_otp") {
@@ -243,15 +291,29 @@ export default function DeliveryScanScreen() {
     }
 
     setActing(true);
-    const { bareAction, pickupDecision } = resolveScanAction(action);
+    const { bareAction, pickupDecision } = resolveScanAction(action, {
+      failureReason: failureReason || undefined,
+      failureEvidenceUrl,
+    });
 
     const res = await scanPackage(token, bareAction as PackageScanAction, {
       pickup_decision: pickupDecision,
       notes: notes.trim() || undefined,
+      failure_reason: failureReason || undefined,
+      failure_evidence_url: failureEvidenceUrl,
     });
     setActing(false);
 
     if (res.ok) {
+      if (action === "fail_delivery" && failureReason) {
+        // Best-effort buyer-side notification after a recorded failure.
+        notifyDeliveryFailure(
+          { id: meta?.order_id ?? token, order_number: meta?.order_number, status: "failed_attempt" },
+          failureReason,
+        ).catch(() => {
+          /* swallow — server is authority */
+        });
+      }
       Alert.alert("Success", `${ACTION_LABELS[action] ?? action} recorded.`, [
         {
           text: "OK",
@@ -260,6 +322,8 @@ export default function DeliveryScanScreen() {
             await refreshMeta(token);
             setScanning(true);
             setScannedOnce(false);
+            setFailureReason("");
+            setFailureEvidenceUrl(null);
           },
         },
       ]);
@@ -296,11 +360,13 @@ export default function DeliveryScanScreen() {
       )
     : [];
   const visibleActions = meta
-    ? legalActions(candidateActions, meta.package_status, meta.order_status, proofCtx)
+    ? legalActions(candidateActions, meta.package_status, meta.order_status, proofCtx, failureCtx)
     : [];
 
   const proofRequiredFor = candidateActions.find((a) => isProofRequired(a));
   const needsProof = Boolean(proofRequiredFor);
+  const needsFailureReason = candidateActions.includes("fail_delivery");
+  const attemptCountNow = meta?.attempt_count ?? 0;
 
   return (
     <View style={styles.container}>
@@ -375,6 +441,51 @@ export default function DeliveryScanScreen() {
                 >
                   <Text style={styles.proofBtnText}>
                     {uploadingSignature ? "Uploading…" : "✍️ Capture signature"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : null}
+
+          {needsFailureReason ? (
+            <View style={styles.failureCard}>
+              <Text style={styles.proofTitle}>
+                Failure reason (required)
+                {attemptCountNow > 0
+                  ? ` — attempt ${attemptCountNow + 1}`
+                  : ""}
+              </Text>
+              <View style={styles.chipRow}>
+                {ISSUE_REASONS.map((r) => (
+                  <TouchableOpacity
+                    key={r.value}
+                    style={[
+                      styles.failureChip,
+                      failureReason === r.value && styles.failureChipActive,
+                    ]}
+                    onPress={() => setFailureReason(r.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.failureChipText,
+                        failureReason === r.value && styles.failureChipTextActive,
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {failureEvidenceUrl ? (
+                <Text style={styles.proofOk}>✓ Evidence photo attached</Text>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.proofBtn, uploadingFailureEvidence && { opacity: 0.5 }]}
+                  onPress={handleCaptureFailureEvidence}
+                  disabled={uploadingFailureEvidence}
+                >
+                  <Text style={styles.proofBtnText}>
+                    {uploadingFailureEvidence ? "Uploading…" : "📸 Evidence photo (recommended)"}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -527,6 +638,40 @@ const makeStyles = (
     },
     proofBtnText: { color: colors.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
     signatureDivider: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
+    failureCard: {
+      backgroundColor: colors.card,
+      borderRadius: radii.lg,
+      borderWidth: 1,
+      borderColor: "#fca5a5",
+      padding: 14,
+      marginTop: 8,
+    },
+    chipRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginBottom: 10,
+    },
+    failureChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    failureChipActive: {
+      borderColor: "#dc2626",
+      backgroundColor: "#fef2f2",
+    },
+    failureChipText: {
+      fontSize: typography.fontSizes.xs,
+      color: colors.foreground,
+    },
+    failureChipTextActive: {
+      color: "#dc2626",
+      fontWeight: typography.fontWeights.semibold as any,
+    },
     blockedCard: {
       backgroundColor: colors.card,
       borderRadius: radii.lg,

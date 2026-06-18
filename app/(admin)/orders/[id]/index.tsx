@@ -184,6 +184,63 @@ export default function AdminOrderDetail() {
           <Text style={styles.noteText}>{order.notes}</Text>
         </Card>
       )}
+
+      {/* Phase 14 — failure history. Visible when any failure column is populated. */}
+      {(order.failure_reason || order.failed_at || order.attempt_count || order.failure_notes || order.failure_evidence_url) ? (
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>Failure history</Text>
+          {order.failure_reason ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Reason</Text>
+              <Text style={styles.summaryValue}>{order.failure_reason}</Text>
+            </View>
+          ) : null}
+          {order.failure_notes ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Notes</Text>
+              <Text style={[styles.summaryValue, { flex: 1, textAlign: "right" }]}>
+                {order.failure_notes}
+              </Text>
+            </View>
+          ) : null}
+          {order.failed_at ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Failed at</Text>
+              <Text style={styles.summaryValue}>
+                {new Date(order.failed_at).toLocaleString()}
+              </Text>
+            </View>
+          ) : null}
+          {order.attempt_count != null ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Attempts</Text>
+              <Text style={styles.summaryValue}>{order.attempt_count}</Text>
+            </View>
+          ) : null}
+          {order.reschedule_count != null ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Reschedules</Text>
+              <Text style={styles.summaryValue}>{order.reschedule_count}</Text>
+            </View>
+          ) : null}
+          {order.next_retry_at ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Next retry</Text>
+              <Text style={styles.summaryValue}>
+                {new Date(order.next_retry_at).toLocaleString()}
+              </Text>
+            </View>
+          ) : null}
+          {order.failure_evidence_url ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Evidence</Text>
+              <Text style={[styles.summaryValue, { flex: 1, textAlign: "right" }]} numberOfLines={1}>
+                {order.failure_evidence_url}
+              </Text>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
     </ScrollView>
   );
 }

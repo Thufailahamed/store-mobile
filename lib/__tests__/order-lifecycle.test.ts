@@ -40,10 +40,31 @@ describe("order-lifecycle", () => {
   it("covers seller map keys", () => {
     const statuses: OrderStatus[] = [
       "pending", "confirmed", "processing", "shipped", "out_for_delivery",
-      "delivered", "cancelled", "returned", "refunded",
+      "delivered", "cancelled", "returned", "refunded", "failed_attempt",
     ];
     for (const s of statuses) {
       expect(SELLER_NEXT_STATUS[s]).toBeDefined();
     }
+  });
+});
+
+describe("order-lifecycle — reschedule edge", () => {
+  // Phase 14 — reschedule (returned → out_for_delivery) is intentionally NOT
+  // a direct edge in ORDER_STATUS_EDGES. The rider-side recovery flow goes
+  // through `deliveryTransition("out_for_delivery", undefined, {next_retry_at})`
+  // (see `riderReschedule` in lib/api/index.ts), which the server-side RPC
+  // `rider_reschedule_delivery` enforces with attempt-count policy.
+  it("does NOT model reschedule as a direct lifecycle edge", () => {
+    expect(isValidOrderStatusTransition("returned", "out_for_delivery")).toBe(false);
+    expect(isValidOrderStatusTransition("out_for_delivery", "returned")).toBe(true);
+    expect(isValidOrderStatusTransition("cancelled", "out_for_delivery")).toBe(false);
+  });
+
+  it("seller next from `returned` is terminal (not out_for_delivery)", () => {
+    expect(getSellerNextStatus("returned")).toBeNull();
+  });
+
+  it("seller next from `failed_attempt` is terminal", () => {
+    expect(getSellerNextStatus("failed_attempt")).toBeNull();
   });
 });

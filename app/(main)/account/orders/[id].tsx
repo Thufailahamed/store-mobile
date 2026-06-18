@@ -31,6 +31,7 @@ const STATUS_TONE: Record<OrderStatus, { label: string; bg: string; fg: string; 
   cancelled: { label: "Cancelled", bg: colors.light.destructive + "20", fg: colors.light.destructive, copy: "This order was cancelled.", icon: "close-circle-outline" },
   returned: { label: "Returned", bg: colors.accent2.ochre + "20", fg: colors.accent2.ochre, copy: "Items were returned.", icon: "refresh-outline" },
   refunded: { label: "Refunded", bg: colors.accent2.ochre + "20", fg: colors.accent2.ochre, copy: "Refund issued to your original payment.", icon: "card-outline" },
+  failed_attempt: { label: "Delivery attempt failed", bg: "#fee2e2", fg: "#b91c1c", copy: "The rider attempted delivery but could not complete it. We'll reschedule.", icon: "alert-circle-outline" },
 };
 
 const STATUS_STEPS: OrderStatus[] = CUSTOMER_STATUS_STEPS;

@@ -4,8 +4,11 @@ import {
   deliveryVerify,
   hasStoreApi,
   storeApiFetch,
+  isReassignAvailable,
+  reassignDelivery,
 } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
+import type { IssueReason } from "@/lib/utils/delivery-format";
 import {
   mapProduct,
   mapProducts,
@@ -1957,6 +1960,8 @@ export {
   extractPackageToken,
   hasStoreApi,
   getDeliveryPipelineZones,
+  isReassignAvailable,
+  reassignDelivery,
 } from "./delivery-api";
 export type { ReturnPickup, PackageMeta, PackageScanAction, DeliveryPipelineZone } from "./delivery-api";
 
@@ -2044,9 +2049,20 @@ export async function riderVerifyDelivery(
   }
 }
 
-export async function riderReportIssue(orderId: string, reason: string, status: "returned" | "cancelled"): Promise<Result<void>> {
+export async function riderReportIssue(
+  orderId: string,
+  reason: string,
+  status: "returned" | "cancelled",
+  opts?: {
+    failure_reason?: IssueReason;
+    failure_notes?: string;
+    failure_evidence_url?: string | null;
+    attempt_count?: number;
+    next_retry_at?: string | null;
+  },
+): Promise<Result<void>> {
   if (hasStoreApi()) {
-    const res = await deliveryTransition(orderId, status, reason);
+    const res = await deliveryTransition(orderId, status, reason, opts);
     return res.ok ? ok(undefined) : fail(res.error);
   }
 
@@ -2055,11 +2071,43 @@ export async function riderReportIssue(orderId: string, reason: string, status: 
       p_order_id: orderId,
       p_status: status,
       p_reason: reason,
+      p_failure_reason: opts?.failure_reason ?? null,
+      p_failure_notes: opts?.failure_notes ?? null,
+      p_failure_evidence_url: opts?.failure_evidence_url ?? null,
+      p_attempt_count: opts?.attempt_count ?? null,
+      p_next_retry_at: opts?.next_retry_at ?? null,
     });
     if (error) return fail(error.message);
     return ok(undefined);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to report issue");
+  }
+}
+
+/**
+ * Move an order back to `out_for_delivery` from `returned` after a recoverable
+ * failure. Mobile-side only — the server (RLS/RPC) is the authority. The
+ * attempt cap is enforced by `isRetryAllowed` in `lib/delivery-workflow.ts`.
+ */
+export async function riderReschedule(
+  orderId: string,
+  opts?: { next_retry_at?: string },
+): Promise<Result<void>> {
+  if (hasStoreApi()) {
+    const res = await deliveryTransition(orderId, "out_for_delivery", undefined, {
+      next_retry_at: opts?.next_retry_at ?? null,
+    });
+    return res.ok ? ok(undefined) : fail(res.error);
+  }
+  try {
+    const { error } = await supabase.rpc("rider_reschedule_delivery", {
+      p_order_id: orderId,
+      p_next_retry_at: opts?.next_retry_at ?? null,
+    });
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to reschedule delivery");
   }
 }
 

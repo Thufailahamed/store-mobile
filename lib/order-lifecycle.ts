@@ -11,6 +11,7 @@ export const SELLER_NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   cancelled: null,
   returned: null,
   refunded: null,
+  failed_attempt: null,
 };
 
 /** Buyer-facing timeline — includes delivery stages. */

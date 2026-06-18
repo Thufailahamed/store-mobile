@@ -1,24 +1,40 @@
 import { describe, it, expect } from "vitest";
 import {
   DELIVERY_SEQUENCE,
+  MAX_DELIVERY_ATTEMPTS,
+  MAX_PICKUP_ATTEMPTS,
   OTP_LENGTH,
   OTP_REGEX,
   START_DELIVERY_FROM_STATUSES,
   TERMINAL_ORDER_STATUSES,
   VERIFY_FROM_STATUSES,
+  attemptCount,
+  canReassign,
+  canReschedule,
   canStartDelivery,
   canVerifyDelivery,
+  hasFailureEvidence,
   hasProof,
   hasSignature,
   isDeliveryTerminal,
+  isFailureEvidenceRequired,
   isProofRequired,
+  isRetryAllowed,
   isScanActionLegal,
   isSignatureRequired,
   isValidOtp,
   legalActions,
+  targetStatusForReason,
   type DeliveryAction,
+  type DeliveryFailureContext,
   type ProofContext,
 } from "@/lib/delivery-workflow";
+import {
+  ISSUE_REASONS,
+  ISSUE_REASON_BY_VALUE,
+  ISSUE_REASON_VALUES,
+  isRecoverableReason,
+} from "@/lib/utils/delivery-format";
 
 const proof: ProofContext = { hasProofPhoto: true, proofUrl: "https://x/y.jpg" };
 const noProof: ProofContext = { hasProofPhoto: false };
@@ -432,5 +448,274 @@ describe("delivery-workflow — signature context", () => {
 
     expect(legalActions(actions, "out_for_delivery", "out_for_delivery", partialCtx))
       .toEqual(["fail_delivery"]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Phase 14 — failure recovery policy                                 */
+/* ------------------------------------------------------------------ */
+
+describe("delivery-workflow — failure recovery policy", () => {
+  it("exposes the attempt caps as exported constants", () => {
+    expect(MAX_DELIVERY_ATTEMPTS).toBe(3);
+    expect(MAX_PICKUP_ATTEMPTS).toBe(2);
+  });
+
+  it("targetStatusForReason routes recoverable reasons to returned", () => {
+    expect(targetStatusForReason("customer_absent")).toBe("returned");
+    expect(targetStatusForReason("wrong_address")).toBe("returned");
+    expect(targetStatusForReason("no_safe_location")).toBe("returned");
+    expect(targetStatusForReason("vehicle_breakdown")).toBe("returned");
+    expect(targetStatusForReason("weather_hazard")).toBe("returned");
+    expect(targetStatusForReason("store_closed")).toBe("returned");
+  });
+
+  it("targetStatusForReason routes terminal / claim reasons to cancelled", () => {
+    expect(targetStatusForReason("refused")).toBe("cancelled");
+    expect(targetStatusForReason("damaged")).toBe("cancelled");
+    expect(targetStatusForReason("lost_in_transit")).toBe("cancelled");
+    expect(targetStatusForReason("security_incident")).toBe("cancelled");
+    expect(targetStatusForReason("other")).toBe("cancelled");
+  });
+
+  it("canReschedule allows recoverable reasons from returned", () => {
+    expect(canReschedule({ status: "returned" }, "wrong_address")).toBe(true);
+    expect(canReschedule({ status: "returned" }, "customer_absent")).toBe(true);
+    expect(canReschedule({ status: "out_for_delivery" }, "vehicle_breakdown")).toBe(true);
+  });
+
+  it("canReschedule blocks non-retry-eligible reasons", () => {
+    expect(canReschedule({ status: "returned" }, "refused")).toBe(false);
+    expect(canReschedule({ status: "returned" }, "damaged")).toBe(false);
+    expect(canReschedule({ status: "returned" }, "lost_in_transit")).toBe(false);
+    expect(canReschedule({ status: "returned" }, "security_incident")).toBe(false);
+    expect(canReschedule({ status: "returned" }, "other")).toBe(false);
+  });
+
+  it("canReschedule blocks when order is not in recoverable status", () => {
+    expect(canReschedule({ status: "delivered" }, "customer_absent")).toBe(false);
+    expect(canReschedule({ status: "shipped" }, "wrong_address")).toBe(false);
+    expect(canReschedule({ status: "cancelled" }, "customer_absent")).toBe(false);
+  });
+
+  it("canReschedule is false when reason is null", () => {
+    expect(canReschedule({ status: "returned" }, null)).toBe(false);
+  });
+
+  it("isRetryAllowed blocks when attemptCount reaches the cap", () => {
+    expect(isRetryAllowed({ status: "returned" }, { attemptCount: 0 })).toBe(true);
+    expect(isRetryAllowed({ status: "returned" }, { attemptCount: 2 })).toBe(true);
+    expect(isRetryAllowed({ status: "returned" }, { attemptCount: 3 })).toBe(false);
+    expect(isRetryAllowed({ status: "returned" }, { attemptCount: 5 })).toBe(false);
+  });
+
+  it("isRetryAllowed blocks when status is not recoverable", () => {
+    expect(isRetryAllowed({ status: "delivered" }, { attemptCount: 0 })).toBe(false);
+    expect(isRetryAllowed({ status: "shipped" }, { attemptCount: 0 })).toBe(false);
+    expect(isRetryAllowed({ status: "cancelled" }, { attemptCount: 0 })).toBe(false);
+  });
+
+  it("canReassign requires prior rider, recoverable status, attempts, and reassignAvailable", () => {
+    const baseCtx: DeliveryFailureContext = { attemptCount: 1, reassignAvailable: true };
+    expect(
+      canReassign({ status: "shipped", delivery_person_id: "r1" }, baseCtx),
+    ).toBe(true);
+    expect(
+      canReassign({ status: "out_for_delivery", delivery_person_id: "r1" }, baseCtx),
+    ).toBe(true);
+    expect(
+      canReassign({ status: "returned", delivery_person_id: "r1" }, baseCtx),
+    ).toBe(true);
+  });
+
+  it("canReassign blocks when reassignAvailable is missing or false", () => {
+    expect(
+      canReassign({ status: "shipped", delivery_person_id: "r1" }, { attemptCount: 1 }),
+    ).toBe(false);
+    expect(
+      canReassign(
+        { status: "shipped", delivery_person_id: "r1" },
+        { attemptCount: 1, reassignAvailable: false },
+      ),
+    ).toBe(false);
+  });
+
+  it("canReassign blocks when no prior rider is set", () => {
+    expect(
+      canReassign(
+        { status: "shipped", delivery_person_id: null },
+        { attemptCount: 1, reassignAvailable: true },
+      ),
+    ).toBe(false);
+  });
+
+  it("canReassign blocks for non-recoverable statuses", () => {
+    expect(
+      canReassign(
+        { status: "pending", delivery_person_id: "r1" },
+        { attemptCount: 1, reassignAvailable: true },
+      ),
+    ).toBe(false);
+    expect(
+      canReassign(
+        { status: "delivered", delivery_person_id: "r1" },
+        { attemptCount: 1, reassignAvailable: true },
+      ),
+    ).toBe(false);
+  });
+
+  it("canReassign blocks when no failure has been recorded", () => {
+    expect(
+      canReassign(
+        { status: "shipped", delivery_person_id: "r1" },
+        { attemptCount: 0, reassignAvailable: true },
+      ),
+    ).toBe(false);
+  });
+
+  it("isFailureEvidenceRequired only true for fail_delivery", () => {
+    expect(isFailureEvidenceRequired("fail_delivery")).toBe(true);
+    expect(isFailureEvidenceRequired("verify_otp")).toBe(false);
+    expect(isFailureEvidenceRequired("start_delivery")).toBe(false);
+    expect(isFailureEvidenceRequired("pickup")).toBe(false);
+    expect(isFailureEvidenceRequired("cancel")).toBe(false);
+  });
+
+  it("hasFailureEvidence requires a non-empty URL", () => {
+    expect(hasFailureEvidence({ attemptCount: 0, failureEvidenceUrl: "https://x/y.jpg" })).toBe(true);
+    expect(hasFailureEvidence({ attemptCount: 0, failureEvidenceUrl: null })).toBe(false);
+    expect(hasFailureEvidence({ attemptCount: 0, failureEvidenceUrl: "" })).toBe(false);
+    expect(hasFailureEvidence({ attemptCount: 0, failureEvidenceUrl: "   " })).toBe(false);
+    expect(hasFailureEvidence({ attemptCount: 0 })).toBe(false);
+  });
+
+  it("isScanActionLegal blocks fail_delivery after MAX_DELIVERY_ATTEMPTS", () => {
+    const ctx: ProofContext = { hasProofPhoto: true, proofUrl: "u" };
+    const res = isScanActionLegal(
+      "fail_delivery",
+      "out_for_delivery",
+      "out_for_delivery",
+      ctx,
+      { attemptCount: MAX_DELIVERY_ATTEMPTS },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toMatch(/Maximum delivery attempts/i);
+  });
+
+  it("isScanActionLegal allows fail_delivery below the attempt cap", () => {
+    const ctx: ProofContext = { hasProofPhoto: true, proofUrl: "u" };
+    const res = isScanActionLegal(
+      "fail_delivery",
+      "out_for_delivery",
+      "out_for_delivery",
+      ctx,
+      { attemptCount: MAX_DELIVERY_ATTEMPTS - 1 },
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("isScanActionLegal allows fail_delivery without an evidence photo (soft requirement)", () => {
+    const noProof: ProofContext = { hasProofPhoto: false };
+    const res = isScanActionLegal(
+      "fail_delivery",
+      "out_for_delivery",
+      "out_for_delivery",
+      noProof,
+      { attemptCount: 0 },
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("isScanActionLegal priority: terminal > max-attempts > start > verify > proof", () => {
+    const ctx: ProofContext = { hasProofPhoto: true, proofUrl: "u" };
+    // Order is delivered AND over the attempt cap — terminal wins.
+    const res = isScanActionLegal(
+      "fail_delivery",
+      "x",
+      "delivered",
+      ctx,
+      { attemptCount: MAX_DELIVERY_ATTEMPTS },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toMatch(/already delivered/);
+  });
+
+  it("isScanActionLegal keeps the existing verify_otp behavior with default failure ctx", () => {
+    // Backward-compat: callers that don't pass a failure ctx should see no
+    // change in behavior for non-fail_delivery actions.
+    const proof: ProofContext = { hasProofPhoto: true, proofUrl: "u" };
+    expect(
+      isScanActionLegal("verify_otp", "out_for_delivery", "out_for_delivery", proof),
+    ).toEqual({ ok: true });
+    expect(
+      isScanActionLegal(
+        "verify_otp",
+        "out_for_delivery",
+        "shipped",
+        proof,
+        { attemptCount: MAX_DELIVERY_ATTEMPTS },
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("legalActions forwards the failure context to isScanActionLegal", () => {
+    const actions: DeliveryAction[] = ["fail_delivery", "start_delivery"];
+    const proof: ProofContext = { hasProofPhoto: true, proofUrl: "u" };
+    const under: DeliveryAction[] = legalActions(
+      actions,
+      "out_for_delivery",
+      "out_for_delivery",
+      proof,
+      { attemptCount: 1 },
+    );
+    expect(under).toContain("fail_delivery");
+
+    const over: DeliveryAction[] = legalActions(
+      actions,
+      "out_for_delivery",
+      "out_for_delivery",
+      proof,
+      { attemptCount: MAX_DELIVERY_ATTEMPTS },
+    );
+    expect(over).not.toContain("fail_delivery");
+  });
+
+  it("attemptCount prefers the attempt_count column over the notes marker", () => {
+    expect(attemptCount({ attempt_count: 5, notes: "[attempts:2]" })).toBe(5);
+  });
+
+  it("attemptCount falls back to the legacy notes marker", () => {
+    expect(attemptCount({ notes: "[attempts:2] — buyer absent" })).toBe(2);
+    expect(attemptCount({ notes: "no marker here" })).toBe(0);
+    expect(attemptCount({})).toBe(0);
+    expect(attemptCount({ notes: null })).toBe(0);
+  });
+
+  it("attemptCount returns 0 for null attempt_count and falls through", () => {
+    expect(attemptCount({ attempt_count: null, notes: "x" })).toBe(0);
+    expect(attemptCount({ attempt_count: 0, notes: "x" })).toBe(0);
+  });
+
+  it("ISSUE_REASONS covers every IssueReason value with no duplicates", () => {
+    expect(ISSUE_REASONS.length).toBe(ISSUE_REASON_VALUES.length);
+    const seen = new Set<string>();
+    for (const r of ISSUE_REASONS) {
+      expect(seen.has(r.value)).toBe(false);
+      seen.add(r.value);
+      expect(r.label.length).toBeGreaterThan(0);
+      expect(["returned", "cancelled"]).toContain(r.targetStatus);
+    }
+    for (const v of ISSUE_REASON_VALUES) {
+      expect(ISSUE_REASON_BY_VALUE[v].value).toBe(v);
+    }
+  });
+
+  it("isRecoverableReason matches the severity field", () => {
+    expect(isRecoverableReason("customer_absent")).toBe(true);
+    expect(isRecoverableReason("wrong_address")).toBe(true);
+    expect(isRecoverableReason("refused")).toBe(false);
+    expect(isRecoverableReason("damaged")).toBe(false);
+    expect(isRecoverableReason(null)).toBe(false);
+    expect(isRecoverableReason(undefined)).toBe(false);
   });
 });

@@ -9,7 +9,9 @@ import {
   Alert,
   Linking,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
@@ -18,28 +20,54 @@ import {
   riderStartDelivery,
   riderVerifyDelivery,
   riderReportIssue,
+  riderReschedule,
   deliveryProofUpload,
   getOrderPackage,
   hasStoreApi,
+  isReassignAvailable,
+  reassignDelivery,
 } from "@/lib/api";
-import { takePhoto, uploadDeliveryProof, uploadDeliverySignature } from "@/lib/upload";
+import {
+  takePhoto,
+  uploadDeliveryProof,
+  uploadDeliverySignature,
+  uploadDeliveryFailureEvidence,
+} from "@/lib/upload";
 import { SignatureCanvas } from "@/components/delivery/SignatureCanvas";
+import {
+  FailureEvidenceSheet,
+  type FailureEvidencePayload,
+} from "@/components/delivery/FailureEvidenceSheet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import {
+  MAX_DELIVERY_ATTEMPTS,
+  attemptCount,
+  canReassign,
+  canReschedule,
   canStartDelivery,
   canVerifyDelivery,
   isDeliveryTerminal,
+  isRetryAllowed,
   isValidOtp,
+  targetStatusForReason,
+  type DeliveryFailureContext,
 } from "@/lib/delivery-workflow";
 import {
   formatPrice,
   formatDate,
   mapsUrl,
   STATUS_COLORS,
-  ISSUE_REASONS,
 } from "@/lib/utils/delivery-format";
 import { formatWarehouseAddress } from "@/lib/utils/warehouse-address";
+import { notifyDeliveryFailure } from "@/lib/notifications/assignments";
 import type { Order } from "@/lib/types";
+import {
+  ISSUE_REASON_BY_VALUE,
+  type IssueReason,
+} from "@/lib/utils/delivery-format";
+
+const ISSUE_REASON_LABEL_LOOKUP = (r: IssueReason) =>
+  ISSUE_REASON_BY_VALUE[r].label;
 
 export default function DeliveryDetail() {
   const router = useRouter();
@@ -50,10 +78,14 @@ export default function DeliveryDetail() {
   const [otp, setOtp] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [starting, setStarting] = useState(false);
+  // Phase 14 — failure reporting now goes through FailureEvidenceSheet.
   const [showReport, setShowReport] = useState(false);
-  const [issueReason, setIssueReason] = useState("");
-  const [issueNote, setIssueNote] = useState("");
   const [reporting, setReporting] = useState(false);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [reassignAvailable, setReassignAvailable] = useState<boolean | null>(null);
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [reassignRiderId, setReassignRiderId] = useState("");
+  const [reassigning, setReassigning] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
   // Proof-of-delivery photo state. Required before handleVerify.
   const [proofUrl, setProofUrl] = useState<string | null>(null);
@@ -78,14 +110,28 @@ export default function DeliveryDetail() {
     setSignatureUrl(null);
     setOtp("");
     setShowReport(false);
-    setIssueReason("");
-    setIssueNote("");
     (async () => {
       const res = await getOrderById(id);
       if (res.ok && res.data) setOrder(res.data);
       setLoading(false);
     })();
   }, [id]);
+
+  // Probe /api/delivery/reassign support once when the screen mounts so the
+  // "Reassign" button is only rendered when the server can accept the call.
+  useEffect(() => {
+    let cancelled = false;
+    isReassignAvailable()
+      .then((ok: boolean) => {
+        if (!cancelled) setReassignAvailable(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setReassignAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleStartDelivery = async () => {
     if (!order) return;
@@ -190,24 +236,108 @@ export default function DeliveryDetail() {
     }
   };
 
-  const handleReportIssue = async () => {
-    if (!order || !issueReason) return;
+  const handleReportFailure = async (payload: FailureEvidencePayload) => {
+    if (!order) return;
     setReporting(true);
-    const status = issueReason === "customer_absent" ? "returned" : "cancelled";
-    const reasonText = ISSUE_REASONS.find((r) => r.value === issueReason)?.label ?? issueReason;
-    const fullReason = issueNote.trim() ? `${reasonText} — ${issueNote.trim()}` : reasonText;
-    const res = await riderReportIssue(order.id, fullReason, status);
+    const status = targetStatusForReason(payload.reason);
+    const reasonText = ISSUE_REASON_LABEL_LOOKUP(payload.reason);
+    const notesWithReason = payload.notes
+      ? `${reasonText} — ${payload.notes}`
+      : reasonText;
+    const attempts = attemptCount(order) + 1;
+
+    // The sheet captures the photo as a local URI only; the canonical
+    // upload happens here so the storage path encodes the order id.
+    let evidenceUrl: string | null = null;
+    if (payload.evidenceLocalUri && user?.id) {
+      const uploaded = await uploadDeliveryFailureEvidence(
+        user.id,
+        order.id,
+        payload.evidenceLocalUri,
+        { reason: payload.reason },
+      );
+      if (!uploaded.error && uploaded.url) evidenceUrl = uploaded.url;
+    }
+
+    const res = await riderReportIssue(
+      order.id,
+      notesWithReason,
+      status,
+      {
+        failure_reason: payload.reason,
+        failure_notes: payload.notes || undefined,
+        failure_evidence_url: evidenceUrl,
+        attempt_count: attempts,
+      },
+    );
     setReporting(false);
     if (res.ok) {
-      setOrder({ ...order, status, notes: fullReason });
+      // Real buyer notification now fires — only after server success.
+      await notifyDeliveryFailure(order, payload.reason).catch(() => {
+        // Swallow: the order already transitioned; notification is best-effort.
+      });
+      await refetchOrder();
       setShowReport(false);
-      setIssueReason("");
-      setIssueNote("");
       Alert.alert("Issue reported", reasonText);
     } else {
       Alert.alert("Error", res.error);
     }
   };
+
+  const handleReschedule = async () => {
+    if (!order) return;
+    setRescheduling(true);
+    const res = await riderReschedule(order.id);
+    setRescheduling(false);
+    if (res.ok) {
+      await refetchOrder();
+      Alert.alert(
+        "Rescheduled",
+        "Order moved back to out_for_delivery for another attempt.",
+      );
+    } else {
+      Alert.alert("Error", res.error);
+    }
+  };
+
+  const openReassignModal = () => {
+    if (!order) return;
+    setReassignRiderId("");
+    setReassignModalOpen(true);
+  };
+
+  const closeReassignModal = () => {
+    if (reassigning) return;
+    setReassignModalOpen(false);
+    setReassignRiderId("");
+  };
+
+  const submitReassign = async () => {
+    if (!order) return;
+    const toRiderId = reassignRiderId.trim();
+    if (!toRiderId) {
+      Alert.alert("Rider id required", "Enter the rider id to hand off to.");
+      return;
+    }
+    setReassigning(true);
+    const res = await reassignDelivery(order.id, toRiderId);
+    setReassigning(false);
+    if (res.ok) {
+      setReassignModalOpen(false);
+      setReassignRiderId("");
+      await refetchOrder();
+      Alert.alert("Reassigned", `Package handed off to ${toRiderId}.`);
+    } else if (res.error === "reassign-not-supported") {
+      Alert.alert(
+        "Reassign unavailable",
+        "The server doesn't expose the reassign endpoint yet. Contact admin.",
+      );
+    } else {
+      Alert.alert("Error", res.error);
+    }
+  };
+
+  const handleReassign = openReassignModal;
 
   const handleOpenScan = async () => {
     if (!order || !hasStoreApi()) {
@@ -276,6 +406,22 @@ export default function DeliveryDetail() {
   const isCompleted = isDeliveryTerminal(order.status);
   const otpValid = isValidOtp(otp);
   const canSubmitVerify = canVerify && Boolean(proofUrl) && otpValid;
+  // Phase 14 — failure-recovery context. The order's most recent failure_reason
+  // (categorical) is the source of truth for what the rider can do next.
+  const orderAttempts = attemptCount(order);
+  const failureCtx: DeliveryFailureContext = {
+    attemptCount: orderAttempts,
+    failureReason: order.failure_reason ?? null,
+    failureEvidenceUrl: order.failure_evidence_url ?? null,
+    previousRiderId: order.handoff_rider_id ?? null,
+    lastFailedAt: order.failed_at ?? null,
+    reassignAvailable: reassignAvailable === true,
+  };
+  const lastReason = order.failure_reason ?? null;
+  const canRescheduleNow = canReschedule(order, lastReason) && isRetryAllowed(order, failureCtx);
+  const canReassignNow = canReassign(order, failureCtx);
+  const attemptsRemaining = Math.max(0, MAX_DELIVERY_ATTEMPTS - orderAttempts);
+  const showRecoveryBanner = order.status === "returned" && orderAttempts > 0;
 
   return (
     <KeyboardAvoidingView
@@ -505,49 +651,66 @@ export default function DeliveryDetail() {
           {!isCompleted && (
             <TouchableOpacity
               style={styles.reportButton}
-              onPress={() => setShowReport(!showReport)}
+              onPress={() => setShowReport(true)}
             >
               <Text style={styles.reportButtonText}>⚠️ Report Issue</Text>
             </TouchableOpacity>
           )}
+
+          {/* Reschedule — only for recoverable reasons under the attempt cap. */}
+          {canRescheduleNow && (
+            <TouchableOpacity
+              style={[styles.rescheduleButton, rescheduling && { opacity: 0.6 }]}
+              onPress={handleReschedule}
+              disabled={rescheduling}
+            >
+              <Text style={styles.rescheduleButtonText}>
+                {rescheduling ? "Rescheduling…" : `🔁 Reschedule (${attemptsRemaining} attempt${attemptsRemaining === 1 ? "" : "s"} left)`}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Reassign — hidden until isReassignAvailable() returns true. */}
+          {canReassignNow && reassignAvailable === true && (
+            <TouchableOpacity style={styles.reassignButton} onPress={handleReassign}>
+              <Text style={styles.reassignButtonText}>🤝 Hand off to another rider</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Report Issue Form */}
-        {showReport && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Report Issue</Text>
-            {ISSUE_REASONS.map((r) => (
-              <TouchableOpacity
-                key={r.value}
-                style={[styles.issueOption, issueReason === r.value && styles.issueOptionActive]}
-                onPress={() => setIssueReason(r.value)}
-              >
-                <Text style={[styles.issueOptionText, issueReason === r.value && styles.issueOptionTextActive]}>
-                  {r.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            <TextInput
-              style={[styles.input, { marginTop: 10 }]}
-              value={issueNote}
-              onChangeText={setIssueNote}
-              placeholder="Additional notes (optional)"
-              placeholderTextColor={colors.light.mutedForeground}
-            />
-            <View style={styles.issueActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowReport(false)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitBtn, (!issueReason || reporting) && { opacity: 0.5 }]}
-                onPress={handleReportIssue}
-                disabled={!issueReason || reporting}
-              >
-                <Text style={styles.submitBtnText}>{reporting ? "Submitting..." : "Submit"}</Text>
-              </TouchableOpacity>
-            </View>
+        {/* Phase 14 — recovery banner when the order is recoverable. */}
+        {showRecoveryBanner && (
+          <View
+            style={[
+              styles.recoveryBanner,
+              !canRescheduleNow && styles.recoveryBannerWarn,
+            ]}
+          >
+            <Text style={styles.recoveryBannerTitle}>
+              {canRescheduleNow
+                ? `Recoverable — attempt ${orderAttempts} of ${MAX_DELIVERY_ATTEMPTS}`
+                : "Max delivery attempts reached"}
+            </Text>
+            <Text style={styles.recoveryBannerBody}>
+              {lastReason
+                ? `Last reason: ${ISSUE_REASON_BY_VALUE[lastReason].label}.`
+                : "Previous attempt failed."}
+              {!canRescheduleNow
+                ? " Escalate to admin before scheduling another attempt."
+                : ""}
+            </Text>
           </View>
         )}
+
+        {/* Failure-evidence sheet — controlled, single source of truth for
+            the reason picker + notes + photo + optional signature. */}
+        <FailureEvidenceSheet
+          visible={showReport}
+          onClose={() => setShowReport(false)}
+          onSubmit={handleReportFailure}
+          mode="delivery"
+          submitLabel={reporting ? "Submitting…" : "Submit failure"}
+        />
 
         {/* Delivery Proof */}
         {order.delivered_at && (
@@ -579,6 +742,54 @@ export default function DeliveryDetail() {
         onEmpty={() => Alert.alert("Signature empty", "Please sign before saving.")}
         descriptionText="Customer signature"
       />
+
+      <Modal
+        visible={reassignModalOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={closeReassignModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reassign rider</Text>
+            <Text style={styles.modalHint}>
+              Enter the rider id to hand off {order.order_number} to.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={reassignRiderId}
+              onChangeText={setReassignRiderId}
+              placeholder="rider-uuid"
+              placeholderTextColor={colors.light.mutedForeground}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!reassigning}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalBtn, styles.modalBtnGhost]}
+                onPress={closeReassignModal}
+                disabled={reassigning}
+              >
+                <Text style={styles.modalBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modalBtn,
+                  styles.modalBtnPrimary,
+                  (reassigning || !reassignRiderId.trim()) && { opacity: 0.5 },
+                ]}
+                onPress={submitReassign}
+                disabled={reassigning || !reassignRiderId.trim()}
+              >
+                <Text style={styles.modalBtnPrimaryText}>
+                  {reassigning ? "Reassigning…" : "Reassign"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -903,6 +1114,58 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold as any,
   },
 
+  rescheduleButton: {
+    padding: 14,
+    borderRadius: radii.lg,
+    backgroundColor: "#f0f1e8",
+    borderWidth: 1,
+    borderColor: colors.light.primary,
+    alignItems: "center",
+  },
+  rescheduleButtonText: {
+    color: colors.light.primary,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold as any,
+  },
+
+  reassignButton: {
+    padding: 14,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+    alignItems: "center",
+  },
+  reassignButtonText: {
+    color: colors.light.foreground,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  recoveryBanner: {
+    backgroundColor: "#fef9c3",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "#facc15",
+    padding: 12,
+    marginBottom: 16,
+  },
+  recoveryBannerWarn: {
+    backgroundColor: "#fee2e2",
+    borderColor: "#fca5a5",
+  },
+  recoveryBannerTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold as any,
+    color: "#92400e",
+  },
+  recoveryBannerBody: {
+    fontSize: typography.fontSizes.xs,
+    color: "#78350f",
+    marginTop: 4,
+    lineHeight: 18,
+  },
+
   issueOption: {
     padding: 12,
     borderRadius: radii.lg,
@@ -975,5 +1238,69 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium as any,
     color: colors.light.foreground,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    backgroundColor: colors.light.background,
+    borderRadius: radii.lg,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+  },
+  modalTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold as any,
+    color: colors.light.foreground,
+  },
+  modalHint: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.md,
+    padding: 12,
+    fontSize: typography.fontSizes.base,
+    color: colors.light.foreground,
+    fontFamily: "monospace",
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  modalBtn: {
+    flex: 1,
+    padding: 12,
+    borderRadius: radii.md,
+    alignItems: "center",
+  },
+  modalBtnGhost: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+  },
+  modalBtnGhostText: {
+    color: colors.light.foreground,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium as any,
+  },
+  modalBtnPrimary: {
+    backgroundColor: colors.light.primary,
+  },
+  modalBtnPrimaryText: {
+    color: colors.light.primaryForeground,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
   },
 });
