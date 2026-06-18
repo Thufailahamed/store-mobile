@@ -72,7 +72,7 @@ export default function DriverDetailScreen() {
 
   const adjustCapacity = async (delta: number) => {
     if (!member) return;
-    const next = Math.max(0, Math.min(1000, capacity + delta));
+    const next = Math.max(1, Math.min(1000, capacity + delta));
     setSaving(true);
     const res = await updateDriverMember(member.id, { capacity_max: next });
     setSaving(false);
@@ -248,12 +248,16 @@ export default function DriverDetailScreen() {
 
         <Text style={styles.section}>Capacity</Text>
         <View style={styles.stepper}>
-          <TouchableOpacity style={styles.stepBtn} onPress={() => adjustCapacity(-1)} disabled={saving}>
-            <Ionicons name="remove" size={20} color={colors.light.foreground} />
+          <TouchableOpacity
+            style={[styles.stepBtn, capacity <= 1 && styles.stepBtnDisabled]}
+            onPress={() => adjustCapacity(-1)}
+            disabled={saving || capacity <= 1}
+          >
+            <Ionicons name="remove" size={20} color={capacity <= 1 ? colors.light.mutedForeground : colors.light.foreground} />
           </TouchableOpacity>
           <Text style={styles.stepValue}>{capacity}</Text>
-          <TouchableOpacity style={styles.stepBtn} onPress={() => adjustCapacity(1)} disabled={saving}>
-            <Ionicons name="add" size={20} color={colors.light.foreground} />
+          <TouchableOpacity style={styles.stepBtn} onPress={() => adjustCapacity(1)} disabled={saving || capacity >= 1000}>
+            <Ionicons name="add" size={20} color={capacity >= 1000 ? colors.light.mutedForeground : colors.light.foreground} />
           </TouchableOpacity>
         </View>
 
@@ -352,6 +356,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.muted,
     alignItems: "center",
     justifyContent: "center",
+  },
+  stepBtnDisabled: {
+    opacity: 0.5,
   },
   stepValue: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold, minWidth: 40, textAlign: "center" },
   actionBtn: {

@@ -59,7 +59,10 @@ export default function AdminCategories() {
   });
 
   const flat = useMemo(
-    () => flattenCategoryTree(buildCategoryTree(q.data ?? [])),
+    () =>
+      flattenCategoryTree(
+        buildCategoryTree((q.data ?? []) as Parameters<typeof buildCategoryTree>[0]) as Parameters<typeof flattenCategoryTree>[0],
+      ) as Array<AdminCategory & { depth: number }>,
     [q.data],
   );
 
@@ -154,7 +157,7 @@ function CategoryRow({
 }) {
   return (
     <Pressable onLongPress={onEdit}>
-      <Card style={[styles.card, { marginLeft: item.depth * 16 }]}>
+      <Card style={[styles.card, { marginLeft: item.depth * 16 }] as never}>
         <View style={styles.row}>
           <Text style={styles.icon}>{item.icon || "📁"}</Text>
           <View style={{ flex: 1 }}>

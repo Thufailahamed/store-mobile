@@ -44,6 +44,19 @@ function acquireRiderSubscription(riderId: string, listener: RiderListener) {
         { event: "*", schema: "public", table: "return_pickups", filter: `delivery_person_id=eq.${riderId}` },
         () => notifyRiderListeners(riderId),
       )
+      // Membership deactivation: when the rider's row flips to is_active=false
+      // we kick the listener so screens can re-fetch and render the
+      // "account suspended" panel added in (delivery)/_layout.tsx.
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "delivery_company_members", filter: `user_id=eq.${riderId}` },
+        (payload) => {
+          const next = payload.new as { is_active?: boolean } | null;
+          if (next && next.is_active === false) {
+            notifyRiderListeners(riderId);
+          }
+        },
+      )
       .subscribe();
 
     entry = { channel, listeners };

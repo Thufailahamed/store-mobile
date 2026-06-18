@@ -103,10 +103,16 @@ export async function deleteCategoryWithOptions(
   allCategories: Pick<Category, "id" | "parent_id">[],
   impact?: CategoryDeleteImpact,
 ): Promise<Result<void>> {
-  const resolvedImpact = impact ?? (await getCategoryDeleteImpact(id));
-  if (!resolvedImpact.ok) return resolvedImpact;
+  let resolvedImpact: CategoryDeleteImpact;
+  if (impact) {
+    resolvedImpact = impact;
+  } else {
+    const fetched = await getCategoryDeleteImpact(id);
+    if (!fetched.ok) return fetched;
+    resolvedImpact = fetched.data;
+  }
 
-  const validationError = validateCategoryDelete(id, resolvedImpact.data, options, allCategories);
+  const validationError = validateCategoryDelete(id, resolvedImpact, options, allCategories);
   if (validationError) return fail(validationError);
 
   try {

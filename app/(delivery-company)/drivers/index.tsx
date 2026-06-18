@@ -23,6 +23,7 @@ import {
   getDeliveryCompanyWarehouses,
   hasStoreApi,
   inviteDriver,
+  revokeInvite,
   updateDriverMember,
   type DcDriverInvite,
   type DcDriverMember,
@@ -221,9 +222,35 @@ export default function CompanyDriversScreen() {
         <View style={styles.invitesBox}>
           <Text style={styles.invitesTitle}>Pending invites</Text>
           {invites.slice(0, 3).map((inv) => (
-            <Text key={inv.id} style={styles.inviteEmail}>
-              {inv.email} · expires {new Date(inv.expires_at).toLocaleDateString()}
-            </Text>
+            <View key={inv.id} style={styles.inviteRow}>
+              <Text style={styles.inviteEmail}>
+                {inv.email} · expires {new Date(inv.expires_at).toLocaleDateString()}
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Revoke invite for ${inv.email}`}
+                onPress={() =>
+                  Alert.alert(
+                    "Revoke invite",
+                    `Revoke ${inv.email}? They will no longer be able to accept.`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Revoke",
+                        style: "destructive",
+                        onPress: async () => {
+                          const res = await revokeInvite(inv.id);
+                          if (!res.ok) Alert.alert("Failed", res.error);
+                          else load();
+                        },
+                      },
+                    ],
+                  )
+                }
+              >
+                <Text style={styles.inviteRevokeText}>Revoke</Text>
+              </TouchableOpacity>
+            </View>
           ))}
         </View>
       ) : null}
@@ -503,7 +530,20 @@ const styles = StyleSheet.create({
     borderColor: "#fde68a",
   },
   invitesTitle: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold, color: "#a16207", marginBottom: 6 },
-  inviteEmail: { fontSize: typography.fontSizes.sm, color: colors.light.foreground, marginTop: 2 },
+  inviteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  inviteEmail: { fontSize: typography.fontSizes.sm, color: colors.light.foreground, flex: 1, marginRight: 12 },
+  inviteRevokeText: {
+    fontSize: typography.fontSizes.xs,
+    color: "#dc2626",
+    fontWeight: typography.fontWeights.semibold,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
   card: {
     flexDirection: "row",
     gap: 12,

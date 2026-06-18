@@ -1,14 +1,17 @@
-import React, { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
-import { colors, typography } from "@/lib/theme/tokens";
+import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
+import { supabase } from "@/lib/supabase/client";
+import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function DeliveryLayout() {
   const { user, role, roleLoading, loading } = useAuth();
   const router = useRouter();
+  const [memberActive, setMemberActive] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (loading || roleLoading || !user?.id) return;
@@ -20,10 +23,51 @@ export default function DeliveryLayout() {
     });
   }, [user?.id, role, roleLoading, loading, router]);
 
+  // Initial fetch + realtime refresh of the rider's membership status.
+  // When the company deactivates the driver, the realtime channel added
+  // in useRiderRealtime.ts fires onUpdate() which re-pulls this row.
+  const refreshMember = React.useCallback(() => {
+    if (!user?.id) return;
+    supabase
+      .from("delivery_company_members")
+      .select("is_active")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && typeof (data as { is_active?: boolean }).is_active === "boolean") {
+          setMemberActive((data as { is_active: boolean }).is_active);
+        }
+      });
+  }, [user?.id]);
+
+  useEffect(() => {
+    refreshMember();
+  }, [refreshMember]);
+
+  useRiderRealtime(user?.id, refreshMember);
+
   if (role === "delivery_company" && (loading || roleLoading)) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.light.background }}>
         <ActivityIndicator size="large" color={colors.light.primary} />
+      </View>
+    );
+  }
+
+  if (memberActive === false) {
+    return (
+      <View style={styles.suspendedContainer}>
+        <View style={styles.suspendedCard}>
+          <Ionicons name="lock-closed-outline" size={48} color="#dc2626" />
+          <Text style={styles.suspendedTitle}>Account paused</Text>
+          <Text style={styles.suspendedBody}>
+            Your delivery company has paused your account. New orders are paused and any open routes have been released back to the queue. Contact your dispatcher to resume deliveries.
+          </Text>
+          <TouchableOpacity style={styles.suspendedBtn} onPress={refreshMember}>
+            <Ionicons name="refresh-outline" size={18} color="#fff" />
+            <Text style={styles.suspendedBtnText}>Refresh status</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -106,3 +150,46 @@ export default function DeliveryLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  suspendedContainer: {
+    flex: 1,
+    backgroundColor: colors.light.background,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  suspendedCard: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  suspendedTitle: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.light.foreground,
+  },
+  suspendedBody: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  suspendedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.light.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: radii.lg,
+    marginTop: 8,
+  },
+  suspendedBtnText: {
+    color: "#fff",
+    fontWeight: typography.fontWeights.semibold,
+  },
+});

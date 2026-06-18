@@ -34,7 +34,8 @@ describe("buildCategoryTree", () => {
 
 describe("flattenCategoryTree", () => {
   it("preserves depth", () => {
-    const flat = flattenCategoryTree(buildCategoryTree(categories));
+    const tree = buildCategoryTree(categories as Parameters<typeof buildCategoryTree>[0]);
+    const flat = flattenCategoryTree(tree as Parameters<typeof flattenCategoryTree>[0]);
     expect(flat.map((n) => n.depth)).toEqual([0, 1, 2, 0]);
   });
 });

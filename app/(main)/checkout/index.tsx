@@ -12,6 +12,7 @@ import {
   type AddressFormPayload,
 } from "@/components/address/AddressFormSheet";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
+import { FREE_SHIPPING_THRESHOLD } from "@/lib/utils";
 import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";

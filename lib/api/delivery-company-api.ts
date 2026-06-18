@@ -501,6 +501,14 @@ export async function acceptDriverInvite(token: string): Promise<DcApiResult<{ m
   });
 }
 
+export async function revokeInvite(inviteId: string): Promise<DcApiResult<{ ok: boolean; already_revoked?: boolean }>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
+  return storeApiFetch(`/api/delivery-company/invites/${inviteId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getDeliveryCompanyReturns(opts?: {
   status?: string;
 }): Promise<DcApiResult<{ pickups: DcReturnPickup[] }>> {

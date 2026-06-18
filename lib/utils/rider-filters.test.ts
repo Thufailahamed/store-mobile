@@ -15,14 +15,14 @@ function mkOrder(overrides: Partial<Order> = {}): Order {
     status: overrides.status ?? "processing",
     placed_at: overrides.placed_at ?? new Date().toISOString(),
     total: overrides.total ?? 1000,
-    shipping_address: overrides.shipping_address ?? { full_name: "Alice", city: "Colombo" },
+    shipping_address: overrides.shipping_address ?? { full_name: "Alice", phone: "+1000000000", line1: "1 St", city: "Colombo", state: "WP", postal_code: "00100", country: "LK" },
     payment_method: overrides.payment_method ?? "card",
     payment_status: overrides.payment_status ?? "paid",
   } as Order;
 }
 
 describe("matchesSearch", () => {
-  const o = mkOrder({ order_number: "ORD-99", shipping_address: { full_name: "Bob Smith", city: "Kandy" } });
+  const o = mkOrder({ order_number: "ORD-99", shipping_address: { full_name: "Bob Smith", phone: "+1000000000", line1: "1 St", city: "Kandy", state: "CP", postal_code: "20000", country: "LK" } });
 
   it("empty query matches anything", () => {
     expect(matchesSearch(o, "")).toBe(true);
