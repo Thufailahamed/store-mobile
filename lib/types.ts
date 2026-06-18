@@ -151,15 +151,25 @@ export interface Review {
   id: string;
   user_id: string;
   product_id: string;
+  order_item_id?: string | null;
   rating: number;
   title?: string;
   content?: string;
   photos: string[];
+  videos?: string[];
   is_verified_purchase: boolean;
   helpful_count: number;
   status: ApprovalStatus;
   created_at: string;
   user?: Pick<User, "id" | "full_name" | "avatar_url">;
+}
+
+export interface EligibleReviewOrder {
+  order_item_id: string;
+  order_id: string;
+  order_number: string;
+  delivered_at: string | null;
+  quantity: number;
 }
 
 export interface CartItem {

@@ -139,10 +139,18 @@ export default function ReviewsScreen() {
                       </Badge>
                     </View>
                     <Body muted size="xs">{review.variant} · {new Date(review.date).toLocaleDateString()}</Body>
-                    <View style={styles.stars}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Ionicons key={star} name={star <= review.rating ? "star" : "star-outline"} size={12} color={colors.accent2.ochre} />
-                      ))}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={styles.stars}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons key={star} name={star <= review.rating ? "star" : "star-outline"} size={12} color={colors.accent2.ochre} />
+                        ))}
+                      </View>
+                      {review.isVerifiedPurchase && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 2, backgroundColor: `${colors.olive[600]}10`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
+                          <Ionicons name="checkmark-circle" size={10} color={colors.olive[600]} />
+                          <Label style={{ color: colors.olive[700], fontSize: 9, fontFamily: fontFamilies.sans.medium }}>Verified</Label>
+                        </View>
+                      )}
                     </View>
                     {review.title ? <Body style={styles.reviewTitleText}>{review.title}</Body> : null}
                     {review.body ? <Body muted numberOfLines={3}>{review.body}</Body> : null}

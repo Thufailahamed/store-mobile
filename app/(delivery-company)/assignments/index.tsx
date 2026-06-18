@@ -13,17 +13,28 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useAuth } from "@/lib/supabase/auth";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   autoAssignOrders,
   getAssignmentCandidates,
+  getDeliveryCompanyMe,
   getDeliveryCompanyPackages,
   hasStoreApi,
   manualAssignOrder,
   type AssignmentPolicy,
   type DcAssignCandidate,
+  type DcRoutingContext,
 } from "@/lib/api/delivery-company-api";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import {
+  ASSIGNMENT_HARD_CONSTRAINTS,
+  formatAssignmentSkipReason,
+  formatDistanceMeters,
+} from "@/lib/warehouse-routing";
+import { buildPendingQueueForLeg } from "@/lib/delivery-assignment-queues";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { formatRelative } from "@/lib/utils/delivery-format";
 
 type Leg = "pickup" | "last_mile" | "delivery";
 
@@ -46,11 +57,13 @@ const POLICIES: { id: AssignmentPolicy | undefined; label: string }[] = [
 
 export default function CompanyAssignmentsScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [leg, setLeg] = useState<Leg>("pickup");
+  const [leg, setLeg] = useState<Leg>("last_mile");
   const [policy, setPolicy] = useState<AssignmentPolicy | undefined>(undefined);
   const [pending, setPending] = useState<
     Array<{
@@ -60,6 +73,7 @@ export default function CompanyAssignmentsScreen() {
       shipping_address?: Record<string, string> | null;
       _warehouse?: { id: string; name: string } | null;
       _received_at?: string | null;
+      _queue_kind?: "pickup" | "hub_last_mile";
     }>
   >([]);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +83,8 @@ export default function CompanyAssignmentsScreen() {
     warehouse_id?: string;
   } | null>(null);
   const [candidates, setCandidates] = useState<DcAssignCandidate[]>([]);
+  const [routingContext, setRoutingContext] = useState<DcRoutingContext | null>(null);
+  const [showConstraints, setShowConstraints] = useState(false);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [manualAssigning, setManualAssigning] = useState(false);
 
@@ -86,37 +102,47 @@ export default function CompanyAssignmentsScreen() {
       setRefreshing(false);
       return;
     }
-    const seen = new Set<string>();
-    const list: typeof pending = [];
-    for (const i of res.data.inventory) {
-      if (i.status === "received" && i.order && !seen.has(i.order_id)) {
-        seen.add(i.order_id);
-        list.push({
-          ...i.order,
-          _warehouse: i.warehouse,
-          _received_at: i.received_at,
-        });
-      }
-    }
-    list.sort((a, b) => {
-      const ta = a._received_at ? new Date(a._received_at).getTime() : Number.POSITIVE_INFINITY;
-      const tb = b._received_at ? new Date(b._received_at).getTime() : Number.POSITIVE_INFINITY;
-      return ta - tb;
-    });
+    const me = await getDeliveryCompanyMe();
+    if (me.ok) setCompanyId(me.data.company.id);
+    const list = buildPendingQueueForLeg(
+      leg,
+      res.data.pickup_pending ?? [],
+      res.data.inventory,
+    ).map((o) => ({
+      id: o.id,
+      order_number: o.order_number ?? o.id.slice(0, 8),
+      total: o.total ?? 0,
+      shipping_address: o.shipping_address,
+      _warehouse: o._warehouse,
+      _received_at: o._received_at,
+      _queue_kind: o._queue_kind,
+    }));
     setPending(list);
     setError(null);
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [leg]);
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [leg]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  useCompanyRealtime(companyId, user?.id, load);
+
+  const routingDegraded = useMemo(
+    () => pending.some((o) => leg !== "pickup" && o._warehouse && !o._warehouse.name),
+    [pending, leg],
+  );
+
   const stuckCount = useMemo(() => {
+    if (leg === "pickup") return 0;
     const now = Date.now();
     return pending.filter((o) => o._received_at && now - new Date(o._received_at).getTime() > STUCK_MS).length;
-  }, [pending]);
+  }, [pending, leg]);
 
   const toggle = (id: string) => {
     setSelected((s) => {
@@ -146,8 +172,17 @@ export default function CompanyAssignmentsScreen() {
       return;
     }
     const assigned = (res.data.assignments as unknown[] | undefined)?.length ?? 0;
-    const skipped = res.data.skipped?.length ?? 0;
-    Alert.alert("Done", `${assigned} assigned · ${skipped} skipped`);
+    const skipped = res.data.skipped ?? [];
+    const scoring = res.data.scoring;
+    const skipDetail =
+      skipped.length > 0
+        ? `\n\nSkipped:\n${skipped
+            .slice(0, 5)
+            .map((s) => `• ${formatAssignmentSkipReason(s.reason)}`)
+            .join("\n")}`
+        : "";
+    const scoringLine = scoring ? `\nScoring: ${scoring.method} (${scoring.leg})` : "";
+    Alert.alert("Done", `${assigned} assigned · ${skipped.length} skipped${scoringLine}${skipDetail}`);
     setSelected(new Set());
     load();
   };
@@ -159,6 +194,7 @@ export default function CompanyAssignmentsScreen() {
       warehouse_id: order._warehouse?.id,
     });
     setCandidates([]);
+    setRoutingContext(null);
     setLoadingCandidates(true);
     const res = await getAssignmentCandidates(order.id, leg);
     setLoadingCandidates(false);
@@ -167,7 +203,8 @@ export default function CompanyAssignmentsScreen() {
       setManualOrder(null);
       return;
     }
-    setCandidates(res.data.candidates.filter((c) => c.eligible));
+    setRoutingContext(res.data.routing_context ?? null);
+    setCandidates(res.data.candidates ?? []);
   };
 
   const confirmManual = async (driverId: string) => {
@@ -191,13 +228,38 @@ export default function CompanyAssignmentsScreen() {
     <View style={styles.container}>
       <ScreenHeader title="Assignments" showBack={false} />
       <View style={styles.summary}>
-        <Text style={styles.summaryCount}>{pending.length} pending</Text>
-        {stuckCount > 0 ? (
+        <Text style={styles.summaryCount}>
+          {pending.length} {leg === "pickup" ? "store pickups" : "hub packages"}
+        </Text>
+        <TouchableOpacity onPress={() => setShowConstraints((v) => !v)} hitSlop={8}>
+          <Ionicons name="information-circle-outline" size={20} color={colors.light.primary} />
+        </TouchableOpacity>
+        {stuckCount > 0 && leg !== "pickup" ? (
           <View style={styles.stuckBadge}>
             <Ionicons name="alert-circle" size={14} color="#ea580c" />
             <Text style={styles.stuckText}>{stuckCount} waiting 2h+</Text>
           </View>
         ) : null}
+      </View>
+
+      {showConstraints ? (
+        <View style={styles.constraintsBox}>
+          <Text style={styles.constraintsTitle}>Assignment rules (enforced server-side)</Text>
+          {ASSIGNMENT_HARD_CONSTRAINTS.map((c) => (
+            <Text key={c} style={styles.constraintItem}>• {c}</Text>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.routingBanner}>
+        <Ionicons name="navigate-outline" size={16} color={colors.light.primary} />
+        <Text style={styles.routingBannerText}>
+          {leg === "pickup"
+            ? "Pickup routing resolves the nearest active hub to each store."
+            : "Last-mile routing uses the hub where inventory was received (FIFO)."}
+          {" "}Scoring: haversine with Maps distance fallback.
+          {routingDegraded ? " Some hubs may lack coordinates — assignments can be degraded." : ""}
+        </Text>
       </View>
 
       <View style={styles.legRow}>
@@ -268,13 +330,21 @@ export default function CompanyAssignmentsScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="checkmark-circle-outline" size={40} color={colors.light.mutedForeground} />
-              <Text style={styles.emptyTitle}>All caught up</Text>
-              <Text style={styles.emptySub}>No packages waiting for driver assignment.</Text>
+              <Text style={styles.emptyTitle}>
+                {leg === "pickup" ? "No store pickups waiting" : "No hub packages waiting"}
+              </Text>
+              <Text style={styles.emptySub}>
+                {leg === "pickup"
+                  ? "Shipped orders without a pickup driver appear here."
+                  : "Hub-received packages without a last-mile driver appear here (FIFO)."}
+              </Text>
             </View>
           }
           renderItem={({ item }) => {
             const isStuck =
-              item._received_at && Date.now() - new Date(item._received_at).getTime() > STUCK_MS;
+              leg !== "pickup" &&
+              item._received_at &&
+              Date.now() - new Date(item._received_at).getTime() > STUCK_MS;
             const checked = selected.has(item.id);
             return (
               <View style={[styles.card, isStuck && styles.cardStuck]}>
@@ -287,7 +357,13 @@ export default function CompanyAssignmentsScreen() {
                   <View style={styles.cardBody}>
                     <Text style={styles.orderNum}>#{item.order_number}</Text>
                     <Text style={styles.meta}>
-                      {item._warehouse?.name ?? "Hub"} · Rs. {item.total.toLocaleString("en-LK")}
+                      {leg === "pickup"
+                        ? "Awaiting pickup driver"
+                        : `Hub: ${item._warehouse?.name ?? "—"}${
+                            item._received_at ? ` · FIFO ${formatRelative(item._received_at)}` : ""
+                          }`}
+                      {" · Rs. "}
+                      {item.total.toLocaleString("en-LK")}
                     </Text>
                     {item.shipping_address?.full_name ? (
                       <Text style={styles.customer}>{item.shipping_address.full_name}</Text>
@@ -309,29 +385,49 @@ export default function CompanyAssignmentsScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Assign #{manualOrder?.order_number}</Text>
             <Text style={styles.modalSub}>Pick a driver for {leg.replace(/_/g, " ")}</Text>
+            {routingContext?.warehouse ? (
+              <Text style={styles.routingCtx}>
+                Hub: {routingContext.warehouse.name ?? "—"}
+                {routingContext.warehouse.geocoded ? " · geocoded" : " · no coordinates"}
+              </Text>
+            ) : null}
+            {routingContext ? (
+              <Text style={styles.routingCtxMeta}>
+                Resolution: {routingContext.warehouse_resolution.replace(/_/g, " ")} · {routingContext.scoring_method.replace(/_/g, " ")}
+              </Text>
+            ) : null}
             {loadingCandidates ? (
               <ActivityIndicator style={{ marginVertical: 24 }} color={colors.light.primary} />
             ) : candidates.length === 0 ? (
               <Text style={styles.modalEmpty}>No eligible drivers found.</Text>
             ) : (
               <ScrollView style={{ maxHeight: 360 }}>
-                {candidates.map((c) => (
+                {candidates.map((c) => {
+                  const canAssign = c.eligible && c.leg_eligible !== false;
+                  return (
                   <TouchableOpacity
                     key={c.user_id}
-                    style={styles.candidateRow}
-                    onPress={() => confirmManual(c.user_id)}
-                    disabled={manualAssigning}
+                    style={[styles.candidateRow, !canAssign && styles.candidateRowDisabled]}
+                    onPress={() => canAssign && confirmManual(c.user_id)}
+                    disabled={manualAssigning || !canAssign}
                   >
                     <View style={styles.candidateBody}>
                       <Text style={styles.candidateName}>{c.full_name}</Text>
                       <Text style={styles.candidateMeta}>
                         Load {c.active_load}/{c.capacity_max} · score {Math.round(c.score)}
+                        {formatDistanceMeters(c.distance_meters)
+                          ? ` · ${formatDistanceMeters(c.distance_meters)}`
+                          : ""}
+                        {canAssign ? " · ELIGIBLE" : " · not eligible"}
                       </Text>
                       {c.reason ? <Text style={styles.candidateReason}>{c.reason}</Text> : null}
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
+                    {canAssign ? (
+                      <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
+                    ) : null}
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
               </ScrollView>
             )}
             <TouchableOpacity style={styles.modalClose} onPress={() => setManualOrder(null)}>
@@ -354,7 +450,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  summaryCount: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
+  summaryCount: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground, flex: 1 },
+  constraintsBox: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 12,
+    backgroundColor: "#f8fafc",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+  },
+  constraintsTitle: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold, marginBottom: 6 },
+  constraintItem: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 4, lineHeight: 16 },
   stuckBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
   stuckText: { fontSize: typography.fontSizes.xs, color: "#ea580c", fontWeight: typography.fontWeights.medium },
   legRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 10 },
@@ -435,7 +542,22 @@ const styles = StyleSheet.create({
     maxHeight: "80%",
   },
   modalTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
-  modalSub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginBottom: 12 },
+  modalSub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginBottom: 4 },
+  routingCtx: { fontSize: typography.fontSizes.xs, color: colors.light.primary, marginBottom: 4 },
+  routingCtxMeta: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 12 },
+  routingBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 10,
+    backgroundColor: "#eff6ff",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  routingBannerText: { flex: 1, fontSize: typography.fontSizes.xs, color: colors.light.primary, lineHeight: 18 },
   modalEmpty: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, paddingVertical: 24, textAlign: "center" },
   candidateRow: {
     flexDirection: "row",
@@ -445,6 +567,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.light.border,
     gap: 8,
   },
+  candidateRowDisabled: { opacity: 0.55 },
   candidateBody: { flex: 1 },
   candidateName: { fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
   candidateMeta: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 2 },

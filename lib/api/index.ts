@@ -26,6 +26,7 @@ import type {
   Product, ProductVariant, ProductImage, Brand, Store, Category,
   Review, Order, OrderItem, Address, Banner, Notification, User,
   Testimonial, Tenet, HeroMeta, ApprovalStatus, HomepageSection,
+  EligibleReviewOrder,
 } from "@/lib/types";
 import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
 import {
@@ -234,6 +235,26 @@ export async function getReviews(productId: string, limit = 20): Promise<Result<
     return ok((data as Review[]) ?? []);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch reviews");
+  }
+}
+
+/**
+ * Eligible delivered order_items for the current user + product.
+ * Server-authoritative — used by the review form to populate the
+ * order selector. The matching insert trigger will set
+ * `is_verified_purchase = true` iff a chosen row is delivered and
+ * owned by the inserter. Never returns rows the caller can't link.
+ */
+export async function getEligibleReviewOrders(productId: string): Promise<Result<EligibleReviewOrder[]>> {
+  try {
+    if (!productId) return ok([]);
+    const { data, error } = await supabase.rpc("fn_eligible_review_orders", {
+      p_product_id: productId,
+    });
+    if (error) return fail(error.message);
+    return ok(((data as EligibleReviewOrder[] | null) ?? []).filter((r) => !!r.order_item_id));
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch eligible orders");
   }
 }
 
@@ -823,7 +844,7 @@ export async function getOrderById(orderId: string): Promise<Result<Order | null
   try {
     const { data, error } = await supabase
       .from("orders")
-      .select("*, items:order_items(*, product:products(id, name, images:product_images(url, is_primary, position))), address:addresses(*)")
+      .select("*, items:order_items(*, product:products(id, name, images:product_images(url, is_primary, position))), address:addresses(*), pickup_warehouse:warehouses!orders_pickup_warehouse_id_fkey(id, name, address)")
       .eq("id", orderId)
       .single();
     if (error) return fail(error.message);
@@ -1935,8 +1956,9 @@ export {
   verifyPackageDelivery,
   extractPackageToken,
   hasStoreApi,
+  getDeliveryPipelineZones,
 } from "./delivery-api";
-export type { ReturnPickup, PackageMeta, PackageScanAction } from "./delivery-api";
+export type { ReturnPickup, PackageMeta, PackageScanAction, DeliveryPipelineZone } from "./delivery-api";
 
 export async function getRiderOrders(riderId: string): Promise<Result<Order[]>> {
   try {
@@ -1957,7 +1979,9 @@ export async function getRiderPickupRuns(riderId: string): Promise<Result<Order[
   try {
     const { data, error } = await supabase
       .from("orders")
-      .select("*, items:order_items(*), address:addresses(*)")
+      .select(
+        "*, items:order_items(*), address:addresses(*), pickup_warehouse:warehouses!orders_pickup_warehouse_id_fkey(id, name, address)",
+      )
       .eq("pickup_driver_id", riderId)
       .order("placed_at", { ascending: false });
     if (error) return fail(error.message);

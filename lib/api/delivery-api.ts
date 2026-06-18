@@ -193,6 +193,29 @@ export async function verifyPackageDelivery(
   });
 }
 
+export interface DeliveryPipelineZone {
+  id: string;
+  company_id: string | null;
+  name: string;
+  city: string;
+  area?: string | null;
+  cluster?: string | null;
+  postal_codes: string[];
+  is_active: boolean;
+  hub?: { id: string; name: string } | null;
+}
+
+export async function getDeliveryPipelineZones(opts?: {
+  company_id?: string;
+  include_inactive?: boolean;
+}): Promise<DeliveryApiResult<{ zones: DeliveryPipelineZone[] }>> {
+  const params = new URLSearchParams();
+  if (opts?.company_id) params.set("company_id", opts.company_id);
+  if (opts?.include_inactive) params.set("include_inactive", "true");
+  const q = params.toString();
+  return storeApiFetch(`/api/delivery-pipeline/zones${q ? `?${q}` : ""}`);
+}
+
 export function hasStoreApi(): boolean {
   return Boolean(STORE_API_URL);
 }

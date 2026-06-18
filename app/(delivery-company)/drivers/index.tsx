@@ -19,17 +19,24 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   getDeliveryCompanyDrivers,
+  getDeliveryCompanyMe,
+  getDeliveryCompanyWarehouses,
   hasStoreApi,
   inviteDriver,
   updateDriverMember,
   type DcDriverInvite,
   type DcDriverMember,
+  type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
+import { useAuth } from "@/lib/supabase/auth";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function CompanyDriversScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [members, setMembers] = useState<DcDriverMember[]>([]);
   const [invites, setInvites] = useState<DcDriverInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +44,14 @@ export default function CompanyDriversScreen() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkEmails, setBulkEmails] = useState("");
+  const [bulkPostals, setBulkPostals] = useState("");
+  const [bulkInviting, setBulkInviting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteType, setInviteType] = useState<"pickup" | "last_mile" | "both">("both");
+  const [inviteWarehouseId, setInviteWarehouseId] = useState<string | null>(null);
+  const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [inviting, setInviting] = useState(false);
 
   const load = useCallback(async () => {
@@ -52,6 +66,14 @@ export default function CompanyDriversScreen() {
       setMembers(res.data.members.filter((m) => m.company_role === "driver"));
       setInvites((res.data.invites as DcDriverInvite[]) ?? []);
     } else setError(res.error);
+    const meRes = await getDeliveryCompanyMe();
+    if (meRes.ok) setCompanyId(meRes.data.company.id);
+    const whRes = await getDeliveryCompanyWarehouses();
+    if (whRes.ok) {
+      const active = whRes.data.warehouses.filter((w) => w.is_active !== false);
+      setWarehouses(active);
+      setInviteWarehouseId((prev) => prev ?? active[0]?.id ?? null);
+    }
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -59,6 +81,8 @@ export default function CompanyDriversScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useCompanyRealtime(companyId, user?.id, load);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,8 +102,16 @@ export default function CompanyDriversScreen() {
       Alert.alert("Invalid email", "Enter a valid email address.");
       return;
     }
+    if ((inviteType === "pickup" || inviteType === "both") && !inviteWarehouseId) {
+      Alert.alert("Home hub required", "Pickup drivers must be based at a warehouse.");
+      return;
+    }
     setInviting(true);
-    const res = await inviteDriver({ email, driver_type: "both" });
+    const res = await inviteDriver({
+      email,
+      driver_type: inviteType,
+      home_warehouse_id: inviteWarehouseId ?? undefined,
+    });
     setInviting(false);
     if (!res.ok) {
       Alert.alert("Invite failed", res.error);
@@ -89,6 +121,49 @@ export default function CompanyDriversScreen() {
     setInviteEmail("");
     setInviteOpen(false);
     load();
+  };
+
+  const parseBulkEmails = (raw: string) =>
+    raw
+      .split(/[\s,;\n]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => /.+@.+\..+/.test(e));
+
+  const handleBulkInvite = async () => {
+    const list = parseBulkEmails(bulkEmails);
+    if (list.length === 0) {
+      Alert.alert("No valid emails", "Paste one or more email addresses.");
+      return;
+    }
+    if ((inviteType === "pickup" || inviteType === "both") && !inviteWarehouseId) {
+      Alert.alert("Home hub required", "Pickup drivers must be based at a warehouse.");
+      return;
+    }
+    setBulkInviting(true);
+    let ok = 0;
+    let fail = 0;
+    const postalList = bulkPostals
+      .split(/[\s,;\n]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    for (const email of list.slice(0, 50)) {
+      const res = await inviteDriver({
+        email,
+        driver_type: inviteType,
+        home_warehouse_id: inviteWarehouseId ?? undefined,
+        serviceable_postal_codes: postalList.length ? postalList : undefined,
+      });
+      if (res.ok) ok++;
+      else fail++;
+    }
+    setBulkInviting(false);
+    Alert.alert("Bulk invite complete", `${ok} sent${fail > 0 ? `, ${fail} failed` : ""}`);
+    if (ok > 0) {
+      setBulkEmails("");
+      setBulkPostals("");
+      setBulkOpen(false);
+      load();
+    }
   };
 
   const toggleActive = (member: DcDriverMember) => {
@@ -117,9 +192,14 @@ export default function CompanyDriversScreen() {
         title="Drivers"
         showBack={false}
         right={
-          <TouchableOpacity onPress={() => setInviteOpen(true)} style={styles.addBtn}>
-            <Ionicons name="person-add-outline" size={22} color={colors.light.primary} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity onPress={() => setBulkOpen(true)} style={styles.addBtn}>
+              <Ionicons name="people-outline" size={22} color={colors.light.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setInviteOpen(true)} style={styles.addBtn}>
+              <Ionicons name="person-add-outline" size={22} color={colors.light.primary} />
+            </TouchableOpacity>
+          </View>
         }
       />
       <Text style={styles.subtitle}>
@@ -197,6 +277,38 @@ export default function CompanyDriversScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
+            <Text style={styles.modalLabel}>Driver type</Text>
+            <View style={styles.typeRow}>
+              {(["pickup", "last_mile", "both"] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typeChip, inviteType === t && styles.typeChipActive]}
+                  onPress={() => setInviteType(t)}
+                >
+                  <Text style={[styles.typeChipText, inviteType === t && styles.typeChipTextActive]}>
+                    {t.replace(/_/g, " ")}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {(inviteType === "pickup" || inviteType === "both") && warehouses.length > 0 ? (
+              <>
+                <Text style={styles.modalLabel}>Home warehouse</Text>
+                <View style={styles.typeRow}>
+                  {warehouses.map((w) => (
+                    <TouchableOpacity
+                      key={w.id}
+                      style={[styles.typeChip, inviteWarehouseId === w.id && styles.typeChipActive]}
+                      onPress={() => setInviteWarehouseId(w.id)}
+                    >
+                      <Text style={[styles.typeChipText, inviteWarehouseId === w.id && styles.typeChipTextActive]}>
+                        {w.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            ) : null}
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => setInviteOpen(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -206,6 +318,78 @@ export default function CompanyDriversScreen() {
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <Text style={styles.modalSaveText}>Send invite</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={bulkOpen} animationType="slide" transparent onRequestClose={() => setBulkOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Bulk invite</Text>
+            <Text style={styles.modalSub}>Paste up to 50 emails (comma, space, or newline separated).</Text>
+            <TextInput
+              style={[styles.modalInput, { minHeight: 120, textAlignVertical: "top" }]}
+              placeholder={"a@x.com, b@x.com\nc@x.com"}
+              placeholderTextColor={colors.light.mutedForeground}
+              value={bulkEmails}
+              onChangeText={setBulkEmails}
+              multiline
+              autoCapitalize="none"
+            />
+            <Text style={styles.modalLabel}>{parseBulkEmails(bulkEmails).length} valid emails</Text>
+            <Text style={styles.modalLabel}>Driver type</Text>
+            <View style={styles.typeRow}>
+              {(["pickup", "last_mile", "both"] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typeChip, inviteType === t && styles.typeChipActive]}
+                  onPress={() => setInviteType(t)}
+                >
+                  <Text style={[styles.typeChipText, inviteType === t && styles.typeChipTextActive]}>
+                    {t.replace(/_/g, " ")}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {(inviteType === "pickup" || inviteType === "both") && warehouses.length > 0 ? (
+              <>
+                <Text style={styles.modalLabel}>Home warehouse</Text>
+                <View style={styles.typeRow}>
+                  {warehouses.map((w) => (
+                    <TouchableOpacity
+                      key={w.id}
+                      style={[styles.typeChip, inviteWarehouseId === w.id && styles.typeChipActive]}
+                      onPress={() => setInviteWarehouseId(w.id)}
+                    >
+                      <Text style={[styles.typeChipText, inviteWarehouseId === w.id && styles.typeChipTextActive]}>
+                        {w.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            ) : null}
+            <Text style={styles.modalLabel}>Serviceable postal codes (optional)</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="00500, 00501"
+              placeholderTextColor={colors.light.mutedForeground}
+              value={bulkPostals}
+              onChangeText={setBulkPostals}
+              autoCapitalize="characters"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setBulkOpen(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSave} onPress={handleBulkInvite} disabled={bulkInviting}>
+                {bulkInviting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Send invites</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -255,6 +439,11 @@ function DriverRow({
           {member.home_warehouse?.name ? (
             <View style={styles.tag}>
               <Text style={styles.tagText}>{member.home_warehouse.name}</Text>
+            </View>
+          ) : null}
+          {(member.serviceable_postal_codes?.length ?? 0) > 0 ? (
+            <View style={styles.tag}>
+              <Text style={styles.tagText}>{member.serviceable_postal_codes!.length} zone(s)</Text>
             </View>
           ) : null}
         </View>
@@ -370,6 +559,17 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
   modalSub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4, marginBottom: 16 },
+  modalLabel: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 6, marginTop: 8 },
+  typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
+  typeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.lg,
+    backgroundColor: colors.light.muted,
+  },
+  typeChipActive: { backgroundColor: colors.light.primary },
+  typeChipText: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, textTransform: "capitalize" },
+  typeChipTextActive: { color: "#fff", fontWeight: typography.fontWeights.semibold },
   modalInput: {
     borderWidth: 1,
     borderColor: colors.light.border,

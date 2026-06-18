@@ -106,6 +106,7 @@ export type MobileReview = {
   helpful: number;
   photos: number;
   status: "published" | "pending";
+  isVerifiedPurchase?: boolean;
 };
 
 export type ReturnStatus = "requested" | "approved" | "rejected" | "received" | "refunded";
@@ -208,5 +209,6 @@ export function mapReview(row: Review & { product?: { name?: string | null; slug
     helpful: row.helpful_count ?? 0,
     photos: row.photos?.length ?? 0,
     status: row.status === "approved" ? "published" : "pending",
+    isVerifiedPurchase: row.is_verified_purchase,
   };
 }

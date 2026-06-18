@@ -9,21 +9,36 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
+  getDeliveryCompanyMe,
   getDeliveryCompanyWarehouses,
   hasStoreApi,
+  lookupDeliveryCompanyOrder,
   receiveAtWarehouse,
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
+import { useAuth } from "@/lib/supabase/auth";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import { canReceiveAtWarehouse } from "@/lib/warehouse-routing";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+
+function warehouseCapacityLabel(w: DcWarehouse): string {
+  const inv = w.inventory_count ?? 0;
+  const cap = w.capacity_max;
+  if (cap == null) return `${inv} in hub`;
+  return `${inv}/${cap}`;
+}
 
 export default function WarehouseReceiveScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ warehouseId?: string; orderId?: string }>();
+  const { user } = useAuth();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
-  const [warehouseId, setWarehouseId] = useState<string | null>(null);
-  const [orderId, setOrderId] = useState("");
+  const [warehouseId, setWarehouseId] = useState<string | null>(params.warehouseId ?? null);
+  const [orderRef, setOrderRef] = useState(params.orderId ?? "");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,8 +51,10 @@ export default function WarehouseReceiveScreen() {
     if (res.ok) {
       const active = res.data.warehouses.filter((w) => w.is_active !== false);
       setWarehouses(active);
-      setWarehouseId((prev) => prev ?? active[0]?.id ?? null);
+      setWarehouseId((prev) => prev ?? params.warehouseId ?? active[0]?.id ?? null);
     }
+    const meRes = await getDeliveryCompanyMe();
+    if (meRes.ok) setCompanyId(meRes.data.company.id);
     setLoading(false);
   }, []);
 
@@ -45,25 +62,44 @@ export default function WarehouseReceiveScreen() {
     load();
   }, [load]);
 
+  useCompanyRealtime(companyId, user?.id, load);
+
+  const selectedWarehouse = warehouses.find((w) => w.id === warehouseId) ?? null;
+  const receiveBlocked =
+    selectedWarehouse &&
+    !canReceiveAtWarehouse(
+      selectedWarehouse.inventory_count ?? 0,
+      selectedWarehouse.capacity_max,
+    ).ok;
+
   const submit = async () => {
     if (!warehouseId) {
       Alert.alert("Select hub", "Choose a warehouse to receive into.");
       return;
     }
-    const trimmed = orderId.trim();
+    const trimmed = orderRef.trim();
     if (!trimmed) {
-      Alert.alert("Order required", "Enter the order ID to receive.");
+      Alert.alert("Order required", "Enter an order number or ID to receive.");
       return;
     }
     setSubmitting(true);
-    const res = await receiveAtWarehouse(warehouseId, trimmed);
+    const lookup = await lookupDeliveryCompanyOrder(trimmed);
+    if (!lookup.ok) {
+      setSubmitting(false);
+      Alert.alert("Order lookup failed", lookup.error);
+      return;
+    }
+    const res = await receiveAtWarehouse(warehouseId, lookup.data.order_id);
     setSubmitting(false);
     if (!res.ok) {
       Alert.alert("Receive failed", res.error);
       return;
     }
-    Alert.alert("Received", "Package recorded at the hub.", [
-      { text: "Receive another", onPress: () => setOrderId("") },
+    const lastMileNote = res.data.last_mile_error
+      ? `\n\nAuto last-mile: ${res.data.last_mile_error.replace(/_/g, " ")}`
+      : "";
+    Alert.alert("Received", `Package recorded at hub (#${lookup.data.order_number}).${lastMileNote}`, [
+      { text: "Receive another", onPress: () => setOrderRef("") },
       { text: "Done", onPress: () => router.back() },
     ]);
   };
@@ -81,7 +117,7 @@ export default function WarehouseReceiveScreen() {
       <ScreenHeader title="Receive at hub" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.help}>
-          Record a package arrival using the order ID. This uses the delivery company receive API
+          Record a package arrival using the order number or ID. This uses the delivery company receive API
           (not the driver scan flow).
         </Text>
 
@@ -91,34 +127,49 @@ export default function WarehouseReceiveScreen() {
           <>
             <Text style={styles.label}>Warehouse</Text>
             <View style={styles.chips}>
-              {warehouses.map((w) => (
-                <TouchableOpacity
-                  key={w.id}
-                  style={[styles.chip, warehouseId === w.id && styles.chipActive]}
-                  onPress={() => setWarehouseId(w.id)}
-                >
-                  <Text style={[styles.chipText, warehouseId === w.id && styles.chipTextActive]}>
-                    {w.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {warehouses.map((w) => {
+                const full =
+                  w.capacity_max != null &&
+                  (w.inventory_count ?? 0) >= w.capacity_max;
+                return (
+                  <TouchableOpacity
+                    key={w.id}
+                    style={[
+                      styles.chip,
+                      warehouseId === w.id && styles.chipActive,
+                      full && styles.chipFull,
+                    ]}
+                    onPress={() => setWarehouseId(w.id)}
+                  >
+                    <Text style={[styles.chipText, warehouseId === w.id && styles.chipTextActive]}>
+                      {w.name} ({warehouseCapacityLabel(w)})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            <Text style={styles.label}>Order ID</Text>
+            {receiveBlocked ? (
+              <Text style={styles.capacityWarn}>
+                Selected hub is at capacity. Dispatch packages before receiving more.
+              </Text>
+            ) : null}
+
+            <Text style={styles.label}>Order number or ID</Text>
             <TextInput
               style={styles.input}
-              value={orderId}
-              onChangeText={setOrderId}
-              placeholder="Paste order UUID"
+              value={orderRef}
+              onChangeText={setOrderRef}
+              placeholder="ORD-12345 or paste UUID"
               placeholderTextColor={colors.light.mutedForeground}
               autoCapitalize="none"
               autoCorrect={false}
             />
 
             <TouchableOpacity
-              style={[styles.submit, submitting && styles.disabled]}
+              style={[styles.submit, (submitting || receiveBlocked) && styles.disabled]}
               onPress={submit}
-              disabled={submitting}
+              disabled={submitting || Boolean(receiveBlocked)}
             >
               {submitting ? (
                 <ActivityIndicator color="#fff" />
@@ -162,6 +213,8 @@ const styles = StyleSheet.create({
     borderColor: colors.light.primary,
     backgroundColor: "#f0fdf4",
   },
+  chipFull: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
+  capacityWarn: { fontSize: typography.fontSizes.xs, color: "#dc2626", marginTop: 4 },
   chipText: { fontSize: typography.fontSizes.sm, color: colors.light.foreground },
   chipTextActive: { color: colors.light.primary, fontWeight: typography.fontWeights.semibold },
   input: {

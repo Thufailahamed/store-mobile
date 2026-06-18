@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
@@ -18,6 +19,9 @@ import { pickImage, uploadReviewPhoto } from "@/lib/upload";
 import { useToast } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { getEligibleReviewOrders } from "@/lib/api";
+import type { EligibleReviewOrder } from "@/lib/types";
+import { friendlyReviewError, formatReviewDate } from "@/lib/review-error";
 
 interface ReviewFormProps {
   visible: boolean;
@@ -27,6 +31,11 @@ interface ReviewFormProps {
   onSubmitted?: () => void;
 }
 
+const TITLE_MIN = 4;
+const TITLE_MAX = 120;
+const CONTENT_MIN = 20;
+const CONTENT_MAX = 1000;
+
 export function ReviewForm({ visible, onClose, productId, productName, onSubmitted }: ReviewFormProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -35,6 +44,45 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
   const [content, setContent] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [eligible, setEligible] = useState<EligibleReviewOrder[]>([]);
+  const [eligibleLoading, setEligibleLoading] = useState(false);
+  const [selectedOrderItemId, setSelectedOrderItemId] = useState<string | null>(null);
+
+  // Tracks whether the component is still mounted. setState after unmount
+  // warns in dev and is wasted work in prod. Set false in the cleanup.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Fetch eligible orders whenever the modal opens for a logged-in user.
+  useEffect(() => {
+    let cancelled = false;
+    if (!visible || !user) {
+      setEligible([]);
+      setSelectedOrderItemId(null);
+      return;
+    }
+    (async () => {
+      setEligibleLoading(true);
+      const res = await getEligibleReviewOrders(productId);
+      if (cancelled || !mountedRef.current) return;
+      setEligibleLoading(false);
+      if (res.ok) {
+        setEligible(res.data);
+        // Default-select the most recent eligible order (already sorted desc).
+        setSelectedOrderItemId(res.data[0]?.order_item_id ?? null);
+      } else {
+        setEligible([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, user, productId]);
 
   const handleAddPhoto = async () => {
     if (photos.length >= 5) {
@@ -56,8 +104,12 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
       toast("Please select a star rating", "error");
       return;
     }
-    if (!content.trim()) {
-      toast("Please write your review", "error");
+    if (title.trim().length > 0 && title.trim().length < TITLE_MIN) {
+      toast(`Title must be at least ${TITLE_MIN} characters`, "error");
+      return;
+    }
+    if (content.trim().length < CONTENT_MIN) {
+      toast(`Review must be at least ${CONTENT_MIN} characters`, "error");
       return;
     }
     if (!user) return;
@@ -70,9 +122,13 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
       uploadedUrls = uploads.filter((u) => u.url).map((u) => u.url);
     }
 
+    // Server is the source of truth for `is_verified_purchase` — never
+    // send it. Server computes from `order_item_id` + delivered status
+    // + ownership. Status always enters as "pending" for moderation.
     const { error } = await supabase.from("reviews").insert({
       user_id: user.id,
       product_id: productId,
+      order_item_id: selectedOrderItemId,
       rating,
       title: title.trim() || undefined,
       content: content.trim(),
@@ -80,12 +136,18 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
       status: "pending",
     });
 
+    if (!mountedRef.current) return; // unmounted mid-submit — bail
     setSubmitting(false);
 
     if (error) {
-      toast(error.message, "error");
+      toast(friendlyReviewError(error.message), "error");
     } else {
-      toast("Your review has been submitted for approval", "success");
+      toast(
+        selectedOrderItemId
+          ? "Your verified review has been submitted for approval"
+          : "Your review has been submitted for approval",
+        "success"
+      );
       resetForm();
       onClose();
       onSubmitted?.();
@@ -97,17 +159,37 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
     setTitle("");
     setContent("");
     setPhotos([]);
+    setSelectedOrderItemId(null);
   };
 
+  /**
+   * Single dismiss handler. Called from Cancel button AND from modal's
+   * onRequestClose (back button / swipe-down). Always resets state so
+   * the next open starts fresh.
+   */
+  const dismiss = () => {
+    if (submitting) return; // don't drop the user mid-submit
+    resetForm();
+    onClose();
+  };
+
+  const showOrderPicker = !!user && (eligible.length > 0 || eligibleLoading);
+  const willBeVerified = !!selectedOrderItemId;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={dismiss}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={s.container}>
           <View style={s.header}>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={dismiss}>
               <Text style={s.cancelText}>Cancel</Text>
             </TouchableOpacity>
             <Text style={s.headerTitle}>Write a Review</Text>
@@ -121,6 +203,51 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
           <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
             {/* Product Name */}
             <Text style={s.productName} numberOfLines={1}>{productName}</Text>
+
+            {/* Order picker — only when logged in & eligible rows exist */}
+            {showOrderPicker && (
+              <View style={s.orderPickerBox}>
+                <View style={s.orderPickerHeader}>
+                  <Ionicons name="cube-outline" size={16} color={colors.light.foreground} />
+                  <Text style={s.orderPickerTitle}>Which order?</Text>
+                  {eligibleLoading && <ActivityIndicator size="small" color={colors.light.primary} />}
+                </View>
+                {eligibleLoading ? null : (
+                  <View style={s.orderList}>
+                    {eligible.map((o) => {
+                      const selected = selectedOrderItemId === o.order_item_id;
+                      return (
+                        <TouchableOpacity
+                          key={o.order_item_id}
+                          style={[s.orderRow, selected && s.orderRowSelected]}
+                          onPress={() => setSelectedOrderItemId(o.order_item_id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[s.radio, selected && s.radioSelected]}>
+                            {selected && <View style={s.radioDot} />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.orderNumber}>Order #{o.order_number}</Text>
+                            <Text style={s.orderMeta}>
+                              {o.delivered_at
+                                ? `Delivered ${formatReviewDate(o.delivered_at)}`
+                                : "Delivered"}{" "}
+                              · Qty {o.quantity}
+                            </Text>
+                          </View>
+                          {selected && (
+                            <Ionicons name="checkmark-circle" size={18} color={colors.olive[600]} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+                <Text style={s.orderHint}>
+                  Linking a delivered order marks this review as a Verified Purchase.
+                </Text>
+              </View>
+            )}
 
             {/* Star Rating */}
             <View style={s.ratingSection}>
@@ -140,6 +267,12 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
                 <Text style={s.ratingLabel}>
                   {rating === 1 ? "Poor" : rating === 2 ? "Fair" : rating === 3 ? "Good" : rating === 4 ? "Very Good" : "Excellent"}
                 </Text>
+              )}
+              {willBeVerified && (
+                <View style={s.verifiedChip}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.olive[600]} />
+                  <Text style={s.verifiedChipText}>Will post as Verified Purchase</Text>
+                </View>
               )}
             </View>
 
@@ -234,6 +367,69 @@ const s = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.olive[600],
     fontWeight: typography.fontWeights.medium as any,
+    marginTop: 8,
+  },
+  verifiedChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginTop: 8, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 999, backgroundColor: colors.olive[50] ?? "#f3f4ec",
+  },
+  verifiedChipText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium as any,
+    color: colors.olive[700] ?? colors.olive[600],
+  },
+
+  orderPickerBox: {
+    marginBottom: 20, padding: 12,
+    borderRadius: radii.lg,
+    borderWidth: 1, borderColor: colors.light.border,
+    backgroundColor: colors.light.muted ?? "#f8f8f6",
+  },
+  orderPickerHeader: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginBottom: 8,
+  },
+  orderPickerTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+    flex: 1,
+  },
+  orderList: { gap: 6 },
+  orderRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 10, borderRadius: radii.md,
+    borderWidth: 1, borderColor: colors.light.border,
+    backgroundColor: colors.light.background,
+  },
+  orderRowSelected: {
+    borderColor: colors.olive[600],
+    backgroundColor: colors.olive[50] ?? "#f3f4ec",
+  },
+  radio: {
+    width: 18, height: 18, borderRadius: 9,
+    borderWidth: 2, borderColor: colors.light.border,
+    alignItems: "center", justifyContent: "center",
+  },
+  radioSelected: { borderColor: colors.olive[600] },
+  radioDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: colors.olive[600],
+  },
+  orderNumber: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium as any,
+    color: colors.light.foreground,
+  },
+  orderMeta: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+  },
+  orderHint: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
     marginTop: 8,
   },
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
-  TextInput,
   Alert,
   ScrollView,
   KeyboardAvoidingView,
@@ -19,31 +18,36 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
+  WarehouseFormFields,
+  emptyWarehouseForm,
+  warehousePayloadFromForm,
+  type WarehouseFormValues,
+} from "@/components/warehouse/WarehouseFormFields";
+import {
   createWarehouse,
   getDeliveryCompanyMe,
   getDeliveryCompanyWarehouses,
   hasStoreApi,
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
+import { useAuth } from "@/lib/supabase/auth";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { getDeliveryCompanyAccessState } from "@/lib/delivery-company-access";
+import { isWarehouseGeocoded } from "@/lib/warehouse-routing";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function CompanyWarehousesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    line1: "",
-    city: "",
-    state: "",
-    postal_code: "",
-  });
+  const [form, setForm] = useState<WarehouseFormValues>(emptyWarehouseForm());
   const [canReceive, setCanReceive] = useState(false);
 
   const load = useCallback(async () => {
@@ -56,6 +60,7 @@ export default function CompanyWarehousesScreen() {
     const me = await getDeliveryCompanyMe();
     if (me.ok) {
       setCanReceive(getDeliveryCompanyAccessState(me.data.company).canUseCompanyTools);
+      setCompanyId(me.data.company.id);
     }
     const res = await getDeliveryCompanyWarehouses();
     if (res.ok) setWarehouses(res.data.warehouses);
@@ -68,21 +73,48 @@ export default function CompanyWarehousesScreen() {
     load();
   }, [load]);
 
+  useCompanyRealtime(companyId, user?.id, load);
+
+  const routingSummary = useMemo(() => {
+    const active = warehouses.filter((w) => w.is_active !== false);
+    const ready = active.filter((w) => w.routing_ready).length;
+    const geocoded = active.filter((w) => isWarehouseGeocoded(w)).length;
+    return { active: active.length, ready, geocoded };
+  }, [warehouses]);
+
   const handleCreate = async () => {
     if (!form.name.trim() || !form.line1.trim() || !form.city.trim()) {
       Alert.alert("Missing fields", "Name, address line, and city are required.");
       return;
     }
+    if (!form.postal_code.trim()) {
+      Alert.alert("Missing postal code", "Enter a valid postal code for the hub address.");
+      return;
+    }
+    if (!isWarehouseGeocoded(form)) {
+      Alert.alert(
+        "Coordinates recommended",
+        "Without map coordinates, pickup orders cannot route to the nearest hub. Save anyway?",
+        [
+          { text: "Add location", style: "cancel" },
+          {
+            text: "Save without coords",
+            onPress: () => submitCreate(),
+          },
+        ],
+      );
+      return;
+    }
+    await submitCreate();
+  };
+
+  const submitCreate = async () => {
     setSaving(true);
+    const payload = warehousePayloadFromForm(form);
     const res = await createWarehouse({
-      name: form.name.trim(),
-      address: {
-        line1: form.line1.trim(),
-        city: form.city.trim(),
-        state: form.state.trim() || form.city.trim(),
-        postal_code: form.postal_code.trim() || "00000",
-        country: "Sri Lanka",
-      },
+      ...payload,
+      latitude: payload.latitude ?? undefined,
+      longitude: payload.longitude ?? undefined,
     });
     setSaving(false);
     if (!res.ok) {
@@ -90,7 +122,7 @@ export default function CompanyWarehousesScreen() {
       return;
     }
     setCreateOpen(false);
-    setForm({ name: "", line1: "", city: "", state: "", postal_code: "" });
+    setForm(emptyWarehouseForm());
     load();
   };
 
@@ -104,6 +136,16 @@ export default function CompanyWarehousesScreen() {
           </TouchableOpacity>
         }
       />
+
+      {routingSummary.active > 0 ? (
+        <View style={styles.routingBanner}>
+          <Ionicons name="navigate-outline" size={16} color={colors.light.primary} />
+          <Text style={styles.routingBannerText}>
+            {routingSummary.ready}/{routingSummary.active} hubs routing-ready · {routingSummary.geocoded} geocoded
+          </Text>
+        </View>
+      ) : null}
+
       {canReceive ? (
         <TouchableOpacity
           style={styles.scanLink}
@@ -134,7 +176,7 @@ export default function CompanyWarehousesScreen() {
             <View style={styles.empty}>
               <Ionicons name="storefront-outline" size={40} color={colors.light.mutedForeground} />
               <Text style={styles.emptyTitle}>No hubs yet</Text>
-              <Text style={styles.emptySub}>Create a warehouse to start receiving packages.</Text>
+              <Text style={styles.emptySub}>Create a geocoded warehouse to enable nearest-hub pickup routing.</Text>
               <TouchableOpacity style={styles.emptyBtn} onPress={() => setCreateOpen(true)}>
                 <Text style={styles.emptyBtnText}>Add warehouse</Text>
               </TouchableOpacity>
@@ -153,11 +195,10 @@ export default function CompanyWarehousesScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>New warehouse</Text>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <Field label="Name" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} />
-              <Field label="Address line" value={form.line1} onChange={(v) => setForm((f) => ({ ...f, line1: v }))} />
-              <Field label="City" value={form.city} onChange={(v) => setForm((f) => ({ ...f, city: v }))} />
-              <Field label="State / district" value={form.state} onChange={(v) => setForm((f) => ({ ...f, state: v }))} />
-              <Field label="Postal code" value={form.postal_code} onChange={(v) => setForm((f) => ({ ...f, postal_code: v }))} />
+              <WarehouseFormFields
+                values={form}
+                onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+              />
             </ScrollView>
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => setCreateOpen(false)}>
@@ -174,33 +215,13 @@ export default function CompanyWarehousesScreen() {
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        style={styles.fieldInput}
-        value={value}
-        onChangeText={onChange}
-        placeholderTextColor={colors.light.mutedForeground}
-      />
-    </View>
-  );
-}
-
 function WarehouseRow({ warehouse }: { warehouse: DcWarehouse }) {
   const addr = warehouse.address;
   const line = addr
     ? [addr.line1, addr.city, addr.postal_code].filter(Boolean).join(", ")
     : "No address";
+  const inv = warehouse.inventory_count ?? 0;
+  const cap = warehouse.capacity_max;
 
   return (
     <View style={[styles.card, warehouse.is_active === false && styles.cardInactive]}>
@@ -208,10 +229,33 @@ function WarehouseRow({ warehouse }: { warehouse: DcWarehouse }) {
         <Ionicons name="storefront-outline" size={22} color={colors.light.primary} />
       </View>
       <View style={styles.cardBody}>
-        <Text style={styles.name}>{warehouse.name}</Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name}>{warehouse.name}</Text>
+          {warehouse.capacity_status === "full" ? (
+            <View style={styles.fullPill}>
+              <Text style={styles.fullPillText}>Full</Text>
+            </View>
+          ) : warehouse.capacity_status === "near_full" ? (
+            <View style={styles.warnPill}>
+              <Text style={styles.warnPillText}>Near full</Text>
+            </View>
+          ) : warehouse.routing_ready ? (
+            <View style={styles.readyPill}>
+              <Text style={styles.readyPillText}>Routing ready</Text>
+            </View>
+          ) : warehouse.is_active !== false ? (
+            <View style={styles.warnPill}>
+              <Text style={styles.warnPillText}>Setup needed</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.addr}>{line}</Text>
-        {warehouse.capacity_max != null ? (
-          <Text style={styles.cap}>Capacity: {warehouse.capacity_max}</Text>
+        <Text style={styles.cap}>
+          {inv}{cap != null ? `/${cap}` : ""} packages
+          {warehouse.pickup_driver_count != null ? ` · ${warehouse.pickup_driver_count} pickup drivers` : ""}
+        </Text>
+        {!isWarehouseGeocoded(warehouse) && warehouse.is_active !== false ? (
+          <Text style={styles.warnLine}>Add map coordinates for nearest-hub routing</Text>
         ) : null}
       </View>
     </View>
@@ -222,6 +266,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   addBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  routingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 10,
+    backgroundColor: "#eff6ff",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  routingBannerText: { flex: 1, fontSize: typography.fontSizes.xs, color: colors.light.primary },
   scanLink: {
     flexDirection: "row",
     alignItems: "center",
@@ -255,9 +312,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardBody: { flex: 1 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   name: { fontSize: typography.fontSizes.base, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
+  readyPill: { backgroundColor: "#dcfce7", paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.full },
+  readyPillText: { fontSize: 10, color: "#166534", fontWeight: typography.fontWeights.semibold },
+  warnPill: { backgroundColor: "#ffedd5", paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.full },
+  warnPillText: { fontSize: 10, color: "#ea580c", fontWeight: typography.fontWeights.semibold },
+  fullPill: { backgroundColor: "#fee2e2", paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.full },
+  fullPillText: { fontSize: 10, color: "#dc2626", fontWeight: typography.fontWeights.semibold },
   addr: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4 },
   cap: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 6 },
+  warnLine: { fontSize: typography.fontSizes.xs, color: "#ea580c", marginTop: 4 },
   empty: { alignItems: "center", paddingTop: 48, gap: 8 },
   emptyTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold },
   emptySub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, textAlign: "center", paddingHorizontal: 32 },
@@ -276,21 +341,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radii["2xl"],
     borderTopRightRadius: radii["2xl"],
     padding: 20,
-    maxHeight: "85%",
+    maxHeight: "90%",
   },
   modalTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold, marginBottom: 16 },
-  field: { marginBottom: 12 },
-  fieldLabel: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 4 },
-  fieldInput: {
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: typography.fontSizes.base,
-    color: colors.light.foreground,
-    backgroundColor: colors.light.background,
-  },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
   modalCancel: {
     flex: 1,

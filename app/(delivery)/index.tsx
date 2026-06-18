@@ -186,7 +186,12 @@ export default function DeliveryDashboard() {
 
       {pickupRuns.length > 0 ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Store pickups</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Store pickups</Text>
+            <TouchableOpacity onPress={() => router.push("/(delivery)/store-pickups" as any)}>
+              <Text style={styles.viewAll}>View all ({pickupRuns.length})</Text>
+            </TouchableOpacity>
+          </View>
           {pickupRuns.slice(0, 3).map((o) => (
             <TouchableOpacity
               key={o.id}
@@ -195,7 +200,12 @@ export default function DeliveryDashboard() {
             >
               <Text style={styles.routeOrder}>{o.order_number}</Text>
               <Text style={styles.pickupMeta} numberOfLines={1}>
-                Pick up from seller · {(o as { pickup_decision?: string }).pickup_decision?.replace(/_/g, " ") ?? "pending decision"}
+                Pick up from seller
+                {(o as { pickup_warehouse?: { name?: string } }).pickup_warehouse?.name
+                  ? ` · Hub: ${(o as { pickup_warehouse?: { name?: string } }).pickup_warehouse!.name}`
+                  : ""}
+                {" · "}
+                {(o as { pickup_decision?: string }).pickup_decision?.replace(/_/g, " ") ?? "pending decision"}
               </Text>
             </TouchableOpacity>
           ))}
@@ -432,6 +442,13 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
 
     section: { padding: 16 },
     sectionTitle: { fontSize: 18, fontWeight: "700", color: colors.foreground, marginBottom: 12 },
+    sectionHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    viewAll: { fontSize: 13, color: colors.primary, fontWeight: "600" },
 
     activeCard: {
       backgroundColor: colors.card,

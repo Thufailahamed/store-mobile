@@ -13,25 +13,30 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useAuth } from "@/lib/supabase/auth";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   assignLastMileBatch,
+  getDeliveryCompanyMe,
   getDeliveryCompanyPackages,
   getDeliveryCompanyWarehouses,
   hasStoreApi,
   type DcPackageInventory,
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
-type TabKey = "all" | "received" | "in_transit" | "delivered" | "failed";
+type TabKey = "all" | "received" | "assigned" | "in_transit" | "delivered" | "failed" | "returned";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "received", label: "In hub" },
+  { key: "assigned", label: "Assigned" },
   { key: "in_transit", label: "Transit" },
   { key: "delivered", label: "Delivered" },
   { key: "failed", label: "Failed" },
+  { key: "returned", label: "Returned" },
 ];
 
 type PackageItem =
@@ -67,6 +72,8 @@ function statusStyle(status: string) {
 export default function CompanyPackagesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [inventory, setInventory] = useState<DcPackageInventory[]>([]);
   const [routeStops, setRouteStops] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
@@ -85,10 +92,12 @@ export default function CompanyPackagesScreen() {
       setRefreshing(false);
       return;
     }
-    const [pkgRes, whRes] = await Promise.all([
+    const [pkgRes, whRes, meRes] = await Promise.all([
       getDeliveryCompanyPackages(),
       getDeliveryCompanyWarehouses(),
+      getDeliveryCompanyMe(),
     ]);
+    if (meRes.ok) setCompanyId(meRes.data.company.id);
     if (pkgRes.ok) {
       setInventory(pkgRes.data.inventory);
       setRouteStops(pkgRes.data.route_stops as any[]);
@@ -101,6 +110,8 @@ export default function CompanyPackagesScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useCompanyRealtime(companyId, user?.id, load);
 
   const items = useMemo(() => {
     const list: PackageItem[] = [];
@@ -133,9 +144,11 @@ export default function CompanyPackagesScreen() {
     return items.filter((item) => {
       if (tab !== "all") {
         if (tab === "received" && item.status !== "received") return false;
-        if (tab === "in_transit" && !["in_transit", "active", "pending", "assigned"].includes(item.status)) return false;
+        if (tab === "assigned" && item.status !== "assigned") return false;
+        if (tab === "in_transit" && !["in_transit", "active", "pending"].includes(item.status)) return false;
         if (tab === "delivered" && item.status !== "delivered") return false;
         if (tab === "failed" && item.status !== "failed") return false;
+        if (tab === "returned" && item.status !== "returned") return false;
       }
       if (warehouseId !== "all" && item.kind === "inventory" && item.warehouse?.id !== warehouseId) return false;
       if (!q) return true;
@@ -235,7 +248,17 @@ export default function CompanyPackagesScreen() {
             <PackageRow
               item={item}
               acting={actingId === item.order?.id}
-              onScan={() => router.push("/(delivery)/scan")}
+              onScan={() => {
+                if (item.kind === "inventory" && item.status === "received") {
+                  const q = new URLSearchParams();
+                  if (item.warehouse?.id) q.set("warehouseId", item.warehouse.id);
+                  if (item.order?.id) q.set("orderId", item.order.id);
+                  const suffix = q.toString() ? `?${q.toString()}` : "";
+                  router.push(`/(delivery-company)/warehouses/receive${suffix}` as any);
+                  return;
+                }
+                router.push("/(delivery)/scan");
+              }}
               onLastMile={
                 item.kind === "inventory" && item.status === "received" && item.order?.id
                   ? () => handleLastMile(item.order!.id, item.warehouse?.id)

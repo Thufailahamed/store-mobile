@@ -6,9 +6,7 @@
  * a few seconds. We only notify once per order id within NOTIFY_COOLDOWN_MS.
  */
 
-import { useEffect, useRef } from "react";
 import * as Notifications from "expo-notifications";
-import { supabase } from "@/lib/supabase/client";
 
 const NOTIFY_COOLDOWN_MS = 60_000;
 
@@ -36,29 +34,4 @@ export function notifyNewAssignment(order: AssignmentRow) {
     },
     trigger: null,
   });
-}
-
-/**
- * Subscribe to `orders` INSERTs/UPDATEs for the given rider and schedule a
- * local notification for any non-terminal assignment.
- * Pairs with `useRiderRealtime` — call alongside it.
- */
-export function useAssignmentNotifications(riderId: string | undefined) {
-  const riderIdRef = useRef(riderId);
-  riderIdRef.current = riderId;
-
-  useEffect(() => {
-    if (!riderId) return;
-    const channel = supabase
-      .channel(`assign-${riderId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders", filter: `delivery_person_id=eq.${riderId}` },
-        (payload) => notifyNewAssignment(payload.new as AssignmentRow),
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [riderId]);
 }

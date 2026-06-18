@@ -90,7 +90,9 @@ function ReviewRow({ review }: { review: Review }) {
             <MonoLabel style={styles.time}>{timeAgo(review.created_at as any)}</MonoLabel>
           </View>
         </View>
-        <Ionicons name="checkmark-circle" size={14} color={colors.olive[600]} />
+        {review.is_verified_purchase && (
+          <Ionicons name="checkmark-circle" size={14} color={colors.olive[600]} />
+        )}
       </View>
       {review.title ? (
         <Body size="sm" style={styles.title}>{review.title}</Body>

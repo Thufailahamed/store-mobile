@@ -31,6 +31,7 @@ import {
   STATUS_COLORS,
   ISSUE_REASONS,
 } from "@/lib/utils/delivery-format";
+import { formatWarehouseAddress } from "@/lib/utils/warehouse-address";
 import type { Order } from "@/lib/types";
 
 export default function DeliveryDetail() {
@@ -189,6 +190,27 @@ export default function DeliveryDetail() {
             </View>
           </View>
         </View>
+
+        {/* Pickup hub (store pickup leg) */}
+        {(order as { pickup_warehouse?: { name?: string; address?: string | Record<string, unknown> } }).pickup_warehouse?.name ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Assigned hub</Text>
+            <View style={styles.hubCard}>
+              <Text style={styles.hubName}>
+                {(order as { pickup_warehouse?: { name?: string } }).pickup_warehouse!.name}
+              </Text>
+              {formatWarehouseAddress(
+                (order as { pickup_warehouse?: { address?: string | Record<string, unknown> } }).pickup_warehouse?.address,
+              ) ? (
+                <Text style={styles.hubAddress}>
+                  {formatWarehouseAddress(
+                    (order as { pickup_warehouse?: { address?: string | Record<string, unknown> } }).pickup_warehouse!.address,
+                  )}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
 
         {/* Customer Card */}
         {ship && (
@@ -460,6 +482,25 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold as any,
     color: colors.light.foreground,
     marginBottom: 10,
+  },
+
+  hubCard: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    padding: 14,
+  },
+  hubName: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+  },
+  hubAddress: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    marginTop: 4,
+    lineHeight: 20,
   },
 
   customerCard: {

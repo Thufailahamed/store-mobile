@@ -101,6 +101,7 @@ export default function DeliveryLayout() {
 
       <Tabs.Screen name="orders/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="pickups/[id]/index" options={{ href: null }} />
+      <Tabs.Screen name="store-pickups/index" options={{ href: null }} />
       <Tabs.Screen name="route-map" options={{ href: null }} />
     </Tabs>
   );

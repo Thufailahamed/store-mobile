@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -15,9 +16,11 @@ import {
   getDeliveryCompanyDrivers,
   getDeliveryCompanyPackages,
   getDeliveryCompanyRoutes,
+  getDeliveryCompanyWarehouses,
   hasStoreApi,
   updateDriverMember,
   type DcDriverMember,
+  type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
@@ -25,20 +28,25 @@ export default function DriverDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [member, setMember] = useState<DcDriverMember | null>(null);
+  const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [routeCount, setRouteCount] = useState(0);
   const [stopCount, setStopCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [postals, setPostals] = useState("");
 
   const fetchData = useCallback(async () => {
     if (!id || !hasStoreApi()) return;
-    const [driversRes, routesRes, packagesRes] = await Promise.all([
+    const [driversRes, routesRes, packagesRes, whRes] = await Promise.all([
       getDeliveryCompanyDrivers(),
       getDeliveryCompanyRoutes({ driver_id: id }),
       getDeliveryCompanyPackages(),
+      getDeliveryCompanyWarehouses(),
     ]);
     if (driversRes.ok) {
-      setMember(driversRes.data.members.find((m) => m.user_id === id) ?? null);
+      const m = driversRes.data.members.find((mem) => mem.user_id === id) ?? null;
+      setMember(m);
+      setPostals((m?.serviceable_postal_codes ?? []).join(", "));
     }
     if (routesRes.ok) {
       setRouteCount(routesRes.data.routes.length);
@@ -48,6 +56,9 @@ export default function DriverDetailScreen() {
         (s) => s.route?.driver_id === id,
       );
       setStopCount(stops.length);
+    }
+    if (whRes.ok) {
+      setWarehouses(whRes.data.warehouses.filter((w) => w.is_active !== false));
     }
     setLoading(false);
   }, [id]);
@@ -68,6 +79,42 @@ export default function DriverDetailScreen() {
     if (!res.ok) Alert.alert("Failed", res.error);
     else fetchData();
   };
+
+  const setDriverType = async (driverType: string) => {
+    if (!member) return;
+    setSaving(true);
+    const res = await updateDriverMember(member.id, { driver_type: driverType });
+    setSaving(false);
+    if (!res.ok) Alert.alert("Failed", res.error);
+    else fetchData();
+  };
+
+  const setHomeWarehouse = async (warehouseId: string | null) => {
+    if (!member) return;
+    setSaving(true);
+    const res = await updateDriverMember(member.id, { home_warehouse_id: warehouseId });
+    setSaving(false);
+    if (!res.ok) Alert.alert("Failed", res.error);
+    else fetchData();
+  };
+
+  const savePostals = async () => {
+    if (!member) return;
+    const list = postals
+      .split(/[\s,;\n]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    setSaving(true);
+    const res = await updateDriverMember(member.id, { serviceable_postal_codes: list });
+    setSaving(false);
+    if (!res.ok) Alert.alert("Failed", res.error);
+    else {
+      Alert.alert("Saved", "Serviceable postal codes updated.");
+      fetchData();
+    }
+  };
+
+  const zoneCount = member?.serviceable_postal_codes?.length ?? 0;
 
   const toggleActive = () => {
     if (!member) return;
@@ -139,6 +186,66 @@ export default function DriverDetailScreen() {
           </View>
         </View>
 
+        <Text style={styles.section}>Driver role</Text>
+        <View style={styles.chipRow}>
+          {(["pickup", "last_mile", "both"] as const).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[styles.chip, member.driver_type === t && styles.chipActive]}
+              onPress={() => setDriverType(t)}
+              disabled={saving}
+            >
+              <Text style={[styles.chipText, member.driver_type === t && styles.chipTextActive]}>
+                {t.replace(/_/g, " ")}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {(member.driver_type === "pickup" || member.driver_type === "both" || !member.driver_type) && warehouses.length > 0 ? (
+          <>
+            <Text style={styles.section}>Home warehouse</Text>
+            <Text style={styles.sectionHint}>Pickup routing only assigns drivers at their home hub.</Text>
+            <View style={styles.chipRow}>
+              {warehouses.map((w) => (
+                <TouchableOpacity
+                  key={w.id}
+                  style={[styles.chip, member.home_warehouse?.id === w.id && styles.chipActive]}
+                  onPress={() => setHomeWarehouse(w.id)}
+                  disabled={saving}
+                >
+                  <Text style={[styles.chipText, member.home_warehouse?.id === w.id && styles.chipTextActive]}>
+                    {w.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        <Text style={styles.section}>Serviceable postal codes</Text>
+        <Text style={styles.sectionHint}>
+          {zoneCount > 0
+            ? `${zoneCount} zone(s) — last-mile auto-assign matches these postcodes.`
+            : "Leave empty to accept all postal codes in your company."}
+        </Text>
+        <TextInput
+          style={styles.postalInput}
+          value={postals}
+          onChangeText={setPostals}
+          placeholder="00500, 00501, 00502"
+          placeholderTextColor={colors.light.mutedForeground}
+          autoCapitalize="characters"
+          multiline
+        />
+        <TouchableOpacity style={styles.savePostalsBtn} onPress={savePostals} disabled={saving}>
+          {saving ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.savePostalsText}>Save zones</Text>
+          )}
+        </TouchableOpacity>
+
         <Text style={styles.section}>Capacity</Text>
         <View style={styles.stepper}>
           <TouchableOpacity style={styles.stepBtn} onPress={() => adjustCapacity(-1)} disabled={saving}>
@@ -209,7 +316,34 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     textTransform: "uppercase",
     marginBottom: 10,
+    marginTop: 8,
   },
+  sectionHint: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 10, marginTop: -6 },
+  postalInput: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.lg,
+    padding: 12,
+    minHeight: 72,
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.foreground,
+    backgroundColor: colors.light.card,
+    textAlignVertical: "top",
+    marginBottom: 10,
+  },
+  savePostalsBtn: {
+    backgroundColor: colors.light.primary,
+    paddingVertical: 12,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  savePostalsText: { color: "#fff", fontWeight: typography.fontWeights.semibold },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.lg, backgroundColor: colors.light.muted },
+  chipActive: { backgroundColor: colors.light.primary },
+  chipText: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, textTransform: "capitalize" },
+  chipTextActive: { color: "#fff", fontWeight: typography.fontWeights.semibold },
   stepper: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 20, marginBottom: 20 },
   stepBtn: {
     width: 44,

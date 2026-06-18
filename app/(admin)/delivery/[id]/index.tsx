@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { getAdminDeliveryCompanyDetail, updateAdminDeliveryCompanyStatus } from "@/lib/api";
+import { getAdminDeliveryCompanyDetail, getDeliveryPipelineZones, updateAdminDeliveryCompanyStatus } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton, Button } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -42,6 +42,16 @@ export default function AdminDeliveryCompanyDetail() {
       const r = await getAdminDeliveryCompanyDetail(id!);
       if (!r.ok) throw new Error(r.error);
       return r.data;
+    },
+    enabled: !!id,
+  });
+
+  const zonesQ = useQuery({
+    queryKey: ["admin-delivery-zones", id],
+    queryFn: async () => {
+      const r = await getDeliveryPipelineZones({ company_id: id!, include_inactive: true });
+      if (!r.ok) throw new Error(r.error);
+      return r.data.zones;
     },
     enabled: !!id,
   });
@@ -101,6 +111,7 @@ export default function AdminDeliveryCompanyDetail() {
   const warehouses = q.data.warehouses ?? [];
   const routes = q.data.routes ?? [];
   const audit = q.data.audit ?? [];
+  const zones = zonesQ.data ?? [];
   const busy = updateMutation.isPending;
 
   return (
@@ -177,6 +188,35 @@ export default function AdminDeliveryCompanyDetail() {
                   {[w.address?.city, w.address?.postal_code].filter(Boolean).join(", ") || "—"}
                 </Text>
               </View>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Delivery zones ({zones.length})</Text>
+        {zonesQ.isLoading ? (
+          <Text style={styles.empty}>Loading zones…</Text>
+        ) : zonesQ.isError ? (
+          <Text style={styles.empty}>Could not load zones.</Text>
+        ) : zones.length === 0 ? (
+          <Text style={styles.empty}>No zones configured. Manage zones on the web admin console.</Text>
+        ) : (
+          zones.map((z) => (
+            <View key={z.id} style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>{z.name}</Text>
+                <Text style={styles.rowMeta}>
+                  {[z.city, z.area].filter(Boolean).join(" · ")}
+                  {z.hub?.name ? ` · hub: ${z.hub.name}` : ""}
+                </Text>
+                {z.postal_codes?.length ? (
+                  <Text style={styles.rowMeta}>{z.postal_codes.length} postal code(s)</Text>
+                ) : null}
+              </View>
+              <Badge variant={z.is_active ? "outline" : "secondary"}>
+                {z.is_active ? "active" : "inactive"}
+              </Badge>
             </View>
           ))
         )}

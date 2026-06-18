@@ -4,6 +4,7 @@ import {
   assertDeliveryCompanySetup,
 } from "@/lib/delivery-company-api-guard";
 import type { DeliveryCompanyAccessState } from "@/lib/delivery-company-access";
+import type { AssignmentOrderRow } from "@/lib/delivery-assignment-queues";
 
 export type DcApiResult<T> =
   | { ok: true; data: T }
@@ -67,6 +68,7 @@ export interface DcDriverMember {
   is_active: boolean;
   capacity_max?: number;
   active_load?: number;
+  serviceable_postal_codes?: string[];
   user?: {
     id: string;
     full_name?: string | null;
@@ -86,6 +88,12 @@ export interface DcWarehouse {
   longitude?: number | null;
   capacity_max?: number;
   is_active?: boolean;
+  inventory_count?: number;
+  pickup_driver_count?: number;
+  geocoded?: boolean;
+  routing_ready?: boolean;
+  capacity_status?: "ok" | "near_full" | "full";
+  routing_warnings?: string[];
 }
 
 export interface DcPackageInventory {
@@ -162,6 +170,8 @@ export interface DcAssignCandidate {
   avatar_url?: string | null;
   vehicle_type?: string | null;
   driver_type?: string;
+  home_warehouse_id?: string | null;
+  home_warehouse_name?: string | null;
   active_load: number;
   capacity_max: number;
   remaining_capacity: number;
@@ -170,6 +180,20 @@ export interface DcAssignCandidate {
   eligible: boolean;
   leg_eligible?: boolean;
   distance_meters?: number | null;
+  duration_seconds?: number | null;
+}
+
+export interface DcRoutingContext {
+  leg: string;
+  warehouse: {
+    id: string;
+    name: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    geocoded: boolean;
+  } | null;
+  warehouse_resolution: string;
+  scoring_method: string;
 }
 
 export interface DcDriverInvite {
@@ -199,7 +223,7 @@ export async function getDeliveryCompanyPackages(opts?: {
   status?: string;
   warehouse_id?: string;
   search?: string;
-}): Promise<DcApiResult<{ inventory: DcPackageInventory[]; route_stops: unknown[] }>> {
+}): Promise<DcApiResult<{ inventory: DcPackageInventory[]; route_stops: unknown[]; pickup_pending?: AssignmentOrderRow[] }>> {
   const params = new URLSearchParams();
   if (opts?.status) params.set("status", opts.status);
   if (opts?.warehouse_id) params.set("warehouse_id", opts.warehouse_id);
@@ -228,12 +252,31 @@ export async function getDeliveryCompanyWarehouses(): Promise<
   return storeApiFetch("/api/delivery-company/warehouses");
 }
 
+export async function getDeliveryCompanyWarehouse(
+  warehouseId: string,
+): Promise<DcApiResult<{ warehouse: DcWarehouse }>> {
+  return storeApiFetch(`/api/delivery-company/warehouses/${warehouseId}`);
+}
+
+export async function lookupDeliveryCompanyOrder(
+  ref: string,
+): Promise<DcApiResult<{ order_id: string; order_number: string; status: string }>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
+  const params = new URLSearchParams({ ref: ref.trim() });
+  return storeApiFetch(`/api/delivery-company/orders/lookup?${params}`);
+}
+
 export async function autoAssignOrders(
   orderIds: string[],
   leg: "pickup" | "last_mile" | "delivery" = "pickup",
   policy?: string,
 ): Promise<
-  DcApiResult<{ assignments?: unknown[]; skipped?: { order_id: string; reason: string }[] }>
+  DcApiResult<{
+    assignments?: unknown[];
+    skipped?: { order_id: string; reason: string }[];
+    scoring?: { method: string; leg: string };
+  }>
 > {
   const guard = await assertDeliveryCompanyOperations();
   if (!guard.ok) return guard;
@@ -250,7 +293,7 @@ export async function autoAssignOrders(
 export async function receiveAtWarehouse(
   warehouseId: string,
   orderId: string,
-): Promise<DcApiResult<unknown>> {
+): Promise<DcApiResult<{ last_mile_error?: string | null; last_mile_assignment?: unknown }>> {
   const guard = await assertDeliveryCompanyOperations();
   if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/warehouses/${warehouseId}/receive`, {
@@ -309,7 +352,7 @@ export async function cancelRoute(routeId: string, reason?: string): Promise<DcA
 export async function getAssignmentCandidates(
   orderId: string,
   leg?: "pickup" | "last_mile" | "delivery",
-): Promise<DcApiResult<{ candidates: DcAssignCandidate[]; leg: string }>> {
+): Promise<DcApiResult<{ candidates: DcAssignCandidate[]; leg: string; routing_context?: DcRoutingContext }>> {
   const params = new URLSearchParams({ order_id: orderId });
   if (leg) params.set("leg", leg);
   return storeApiFetch(`/api/delivery-company/assignments/candidates?${params}`);
@@ -339,6 +382,7 @@ export async function inviteDriver(body: {
   driver_type?: "pickup" | "last_mile" | "both";
   capacity_max?: number;
   home_warehouse_id?: string;
+  serviceable_postal_codes?: string[];
 }): Promise<DcApiResult<unknown>> {
   const guard = await assertDeliveryCompanySetup();
   if (!guard.ok) return guard;
@@ -355,7 +399,13 @@ export async function inviteDriver(body: {
 
 export async function updateDriverMember(
   memberId: string,
-  patch: { is_active?: boolean; capacity_max?: number; driver_type?: string },
+  patch: {
+    is_active?: boolean;
+    capacity_max?: number;
+    driver_type?: string;
+    home_warehouse_id?: string | null;
+    serviceable_postal_codes?: string[];
+  },
 ): Promise<DcApiResult<{ member: DcDriverMember }>> {
   const guard = await assertDeliveryCompanySetup();
   if (!guard.ok) return guard;
@@ -376,6 +426,8 @@ export async function createWarehouse(body: {
     country?: string;
   };
   capacity_max?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 }): Promise<DcApiResult<{ warehouse: DcWarehouse }>> {
   const guard = await assertDeliveryCompanySetup();
   if (!guard.ok) return guard;
@@ -392,6 +444,8 @@ export async function updateWarehouse(
     address: DcWarehouse["address"];
     capacity_max: number;
     is_active: boolean;
+    latitude: number | null;
+    longitude: number | null;
   }>,
 ): Promise<DcApiResult<{ warehouse: DcWarehouse }>> {
   const guard = await assertDeliveryCompanySetup();

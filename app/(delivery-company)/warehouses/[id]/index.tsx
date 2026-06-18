@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -15,8 +14,14 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
+  WarehouseFormFields,
+  warehouseFormFromApi,
+  warehousePayloadFromForm,
+  type WarehouseFormValues,
+} from "@/components/warehouse/WarehouseFormFields";
+import {
   deleteWarehouse,
-  getDeliveryCompanyWarehouses,
+  getDeliveryCompanyWarehouse,
   hasStoreApi,
   updateWarehouse,
   type DcWarehouse,
@@ -29,29 +34,16 @@ export default function WarehouseDetailScreen() {
   const [warehouse, setWarehouse] = useState<DcWarehouse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [name, setName] = useState("");
-  const [line1, setLine1] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postal, setPostal] = useState("");
-  const [capacity, setCapacity] = useState("500");
+  const [form, setForm] = useState<WarehouseFormValues | null>(null);
   const [isActive, setIsActive] = useState(true);
 
   const fetchData = useCallback(async () => {
     if (!id || !hasStoreApi()) return;
-    const res = await getDeliveryCompanyWarehouses();
+    const res = await getDeliveryCompanyWarehouse(id);
     if (res.ok) {
-      const wh = res.data.warehouses.find((w) => w.id === id) ?? null;
-      setWarehouse(wh);
-      if (wh) {
-        setName(wh.name);
-        setLine1(wh.address?.line1 ?? "");
-        setCity(wh.address?.city ?? "");
-        setState(wh.address?.state ?? "");
-        setPostal(wh.address?.postal_code ?? "");
-        setCapacity(String(wh.capacity_max ?? 500));
-        setIsActive(wh.is_active !== false);
-      }
+      setWarehouse(res.data.warehouse);
+      setForm(warehouseFormFromApi(res.data.warehouse));
+      setIsActive(res.data.warehouse.is_active !== false);
     }
     setLoading(false);
   }, [id]);
@@ -61,18 +53,17 @@ export default function WarehouseDetailScreen() {
   }, [fetchData]);
 
   const save = async () => {
-    if (!id) return;
+    if (!id || !form) return;
+    if (!form.postal_code.trim()) {
+      Alert.alert("Missing postal code", "Enter a valid postal code for the hub address.");
+      return;
+    }
     setSaving(true);
+    const payload = warehousePayloadFromForm(form);
     const res = await updateWarehouse(id, {
-      name: name.trim(),
-      address: {
-        line1: line1.trim(),
-        city: city.trim(),
-        state: state.trim() || city.trim(),
-        postal_code: postal.trim() || "00000",
-        country: "Sri Lanka",
-      },
-      capacity_max: parseInt(capacity, 10) || 500,
+      ...payload,
+      latitude: payload.latitude,
+      longitude: payload.longitude,
       is_active: isActive,
     });
     setSaving(false);
@@ -107,7 +98,7 @@ export default function WarehouseDetailScreen() {
     );
   }
 
-  if (!warehouse) {
+  if (!warehouse || !form) {
     return (
       <View style={styles.container}>
         <ScreenHeader title="Warehouse" />
@@ -122,12 +113,22 @@ export default function WarehouseDetailScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScreenHeader title="Edit warehouse" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Field label="Name" value={name} onChange={setName} />
-        <Field label="Address" value={line1} onChange={setLine1} />
-        <Field label="City" value={city} onChange={setCity} />
-        <Field label="State / district" value={state} onChange={setState} />
-        <Field label="Postal code" value={postal} onChange={setPostal} />
-        <Field label="Capacity max" value={capacity} onChange={setCapacity} keyboardType="numeric" />
+        {warehouse.routing_warnings && warehouse.routing_warnings.length > 0 ? (
+          <View style={styles.warnBox}>
+            {warehouse.routing_warnings.map((w) => (
+              <Text key={w} style={styles.warnText}>• {w}</Text>
+            ))}
+          </View>
+        ) : warehouse.routing_ready ? (
+          <View style={styles.okBox}>
+            <Text style={styles.okText}>Routing ready — nearest-hub pickup can use this hub.</Text>
+          </View>
+        ) : null}
+
+        <WarehouseFormFields
+          values={form}
+          onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
+        />
 
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Active</Text>
@@ -146,38 +147,29 @@ export default function WarehouseDetailScreen() {
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  keyboardType?: "default" | "numeric";
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={keyboardType} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   content: { padding: 16, paddingBottom: 40 },
-  field: { marginBottom: 12 },
-  label: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 4 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  warnBox: {
+    backgroundColor: "#fff7ed",
     borderRadius: radii.lg,
     padding: 12,
-    backgroundColor: colors.light.card,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    gap: 4,
   },
+  warnText: { fontSize: typography.fontSizes.xs, color: "#9a3412" },
+  okBox: {
+    backgroundColor: "#f0fdf4",
+    borderRadius: radii.lg,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  okText: { fontSize: typography.fontSizes.xs, color: "#166534" },
   switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   switchLabel: { fontWeight: typography.fontWeights.medium },
   saveBtn: {
