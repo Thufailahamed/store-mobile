@@ -22,7 +22,8 @@ import {
   getOrderPackage,
   hasStoreApi,
 } from "@/lib/api";
-import { takePhoto, uploadDeliveryProof } from "@/lib/upload";
+import { takePhoto, uploadDeliveryProof, uploadDeliverySignature } from "@/lib/upload";
+import { SignatureCanvas } from "@/components/delivery/SignatureCanvas";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import {
   canStartDelivery,
@@ -57,6 +58,11 @@ export default function DeliveryDetail() {
   // Proof-of-delivery photo state. Required before handleVerify.
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [capturingProof, setCapturingProof] = useState(false);
+  // Signature state. Recommended (not server-enforced) for verify_*; gated by
+  // canSubmitVerify so the buyer tracking page surfaces both photo + signature.
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
 
   const refetchOrder = useCallback(async () => {
     if (!id) return;
@@ -69,6 +75,7 @@ export default function DeliveryDetail() {
     // Reset proof + OTP state when the order id changes so we don't carry
     // state from a previous order (e.g. back-nav then open another).
     setProofUrl(null);
+    setSignatureUrl(null);
     setOtp("");
     setShowReport(false);
     setIssueReason("");
@@ -135,6 +142,20 @@ export default function DeliveryDetail() {
     }
   };
 
+  const handleCaptureSignature = async (dataUrl: string) => {
+    if (!order || !user?.id) return;
+    setUploadingSignature(true);
+    const uploaded = await uploadDeliverySignature(user.id, order.id, dataUrl);
+    setUploadingSignature(false);
+    if (uploaded.error || !uploaded.url) {
+      Alert.alert("Signature upload failed", uploaded.error ?? "Try again");
+      return;
+    }
+    setSignatureUrl(uploaded.url);
+  };
+
+  const handleOpenSignaturePad = () => setSignatureModalOpen(true);
+
   const handleVerify = async () => {
     if (!order) return;
     if (!isValidOtp(otp)) {
@@ -156,7 +177,7 @@ export default function DeliveryDetail() {
       return;
     }
     setVerifying(true);
-    const res = await riderVerifyDelivery(order.id, otp.trim(), proofUrl);
+    const res = await riderVerifyDelivery(order.id, otp.trim(), proofUrl, signatureUrl);
     setVerifying(false);
     if (res.ok) {
       // Refetch so local state matches the canonical post-transition state.
@@ -412,7 +433,25 @@ export default function DeliveryDetail() {
               </TouchableOpacity>
             )}
 
-            {/* Step 2: OTP. */}
+            {/* Step 2: signature (recommended). */}
+            {signatureUrl ? (
+              <View style={styles.proofOkCard}>
+                <Text style={styles.proofOkText}>✓ Signature captured</Text>
+                <TouchableOpacity onPress={handleOpenSignaturePad} disabled={uploadingSignature}>
+                  <Text style={styles.proofReplace}>Re-sign</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.signatureBtn, uploadingSignature && { opacity: 0.6 }]}
+                onPress={handleOpenSignaturePad}
+                disabled={uploadingSignature}
+              >
+                <Text style={styles.signatureBtnText}>✍️ Capture customer signature</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Step 3: OTP. */}
             <Text style={styles.otpHint}>Ask customer for their 6-digit OTP code</Text>
             <TextInput
               style={styles.otpInput}
@@ -532,6 +571,14 @@ export default function DeliveryDetail() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <SignatureCanvas
+        visible={signatureModalOpen}
+        onClose={() => setSignatureModalOpen(false)}
+        onCapture={handleCaptureSignature}
+        onEmpty={() => Alert.alert("Signature empty", "Please sign before saving.")}
+        descriptionText="Customer signature"
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -775,6 +822,21 @@ const styles = StyleSheet.create({
     color: "#166534",
     fontSize: typography.fontSizes.xs,
     textDecorationLine: "underline",
+  },
+
+  signatureBtn: {
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    padding: 14,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  signatureBtnText: {
+    color: colors.light.foreground,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
   },
 
   otpInput: {

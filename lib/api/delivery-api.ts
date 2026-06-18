@@ -111,11 +111,17 @@ export async function deliveryTransition(
 export async function deliveryVerify(
   orderId: string,
   otp: string,
-  opts?: { proof_url?: string | null },
+  opts?: { proof_url?: string | null; signature_url?: string | null; notes?: string | null },
 ): Promise<DeliveryApiResult<{ ok: boolean; status: string }>> {
   return storeApiFetch("/api/delivery/verify", {
     method: "POST",
-    body: JSON.stringify({ order_id: orderId, otp, proof_url: opts?.proof_url ?? null }),
+    body: JSON.stringify({
+      order_id: orderId,
+      otp,
+      proof_url: opts?.proof_url ?? null,
+      signature_url: opts?.signature_url ?? null,
+      notes: opts?.notes ?? null,
+    }),
   });
 }
 
@@ -186,7 +192,13 @@ export async function scanPackage(
 
 export async function verifyPackageDelivery(
   token: string,
-  opts: { otp?: string; customer_qr_token?: string; proof_url?: string | null },
+  opts: {
+    otp?: string;
+    customer_qr_token?: string;
+    proof_url?: string | null;
+    signature_url?: string | null;
+    notes?: string | null;
+  },
 ): Promise<DeliveryApiResult<unknown>> {
   return storeApiFetch("/api/packages/verify-delivery", {
     method: "POST",
@@ -195,6 +207,8 @@ export async function verifyPackageDelivery(
       otp: opts.otp,
       customer_qr_token: opts.customer_qr_token,
       proof_url: opts.proof_url ?? null,
+      signature_url: opts.signature_url ?? null,
+      notes: opts.notes ?? null,
     }),
   });
 }

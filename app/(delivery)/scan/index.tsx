@@ -22,12 +22,14 @@ import {
   type PackageScanAction,
 } from "@/lib/api/delivery-api";
 import { resolveScanAction } from "@/lib/api/scan-action";
-import { takePhoto, uploadDeliveryProof } from "@/lib/upload";
+import { takePhoto, uploadDeliveryProof, uploadDeliverySignature } from "@/lib/upload";
+import { SignatureCanvas } from "@/components/delivery/SignatureCanvas";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { typography, radii } from "@/lib/theme/tokens";
 import {
   isProofRequired,
   isScanActionLegal,
+  isSignatureRequired,
   isValidOtp,
   legalActions,
   type DeliveryAction,
@@ -65,6 +67,11 @@ export default function DeliveryScanScreen() {
   // Proof-of-delivery photo state. Required before any verify_* action.
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
+  // Signature state. Recommended (not server-enforced) for verify_*; gated by
+  // the legalActions filter so the rider UI surfaces it consistently.
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
   // Customer-QR sub-scan: when true, the camera is shown waiting for a QR.
   const [awaitingCustomerQr, setAwaitingCustomerQr] = useState(false);
 
@@ -73,6 +80,8 @@ export default function DeliveryScanScreen() {
   const proofCtx: ProofContext = {
     hasProofPhoto: Boolean(proofUrl),
     proofUrl,
+    hasSignature: signatureUrl ? true : undefined,
+    signatureUrl,
   };
 
   const refreshMeta = useCallback(async (pkgToken: string) => {
@@ -101,6 +110,7 @@ export default function DeliveryScanScreen() {
       setMeta(res.data);
       // Reset transient state on new package.
       setProofUrl(null);
+      setSignatureUrl(null);
       setOtp("");
       setAwaitingCustomerQr(false);
     },
@@ -124,6 +134,7 @@ export default function DeliveryScanScreen() {
         verifyPackageDelivery(token, {
           customer_qr_token: data.trim(),
           proof_url: proofUrl,
+          signature_url: signatureUrl,
         })
           .then((res) => {
             setActing(false);
@@ -164,6 +175,18 @@ export default function DeliveryScanScreen() {
     setProofUrl(uploaded.url);
   };
 
+  const handleCaptureSignature = async (dataUrl: string) => {
+    if (!token || !user?.id) return;
+    setUploadingSignature(true);
+    const uploaded = await uploadDeliverySignature(user.id, token, dataUrl);
+    setUploadingSignature(false);
+    if (uploaded.error || !uploaded.url) {
+      Alert.alert("Signature upload failed", uploaded.error ?? "Try again");
+      return;
+    }
+    setSignatureUrl(uploaded.url);
+  };
+
   const runAction = async (action: DeliveryAction) => {
     if (!token) return;
 
@@ -191,7 +214,11 @@ export default function DeliveryScanScreen() {
         return;
       }
       setActing(true);
-      const res = await verifyPackageDelivery(token, { otp: otp.trim(), proof_url: proofUrl });
+      const res = await verifyPackageDelivery(token, {
+        otp: otp.trim(),
+        proof_url: proofUrl,
+        signature_url: signatureUrl,
+      });
       setActing(false);
       if (res.ok) {
         Alert.alert("Delivered", "Package verified successfully.", [
@@ -335,6 +362,22 @@ export default function DeliveryScanScreen() {
                   </Text>
                 </TouchableOpacity>
               )}
+
+              <View style={styles.signatureDivider} />
+              <Text style={styles.proofTitle}>Customer signature</Text>
+              {signatureUrl ? (
+                <Text style={styles.proofOk}>✓ Signature captured</Text>
+              ) : (
+                <TouchableOpacity
+                  style={styles.proofBtn}
+                  onPress={() => setSignatureModalOpen(true)}
+                  disabled={uploadingSignature}
+                >
+                  <Text style={styles.proofBtnText}>
+                    {uploadingSignature ? "Uploading…" : "✍️ Capture signature"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : null}
 
@@ -426,6 +469,14 @@ export default function DeliveryScanScreen() {
           </TouchableOpacity>
         </View>
       ) : null}
+
+      <SignatureCanvas
+        visible={signatureModalOpen}
+        onClose={() => setSignatureModalOpen(false)}
+        onCapture={handleCaptureSignature}
+        onEmpty={() => Alert.alert("Signature empty", "Please sign before saving.")}
+        descriptionText="Customer signature"
+      />
     </View>
   );
 }
@@ -475,6 +526,7 @@ const makeStyles = (
       alignItems: "center",
     },
     proofBtnText: { color: colors.primaryForeground, fontWeight: typography.fontWeights.semibold as any },
+    signatureDivider: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
     blockedCard: {
       backgroundColor: colors.card,
       borderRadius: radii.lg,

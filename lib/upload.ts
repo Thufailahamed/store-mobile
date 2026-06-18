@@ -301,6 +301,38 @@ export async function uploadDeliveryProof(
   }
 }
 
+/**
+ * Delivery signature PNG — same RLS bucket as the proof photo.
+ * Accepts the raw base64 dataURL emitted by `react-native-signature-canvas`
+ * (the lib returns a `data:image/png;base64,...` string), strips the prefix,
+ * and uploads the binary.
+ */
+export async function uploadDeliverySignature(
+  userId: string,
+  orderId: string,
+  base64PngDataUrl: string,
+): Promise<UploadResult> {
+  try {
+    const match = /^data:image\/png;base64,(.+)$/.exec(base64PngDataUrl.trim());
+    if (!match) {
+      return { url: "", error: "Signature payload is not a PNG dataURL" };
+    }
+    const base64 = match[1];
+    const path = `${userId}/signature-${orderId}-${Date.now()}.png`;
+    const bytes = base64ToArrayBuffer(base64);
+
+    const { error: uploadError } = await supabase.storage
+      .from("review-media")
+      .upload(path, bytes, { contentType: "image/png", upsert: false });
+    if (uploadError) return { url: "", error: uploadError.message };
+
+    const { data } = supabase.storage.from("review-media").getPublicUrl(path);
+    return { url: data?.publicUrl ?? "" };
+  } catch (e: any) {
+    return { url: "", error: e?.message ?? "Upload failed" };
+  }
+}
+
 /** Business compliance document — private bucket; returns storage path in `url`. */
 export async function uploadComplianceDocument(
   storeId: string,

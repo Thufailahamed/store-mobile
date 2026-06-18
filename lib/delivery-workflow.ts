@@ -64,6 +64,10 @@ export interface ProofContext {
   hasProofPhoto: boolean;
   /** Public URL returned by the upload step. */
   proofUrl?: string | null;
+  /** True after the rider signs on the canvas and the upload succeeds. */
+  hasSignature?: boolean;
+  /** Public URL of the uploaded signature PNG. */
+  signatureUrl?: string | null;
 }
 
 /** Actions that require a proof-of-delivery photo before they fire. */
@@ -71,8 +75,22 @@ export function isProofRequired(action: DeliveryAction): boolean {
   return action === "verify_otp" || action === "verify_customer_qr";
 }
 
+/**
+ * Signature is recommended for the verify_* actions, but not enforced at the
+ * server gate (touchpads aren't always viable in the field). The mobile UI
+ * should still gate the verify button on the signature so the buyer tracking
+ * page surfaces it.
+ */
+export function isSignatureRequired(action: DeliveryAction): boolean {
+  return action === "verify_otp" || action === "verify_customer_qr";
+}
+
 export function hasProof(ctx: ProofContext): boolean {
   return Boolean(ctx.hasProofPhoto && ctx.proofUrl);
+}
+
+export function hasSignature(ctx: ProofContext): boolean {
+  return Boolean(ctx.hasSignature && ctx.signatureUrl);
 }
 
 export function canStartDelivery(orderStatus: string): boolean {
@@ -130,6 +148,11 @@ export function isScanActionLegal(
   }
   if (isProofRequired(action) && !hasProof(ctx)) {
     return { ok: false, reason: "Proof of delivery photo is required" };
+  }
+  // Signature is recommended (not server-enforced) for verify_*; reject at
+  // the client so the buyer tracking page has both photo + signature rendered.
+  if (isSignatureRequired(action) && ctx.hasSignature === true && !hasSignature(ctx)) {
+    return { ok: false, reason: "Signature upload failed — try again" };
   }
   return { ok: true };
 }

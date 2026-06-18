@@ -9,9 +9,11 @@ import {
   canStartDelivery,
   canVerifyDelivery,
   hasProof,
+  hasSignature,
   isDeliveryTerminal,
   isProofRequired,
   isScanActionLegal,
+  isSignatureRequired,
   isValidOtp,
   legalActions,
   type DeliveryAction,
@@ -357,5 +359,78 @@ describe("delivery-workflow — OTP extra edge cases", () => {
     expect(OTP_REGEX.test("1234567")).toBe(false);
     expect(OTP_REGEX.test("abcdef")).toBe(false);
     expect(OTP_REGEX.test("12345a")).toBe(false);
+  });
+});
+describe("delivery-workflow — signature context", () => {
+  it("isSignatureRequired only for verify_* actions", () => {
+    expect(isSignatureRequired("verify_otp")).toBe(true);
+    expect(isSignatureRequired("verify_customer_qr")).toBe(true);
+    expect(isSignatureRequired("start_delivery")).toBe(false);
+    expect(isSignatureRequired("pack")).toBe(false);
+    expect(isSignatureRequired("pickup")).toBe(false);
+    expect(isSignatureRequired("fail_delivery")).toBe(false);
+  });
+
+  it("hasSignature requires both flag and URL", () => {
+    expect(hasSignature({ hasSignature: true, signatureUrl: "https://x/y.png" })).toBe(true);
+    expect(hasSignature({ hasSignature: true, signatureUrl: null })).toBe(false);
+    expect(hasSignature({ hasSignature: true, signatureUrl: "" })).toBe(false);
+    expect(hasSignature({ hasSignature: false })).toBe(false);
+    expect(hasSignature({ hasSignature: false, signatureUrl: "https://x/y.png" })).toBe(false);
+  });
+
+  it("isScanActionLegal passes verify_* with full proof+signature context", () => {
+    const ctx: ProofContext = {
+      hasProofPhoto: true,
+      proofUrl: "https://x/y.jpg",
+      hasSignature: true,
+      signatureUrl: "https://x/sig.png",
+    };
+    expect(isScanActionLegal("verify_otp", "out_for_delivery", "out_for_delivery", ctx)).toEqual({ ok: true });
+    expect(isScanActionLegal("verify_customer_qr", "out_for_delivery", "out_for_delivery", ctx)).toEqual({ ok: true });
+  });
+
+  it("isScanActionLegal rejects verify_* when signature flag true but URL missing", () => {
+    const ctx: ProofContext = {
+      hasProofPhoto: true,
+      proofUrl: "https://x/y.jpg",
+      hasSignature: true,
+      signatureUrl: null,
+    };
+    const result = isScanActionLegal("verify_otp", "out_for_delivery", "out_for_delivery", ctx);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/signature/i);
+  });
+
+  it("isScanActionLegal accepts verify_* when signature not yet attempted (undefined)", () => {
+    // The signature is recommended, not server-enforced. If the rider never
+    // touched the pad (hasSignature === undefined), the action stays legal.
+    const ctx: ProofContext = {
+      hasProofPhoto: true,
+      proofUrl: "https://x/y.jpg",
+    };
+    expect(isScanActionLegal("verify_otp", "out_for_delivery", "out_for_delivery", ctx).ok).toBe(true);
+  });
+
+  it("legalActions filters verify_* when signature incomplete", () => {
+    const fullCtx: ProofContext = {
+      hasProofPhoto: true,
+      proofUrl: "https://x/y.jpg",
+      hasSignature: true,
+      signatureUrl: "https://x/sig.png",
+    };
+    const partialCtx: ProofContext = {
+      hasProofPhoto: true,
+      proofUrl: "https://x/y.jpg",
+      hasSignature: true,
+      signatureUrl: null,
+    };
+    const actions: DeliveryAction[] = ["verify_otp", "fail_delivery", "start_delivery"];
+
+    expect(legalActions(actions, "out_for_delivery", "out_for_delivery", fullCtx))
+      .toEqual(["verify_otp", "fail_delivery"]);
+
+    expect(legalActions(actions, "out_for_delivery", "out_for_delivery", partialCtx))
+      .toEqual(["fail_delivery"]);
   });
 });
