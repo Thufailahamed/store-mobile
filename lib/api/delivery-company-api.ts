@@ -1,4 +1,9 @@
 import { storeApiFetch } from "@/lib/api/delivery-api";
+import {
+  assertDeliveryCompanyOperations,
+  assertDeliveryCompanySetup,
+} from "@/lib/delivery-company-api-guard";
+import type { DeliveryCompanyAccessState } from "@/lib/delivery-company-access";
 
 export type DcApiResult<T> =
   | { ok: true; data: T }
@@ -177,7 +182,11 @@ export interface DcDriverInvite {
 }
 
 export async function getDeliveryCompanyMe(): Promise<
-  DcApiResult<{ company: DeliveryCompany; membership: DcMembership }>
+  DcApiResult<{
+    company: DeliveryCompany;
+    membership: DcMembership;
+    access?: DeliveryCompanyAccessState & { reason?: string | null };
+  }>
 > {
   return storeApiFetch("/api/delivery-company/me");
 }
@@ -226,6 +235,8 @@ export async function autoAssignOrders(
 ): Promise<
   DcApiResult<{ assignments?: unknown[]; skipped?: { order_id: string; reason: string }[] }>
 > {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/assignments/auto", {
     method: "POST",
     body: JSON.stringify({
@@ -240,6 +251,8 @@ export async function receiveAtWarehouse(
   warehouseId: string,
   orderId: string,
 ): Promise<DcApiResult<unknown>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/warehouses/${warehouseId}/receive`, {
     method: "POST",
     body: JSON.stringify({ order_id: orderId }),
@@ -250,6 +263,8 @@ export async function assignLastMileBatch(
   orderIds: string[],
   warehouseId?: string,
 ): Promise<DcApiResult<unknown>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/assignments/last-mile", {
     method: "POST",
     body: JSON.stringify({
@@ -277,10 +292,14 @@ export async function getDeliveryCompanyRoute(
 }
 
 export async function dispatchRoute(routeId: string): Promise<DcApiResult<unknown>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/routes/${routeId}/dispatch`, { method: "POST" });
 }
 
 export async function cancelRoute(routeId: string, reason?: string): Promise<DcApiResult<unknown>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/routes/${routeId}/cancel`, {
     method: "POST",
     body: JSON.stringify(reason ? { reason } : {}),
@@ -301,6 +320,8 @@ export async function manualAssignOrder(
   driverId: string,
   opts?: { leg?: "pickup" | "last_mile" | "delivery"; warehouse_id?: string },
 ): Promise<DcApiResult<unknown>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/assignments/manual", {
     method: "POST",
     body: JSON.stringify({
@@ -319,6 +340,8 @@ export async function inviteDriver(body: {
   capacity_max?: number;
   home_warehouse_id?: string;
 }): Promise<DcApiResult<unknown>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/drivers", {
     method: "POST",
     body: JSON.stringify({
@@ -334,6 +357,8 @@ export async function updateDriverMember(
   memberId: string,
   patch: { is_active?: boolean; capacity_max?: number; driver_type?: string },
 ): Promise<DcApiResult<{ member: DcDriverMember }>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/drivers/${memberId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
@@ -352,6 +377,8 @@ export async function createWarehouse(body: {
   };
   capacity_max?: number;
 }): Promise<DcApiResult<{ warehouse: DcWarehouse }>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/warehouses", {
     method: "POST",
     body: JSON.stringify({ capacity_max: 500, ...body }),
@@ -367,6 +394,8 @@ export async function updateWarehouse(
     is_active: boolean;
   }>,
 ): Promise<DcApiResult<{ warehouse: DcWarehouse }>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/warehouses/${warehouseId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
@@ -374,6 +403,8 @@ export async function updateWarehouse(
 }
 
 export async function deleteWarehouse(warehouseId: string): Promise<DcApiResult<{ ok: boolean }>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
   return storeApiFetch(`/api/delivery-company/warehouses/${warehouseId}`, { method: "DELETE" });
 }
 
@@ -386,6 +417,8 @@ export async function updateDeliveryCompany(patch: {
   default_assignment_policy?: "zone" | "round_robin" | "manual";
   auto_assign_last_mile_on_receive?: boolean;
 }): Promise<DcApiResult<{ company: DeliveryCompany }>> {
+  const guard = await assertDeliveryCompanySetup();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/me", {
     method: "PATCH",
     body: JSON.stringify(patch),
@@ -432,6 +465,8 @@ export async function createDeliveryRoute(body: {
   order_ids: string[];
   warehouse_id?: string;
 }): Promise<DcApiResult<{ route: DcRoute }>> {
+  const guard = await assertDeliveryCompanyOperations();
+  if (!guard.ok) return guard;
   return storeApiFetch("/api/delivery-company/routes", {
     method: "POST",
     body: JSON.stringify(body),

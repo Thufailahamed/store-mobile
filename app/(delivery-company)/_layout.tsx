@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, View, Text, Pressable, StyleSheet } from "react-native";
-import { Tabs, useRouter, useSegments } from "expo-router";
+import { Tabs, useRouter, useSegments, useFocusEffect } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth } from "@/lib/supabase/auth";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
@@ -8,7 +8,9 @@ import { getDeliveryCompanyMe, hasStoreApi } from "@/lib/api/delivery-company-ap
 import {
   getDeliveryCompanyAccessState,
   isDeliveryCompanyAccessibleRoute,
+  type DeliveryCompanyAccessState,
 } from "@/lib/delivery-company-access";
+import { normalizeDeliveryCompanyAccess } from "@/lib/delivery-company-api-guard";
 import type { DeliveryCompany } from "@/lib/api/delivery-company-api";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -20,15 +22,37 @@ export default function DeliveryCompanyLayout() {
   const router = useRouter();
   const segments = useSegments();
   const [accessChecked, setAccessChecked] = useState(false);
+  const [companyLoaded, setCompanyLoaded] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [company, setCompany] = useState<DeliveryCompany | null>(null);
+  const [serverAccess, setServerAccess] = useState<DeliveryCompanyAccessState | null>(null);
 
-  const access = useMemo(() => getDeliveryCompanyAccessState(company), [company]);
-  const locked = role !== "admin" && !access.canUseCompanyTools;
+  const access = useMemo(
+    () => serverAccess ?? getDeliveryCompanyAccessState(company),
+    [serverAccess, company]
+  );
+  const locked = role !== "admin" && companyLoaded && !access.canUseCompanyTools;
   const isAccessibleRoute = isDeliveryCompanyAccessibleRoute(segments as string[], access);
 
   const segmentLeaf = segments[segments.length - 1] ?? "";
   const isPublicRoute = PUBLIC_SEGMENTS.has(segmentLeaf as string);
+
+  const refreshCompany = useCallback(async () => {
+    if (!hasStoreApi() || isPublicRoute || !user?.id) return;
+    const me = await getDeliveryCompanyMe();
+    if (me.ok) {
+      setCompany(me.data.company);
+      setServerAccess(normalizeDeliveryCompanyAccess(me.data.access, me.data.company));
+    }
+    setCompanyLoaded(true);
+  }, [user?.id, isPublicRoute]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!accessChecked || isPublicRoute) return;
+      void refreshCompany();
+    }, [accessChecked, isPublicRoute, refreshCompany])
+  );
 
   useEffect(() => {
     if (loading || roleLoading || !user?.id) return;
@@ -56,7 +80,13 @@ export default function DeliveryCompanyLayout() {
           router.replace("/(delivery-company)/onboarding");
           return;
         }
-        if (me.ok) setCompany(me.data.company);
+        if (me.ok) {
+          setCompany(me.data.company);
+          setServerAccess(normalizeDeliveryCompanyAccess(me.data.access, me.data.company));
+        }
+        setCompanyLoaded(true);
+      } else {
+        setCompanyLoaded(true);
       }
 
       setAllowed(true);
@@ -70,6 +100,21 @@ export default function DeliveryCompanyLayout() {
   }, [accessChecked, isPublicRoute, locked, isAccessibleRoute, router]);
 
   if ((loading || roleLoading || !accessChecked) && !isPublicRoute) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.light.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.light.primary} />
+      </View>
+    );
+  }
+
+  if (accessChecked && !companyLoaded && hasStoreApi() && !isPublicRoute) {
     return (
       <View
         style={{
@@ -172,6 +217,7 @@ export default function DeliveryCompanyLayout() {
       <Tabs.Screen name="routes/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="drivers/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="warehouses/[id]/index" options={{ href: null }} />
+      <Tabs.Screen name="warehouses/receive" options={{ href: null }} />
       <Tabs.Screen name="settings/index" options={{ href: null }} />
       <Tabs.Screen name="team/index" options={{ href: null }} />
       <Tabs.Screen name="returns/index" options={{ href: null }} />

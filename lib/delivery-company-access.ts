@@ -34,7 +34,19 @@ export function shouldClearStoreDeliveryCompanyOnStatusChange(
   nextStatus: string | undefined | null
 ): boolean {
   if (!nextStatus) return false;
-  return !isCompanyOperationalStatus(nextStatus);
+  const status = String(nextStatus).toLowerCase();
+  return status === "suspended" || status === "rejected";
+}
+
+export function validateStoreDeliveryCompanyAssignment(
+  deliveryCompanyId: string | null | undefined,
+  companyStatus: string | null | undefined
+): { ok: true } | { ok: false; error: string } {
+  if (!deliveryCompanyId) return { ok: true };
+  if (!isCompanyOperationalStatus(companyStatus)) {
+    return { ok: false, error: "Only active delivery companies can be linked to stores." };
+  }
+  return { ok: true };
 }
 
 export function shouldApplyDeliveryCompanyOperationsGuard(role: string): boolean {

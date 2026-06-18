@@ -19,6 +19,7 @@ import {
   updateDeliveryCompany,
   type DeliveryCompany,
 } from "@/lib/api/delivery-company-api";
+import { getDeliveryCompanyAccessState } from "@/lib/delivery-company-access";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 const POLICIES = [
@@ -74,6 +75,9 @@ export default function CompanySettingsScreen() {
     return messages[s] ?? `Status: ${s}`;
   }, [company?.status]);
 
+  const access = useMemo(() => getDeliveryCompanyAccessState(company), [company]);
+  const opsLocked = !access.canUseCompanyTools;
+
   const save = async () => {
     const postalList = postals.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean);
     setSaving(true);
@@ -83,8 +87,12 @@ export default function CompanySettingsScreen() {
       contact_phone: phone.trim() || undefined,
       contact_email: email.trim() || undefined,
       serviceable_postal_codes: postalList,
-      default_assignment_policy: policy,
-      auto_assign_last_mile_on_receive: autoLastMile,
+      ...(opsLocked
+        ? {}
+        : {
+            default_assignment_policy: policy,
+            auto_assign_last_mile_on_receive: autoLastMile,
+          }),
     });
     setSaving(false);
     if (!res.ok) Alert.alert("Save failed", res.error);
@@ -120,6 +128,9 @@ export default function CompanySettingsScreen() {
         <Field label="Contact email" value={email} onChange={setEmail} keyboardType="email-address" autoCapitalize="none" />
 
         <Text style={styles.section}>Operations</Text>
+        {opsLocked ? (
+          <Text style={styles.hint}>Assignment policy and auto last-mile are locked until your company is active.</Text>
+        ) : null}
         <Field
           label="Serviceable postal codes"
           value={postals}
@@ -129,25 +140,31 @@ export default function CompanySettingsScreen() {
         />
         <Text style={styles.hint}>Used for zone-based auto-assignment.</Text>
 
-        <Text style={styles.fieldLabel}>Default assignment policy</Text>
-        <View style={styles.policyRow}>
+        <Text style={[styles.fieldLabel, opsLocked && styles.lockedLabel]}>Default assignment policy</Text>
+        <View style={[styles.policyRow, opsLocked && styles.lockedBlock]}>
           {POLICIES.map((p) => (
             <TouchableOpacity
               key={p.id}
               style={[styles.policyChip, policy === p.id && styles.policyChipActive]}
-              onPress={() => setPolicy(p.id)}
+              onPress={() => !opsLocked && setPolicy(p.id)}
+              disabled={opsLocked}
             >
               <Text style={[styles.policyText, policy === p.id && styles.policyTextActive]}>{p.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={styles.switchRow}>
+        <View style={[styles.switchRow, opsLocked && styles.lockedBlock]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.switchLabel}>Auto-assign last mile on receive</Text>
             <Text style={styles.hint}>When a package is scanned into a hub, queue last-mile assignment.</Text>
           </View>
-          <Switch value={autoLastMile} onValueChange={setAutoLastMile} trackColor={{ true: colors.light.primary }} />
+          <Switch
+            value={autoLastMile}
+            onValueChange={setAutoLastMile}
+            trackColor={{ true: colors.light.primary }}
+            disabled={opsLocked}
+          />
         </View>
 
         <TouchableOpacity style={[styles.saveBtn, saving && styles.saveDisabled]} onPress={save} disabled={saving}>
@@ -249,4 +266,6 @@ const styles = StyleSheet.create({
   },
   saveDisabled: { opacity: 0.6 },
   saveText: { color: "#fff", fontWeight: typography.fontWeights.semibold },
+  lockedBlock: { opacity: 0.5 },
+  lockedLabel: { color: colors.light.mutedForeground },
 });

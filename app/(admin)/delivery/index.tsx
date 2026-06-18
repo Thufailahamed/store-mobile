@@ -9,6 +9,7 @@ import {
   Alert,
   TextInput,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminDeliveryCompanies, updateAdminDeliveryCompanyStatus } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton, Button } from "@/components/ui";
@@ -33,6 +34,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 }
 
 export default function AdminDelivery() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<(typeof STATUS_TABS)[number]>("all");
   const [search, setSearch] = useState("");
@@ -40,18 +42,12 @@ export default function AdminDelivery() {
   const q = useQuery({
     queryKey: ["admin-delivery-companies", status, search],
     queryFn: async () => {
-      const r = await getAdminDeliveryCompanies();
-      if (!r.ok) return [];
-      const needle = search.trim().toLowerCase();
-      return r.data.filter((c) => {
-        if (status !== "all" && c.status !== status) return false;
-        if (!needle) return true;
-        return (
-          c.name.toLowerCase().includes(needle) ||
-          c.slug.toLowerCase().includes(needle) ||
-          (c.contact_email ?? "").toLowerCase().includes(needle)
-        );
+      const r = await getAdminDeliveryCompanies({
+        status: status === "all" ? undefined : status,
+        search: search.trim() || undefined,
       });
+      if (!r.ok) throw new Error(r.error);
+      return r.data;
     },
   });
 
@@ -63,14 +59,19 @@ export default function AdminDelivery() {
         Alert.alert("Action failed", res.error);
         return;
       }
+      Alert.alert("Updated", `Company marked as ${res.data.status}.`);
       queryClient.invalidateQueries({ queryKey: ["admin-delivery-companies"] });
     },
   });
 
   const confirmStatus = (id: string, name: string, nextStatus: "active" | "suspended" | "rejected") => {
+    const unlinkNote =
+      nextStatus === "suspended" || nextStatus === "rejected"
+        ? " Linked stores will be unlinked."
+        : "";
     Alert.alert(
       `Mark ${nextStatus}?`,
-      `${name} will be marked as ${nextStatus}.`,
+      `${name} will be marked as ${nextStatus}.${unlinkNote}`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -123,16 +124,18 @@ export default function AdminDelivery() {
           q.isLoading ? <Skeleton height={80} /> : <EmptyState icon="car-outline" title="No companies" />
         }
         renderItem={({ item, index }) => (
-          <Card style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.index}>{String(index + 1).padStart(2, "0")}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.name}</Text>
+          <Pressable onPress={() => router.push(`/(admin)/delivery/${item.id}`)}>
+            <Card style={styles.card}>
+              <View style={styles.row}>
+                <Text style={styles.index}>{String(index + 1).padStart(2, "0")}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{item.name}</Text>
                 <Text style={styles.meta}>
                   {item.slug} · {item.total_deliveries ?? 0} deliveries
                 </Text>
                 <Text style={styles.meta2}>
-                  {item.contact_email ?? item.contact_phone ?? "—"} · joined {rel(item.created_at)} ago
+                  {item.owner?.full_name ?? item.owner?.email ?? item.contact_email ?? item.contact_phone ?? "—"} · joined{" "}
+                  {rel(item.created_at)} ago
                 </Text>
                 <View style={styles.actions}>
                   {item.status !== "active" ? (
@@ -166,9 +169,10 @@ export default function AdminDelivery() {
                   ) : null}
                 </View>
               </View>
-              <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
-            </View>
-          </Card>
+                <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+              </View>
+            </Card>
+          </Pressable>
         )}
       />
     </View>

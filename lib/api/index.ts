@@ -2834,11 +2834,27 @@ export interface DeliveryCompany {
   rating?: number;
   total_deliveries?: number;
   created_at: string;
+  default_assignment_policy?: string;
+  owner?: {
+    id: string;
+    full_name?: string | null;
+    email?: string | null;
+    status?: string;
+  } | null;
 }
 
-export async function getAdminDeliveryCompanies(): Promise<Result<DeliveryCompany[]>> {
+export async function getAdminDeliveryCompanies(opts?: {
+  status?: string;
+  search?: string;
+}): Promise<Result<DeliveryCompany[]>> {
   if (hasStoreApi()) {
-    const res = await storeApiFetch<{ companies: DeliveryCompany[] }>("/api/admin/delivery-companies");
+    const params = new URLSearchParams();
+    if (opts?.status && opts.status !== "all") params.set("status", opts.status);
+    if (opts?.search?.trim()) params.set("search", opts.search.trim());
+    const q = params.toString();
+    const res = await storeApiFetch<{ companies: DeliveryCompany[] }>(
+      `/api/admin/delivery-companies${q ? `?${q}` : ""}`
+    );
     if (!res.ok) return fail(res.error);
     return ok(res.data.companies ?? []);
   }
@@ -2852,6 +2868,46 @@ export async function getAdminDeliveryCompanies(): Promise<Result<DeliveryCompan
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch delivery companies");
   }
+}
+
+export interface AdminDeliveryCompanyDetail {
+  company: DeliveryCompany;
+  members: Array<{
+    id: string;
+    company_role: string;
+    joined_at: string;
+    user?: { id: string; full_name?: string | null; email?: string | null; phone?: string | null; status?: string } | null;
+  }>;
+  warehouses: Array<{
+    id: string;
+    name: string;
+    address?: { city?: string; postal_code?: string } | null;
+  }>;
+  routes: Array<{
+    id: string;
+    status: string;
+    total_stops?: number;
+    created_at: string;
+    started_at?: string | null;
+    completed_at?: string | null;
+  }>;
+  audit: Array<{
+    id: string;
+    action: string;
+    created_at: string;
+    actor?: { id: string; full_name?: string | null; avatar_url?: string | null } | null;
+  }>;
+}
+
+export async function getAdminDeliveryCompanyDetail(
+  id: string,
+): Promise<Result<AdminDeliveryCompanyDetail>> {
+  if (!hasStoreApi()) {
+    return fail("EXPO_PUBLIC_STORE_API_URL is not configured");
+  }
+  const res = await storeApiFetch<AdminDeliveryCompanyDetail>(`/api/admin/delivery-companies/${id}`);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
 }
 
 export async function updateAdminDeliveryCompanyStatus(

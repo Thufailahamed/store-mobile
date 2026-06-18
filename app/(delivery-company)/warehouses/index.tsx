@@ -20,10 +20,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   createWarehouse,
+  getDeliveryCompanyMe,
   getDeliveryCompanyWarehouses,
   hasStoreApi,
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
+import { getDeliveryCompanyAccessState } from "@/lib/delivery-company-access";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function CompanyWarehousesScreen() {
@@ -42,6 +44,7 @@ export default function CompanyWarehousesScreen() {
     state: "",
     postal_code: "",
   });
+  const [canReceive, setCanReceive] = useState(false);
 
   const load = useCallback(async () => {
     if (!hasStoreApi()) {
@@ -49,6 +52,10 @@ export default function CompanyWarehousesScreen() {
       setLoading(false);
       setRefreshing(false);
       return;
+    }
+    const me = await getDeliveryCompanyMe();
+    if (me.ok) {
+      setCanReceive(getDeliveryCompanyAccessState(me.data.company).canUseCompanyTools);
     }
     const res = await getDeliveryCompanyWarehouses();
     if (res.ok) setWarehouses(res.data.warehouses);
@@ -97,10 +104,15 @@ export default function CompanyWarehousesScreen() {
           </TouchableOpacity>
         }
       />
-      <TouchableOpacity style={styles.scanLink} onPress={() => router.push("/(delivery)/scan")}>
-        <Ionicons name="qr-code-outline" size={18} color={colors.light.primary} />
-        <Text style={styles.scanLinkText}>Scan to receive packages at hub</Text>
-      </TouchableOpacity>
+      {canReceive ? (
+        <TouchableOpacity
+          style={styles.scanLink}
+          onPress={() => router.push("/(delivery-company)/warehouses/receive")}
+        >
+          <Ionicons name="download-outline" size={18} color={colors.light.primary} />
+          <Text style={styles.scanLinkText}>Receive package at hub</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {loading ? (
         <View style={styles.center}>
