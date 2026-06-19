@@ -8,6 +8,30 @@ import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, 
 import { clearCheckoutSession } from "@/lib/cart-checkout-session";
 import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
 
+/** Notice payload when a cart mutation was clamped to available stock. */
+export type CartClampNotice = {
+  productName: string;
+  variantLabel?: string;
+  requested: number;
+  capped: number;
+  reason: "stock" | "max_qty";
+};
+
+let cartClampHandler: ((notice: CartClampNotice) => void) | null = null;
+
+/** Register a callback that fires whenever an `addItem` or `updateQuantity`
+ *  silently caps the requested quantity to available stock. Matches the
+ *  reservation-sync error-handler pattern so the toast layer can react. */
+export function setCartClampNoticeHandler(
+  handler: ((notice: CartClampNotice) => void) | null,
+): void {
+  cartClampHandler = handler;
+}
+
+function emitClamp(notice: CartClampNotice): void {
+  if (cartClampHandler) cartClampHandler(notice);
+}
+
 export interface CartItem {
   productId: string;
   variantId: string | null;
@@ -50,19 +74,38 @@ export const useCart = create<CartStore>()(
 
       addItem: (item) => {
         const key = buildCartLineKeyFromItem(item);
+        const requestedQty = item.quantity ?? 1;
         set((state) => {
           const existing = state.items[key];
-          const stockCap = item.stock ?? existing?.stock ?? 99;
+          const effectiveCap = item.stock ?? existing?.stock ?? 99;
           const { image: _image, ...rest } = item;
+          const next = existing
+            ? Math.min(existing.quantity + requestedQty, effectiveCap)
+            : Math.min(requestedQty, effectiveCap);
+          if (existing && existing.quantity + requestedQty > effectiveCap) {
+            emitClamp({
+              productName: item.name,
+              variantLabel: item.variantLabel,
+              requested: existing.quantity + requestedQty,
+              capped: next,
+              reason: "stock",
+            });
+          } else if (!existing && requestedQty > effectiveCap) {
+            emitClamp({
+              productName: item.name,
+              variantLabel: item.variantLabel,
+              requested: requestedQty,
+              capped: next,
+              reason: "stock",
+            });
+          }
           return {
             items: {
               ...state.items,
               [key]: {
                 ...rest,
-                quantity: existing
-                  ? Math.min(existing.quantity + (item.quantity ?? 1), stockCap)
-                  : (item.quantity ?? 1),
-                stock: stockCap,
+                quantity: next,
+                stock: effectiveCap,
               },
             },
           };
@@ -84,10 +127,20 @@ export const useCart = create<CartStore>()(
         set((state) => {
           const item = state.items[key];
           if (!item) return state;
+          const capped = Math.min(quantity, item.stock);
+          if (quantity > item.stock) {
+            emitClamp({
+              productName: item.name,
+              variantLabel: item.variantLabel,
+              requested: quantity,
+              capped,
+              reason: "stock",
+            });
+          }
           return {
             items: {
               ...state.items,
-              [key]: { ...item, quantity: Math.min(quantity, item.stock) },
+              [key]: { ...item, quantity: capped },
             },
           };
         });

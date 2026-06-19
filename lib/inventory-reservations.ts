@@ -91,7 +91,9 @@ export function scheduleCartReservationSync(
   }, DEBOUNCE_MS);
 }
 
-/** Cancel an unpaid PayHere order and release cart holds (mobile checkout abandon). */
+/** Cancel an unpaid PayHere order and release cart holds (mobile checkout abandon).
+ *  For multi-vendor groups, prefer `abandonUnpaidPayHereGroup` so every
+ *  sub-order gets rolled back atomically. */
 export async function abandonUnpaidPayHereOrder(
   orderId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -99,6 +101,27 @@ export async function abandonUnpaidPayHereOrder(
   if (error) return { ok: false, error: error.message };
   await releaseCartReservations();
   return { ok: true };
+}
+
+/**
+ * Abandon an entire multi-vendor order group (PayHere failure / cancel).
+ * Single RPC call: every sub-order's inventory is restored, payment row
+ * is flipped to `cancelled`, status flips to `cancelled`.
+ */
+export async function abandonUnpaidPayHereGroup(
+  groupId: string,
+): Promise<{ ok: true; cancelled: number; noop: number } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("abandon_unpaid_order_group", {
+    p_group_id: groupId,
+  });
+  if (error) return { ok: false, error: error.message };
+  const payload = (data ?? {}) as { cancelled?: number; noop?: number };
+  await releaseCartReservations();
+  return {
+    ok: true,
+    cancelled: Number(payload.cancelled ?? 0),
+    noop: Number(payload.noop ?? 0),
+  };
 }
 
 /**
@@ -112,6 +135,28 @@ export async function cancelPlacedOrder(
   const { error } = await supabase.rpc("cancel_order", { p_order_id: orderId });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/**
+ * Cancel an entire multi-vendor order group. Inventory restored across
+ * every sub-order; payment refunded if any sub-order was paid.
+ */
+export async function cancelPlacedOrderGroup(
+  groupId: string,
+  reason?: string,
+): Promise<{ ok: true; cancelled: number; refunded: number; noop: number } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("cancel_order_group", {
+    p_group_id: groupId,
+    p_reason: reason ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  const payload = (data ?? {}) as { cancelled?: number; refunded?: number; noop?: number };
+  return {
+    ok: true,
+    cancelled: Number(payload.cancelled ?? 0),
+    refunded:  Number(payload.refunded  ?? 0),
+    noop:      Number(payload.noop      ?? 0),
+  };
 }
 
 /** Flush any pending reservation sync immediately (checkout). */

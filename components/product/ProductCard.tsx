@@ -47,11 +47,23 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
     ).keys()
   ).slice(0, 4);
 
+  /** Aggregate stock across every variant. If no variants exist we assume the
+   *  product is always available (matches web WishlistPage.totalStock). */
+  const aggregateStock = (product.variants ?? []).reduce(
+    (sum, v) => sum + getVariantAvailableStock(v, v.stock ?? 0),
+    0,
+  );
+  const isSoldOut = (product.variants?.length ?? 0) > 0 && aggregateStock <= 0;
+
   const handlePress = () => {
     router.push(`/(main)/products/${product.slug}`);
   };
 
   const handleAdd = () => {
+    if (isSoldOut) {
+      toast("Out of stock", "error");
+      return;
+    }
     const variants = product.variants ?? [];
     const variant =
       variants.find((v) => getVariantAvailableStock(v, v.stock ?? 0) > 0) ?? variants[0];
@@ -93,6 +105,11 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           {discount > 0 ? (
             <View style={[styles.discountBadge, { top: 6, right: 6 }]}>
               <Label style={styles.discountText}>{discount}% OFF</Label>
+            </View>
+          ) : null}
+          {isSoldOut ? (
+            <View style={styles.soldOutOverlay}>
+              <Label style={styles.soldOutText}>Out of stock</Label>
             </View>
           ) : null}
         </View>
@@ -165,6 +182,11 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
               <Label style={styles.discountText}>{discount}% OFF</Label>
             </View>
           )}
+          {isSoldOut ? (
+            <View style={styles.soldOutOverlay}>
+              <Label style={styles.soldOutText}>Out of stock</Label>
+            </View>
+          ) : null}
           <TouchableOpacity
             style={styles.wishlistBtn}
             onPress={handleWishlist}
@@ -226,6 +248,11 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
             <Label style={styles.discountText}>{discount}% OFF</Label>
           </View>
         )}
+        {isSoldOut ? (
+          <View style={styles.soldOutOverlay}>
+            <Label style={styles.soldOutText}>Out of stock</Label>
+          </View>
+        ) : null}
         <TouchableOpacity
           style={styles.wishlistBtn}
           onPress={handleWishlist}
@@ -237,7 +264,12 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
             color={isWishlisted ? colors.light.destructive : colors.light.foreground}
           />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addBtn} onPress={handleAdd} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={[styles.addBtn, isSoldOut && styles.addBtnDisabled]}
+          onPress={handleAdd}
+          activeOpacity={0.8}
+          disabled={isSoldOut}
+        >
           <Ionicons name="add" size={16} color={colors.light.primaryForeground} />
         </TouchableOpacity>
       </View>
@@ -323,6 +355,28 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 9,
     letterSpacing: typography.letterSpacing.wide,
+  },
+  soldOutOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(22, 23, 15, 0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  soldOutText: {
+    color: "#fff",
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    fontFamily: fontFamilies.sans.bold,
+  },
+  addBtnDisabled: {
+    backgroundColor: colors.light.muted,
+    opacity: 0.6,
   },
   wishlistBtn: {
     position: "absolute",

@@ -45,7 +45,8 @@ const EMPTY_RECONCILIATION: CartReconciliation = { remove: [], update: [] };
 const PRODUCT_SNAPSHOT_SELECT =
   "*, images:product_images(*), variants:product_variants(*, inventory(quantity, reserved)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)";
 
-/** Fetch current product rows for cart validation (includes inactive/deleted gaps). */
+/** Fetch current product rows for cart validation (filters soft-deleted products
+ *  and inactive variants in JS so the cart only sees sellable SKUs). */
 export async function fetchCartProductSnapshots(
   productIds: string[],
 ): Promise<
@@ -64,9 +65,20 @@ export async function fetchCartProductSnapshots(
   }
 
   const products: Record<string, Product> = {};
-  mapProducts(data as Product[]).forEach((product) => {
-    products[product.id] = product;
-  });
+  for (const raw of data as Array<Record<string, unknown>>) {
+    const deletedAt = (raw as { deleted_at?: string | null }).deleted_at;
+    const status = (raw as { status?: string | null }).status;
+    const isActive = (raw as { is_active?: boolean | null }).is_active;
+    if (deletedAt) continue;
+    if (status && status !== "active") continue;
+    if (isActive === false) continue;
+    const mapped = mapProducts([raw as unknown as Product])[0];
+    if (!mapped) continue;
+    if (Array.isArray(mapped.variants)) {
+      mapped.variants = mapped.variants.filter((v) => v.is_active !== false);
+    }
+    products[mapped.id] = mapped;
+  }
   return { ok: true, products };
 }
 

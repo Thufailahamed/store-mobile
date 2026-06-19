@@ -153,7 +153,7 @@ async function complementaryCandidates(anchor: Product, limit: number): Promise<
       .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
       .eq("status", "active")
       .eq("is_active", true)
-      .in("category->>slug", compSlugs)
+      .in("category.slug", compSlugs)
       .neq("id", anchor.id)
       .order("total_sales", { ascending: false })
       .limit(limit);

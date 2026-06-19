@@ -70,6 +70,53 @@ function parsePlacedOrder(data: unknown): { id: string; order_number?: string } 
   return null;
 }
 
+/** Parse the place_order_group RPC response into a flat list of sub-orders. */
+function parseGroupOrders(data: unknown): Array<{ id: string; order_number?: string; store_id?: string; total?: number }> | null {
+  if (!data || typeof data !== "object") return null;
+  const row = data as { orders?: unknown; group_id?: string };
+  const ordersRaw = Array.isArray(row.orders) ? row.orders : [];
+  const out: Array<{ id: string; order_number?: string; store_id?: string; total?: number }> = [];
+  for (const o of ordersRaw) {
+    if (!o || typeof o !== "object") continue;
+    const sub = o as Record<string, unknown>;
+    const id = typeof sub.id === "string" ? sub.id : null;
+    if (!id) continue;
+    out.push({
+      id,
+      order_number: typeof sub.order_number === "string" ? sub.order_number : undefined,
+      store_id: typeof sub.store_id === "string" ? sub.store_id : undefined,
+      total: typeof sub.total === "number" ? sub.total : undefined,
+    });
+  }
+  return out;
+}
+
+/** Round to 2dp without floating-point drift. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** RFC 4122 v4 UUID via WebCrypto when available, else fallback. */
+function uuidv4(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof (crypto as { randomUUID?: () => string }).randomUUID === "function") {
+      return (crypto as { randomUUID: () => string }).randomUUID();
+    }
+  } catch {
+    // fall through
+  }
+  // RFC4122 fallback using Math.random — fine for client-side group ids.
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex: string[] = [];
+  for (let i = 0; i < 16; i++) hex.push(bytes[i].toString(16).padStart(2, "0"));
+  return (
+    `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`
+  );
+}
+
 export default function CheckoutScreen() {
   const router = useRouter();
   const { openAddress } = useLocalSearchParams<{ openAddress?: string }>();
@@ -365,13 +412,13 @@ export default function CheckoutScreen() {
         country,
       };
 
-      // ---- Multi-vendor split: one order per store ----
-      // Each store gets its own place_order call with its own subtotal /
-      // shipping / tax. Coupon discount and loyalty points are applied to
-      // the first order only; a single combined coupon / points claim
-      // should not be split across orders automatically. If the user has
-      // a coupon that they want applied per-store, that flow lives outside
-      // this fan-out.
+      // ---- Multi-vendor atomic placement ----
+      // One RPC call (place_order_group) creates N sub-orders, N
+      // commission invoices, ONE group-level payments row, and consumes
+      // inventory + reservations across every store in a single
+      // transaction. Coupon discount and loyalty points are split
+      // proportionally to each store's subtotal share so commission
+      // invoices stay consistent with what the buyer paid.
       const byStore = new Map<string, typeof freshCartItems>();
       for (const item of freshCartItems) {
         const arr = byStore.get(item.storeId) ?? [];
@@ -380,8 +427,6 @@ export default function CheckoutScreen() {
       }
       const storeGroups = Array.from(byStore.entries());
 
-      // Compute per-store totals up front so we can split coupon / points
-      // proportionally if there are multiple stores.
       const perStoreTotals = storeGroups.map(([storeId, items]) => {
         const lines = items.map((it) => ({
           storeId: it.storeId,
@@ -403,112 +448,80 @@ export default function CheckoutScreen() {
         0,
       );
 
-      // Coupon discount and points are applied to the first order only.
-      // This is a known limitation: multi-store carts cannot split coupons
-      // automatically. The first store bears the full coupon + points
-      // deduction. (Future: store-level coupons.)
-      const placeOrderForGroup = async (
-        group: { storeId: string; items: typeof freshCartItems; totals: ReturnType<typeof computeCartTotals> },
-        applyCoupon: boolean,
-      ) => {
-        const rpcItems = group.items.map((item) => ({
-          product_id: item.productId,
-          variant_id: item.variantId,
-          store_id: item.storeId,
-          product_name: item.name,
-          variant_label: item.variantLabel ?? null,
-          sku: null,
-          quantity: item.quantity,
-          unit_price: item.price,
-        }));
-        const discount = applyCoupon
-          ? couponDiscount + freshPointsValue
-          : 0;
-        const { data, error } = await supabase.rpc("place_order", {
+      const groupId = uuidv4();
+      const ordersPayload = perStoreTotals.map((g) => {
+        const share =
+          totalSubForProportion > 0 ? g.totals.sub / totalSubForProportion : 0;
+        const shippingFee = round2(g.totals.shipping * share);
+        const tax = round2(g.totals.tax * share);
+        const discount = round2((couponDiscount + freshPointsValue) * share);
+        const total = Math.max(0, g.totals.sub + shippingFee + tax - discount);
+        return {
+          store_id: g.storeId,
+          items: g.items.map((it) => ({
+            product_id: it.productId,
+            variant_id: it.variantId ?? null,
+            product_name: it.name,
+            variant_label: it.variantLabel ?? null,
+            sku: null,
+            quantity: it.quantity,
+            unit_price: it.price,
+          })),
+          subtotal: g.totals.sub,
+          discount,
+          shipping_fee: shippingFee,
+          tax,
+          total,
+        };
+      });
+
+      // Reservation sync was already flushed above (`flushCartReservationSync`
+      // at line ~357). `place_order_group` is the single atomic writer and
+      // consumes the caller's holds via `place_order_group`'s internal
+      // reservation lookup. Re-syncing here would clobber the TTL with no
+      // benefit and could leak holds if the group call fails.
+
+      const { data: groupData, error: groupErr } = await supabase.rpc(
+        "place_order_group",
+        {
           p_user_id: user.id,
           p_address_id: addressId,
           p_shipping_address: shippingAddress,
-          p_subtotal: group.totals.sub,
-          p_discount: discount,
-          p_shipping_fee: group.totals.shipping,
-          p_tax: group.totals.tax,
-          p_total: Math.max(0, group.totals.total - discount),
           p_currency: "LKR",
           p_payment_method: paymentMethod,
-          p_coupon_id: applyCoupon ? couponId : null,
-          p_notes: `Shipping: ${shippingOption.label}`,
-          p_items: rpcItems,
-        });
-        if (error) {
-          return { ok: false as const, error: error.message, orderId: null as string | null };
-        }
-        const order = parsePlacedOrder(data);
-        if (!order?.id) {
-          return { ok: false as const, error: "Order created but no id returned", orderId: null as string | null };
-        }
-        return { ok: true as const, error: null, orderId: order.id };
-      };
+          p_coupon_id: couponId,
+          p_coupon_code: couponInput.trim() || null,
+          p_loyalty_points_redeemed: freshPointsToUse,
+          p_orders: ordersPayload,
+          p_group_id: groupId,
+        },
+      );
 
-      // Phase 1: place all orders except the last one (sequentially to surface
-      // partial-failure early). The last group is special-cased to keep the
-      // existing loyalty + coupon + PayHere flow visible.
-      const placed: Array<{ storeId: string; orderId: string }> = [];
-      const groupsToPlace = perStoreTotals;
-      for (let i = 0; i < groupsToPlace.length; i++) {
-        const group = groupsToPlace[i];
-        const isFirst = i === 0;
-        const isLast = i === groupsToPlace.length - 1;
-        const result = await placeOrderForGroup(group, isFirst);
-        if (!result.ok || !result.orderId) {
-          // Roll back any orders already placed
-          await Promise.all(placed.map((p) => cancelPlacedOrder(p.orderId)));
-          throw new Error(result.error ?? "Failed to place order");
-        }
-        placed.push({ storeId: group.storeId, orderId: result.orderId });
-        if (isLast) {
-          orderPlaced = true;
-        }
+      if (groupErr) {
+        throw new Error(groupErr.message);
+      }
+      const subOrders = parseGroupOrders(groupData);
+      if (!subOrders || subOrders.length === 0) {
+        throw new Error("Order group created but no sub-orders returned");
       }
 
-      // Phase 2: loyalty / coupon / PayHere
-      const firstOrderId = placed[0]?.orderId ?? null;
-      const lastOrderId = placed[placed.length - 1]?.orderId ?? null;
-
-      if (
-        freshPointsToUse > 0 &&
-        paymentMethod !== "payhere" &&
-        firstOrderId
-      ) {
-        const redeemRes = await loyalty.redeem(freshPointsToUse, firstOrderId);
-        if (!redeemRes.ok) {
-          // Roll back only the first order; others stay (the user wanted them).
-          await cancelPlacedOrder(firstOrderId);
-          const remaining = placed.slice(1);
-          orderPlaced = remaining.length > 0;
-          throw new Error(redeemRes.error);
-        }
-      }
+      orderPlaced = true;
+      const firstOrderId = subOrders[0].id;
+      const placed = subOrders;
 
       if (paymentMethod === "payhere") {
-        // Multi-store + PayHere: anchor the gateway to the FIRST order.
-        // Subsequent orders are placed and tracked; their payment_status
-        // remains 'pending' until manually confirmed by ops. (Documented
-        // limitation: PayHere cannot bill N orders atomically.)
         pendingLoyaltyPointsRef.current = freshPointsToUse;
-        if (!firstOrderId) throw new Error("No order available for payment");
-        const session = await getPayHereSession(firstOrderId);
+        const session = await getPayHereSession(firstOrderId, { groupId });
         if (!session.ok) {
-          await Promise.all(placed.map((p) => cancelPlacedOrder(p.orderId)));
+          await supabase.rpc("abandon_unpaid_order_group", { p_group_id: groupId });
           orderPlaced = false;
           throw new Error(session.error);
         }
         setPlacedOrderId(firstOrderId);
         setPayhereSession(session.data);
         setPayhereVisible(true);
-        // Stash the full order list so success page can render it after
-        // PayHere confirms the gateway. We persist it in a ref to survive
-        // the page unload from the gateway redirect.
-        pendingOrderIdsRef.current = placed.map((p) => p.orderId);
+        // Stash sibling ids for the success page.
+        pendingOrderIdsRef.current = placed.map((o) => o.id);
         pendingOrderIdsFirstRef.current = firstOrderId;
         await loyalty.reload();
         return;
@@ -516,7 +529,7 @@ export default function CheckoutScreen() {
 
       await loyalty.reload();
       toast("Order placed", "success");
-      const orderIds = placed.map((p) => p.orderId).join(",");
+      const orderIds = placed.map((o) => o.id).join(",");
       router.replace(
         `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIds)}` as never,
       );

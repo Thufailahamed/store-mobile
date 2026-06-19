@@ -10,6 +10,7 @@ import React, {
 import { supabase } from "./client";
 import type { Session, User } from "@supabase/supabase-js";
 import { releaseCartReservations } from "@/lib/inventory-reservations";
+import { useCart, useWishlist } from "@/lib/stores";
 
 export interface AuthState {
   session: Session | null;
@@ -131,13 +132,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     roleUserIdRef.current = null;
+    const userId = user?.id;
+    if (userId) {
+      try {
+        if (useCart.getState().hydrated) {
+          await useCart.getState().syncToServer(userId);
+        }
+        await useWishlist.getState().syncToServer(userId);
+      } catch (err) {
+        console.warn("[auth] signOut sync failed:", err);
+      }
+    }
     await releaseCartReservations();
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
     setRole("customer");
     setRoleLoading(false);
-  }, []);
+  }, [user]);
 
   const resetPassword = useCallback(async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCart, useWishlist } from "@/lib/stores";
+import { setCartClampNoticeHandler } from "@/lib/stores/cart-store";
 import { refreshCartFromCatalog } from "@/lib/cart-validation";
 import {
   cartItemsToReservations,
@@ -34,7 +35,17 @@ export function useSyncStores() {
       toast("Could not reserve stock", "error");
       console.warn("[cart-reservations]", message);
     });
-    return () => setCartReservationSyncErrorHandler(null);
+    setCartClampNoticeHandler((notice) => {
+      const where = notice.variantLabel ? ` (${notice.variantLabel})` : "";
+      toast(
+        `Only ${notice.capped} available — added ${notice.capped} of ${notice.requested} for ${notice.productName}${where}.`,
+        "info",
+      );
+    });
+    return () => {
+      setCartReservationSyncErrorHandler(null);
+      setCartClampNoticeHandler(null);
+    };
   }, [toast]);
 
   // Initial load when user signs in (or when user.id changes).
@@ -45,7 +56,6 @@ export function useSyncStores() {
     // Sign-out: flush pending sync, then clear local state.
     if (!userId || !session) {
       if (lastUserIdRef.current !== null) {
-        const uid = lastUserIdRef.current;
         if (cartTimerRef.current) {
           clearTimeout(cartTimerRef.current);
           cartTimerRef.current = null;
@@ -55,13 +65,8 @@ export function useSyncStores() {
           wishlistTimerRef.current = null;
         }
         void (async () => {
-          if (useCart.getState().hydrated) {
-            const syncResult = await useCart.getState().syncToServer(uid);
-            if (!syncResult.ok) {
-              toast(syncResult.error, "error");
-            }
-          }
-          await useWishlist.getState().syncToServer(uid);
+          // If we are signed out (no active session), any server push will fail with RLS.
+          // Discard the sync call and clean up local state immediately.
           await releaseCartReservations();
           lastUserIdRef.current = null;
           useCart.getState().clear();

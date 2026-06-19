@@ -49,8 +49,14 @@ export interface PayHereSession {
   fields: Record<string, string>;
 }
 
-/** Fetch PayHere checkout session from the web store API (requires deployed store + env). */
-export async function getPayHereSession(orderId: string): Promise<
+/** Fetch PayHere checkout session from the web store API (requires deployed store + env).
+ *  Pass `groupId` to charge across multiple sub-orders atomically; otherwise
+ *  falls back to the legacy single-order path.
+ */
+export async function getPayHereSession(
+  orderIdOrFirstSubOrder: string,
+  opts: { groupId?: string } = {},
+): Promise<
   { ok: true; data: PayHereSession } | { ok: false; error: string }
 > {
   if (!STORE_API_URL) {
@@ -59,13 +65,16 @@ export async function getPayHereSession(orderId: string): Promise<
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
+    const body: Record<string, string> = opts.groupId
+      ? { group_id: opts.groupId, order_id: orderIdOrFirstSubOrder }
+      : { order_id: orderIdOrFirstSubOrder };
     const res = await fetch(`${STORE_API_URL}/api/payhere/checkout-session`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ order_id: orderId }),
+      body: JSON.stringify(body),
     });
     const json = await res.json();
     if (!res.ok) return { ok: false, error: json.error ?? "Payment session failed" };

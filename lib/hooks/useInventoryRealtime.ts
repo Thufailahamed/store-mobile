@@ -130,7 +130,21 @@ export function useInventoryRealtime(
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "inventory", filter },
-        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+        (payload: { new?: Record<string, unknown>; old?: Record<string, unknown>; eventType?: string }) => {
+          // DELETE: row removed entirely → variant is gone. Drop from map so
+          // PDP surfaces the gap (size pills already hide via buildAvailableSizeOptions).
+          if (payload?.eventType === "DELETE" || (payload?.old && !payload?.new)) {
+            const id = (payload?.old?.variant_id ?? null) as string | null;
+            if (!id) return;
+            setByVariant((prev) => {
+              if (!prev.has(id)) return prev;
+              const next = new Map(prev);
+              next.delete(id);
+              return next;
+            });
+            setLastEventAt(Date.now());
+            return;
+          }
           const row = payload?.new ?? payload?.old ?? null;
           if (!row || !row.variant_id) return;
           const id = row.variant_id as string;
@@ -177,15 +191,24 @@ export function useInventoryRealtime(
   }, [product?.id, variantIdsKey, enabled, lowStockThreshold]);
 
   let totalAvailable = 0;
-  let aggregateLevel: StockLevel = "out_of_stock";
+  let hasInStock = false;
+  let hasLowStock = false;
+
   for (const v of byVariant.values()) {
     totalAvailable += v.available;
-    if (v.level === "out_of_stock") {
-      if (aggregateLevel !== "out_of_stock") aggregateLevel = "out_of_stock";
+    if (v.level === "in_stock") {
+      hasInStock = true;
     } else if (v.level === "low_stock") {
-      if (aggregateLevel === "in_stock") aggregateLevel = "low_stock";
-    } else if (aggregateLevel !== "low_stock") {
+      hasLowStock = true;
+    }
+  }
+
+  let aggregateLevel: StockLevel = "out_of_stock";
+  if (totalAvailable > 0) {
+    if (hasInStock) {
       aggregateLevel = "in_stock";
+    } else if (hasLowStock) {
+      aggregateLevel = "low_stock";
     }
   }
   if (byVariant.size === 0) aggregateLevel = "out_of_stock";
