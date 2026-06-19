@@ -52,15 +52,20 @@ export default function SellerProductEdit() {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [description, setDescription] = useState("");
+  const [shortDescription, setShortDescription] = useState("");
+  const [material, setMaterial] = useState("");
   const [mrp, setMrp] = useState("");
   const [price, setPrice] = useState("");
   const [discountPct, setDiscountPct] = useState("0");
+  const [taxRate, setTaxRate] = useState("0");
   const [gender, setGender] = useState<string>("unisex");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [status, setStatus] = useState<string>("draft");
   const [initialStatus, setInitialStatus] = useState<string>("draft");
   const [tags, setTags] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const [isFeatured, setIsFeatured] = useState(false);
 
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [pendingImages, setPendingImages] = useState<PendingProductImage[]>([]);
@@ -90,14 +95,19 @@ export default function SellerProductEdit() {
           setName(p.name);
           setSku(p.sku ?? "");
           setDescription(p.description ?? "");
+          setShortDescription(p.short_description ?? "");
+          setMaterial(p.material ?? "");
           setMrp(String(p.mrp));
           setPrice(String(p.price));
           setDiscountPct(String(p.discount_pct));
+          setTaxRate(String(p.tax_rate ?? 0));
           setGender(p.gender ?? "unisex");
           setCategoryId(p.category_id ?? null);
           setStatus(p.status);
           setInitialStatus(p.status);
           setTags(p.tags?.join(", ") ?? "");
+          setIsActive(p.is_active !== false);
+          setIsFeatured(Boolean(p.is_featured));
           setExistingImages(p.images ?? []);
 
           const loadedVariants =
@@ -224,6 +234,13 @@ export default function SellerProductEdit() {
       Alert.alert("Error", "Valid price is required");
       return;
     }
+    // price ≤ mrp — same gate as the web form
+    const mrpNum = Number(mrp);
+    const priceNum = Number(price);
+    if (mrpNum > 0 && priceNum > mrpNum) {
+      Alert.alert("Error", "Price must be less than or equal to MRP");
+      return;
+    }
     if (!storeId) {
       Alert.alert("Error", "Store not found");
       return;
@@ -256,12 +273,17 @@ export default function SellerProductEdit() {
         name: name.trim(),
         sku: sku.trim() || undefined,
         description: description.trim() || undefined,
+        short_description: shortDescription.trim() || undefined,
+        material: material.trim() || undefined,
         mrp: Number(mrp) || Number(price),
         price: Number(price),
         discount_pct: Number(discountPct) || 0,
+        tax_rate: Number(taxRate) || 0,
         gender: gender as Product["gender"],
         category_id: categoryId ?? undefined,
         status: status as Product["status"],
+        is_active: isActive,
+        is_featured: isFeatured,
         tags: tags
           ? tags
               .split(",")
@@ -440,11 +462,56 @@ export default function SellerProductEdit() {
           />
         </View>
 
+        <View style={styles.field}>
+          <Text style={styles.label}>Tax rate (0-1)</Text>
+          <TextInput
+            style={styles.input}
+            value={taxRate}
+            onChangeText={setTaxRate}
+            placeholder="0"
+            keyboardType="numeric"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.row}>
+          <TouchableOpacity
+            style={[styles.toggleRow, isActive && styles.toggleRowActive]}
+            onPress={() => setIsActive((v) => !v)}
+          >
+            <Text style={[styles.toggleText, isActive && styles.toggleTextActive]}>
+              {isActive ? "✓ Active" : "Inactive"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleRow, isFeatured && styles.toggleRowActive]}
+            onPress={() => setIsFeatured((v) => !v)}
+          >
+            <Text style={[styles.toggleText, isFeatured && styles.toggleTextActive]}>
+              {isFeatured ? "★ Featured" : "Not featured"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <ProductVariantsSection
           variants={variants}
           basePrice={price}
           onChange={trackRemovedVariant}
         />
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Short description</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={shortDescription}
+            onChangeText={setShortDescription}
+            placeholder="One-line pitch (max 400 chars)"
+            multiline
+            numberOfLines={2}
+            maxLength={400}
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
 
         <View style={styles.field}>
           <Text style={styles.label}>Description</Text>
@@ -455,6 +522,17 @@ export default function SellerProductEdit() {
             placeholder="Product description..."
             multiline
             numberOfLines={4}
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Material</Text>
+          <TextInput
+            style={styles.input}
+            value={material}
+            onChangeText={setMaterial}
+            placeholder="e.g. 100% organic cotton"
             placeholderTextColor={colors.light.mutedForeground}
           />
         </View>
@@ -619,7 +697,29 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
 
-  row: { flexDirection: "row" },
+  row: { flexDirection: "row", gap: 8, marginBottom: 16 },
+
+  toggleRow: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    backgroundColor: colors.light.card,
+  },
+  toggleRowActive: {
+    backgroundColor: colors.light.primary,
+    borderColor: colors.light.primary,
+  },
+  toggleText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.foreground,
+    fontWeight: "500",
+  },
+  toggleTextActive: {
+    color: colors.light.primaryForeground,
+  },
 
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {

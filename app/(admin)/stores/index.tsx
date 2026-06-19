@@ -111,6 +111,17 @@ export default function AdminStores() {
                   <View style={styles.actions}>
                     <Button
                       onPress={() => {
+                        const gaps = item.complianceGaps ?? [];
+                        if (gaps.length > 0) {
+                          // Mirrors the web admin gate — the server enforces
+                          // this too, but we disable the button so admins
+                          // see WHY before tapping.
+                          Alert.alert(
+                            "Cannot approve yet",
+                            `Missing: ${gaps.join(", ")}. Ask the seller to complete compliance first.`,
+                          );
+                          return;
+                        }
                         Alert.alert("Approve", `Approve "${item.name}"?`, [
                           { text: "Cancel", style: "cancel" },
                           { text: "Approve", onPress: () => approveMutation.mutate({ storeId: item.id, newStatus: "approved" }) },
@@ -118,6 +129,7 @@ export default function AdminStores() {
                       }}
                       size="sm"
                       style={styles.approveBtn}
+                      disabled={(item.complianceGaps?.length ?? 0) > 0}
                     >
                       Approve
                     </Button>

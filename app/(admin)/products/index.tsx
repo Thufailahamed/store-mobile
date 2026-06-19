@@ -1,8 +1,13 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert, TouchableOpacity } from "react-native";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { getAdminProducts } from "@/lib/api";
+import {
+  getAdminProducts,
+  approveProduct,
+  setProductFeatured,
+  setProductActive,
+} from "@/lib/api";
 import { Card, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
@@ -10,6 +15,7 @@ const STATUS_TABS = ["all", "active", "pending", "draft", "archived"];
 
 export default function AdminProducts() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -18,6 +24,30 @@ export default function AdminProducts() {
     queryFn: async () => {
       const res = await getAdminProducts({ status, search });
       return res.ok ? res.data : { products: [], total: 0 };
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (productId: string) => approveProduct(productId, "archived"),
+    onSuccess: (res) => {
+      if (!res.ok) Alert.alert("Action failed", res.error);
+      else queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+    },
+  });
+
+  const featuredMutation = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: boolean }) => setProductFeatured(id, next),
+    onSuccess: (res) => {
+      if (!res.ok) Alert.alert("Action failed", res.error);
+      else queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+    },
+  });
+
+  const activeMutation = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: boolean }) => setProductActive(id, next),
+    onSuccess: (res) => {
+      if (!res.ok) Alert.alert("Action failed", res.error);
+      else queryClient.invalidateQueries({ queryKey: ["admin-products"] });
     },
   });
 
@@ -90,6 +120,44 @@ export default function AdminProducts() {
                 </View>
                 <Text style={styles.sales}>{item.total_sales ?? 0} sales</Text>
               </View>
+              {/* Admin actions: archive, toggle featured, toggle active.
+                  Each action confirms before mutation to prevent fat-finger. */}
+              <View style={styles.adminActions}>
+                <TouchableOpacity
+                  style={styles.adminBtn}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    Alert.alert("Archive", `Archive "${item.name}"?`, [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Archive", style: "destructive", onPress: () => archiveMutation.mutate(item.id) },
+                    ]);
+                  }}
+                >
+                  <Text style={styles.adminBtnText}>Archive</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adminBtn, item.is_featured && styles.adminBtnActive]}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    featuredMutation.mutate({ id: item.id, next: !item.is_featured });
+                  }}
+                >
+                  <Text style={[styles.adminBtnText, item.is_featured && styles.adminBtnTextActive]}>
+                    {item.is_featured ? "★ Featured" : "Feature"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adminBtn, item.is_active === false && styles.adminBtnMuted]}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    activeMutation.mutate({ id: item.id, next: item.is_active === false });
+                  }}
+                >
+                  <Text style={styles.adminBtnText}>
+                    {item.is_active === false ? "Activate" : "Deactivate"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </Card>
             </Pressable>
           )}
@@ -120,4 +188,28 @@ const styles = StyleSheet.create({
   storeName: { fontSize: typography.fontSizes.sm, color: colors.light.muted },
   brandName: { fontSize: typography.fontSizes.sm, color: colors.light.primary },
   sales: { fontSize: typography.fontSizes.sm, color: colors.light.muted },
+  adminActions: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
+  },
+  adminBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+  },
+  adminBtnActive: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
+  adminBtnMuted: { opacity: 0.6 },
+  adminBtnText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.foreground,
+    fontWeight: "500",
+  },
+  adminBtnTextActive: { color: colors.light.primaryForeground },
 });

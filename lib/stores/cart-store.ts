@@ -351,10 +351,25 @@ export const useCart = create<CartStore>()(
       version: 2,
       migrate: (persisted, version) => {
         const state = persisted as { items?: Record<string, CartItem>; couponCode?: string | null };
-        if (version < 2 && state.items) {
-          return { ...state, items: migrateCartItemRecord(state.items) };
-        }
-        return state;
+        const items =
+          state.items && typeof state.items === "object" && !Array.isArray(state.items)
+            ? version < 2
+              ? migrateCartItemRecord(state.items)
+              : state.items
+            : {};
+        return { ...state, items };
+      },
+      merge: (persisted, current) => {
+        const state = persisted as { items?: Record<string, CartItem>; couponCode?: string | null };
+        const items =
+          state.items && typeof state.items === "object" && !Array.isArray(state.items)
+            ? state.items
+            : current.items;
+        return {
+          ...current,
+          couponCode: state.couponCode ?? current.couponCode,
+          items,
+        };
       },
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({

@@ -2603,6 +2603,42 @@ export async function approveProduct(productId: string, status: "active" | "reje
   }
 }
 
+/** Admin toggle: flip the `is_featured` flag on a product. */
+export async function setProductFeatured(productId: string, isFeatured: boolean): Promise<Result<void>> {
+  try {
+    const { error } = await supabase
+      .from("products")
+      .update({ is_featured: isFeatured })
+      .eq("id", productId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to update product");
+  }
+}
+
+/** Admin toggle: flip the `is_active` flag on a product without touching
+ *  its status (admin override; the seller status gate still applies on
+ *  seller writes). */
+export async function setProductActive(productId: string, isActive: boolean): Promise<Result<void>> {
+  try {
+    const { error } = await supabase
+      .from("products")
+      .update({ is_active: isActive })
+      .eq("id", productId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to update product");
+  }
+}
+
+/** Admin: archive a product. Soft delete via deleted_at is preferred for
+ *  sellers; admins can also flip status="archived" to hide from catalog. */
+export async function archiveProductAdmin(productId: string): Promise<Result<void>> {
+  return approveProduct(productId, "archived");
+}
+
 export async function getAdminCategories(): Promise<Result<Category[]>> {
   const enriched = await getAdminCategoriesEnriched();
   if (!enriched.ok) return enriched;

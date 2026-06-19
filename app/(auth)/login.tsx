@@ -8,12 +8,14 @@ import {
   TouchableOpacity,
   Animated,
   Easing,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { supabase } from "@/lib/supabase/client";
+import { isOperationalStoreStatus } from "@/lib/catalog-visibility";
 import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -73,7 +75,7 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -81,9 +83,39 @@ export default function LoginScreen() {
 
     if (error) {
       toast(error.message, "error");
-    } else {
-      toast("Welcome back!", "success");
+      return;
     }
+
+    // Suspension gate — same as web: if the user is a store owner and
+    // their store isn't operational, sign them back out and surface a
+    // clear reason. Customer / admin / brand_owner / delivery roles
+    // pass through unchanged.
+    const authedUser = data?.user;
+    if (authedUser) {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", authedUser.id)
+        .maybeSingle();
+      const role = (profile as { role?: string } | null)?.role ?? "customer";
+      if (role === "store_owner") {
+        const { data: store } = await supabase
+          .from("stores")
+          .select("status")
+          .eq("owner_id", authedUser.id)
+          .maybeSingle();
+        if (store && !isOperationalStoreStatus(store.status as string | null)) {
+          await supabase.auth.signOut();
+          Alert.alert(
+            "Store not active",
+            `Your store is currently ${String(store.status ?? "suspended")}. Contact support to reactivate.`,
+          );
+          return;
+        }
+      }
+    }
+
+    toast("Welcome back!", "success");
   };
 
   const sendMagicLink = async () => {

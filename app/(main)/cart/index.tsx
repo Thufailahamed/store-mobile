@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { getAddresses, getProducts } from "@/lib/api";
 import { getCatalogVisibleStoreIds } from "@/lib/catalog-visibility";
+import { useCartRealtime } from "@/lib/hooks/useCartRealtime";
 import {
   refreshCartFromCatalog,
   assessCartItemIssue,
@@ -41,13 +42,14 @@ export default function CartScreen() {
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const {
-    items,
+    items: cartRecord,
     removeItem,
     updateQuantity,
     subtotal,
     itemCount,
     addItem,
   } = useCart();
+  const items = cartRecord ?? {};
   const wishlist = useWishlist();
   const [savedForLater, setSavedForLater] = useState<
     Record<string, { product: Product | null }>
@@ -138,6 +140,12 @@ export default function CartScreen() {
   useEffect(() => {
     getCatalogVisibleStoreIds().then(setCatalogVisibleStoreIds);
   }, []);
+
+  // Realtime reconciliation — when a product / variant / inventory row
+  // changes inside a store the user has in their cart, re-run the
+  // reconciliation so removed / out-of-stock / price-changed lines are
+  // patched in place without waiting for the user to navigate.
+  useCartRealtime();
 
   useFocusEffect(
     useCallback(() => {
