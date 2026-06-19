@@ -101,6 +101,19 @@ export async function abandonUnpaidPayHereOrder(
   return { ok: true };
 }
 
+/**
+ * Cancel one order in a multi-vendor checkout while leaving the rest intact.
+ * Used when a per-store order fails to place and we need to roll back only
+ * that store's order without touching the others.
+ */
+export async function cancelPlacedOrder(
+  orderId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.rpc("cancel_order", { p_order_id: orderId });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 /** Flush any pending reservation sync immediately (checkout). */
 export async function flushCartReservationSync(
   userId: string | null,

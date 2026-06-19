@@ -64,7 +64,19 @@ describe("order-lifecycle — reschedule edge", () => {
     expect(getSellerNextStatus("returned")).toBeNull();
   });
 
-  it("seller next from `failed_attempt` is terminal", () => {
-    expect(getSellerNextStatus("failed_attempt")).toBeNull();
+  // Multi-vendor partial-cancel recovery (migration 0117): failed_attempt
+  // is no longer a dead-end. SELLER_NEXT_STATUS points to "cancelled" as
+  // the preferred recovery, and ORDER_STATUS_EDGES covers the rest.
+  it("seller next from `failed_attempt` is the recovery target `cancelled`", () => {
+    expect(getSellerNextStatus("failed_attempt")).toBe("cancelled");
+  });
+
+  it("allows failed_attempt recovery edges", () => {
+    expect(isValidOrderStatusTransition("failed_attempt", "cancelled")).toBe(true);
+    expect(isValidOrderStatusTransition("failed_attempt", "returned")).toBe(true);
+    expect(isValidOrderStatusTransition("failed_attempt", "confirmed")).toBe(true);
+    expect(isValidOrderStatusTransition("failed_attempt", "processing")).toBe(true);
+    // Random other transition still blocked.
+    expect(isValidOrderStatusTransition("failed_attempt", "delivered")).toBe(false);
   });
 });

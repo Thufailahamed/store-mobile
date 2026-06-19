@@ -14,7 +14,7 @@ import { ScreenHeader } from "@/components/layout";
 import { Avatar, Badge, Button, useToast } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
-import { getOrderById, cancelOrder as cancelOrderRpc } from "@/lib/api";
+import { getOrderById, cancelOrder as cancelOrderRpc, cancelOrderItems as cancelOrderItemsRpc } from "@/lib/api";
 import { canBuyerCancel, CUSTOMER_STATUS_STEPS } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -87,6 +87,39 @@ export default function OrderDetailScreen() {
         },
       },
     ]);
+  };
+
+  /**
+   * Cancel a single item within an order (partial-cancel RPC). Used when the
+   * buyer wants to drop one item (wrong size, change of mind) without
+   * cancelling the rest of the order.
+   */
+  const handleCancelItem = async (itemId: string, itemName: string) => {
+    if (!order) return;
+    Alert.alert(
+      "Cancel item",
+      `Cancel "${itemName}"? The rest of your order will be kept.`,
+      [
+        { text: "Keep item", style: "cancel" },
+        {
+          text: "Cancel item",
+          style: "destructive",
+          onPress: async () => {
+            setCancelling(true);
+            const res = await cancelOrderItemsRpc(order.id, [itemId]);
+            setCancelling(false);
+            if (!res.ok) {
+              toast(res.error, "error");
+              return;
+            }
+            // Refresh the order so the item is shown as cancelled.
+            const refresh = await getOrderById(order.id);
+            if (refresh.ok) setOrder(refresh.data);
+            toast("Item cancelled", "success");
+          },
+        },
+      ],
+    );
   };
 
   const shareOrder = async () => {
@@ -212,6 +245,9 @@ export default function OrderDetailScreen() {
           <Display size="lg" style={styles.cardTitle}>Items</Display>
           {order.items?.map((item) => {
             const img = item.product?.images?.find((i) => i.is_primary)?.url ?? item.product?.images?.[0]?.url;
+            const isItemCancelled = (item as any).status === "cancelled";
+            const canItemCancel =
+              canCancel && !isItemCancelled && (order.items?.length ?? 0) > 1;
             return (
               <View key={item.id} style={styles.itemRow}>
                 {img ? (
@@ -222,11 +258,30 @@ export default function OrderDetailScreen() {
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Body size="sm" numberOfLines={2} style={styles.itemName}>{item.product_name}</Body>
+                  <Body size="sm" numberOfLines={2} style={[styles.itemName, isItemCancelled && styles.itemNameCancelled]}>
+                    {item.product_name}
+                  </Body>
                   {item.variant_label && <Body muted size="xs">{item.variant_label}</Body>}
                   <Body muted size="xs">Qty {item.quantity} · Unit {formatPrice(item.unit_price, order.currency)}</Body>
+                  {canItemCancel && (
+                    <TouchableOpacity
+                      style={styles.itemCancelBtn}
+                      onPress={() => handleCancelItem(item.id, item.product_name)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close-circle-outline" size={12} color={colors.light.destructive} />
+                      <Label style={styles.itemCancelBtnText}>Cancel this item</Label>
+                    </TouchableOpacity>
+                  )}
+                  {isItemCancelled && (
+                    <View style={styles.itemCancelledPill}>
+                      <Label style={styles.itemCancelledPillText}>CANCELLED</Label>
+                    </View>
+                  )}
                 </View>
-                <Price style={styles.itemTotal}>{formatPrice(item.total, order.currency)}</Price>
+                <Price style={[styles.itemTotal, isItemCancelled && styles.itemTotalCancelled]}>
+                  {formatPrice(item.total, order.currency)}
+                </Price>
               </View>
             );
           })}
@@ -440,7 +495,39 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   itemName: { fontWeight: typography.fontWeights.medium },
+  itemNameCancelled: { textDecorationLine: "line-through", opacity: 0.6 },
   itemTotal: { fontFamily: fontFamilies.mono.semibold, fontSize: typography.fontSizes.sm, color: colors.olive[800] },
+  itemTotalCancelled: { textDecorationLine: "line-through", opacity: 0.6 },
+  itemCancelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    alignSelf: "flex-start",
+    borderRadius: radii.full,
+    backgroundColor: colors.light.destructive + "10",
+  },
+  itemCancelBtnText: {
+    fontSize: 10,
+    color: colors.light.destructive,
+    fontFamily: fontFamilies.mono.medium,
+  },
+  itemCancelledPill: {
+    alignSelf: "flex-start",
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.destructive + "20",
+  },
+  itemCancelledPillText: {
+    fontSize: 9,
+    letterSpacing: 0.6,
+    color: colors.light.destructive,
+    fontFamily: fontFamilies.mono.semibold,
+  },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",

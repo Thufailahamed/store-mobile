@@ -1782,6 +1782,34 @@ export async function cancelOrder(orderId: string): Promise<Result<{ status: str
   }
 }
 
+/**
+ * Cancel a subset of items within an order. Used for partial-vendor cancel
+ * when the buyer wants to keep most items but drop one (e.g. wrong size).
+ * Requires the new `cancel_order_items` RPC (migration 0117).
+ */
+export async function cancelOrderItems(
+  orderId: string,
+  itemIds: string[],
+): Promise<Result<{ cancelled: number; remaining_items: number }>> {
+  if (itemIds.length === 0) {
+    return fail("No items selected for cancellation");
+  }
+  try {
+    const { data, error } = await supabase.rpc("cancel_order_items", {
+      p_order_id: orderId,
+      p_item_ids: itemIds,
+    });
+    if (error) return fail(error.message);
+    const row = (data ?? {}) as { cancelled?: number; remaining_items?: number };
+    return ok({
+      cancelled: Number(row.cancelled ?? 0),
+      remaining_items: Number(row.remaining_items ?? 0),
+    });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to cancel items");
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Seller — Inventory                                                 */
 /* ------------------------------------------------------------------ */

@@ -1,4 +1,5 @@
 import type { CartItem } from "@/lib/stores/cart-store";
+import type { Product } from "@/lib/types";
 
 const DEFAULT_VARIANT = "default";
 
@@ -74,3 +75,79 @@ export function mergeCartItemRecords(
 
   return { items: merged, quantityConflicts };
 }
+
+export interface StoreConsistencyResult {
+  /** Items that were re-keyed because the product moved to a different store. */
+  rekeyed: CartItem[];
+  /** Items that were dropped because the product is no longer in the catalogue. */
+  dropped: CartItem[];
+  /** Items whose quantity was capped to the fresh stock value. */
+  recapped: Array<{ key: string; from: number; to: number }>;
+  /** Items that were left untouched (also re-keyed items in their final form). */
+  next: Record<string, CartItem>;
+}
+
+/**
+ * Multi-vendor cart integrity check. Cart lines are keyed by
+ * `storeId:productId:variantId` so cross-store collisions are physically
+ * prevented, but a product may be transferred between stores after the line
+ * was added. This helper walks the cart and reconciles each line against the
+ * fresh product snapshot map.
+ *
+ * - If the product's current `store_id` differs from the cart line's
+ *   `storeId`, the line is re-keyed (new key built from the fresh store).
+ * - If the product is missing or no longer in the catalogue, the line is
+ *   dropped.
+ * - If the fresh variant stock is lower than the line quantity, the quantity
+ *   is capped.
+ */
+export function assertStoreConsistency(
+  items: Record<string, CartItem>,
+  productsById: Record<string, Pick<Product, "id" | "store_id"> & { variants?: Array<{ id: string; stock?: number | null }> }>,
+  stockByVariantId?: Record<string, number | null | undefined>,
+): StoreConsistencyResult {
+  const result: StoreConsistencyResult = { rekeyed: [], dropped: [], recapped: [], next: {} };
+
+  for (const [key, item] of Object.entries(items)) {
+    const product = productsById[item.productId];
+    if (!product) {
+      result.dropped.push(item);
+      continue;
+    }
+
+    const transferred = product.store_id !== item.storeId;
+    const nextStoreId = product.store_id;
+    const stockLookup = stockByVariantId?.[item.variantId ?? ""];
+    const variantStock = product.variants?.find((v) => v.id === item.variantId)?.stock;
+    const freshStock = stockLookup ?? variantStock;
+    const overStock =
+      typeof freshStock === "number" && Number.isFinite(freshStock) && item.quantity > freshStock;
+
+    if (transferred) {
+      const nextKey = buildCartLineKey(nextStoreId, item.productId, item.variantId);
+      const rekeyedItem: CartItem = { ...item, storeId: nextStoreId };
+      if (overStock && typeof freshStock === "number") {
+        const capped: CartItem = { ...rekeyedItem, quantity: freshStock, stock: freshStock };
+        result.rekeyed.push(capped);
+        result.recapped.push({ key: nextKey, from: item.quantity, to: freshStock });
+        result.next[nextKey] = capped;
+      } else {
+        result.rekeyed.push(rekeyedItem);
+        result.next[nextKey] = rekeyedItem;
+      }
+      continue;
+    }
+
+    if (overStock && typeof freshStock === "number") {
+      const capped: CartItem = { ...item, quantity: freshStock, stock: freshStock };
+      result.recapped.push({ key, from: item.quantity, to: freshStock });
+      result.next[key] = capped;
+      continue;
+    }
+
+    result.next[key] = item;
+  }
+
+  return result;
+}
+

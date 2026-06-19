@@ -5,6 +5,7 @@ import {
   isStoreScopedCartLineKey,
   mergeCartItemRecords,
   migrateCartItemRecord,
+  assertStoreConsistency,
 } from "@/lib/cart-line-key";
 import type { CartItem } from "@/lib/stores/cart-store";
 
@@ -59,5 +60,58 @@ describe("cart-line-key", () => {
     const { items, quantityConflicts } = mergeCartItemRecords(server, local);
     expect(quantityConflicts).toBe(1);
     expect(items[buildCartLineKey("store-a", "prod-1", "var-1")].quantity).toBe(4);
+  });
+});
+
+describe("assertStoreConsistency", () => {
+  it("leaves a matching line untouched", () => {
+    const items = {
+      [buildCartLineKey("store-a", "prod-1", "var-1")]: makeItem({ storeId: "store-a", quantity: 2 }),
+    };
+    const products = { "prod-1": { id: "prod-1", store_id: "store-a" } };
+    const result = assertStoreConsistency(items, products);
+    expect(result.rekeyed).toEqual([]);
+    expect(result.dropped).toEqual([]);
+    expect(result.recapped).toEqual([]);
+    expect(result.next[buildCartLineKey("store-a", "prod-1", "var-1")].storeId).toBe("store-a");
+  });
+
+  it("re-keys a transferred line and reports it", () => {
+    const items = {
+      [buildCartLineKey("store-a", "prod-1", "var-1")]: makeItem({ storeId: "store-a", quantity: 3 }),
+    };
+    const products = { "prod-1": { id: "prod-1", store_id: "store-b" } };
+    const result = assertStoreConsistency(items, products);
+    expect(result.dropped).toEqual([]);
+    expect(result.rekeyed).toHaveLength(1);
+    expect(result.rekeyed[0].storeId).toBe("store-b");
+    // New key now points at the fresh store, not the stale one.
+    expect(result.next["store-b:prod-1:var-1"]).toBeDefined();
+    expect(result.next["store-a:prod-1:var-1"]).toBeUndefined();
+  });
+
+  it("drops a line whose product is gone from the catalogue", () => {
+    const items = {
+      [buildCartLineKey("store-a", "prod-1", "var-1")]: makeItem(),
+      [buildCartLineKey("store-a", "prod-gone", "var-1")]: makeItem({ productId: "prod-gone" }),
+    };
+    const products = { "prod-1": { id: "prod-1", store_id: "store-a" } };
+    const result = assertStoreConsistency(items, products);
+    expect(result.dropped.map((i) => i.productId)).toEqual(["prod-gone"]);
+    expect(Object.keys(result.next)).toEqual(["store-a:prod-1:var-1"]);
+  });
+
+  it("caps quantity to fresh variant stock and reports the recapping", () => {
+    const items = {
+      [buildCartLineKey("store-a", "prod-1", "var-1")]: makeItem({ quantity: 10, stock: 10 }),
+    };
+    const products = {
+      "prod-1": { id: "prod-1", store_id: "store-a", variants: [{ id: "var-1", stock: 3 }] },
+    };
+    const result = assertStoreConsistency(items, products);
+    expect(result.recapped).toEqual([
+      { key: "store-a:prod-1:var-1", from: 10, to: 3 },
+    ]);
+    expect(result.next["store-a:prod-1:var-1"].quantity).toBe(3);
   });
 });

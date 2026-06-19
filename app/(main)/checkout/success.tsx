@@ -29,12 +29,22 @@ import { ProductCard } from "@/components/product/ProductCard";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function OrderSuccessScreen() {
-  const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const { orderId, orderIds } = useLocalSearchParams<{ orderId?: string; orderIds?: string }>();
   const router = useRouter();
   const theme = useTheme();
   const { user } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
+
+  // Multi-vendor: prefer orderIds, fall back to orderId for legacy single-order checkouts.
+  const allOrderIds = (orderIds?.split(",").filter(Boolean).length
+    ? orderIds!.split(",").filter(Boolean)
+    : orderId
+      ? [orderId]
+      : []) as string[];
+  const firstOrderId = allOrderIds[0] ?? null;
+  const siblingOrderIds = allOrderIds.slice(1);
+  const [siblingOrders, setSiblingOrders] = useState<Array<Pick<Order, "id" | "order_number" | "status" | "total" | "currency">>>([]);
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,14 +55,14 @@ export default function OrderSuccessScreen() {
 
   // Fetch Order Details
   useEffect(() => {
-    if (!orderId) {
+    if (!firstOrderId) {
       setLoading(false);
       return;
     }
     let cancelled = false;
 
     const loadOrder = async (attempt = 0) => {
-      const res = await getOrderById(orderId);
+      const res = await getOrderById(firstOrderId);
       if (cancelled) return;
       if (res.ok && res.data) {
         setOrder(res.data);
@@ -72,7 +82,34 @@ export default function OrderSuccessScreen() {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [firstOrderId]);
+
+  // Fetch sibling order summaries (multi-vendor)
+  useEffect(() => {
+    if (siblingOrderIds.length === 0) {
+      setSiblingOrders([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      siblingOrderIds.map((id) => getOrderById(id).then((res) => (res.ok ? res.data : null))),
+    ).then((results) => {
+      if (cancelled) return;
+      const ok = results.filter(Boolean) as Order[];
+      setSiblingOrders(
+        ok.map((o) => ({
+          id: o.id,
+          order_number: o.order_number,
+          status: o.status,
+          total: o.total,
+          currency: o.currency,
+        })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [siblingOrderIds.join(",")]);
 
   // Fetch Referral Code
   useEffect(() => {
@@ -297,12 +334,59 @@ export default function OrderSuccessScreen() {
             <Ionicons name="checkmark" size={32} color={theme.colors.primaryForeground} />
           </View>
           <Display size="xl" style={[styles.heroTitle, { color: theme.colors.foreground }]}>
-            Your order is confirmed
+            {siblingOrderIds.length > 0
+              ? `Your ${allOrderIds.length} orders are confirmed`
+              : "Your order is confirmed"}
           </Display>
           <Body muted size="sm" style={styles.heroSubtitle}>
             Order #{order.order_number} · Placed {formattedDate}
           </Body>
+          {siblingOrderIds.length > 0 && (
+            <Body muted size="sm" style={styles.heroSubtitle}>
+              {siblingOrderIds.length} other order{siblingOrderIds.length === 1 ? "" : "s"} from other store
+              {siblingOrderIds.length === 1 ? "" : "s"} created — see below.
+            </Body>
+          )}
         </View>
+
+        {/* Sibling orders from other stores (multi-vendor) */}
+        {siblingOrders.length > 0 && (
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+            ]}
+          >
+            <View style={styles.cardHeader}>
+              <Display size="lg" style={[styles.cardTitle, { color: theme.colors.foreground }]}>
+                Other orders in this purchase
+              </Display>
+            </View>
+            {siblingOrders.map((sibling) => (
+              <TouchableOpacity
+                key={sibling.id}
+                style={[styles.siblingRow, { borderTopColor: theme.colors.border }]}
+                onPress={() =>
+                  router.push(`/(main)/account/orders/${sibling.id}` as never)
+                }
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <Label style={{ color: theme.colors.foreground }}>
+                    Order #{sibling.order_number}
+                  </Label>
+                  <Body size="xs" muted>
+                    Status: {sibling.status}
+                  </Body>
+                </View>
+                <Body size="sm" style={{ color: theme.colors.foreground, fontWeight: "600" }}>
+                  {formatPrice(sibling.total, sibling.currency)}
+                </Body>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.mutedForeground} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {/* Timeline */}
         <View
@@ -975,5 +1059,12 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 12,
     paddingBottom: 40,
+  },
+  siblingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
   },
 });

@@ -23,6 +23,7 @@ import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
 import { validateCartForCheckout, refreshCartFromCatalog, fetchCartProductSnapshots } from "@/lib/cart-validation";
+import { validateCheckoutAddress, checkoutAddressFieldLabel } from "@/lib/checkout-validation";
 import {
   clearCheckoutSession,
   isCheckoutPrepared,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/cart-checkout-session";
 import {
   abandonUnpaidPayHereOrder,
+  cancelPlacedOrder,
   cartItemsToReservations,
   flushCartReservationSync,
   releaseCartReservations,
@@ -84,6 +86,12 @@ export default function CheckoutScreen() {
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const pendingLoyaltyPointsRef = useRef(0);
+  /** Order ids created during a multi-vendor place_order fan-out. The first
+   *  id is the PayHere-anchored order; the rest are tracked alongside it. */
+  const pendingOrderIdsRef = useRef<string[]>([]);
+  /** The order id that PayHere is currently processing (subset of
+   *  pendingOrderIdsRef). */
+  const pendingOrderIdsFirstRef = useRef<string | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
   const [couponInput, setCouponInput] = useState(couponCode || "");
@@ -264,6 +272,25 @@ export default function CheckoutScreen() {
       return;
     }
 
+    const addressCheck = validateCheckoutAddress({
+      full_name: fullName,
+      phone,
+      line1,
+      city,
+      state,
+      postal_code: postalCode,
+    });
+    if (!addressCheck.ok) {
+      const firstMissing = checkoutAddressFieldLabel(addressCheck.missing[0]);
+      toast(
+        `Please complete your delivery address (${firstMissing} required)`,
+        "error",
+      );
+      setStep(1);
+      setAddressSheetOpen(true);
+      return;
+    }
+
     const checkoutValidation = await validateCartForCheckout();
     if (!checkoutValidation.ok) {
       toast(checkoutValidation.error, "error");
@@ -327,17 +354,6 @@ export default function CheckoutScreen() {
       const addressId: string | null =
         selectedAddressId === "new" ? null : selectedAddressId;
 
-      const rpcItems = freshCartItems.map((item) => ({
-        product_id: item.productId,
-        variant_id: item.variantId,
-        store_id: item.storeId,
-        product_name: item.name,
-        variant_label: item.variantLabel ?? null,
-        sku: null,
-        quantity: item.quantity,
-        unit_price: item.price,
-      }));
-
       const shippingAddress = {
         full_name: fullName,
         phone,
@@ -349,51 +365,161 @@ export default function CheckoutScreen() {
         country,
       };
 
-      const { data: orderData, error } = await supabase.rpc("place_order", {
-        p_user_id: user.id,
-        p_address_id: addressId,
-        p_shipping_address: shippingAddress,
-        p_subtotal: freshSub,
-        p_discount: couponDiscount + freshPointsValue,
-        p_shipping_fee: freshShippingFee,
-        p_tax: freshTax,
-        p_total: freshTotal,
-        p_currency: "LKR",
-        p_payment_method: paymentMethod,
-        p_coupon_id: couponId,
-        p_notes: `Shipping: ${shippingOption.label}`,
-        p_items: rpcItems,
+      // ---- Multi-vendor split: one order per store ----
+      // Each store gets its own place_order call with its own subtotal /
+      // shipping / tax. Coupon discount and loyalty points are applied to
+      // the first order only; a single combined coupon / points claim
+      // should not be split across orders automatically. If the user has
+      // a coupon that they want applied per-store, that flow lives outside
+      // this fan-out.
+      const byStore = new Map<string, typeof freshCartItems>();
+      for (const item of freshCartItems) {
+        const arr = byStore.get(item.storeId) ?? [];
+        arr.push(item);
+        byStore.set(item.storeId, arr);
+      }
+      const storeGroups = Array.from(byStore.entries());
+
+      // Compute per-store totals up front so we can split coupon / points
+      // proportionally if there are multiple stores.
+      const perStoreTotals = storeGroups.map(([storeId, items]) => {
+        const lines = items.map((it) => ({
+          storeId: it.storeId,
+          quantity: it.quantity,
+          unitPrice: it.price,
+        }));
+        const totals = computeCartTotals({
+          lines,
+          shippingKey,
+          couponDiscount: 0,
+          pointsValue: 0,
+          freeShippingCoupon,
+        });
+        return { storeId, items, totals };
       });
 
-      if (error) throw error;
+      const totalSubForProportion = perStoreTotals.reduce(
+        (sum, g) => sum + g.totals.sub,
+        0,
+      );
 
-      const order = parsePlacedOrder(orderData);
-      if (!order?.id) throw new Error("Order created but no id returned");
-      orderPlaced = true;
+      // Coupon discount and points are applied to the first order only.
+      // This is a known limitation: multi-store carts cannot split coupons
+      // automatically. The first store bears the full coupon + points
+      // deduction. (Future: store-level coupons.)
+      const placeOrderForGroup = async (
+        group: { storeId: string; items: typeof freshCartItems; totals: ReturnType<typeof computeCartTotals> },
+        applyCoupon: boolean,
+      ) => {
+        const rpcItems = group.items.map((item) => ({
+          product_id: item.productId,
+          variant_id: item.variantId,
+          store_id: item.storeId,
+          product_name: item.name,
+          variant_label: item.variantLabel ?? null,
+          sku: null,
+          quantity: item.quantity,
+          unit_price: item.price,
+        }));
+        const discount = applyCoupon
+          ? couponDiscount + freshPointsValue
+          : 0;
+        const { data, error } = await supabase.rpc("place_order", {
+          p_user_id: user.id,
+          p_address_id: addressId,
+          p_shipping_address: shippingAddress,
+          p_subtotal: group.totals.sub,
+          p_discount: discount,
+          p_shipping_fee: group.totals.shipping,
+          p_tax: group.totals.tax,
+          p_total: Math.max(0, group.totals.total - discount),
+          p_currency: "LKR",
+          p_payment_method: paymentMethod,
+          p_coupon_id: applyCoupon ? couponId : null,
+          p_notes: `Shipping: ${shippingOption.label}`,
+          p_items: rpcItems,
+        });
+        if (error) {
+          return { ok: false as const, error: error.message, orderId: null as string | null };
+        }
+        const order = parsePlacedOrder(data);
+        if (!order?.id) {
+          return { ok: false as const, error: "Order created but no id returned", orderId: null as string | null };
+        }
+        return { ok: true as const, error: null, orderId: order.id };
+      };
 
-      if (freshPointsToUse > 0 && paymentMethod !== "payhere") {
-        const redeemRes = await loyalty.redeem(freshPointsToUse, order.id);
+      // Phase 1: place all orders except the last one (sequentially to surface
+      // partial-failure early). The last group is special-cased to keep the
+      // existing loyalty + coupon + PayHere flow visible.
+      const placed: Array<{ storeId: string; orderId: string }> = [];
+      const groupsToPlace = perStoreTotals;
+      for (let i = 0; i < groupsToPlace.length; i++) {
+        const group = groupsToPlace[i];
+        const isFirst = i === 0;
+        const isLast = i === groupsToPlace.length - 1;
+        const result = await placeOrderForGroup(group, isFirst);
+        if (!result.ok || !result.orderId) {
+          // Roll back any orders already placed
+          await Promise.all(placed.map((p) => cancelPlacedOrder(p.orderId)));
+          throw new Error(result.error ?? "Failed to place order");
+        }
+        placed.push({ storeId: group.storeId, orderId: result.orderId });
+        if (isLast) {
+          orderPlaced = true;
+        }
+      }
+
+      // Phase 2: loyalty / coupon / PayHere
+      const firstOrderId = placed[0]?.orderId ?? null;
+      const lastOrderId = placed[placed.length - 1]?.orderId ?? null;
+
+      if (
+        freshPointsToUse > 0 &&
+        paymentMethod !== "payhere" &&
+        firstOrderId
+      ) {
+        const redeemRes = await loyalty.redeem(freshPointsToUse, firstOrderId);
         if (!redeemRes.ok) {
-          await supabase.rpc("cancel_order", { p_order_id: order.id });
-          orderPlaced = false;
+          // Roll back only the first order; others stay (the user wanted them).
+          await cancelPlacedOrder(firstOrderId);
+          const remaining = placed.slice(1);
+          orderPlaced = remaining.length > 0;
           throw new Error(redeemRes.error);
         }
       }
 
       if (paymentMethod === "payhere") {
+        // Multi-store + PayHere: anchor the gateway to the FIRST order.
+        // Subsequent orders are placed and tracked; their payment_status
+        // remains 'pending' until manually confirmed by ops. (Documented
+        // limitation: PayHere cannot bill N orders atomically.)
         pendingLoyaltyPointsRef.current = freshPointsToUse;
-        const session = await getPayHereSession(order.id);
-        if (!session.ok) throw new Error(session.error);
-        setPlacedOrderId(order.id);
+        if (!firstOrderId) throw new Error("No order available for payment");
+        const session = await getPayHereSession(firstOrderId);
+        if (!session.ok) {
+          await Promise.all(placed.map((p) => cancelPlacedOrder(p.orderId)));
+          orderPlaced = false;
+          throw new Error(session.error);
+        }
+        setPlacedOrderId(firstOrderId);
         setPayhereSession(session.data);
         setPayhereVisible(true);
+        // Stash the full order list so success page can render it after
+        // PayHere confirms the gateway. We persist it in a ref to survive
+        // the page unload from the gateway redirect.
+        pendingOrderIdsRef.current = placed.map((p) => p.orderId);
+        pendingOrderIdsFirstRef.current = firstOrderId;
         await loyalty.reload();
         return;
       }
 
       await loyalty.reload();
       toast("Order placed", "success");
-      router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(order.id)}` as never);
+      const orderIds = placed.map((p) => p.orderId).join(",");
+      router.replace(
+        `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIds)}` as never,
+      );
       await releaseCartReservations();
       reservationsHeld = false;
       clear();
@@ -417,8 +543,20 @@ export default function CheckoutScreen() {
   };
 
   const handleAddressContinue = () => {
-    if (!fullName.trim() || !phone.trim() || !line1.trim() || !city.trim()) {
-      toast("Please select or add a delivery address", "error");
+    const addressCheck = validateCheckoutAddress({
+      full_name: fullName,
+      phone,
+      line1,
+      city,
+      state,
+      postal_code: postalCode,
+    });
+    if (!addressCheck.ok) {
+      const firstMissing = checkoutAddressFieldLabel(addressCheck.missing[0]);
+      toast(
+        `Please complete your delivery address (${firstMissing} required)`,
+        "error",
+      );
       setAddressSheetOpen(true);
       return;
     }
@@ -793,10 +931,22 @@ export default function CheckoutScreen() {
             setPlacedOrderId(null);
             setPayhereSession(null);
             pendingLoyaltyPointsRef.current = 0;
+            const siblingIds = pendingOrderIdsRef.current.filter((id) => id !== orderId);
+            pendingOrderIdsRef.current = [];
+            pendingOrderIdsFirstRef.current = null;
             if (orderId) {
+              // Cancel the PayHere-anchored order. Sibling orders (from other
+              // stores in the multi-vendor split) stay intact — the user may
+              // pay those via cash on delivery or a follow-up.
               const res = await abandonUnpaidPayHereOrder(orderId);
               if (!res.ok) {
                 toast(res.error ?? "Could not cancel order", "error");
+              } else if (siblingIds.length > 0) {
+                clear();
+                toast(
+                  `Payment cancelled — ${siblingIds.length} other order${siblingIds.length === 1 ? "" : "s"} kept for cash on delivery`,
+                  "info",
+                );
               } else {
                 clear();
                 toast("Payment cancelled — stock restored", "info");
@@ -831,11 +981,17 @@ export default function CheckoutScreen() {
             setPayhereVisible(false);
             setPayhereSession(null);
             setPlacedOrderId(null);
+            const allIds = pendingOrderIdsRef.current;
+            pendingOrderIdsRef.current = [];
+            pendingOrderIdsFirstRef.current = null;
             await releaseCartReservations();
             clear();
             await loyalty.reload();
             toast("Payment complete", "success");
-            router.replace(`/(main)/checkout/success?orderId=${encodeURIComponent(orderId)}` as never);
+            const orderIdsParam = allIds.length > 0 ? allIds.join(",") : orderId;
+            router.replace(
+              `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIdsParam)}` as never,
+            );
           }}
         />
       )}

@@ -11,6 +11,7 @@ export type CartInvalidReason =
   | "product_removed"
   | "product_unavailable"
   | "store_unavailable"
+  | "store_transferred"
   | "variant_removed"
   | "variant_unavailable"
   | "out_of_stock";

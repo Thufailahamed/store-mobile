@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
 import { getVariantAvailableStock } from "@/lib/inventory";
 import type { CartReconciliation } from "@/lib/cart-validation";
-import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords } from "@/lib/cart-line-key";
+import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, assertStoreConsistency, buildCartLineKey } from "@/lib/cart-line-key";
 import { clearCheckoutSession } from "@/lib/cart-checkout-session";
 import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
 
@@ -269,6 +269,29 @@ export const useCart = create<CartStore>()(
           // (covers the "added to cart while signed out" case).
           const local = migrateCartItemRecord(get().items);
           const { items: merged, quantityConflicts } = mergeCartItemRecords(serverItems, local);
+
+          // Re-validate store consistency. After merge the line keys may still
+          // reference an old storeId if a product was transferred; re-key them
+          // silently using the fresh product snapshot we already fetched above.
+          const productIndex: Record<string, { id: string; store_id: string }> = {};
+          for (const row of (rows ?? []) as any[]) {
+            if (row.product?.id) {
+              productIndex[row.product.id] = {
+                id: row.product.id,
+                store_id: row.product.store_id,
+              };
+            }
+          }
+          const consistency = assertStoreConsistency(merged, productIndex);
+          if (
+            consistency.dropped.length > 0 ||
+            consistency.rekeyed.length > 0 ||
+            consistency.recapped.length > 0
+          ) {
+            set({ items: consistency.next, hydrated: true });
+            return { ok: true, quantityConflicts };
+          }
+
           set({ items: merged, hydrated: true });
           return { ok: true, quantityConflicts };
         } catch (err) {

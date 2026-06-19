@@ -11,7 +11,9 @@ export const SELLER_NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   cancelled: null,
   returned: null,
   refunded: null,
-  failed_attempt: null,
+  // Phase 14 soft-fail marker. Recovery edges (to cancelled/returned) live in
+  // ORDER_STATUS_EDGES below; SELLER_NEXT_STATUS points to the preferred one.
+  failed_attempt: "cancelled",
 };
 
 /** Buyer-facing timeline — includes delivery stages. */
@@ -45,6 +47,12 @@ export const ORDER_STATUS_EDGES: ReadonlyArray<readonly [OrderStatus, OrderStatu
   ["delivered", "returned"],
   ["delivered", "refunded"],
   ["returned", "refunded"],
+  // Multi-vendor partial-cancel recovery (migration 0117): failed_attempt
+  // is no longer a dead-end. Sellers can escalate back into the lifecycle.
+  ["failed_attempt", "cancelled"],
+  ["failed_attempt", "returned"],
+  ["failed_attempt", "confirmed"],
+  ["failed_attempt", "processing"],
 ];
 
 const EDGE_SET = new Set(ORDER_STATUS_EDGES.map(([a, b]) => `${a}->${b}`));

@@ -67,6 +67,49 @@ export default function CartScreen() {
     return Array.from(new Set(cartItems.map(([_, it]) => it.productId)));
   }, [cartItems]);
 
+  /**
+   * Group the cart by storeId for multi-vendor UI. Items stay in the same
+   * `selectedKeys` map; we just add a small visual structure so buyers can
+   * see "this store's items, that store's items" without losing the existing
+   * selection/coupon/shipping math.
+   */
+  type CartRow =
+    | { type: "header"; storeId: string; storeName: string; itemCount: number; subtotal: number }
+    | { type: "item"; key: string; item: typeof items[string] };
+
+  const cartRows = useMemo<CartRow[]>(() => {
+    const sorted = [...cartItems].sort((a, b) => {
+      if (a[1].storeId === b[1].storeId) return 0;
+      return a[1].storeId.localeCompare(b[1].storeId);
+    });
+    const groups = new Map<string, { storeName: string; subtotal: number; itemCount: number; rows: CartRow[] }>();
+    for (const [key, item] of sorted) {
+      const group = groups.get(item.storeId) ?? {
+        storeName: productDetails[item.productId]?.store?.name ?? "Store",
+        subtotal: 0,
+        itemCount: 0,
+        rows: [],
+      };
+      group.subtotal += item.price * item.quantity;
+      group.itemCount += item.quantity;
+      group.rows.push({ type: "item", key, item });
+      groups.set(item.storeId, group);
+    }
+    const out: CartRow[] = [];
+    for (const [storeId, group] of groups) {
+      out.push({
+        type: "header",
+        storeId,
+        storeName: group.storeName,
+        itemCount: group.itemCount,
+        subtotal: group.subtotal,
+      });
+      for (const row of group.rows) out.push(row);
+    }
+    return out;
+    // productDetails is part of the dep so the store name refreshes when products hydrate
+  }, [cartItems, productDetails]);
+
   // Load detailed product rows from supabase for MRP & Brand name
   useEffect(() => {
     if (cartProductIds.length === 0) return;
@@ -470,8 +513,10 @@ export default function CartScreen() {
       </View>
 
       <FlatList
-        data={cartItems}
-        keyExtractor={([key]) => key}
+        data={cartRows}
+        keyExtractor={(row) =>
+          row.type === "header" ? `__hdr__${row.storeId}` : row.key
+        }
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
@@ -532,7 +577,26 @@ export default function CartScreen() {
             </View>
           </View>
         }
-        renderItem={({ item: [key, cartItem] }) => {
+        renderItem={({ item: row }) => {
+          if (row.type === "header") {
+            return (
+              <View style={styles.storeGroupHeader}>
+                <View style={styles.storeGroupHeaderLeft}>
+                  <Ionicons name="storefront-outline" size={16} color={theme.colors.primary} />
+                  <Label style={[styles.storeGroupName, { color: theme.colors.foreground }]}>
+                    {row.storeName}
+                  </Label>
+                  <Body size="sm" muted style={styles.storeGroupCount}>
+                    {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                  </Body>
+                </View>
+                <Body size="sm" style={[styles.storeGroupSubtotal, { color: theme.colors.foreground }]}>
+                  {formatPrice(row.subtotal)}
+                </Body>
+              </View>
+            );
+          }
+          const { key, item: cartItem } = row;
           const issue = assessCartItemIssue(
             cartItem,
             productDetails[cartItem.productId],
@@ -783,6 +847,31 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 20,
     textAlign: "center",
+  },
+  storeGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  storeGroupHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 1,
+  },
+  storeGroupName: {
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
+  },
+  storeGroupCount: {
+    marginLeft: 6,
+  },
+  storeGroupSubtotal: {
+    fontFamily: fontFamilies.sans.bold,
+    fontWeight: "700",
   },
   deliveryBanner: {
     flexDirection: "row",
