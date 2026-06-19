@@ -6,6 +6,11 @@
  * - full_name, phone, line1, city, state, postal_code are all required.
  * - line2 is intentionally optional.
  * - country defaults to "Sri Lanka" server-side; not enforced here.
+ *
+ * Phone rules: at least 7 digits, only digits / `+` / spaces / dashes /
+ * parentheses allowed. The strict E.164 normaliser lives next to the
+ * address form; this check just blocks "abc" / "..." from being accepted
+ * as a phone number.
  */
 export interface CheckoutAddressFields {
   full_name?: string;
@@ -18,7 +23,10 @@ export interface CheckoutAddressFields {
 
 export type CheckoutAddressValidation =
   | { ok: true }
-  | { ok: false; missing: string[] };
+  | { ok: false; missing: string[]; invalid: string[] };
+
+const PHONE_DIGIT_MIN = 7;
+const PHONE_CHARS_ALLOWED = /^[0-9+\-\s()]+$/;
 
 export function validateCheckoutAddress(
   fields: CheckoutAddressFields,
@@ -36,8 +44,17 @@ export function validateCheckoutAddress(
     .filter((key) => !fields[key] || !fields[key]!.trim())
     .map((key) => key as string);
 
-  if (missing.length === 0) return { ok: true };
-  return { ok: false, missing };
+  const invalid: string[] = [];
+  const phone = fields.phone?.trim() ?? "";
+  if (phone) {
+    const digits = phone.replace(/\D/g, "");
+    if (!PHONE_CHARS_ALLOWED.test(phone) || digits.length < PHONE_DIGIT_MIN) {
+      invalid.push("phone");
+    }
+  }
+
+  if (missing.length === 0 && invalid.length === 0) return { ok: true };
+  return { ok: false, missing, invalid };
 }
 
 /** Friendly label for a missing field key. */
@@ -51,5 +68,15 @@ export function checkoutAddressFieldLabel(field: string): string {
       return "postal code";
     default:
       return field.replace(/_/g, " ");
+  }
+}
+
+/** Stable label for an invalid (present-but-malformed) field key. */
+export function checkoutAddressInvalidLabel(field: string): string {
+  switch (field) {
+    case "phone":
+      return "phone number looks invalid";
+    default:
+      return `${checkoutAddressFieldLabel(field)} looks invalid`;
   }
 }

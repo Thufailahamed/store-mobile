@@ -41,7 +41,10 @@ export interface CartItem {
   price: number;
   image?: string;
   quantity: number;
-  stock: number;
+  /** Available stock at the time the line was added. `null` = unknown —
+   *  set when the caller can't compute it. Reconciliation replaces this
+   *  with the live catalogue figure on the next refresh. */
+  stock: number | null;
 }
 
 export type CartLoadResult =
@@ -77,7 +80,18 @@ export const useCart = create<CartStore>()(
         const requestedQty = item.quantity ?? 1;
         set((state) => {
           const existing = state.items[key];
-          const effectiveCap = item.stock ?? existing?.stock ?? 99;
+          // Prefer the new item's stock when known; otherwise fall back to
+          // whatever the existing line carries. Only when we genuinely have
+          // no signal do we cap at 99 — and in that case we still record
+          // `stock: undefined` so reconciliation can correct it instead of
+          // letting a phantom 99-unit line ride through checkout.
+          const knownStock =
+            item.stock != null ? item.stock : existing?.stock;
+          const fallbackCap = 99;
+          const effectiveCap =
+            knownStock != null && knownStock > 0
+              ? Math.min(knownStock, fallbackCap)
+              : fallbackCap;
           const { image: _image, ...rest } = item;
           const next = existing
             ? Math.min(existing.quantity + requestedQty, effectiveCap)
@@ -105,7 +119,10 @@ export const useCart = create<CartStore>()(
               [key]: {
                 ...rest,
                 quantity: next,
-                stock: effectiveCap,
+                // Persist the *known* stock; use `null` (not undefined) when
+                // the caller didn't pass one so downstream consumers can
+                // distinguish "unknown" from "out of stock".
+                stock: knownStock ?? null,
               },
             },
           };
@@ -127,8 +144,14 @@ export const useCart = create<CartStore>()(
         set((state) => {
           const item = state.items[key];
           if (!item) return state;
-          const capped = Math.min(quantity, item.stock);
-          if (quantity > item.stock) {
+          // When stock is unknown, don't artificially cap. The next
+          // reconciliation pass will correct the count if the buyer over-ordered.
+          const knownStock = item.stock;
+          const capped =
+            knownStock != null && knownStock > 0
+              ? Math.min(quantity, knownStock)
+              : quantity;
+          if (knownStock != null && quantity > knownStock) {
             emitClamp({
               productName: item.name,
               variantLabel: item.variantLabel,
@@ -370,13 +393,24 @@ export const useCart = create<CartStore>()(
             const item = items[patch.key];
             if (!item) continue;
             const nextStock = patch.stock ?? item.stock;
+            const nextQty =
+              patch.quantity !== undefined
+                ? nextStock != null && nextStock > 0
+                  ? Math.min(patch.quantity, nextStock)
+                  : patch.quantity
+                : item.quantity;
+            // Drop ghost lines: when stock is exhausted mid-checkout the
+            // patch clamps quantity to 0, but a 0-quantity row in the bag
+            // just confuses downstream totals — remove it cleanly.
+            if (nextQty <= 0) {
+              delete items[patch.key];
+              continue;
+            }
             items[patch.key] = {
               ...item,
               ...(patch.price !== undefined ? { price: patch.price } : {}),
               ...(patch.stock !== undefined ? { stock: patch.stock } : {}),
-              ...(patch.quantity !== undefined
-                ? { quantity: Math.min(patch.quantity, nextStock) }
-                : {}),
+              quantity: nextQty,
               ...(patch.name !== undefined ? { name: patch.name } : {}),
               ...(patch.variantLabel !== undefined
                 ? { variantLabel: patch.variantLabel }

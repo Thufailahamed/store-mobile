@@ -15,7 +15,7 @@ import { Avatar, Badge, Button, useToast } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { getOrderById, cancelOrder as cancelOrderRpc, cancelOrderItems as cancelOrderItemsRpc } from "@/lib/api";
-import { canBuyerCancel, CUSTOMER_STATUS_STEPS } from "@/lib/order-lifecycle";
+import { canBuyerCancelInWindow, CUSTOMER_STATUS_STEPS, isTrackableStatus } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -115,7 +115,14 @@ export default function OrderDetailScreen() {
             // Refresh the order so the item is shown as cancelled.
             const refresh = await getOrderById(order.id);
             if (refresh.ok) setOrder(refresh.data);
-            toast("Item cancelled", "success");
+            // Migration 0117: when the last non-cancelled item is cancelled
+            // the parent order collapses to status='cancelled'. Surface that
+            // explicitly instead of the misleading "Item cancelled" toast.
+            if (res.data.remaining_items === 0) {
+              toast("Order cancelled", "success");
+            } else {
+              toast("Item cancelled", "success");
+            }
           },
         },
       ],
@@ -146,8 +153,12 @@ export default function OrderDetailScreen() {
   const tone = STATUS_TONE[order.status] || STATUS_TONE.pending;
   const paymentTone = PAYMENT_TONE[order.payment_status] || PAYMENT_TONE.pending;
   const currentStepIndex = STATUS_STEPS.indexOf(order.status);
-  const canCancel = canBuyerCancel(order.status) || order.status === "processing";
+  // Mirror web parity: buyer cancel is limited to pending/confirmed AND a 2-hour
+  // window from placed_at. Sellers/admins use the seller or admin screens — not
+  // this buyer-only detail page.
+  const canCancel = canBuyerCancelInWindow(order.status, order.placed_at);
   const canReturn = order.status === "delivered";
+  const canTrack = isTrackableStatus(order.status);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -219,10 +230,7 @@ export default function OrderDetailScreen() {
           {order.status === "delivered" && (
             <ActionChip icon="star-outline" label="Review" onPress={() => router.push("/(main)/account/reviews" as never)} />
           )}
-          {(order.status === "shipped" ||
-            order.status === "out_for_delivery" ||
-            order.status === "processing" ||
-            order.status === "confirmed") && (
+          {canTrack && (
             <ActionChip
               icon="location-outline"
               label="Track"

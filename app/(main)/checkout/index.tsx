@@ -23,7 +23,7 @@ import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
 import { validateCartForCheckout, refreshCartFromCatalog, fetchCartProductSnapshots } from "@/lib/cart-validation";
-import { validateCheckoutAddress, checkoutAddressFieldLabel } from "@/lib/checkout-validation";
+import { validateCheckoutAddress, checkoutAddressFieldLabel, checkoutAddressInvalidLabel } from "@/lib/checkout-validation";
 import {
   clearCheckoutSession,
   isCheckoutPrepared,
@@ -289,22 +289,61 @@ export default function CheckoutScreen() {
   };
 
   const applyCoupon = async () => {
-    if (!user || !couponInput.trim()) return;
-    const res = await api.validateCoupon(couponInput.trim(), user.id, sub);
+    if (!user) return;
+    const trimmed = couponInput.trim();
+    if (!trimmed) {
+      toast("Enter a coupon code first", "error");
+      return;
+    }
+    const res = await api.validateCoupon(trimmed, user.id, sub);
     if (!res.ok) {
       toast(res.error, "error");
       return;
     }
     if (res.data.message !== "OK" && res.data.message !== "OK_FREE_SHIPPING") {
-      toast(res.data.message, "error");
+      toast(res.data.message || "Coupon cannot be applied", "error");
       return;
     }
-    setCoupon(couponInput.trim().toUpperCase());
+    setCoupon(trimmed.toUpperCase());
     setCouponId(res.data.couponId);
     setCouponDiscount(res.data.message === "OK_FREE_SHIPPING" ? 0 : res.data.discount);
     setFreeShippingCoupon(res.data.message === "OK_FREE_SHIPPING");
     toast("Coupon applied", "success");
   };
+
+  // Re-validate the applied coupon whenever the cart subtotal changes. The
+  // discount returned by `validateCoupon` is anchored to the subtotal at
+  // apply-time, so a stock-driven cart edit (item removed, qty capped) can
+  // leave the buyer with a discount that no longer satisfies
+  // min_order_value, or a stale discount number.
+  useEffect(() => {
+    if (!user || !couponId || !couponCode) return;
+    let cancelled = false;
+    api.validateCoupon(couponCode, user.id, sub).then((res) => {
+      if (cancelled) return;
+      if (!res.ok) {
+        clearCoupon();
+        toast(`Coupon no longer valid: ${res.error}`, "error");
+        return;
+      }
+      if (res.data.message === "OK_FREE_SHIPPING") {
+        setCouponDiscount(0);
+        setFreeShippingCoupon(true);
+      } else if (res.data.message === "OK") {
+        setCouponDiscount(res.data.discount);
+        setFreeShippingCoupon(false);
+      } else {
+        // Coupon rule no longer satisfied (e.g. min_order_value).
+        clearCoupon();
+        toast(res.data.message || "Coupon no longer valid for this bag", "error");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // `couponCode` is the user-facing key; `couponId` is the resolved DB id.
+    // `sub` is the trigger — re-validate whenever the cart subtotal shifts.
+  }, [user?.id, couponId, couponCode, sub]);
 
   const handlePlaceOrder = async () => {
     if (authLoading) return;
@@ -328,14 +367,40 @@ export default function CheckoutScreen() {
       postal_code: postalCode,
     });
     if (!addressCheck.ok) {
-      const firstMissing = checkoutAddressFieldLabel(addressCheck.missing[0]);
-      toast(
-        `Please complete your delivery address (${firstMissing} required)`,
-        "error",
-      );
+      const firstIssue =
+        addressCheck.invalid[0] != null
+          ? checkoutAddressInvalidLabel(addressCheck.invalid[0])
+          : `${checkoutAddressFieldLabel(addressCheck.missing[0])} required`;
+      toast(`Please complete your delivery address (${firstIssue})`, "error");
       setStep(1);
       setAddressSheetOpen(true);
       return;
+    }
+    // Belt-and-braces: when a saved address is selected, also validate
+    // the record on file — the local fields are only set when `fillAddress`
+    // runs, so a stale `address` could otherwise bypass the guard.
+    if (selectedAddressId !== "new") {
+      const target = savedAddresses.find((a) => a.id === selectedAddressId);
+      if (target) {
+        const savedCheck = validateCheckoutAddress({
+          full_name: target.full_name,
+          phone: target.phone,
+          line1: target.line1,
+          city: target.city,
+          state: target.state,
+          postal_code: target.postal_code,
+        });
+        if (!savedCheck.ok) {
+          const firstIssue =
+            savedCheck.invalid[0] != null
+              ? checkoutAddressInvalidLabel(savedCheck.invalid[0])
+              : `${checkoutAddressFieldLabel(savedCheck.missing[0])} required`;
+          toast(`Saved address is incomplete (${firstIssue})`, "error");
+          setStep(1);
+          setAddressSheetOpen(true);
+          return;
+        }
+      }
     }
 
     const checkoutValidation = await validateCartForCheckout();
@@ -556,20 +621,37 @@ export default function CheckoutScreen() {
   };
 
   const handleAddressContinue = () => {
-    const addressCheck = validateCheckoutAddress({
-      full_name: fullName,
-      phone,
-      line1,
-      city,
-      state,
-      postal_code: postalCode,
-    });
+    // When the user has picked a saved address, validate that record (it
+    // may predate our required-field rules) instead of the locally cached
+    // fields. Only fall back to the local fields for the "new" flow.
+    const target =
+      selectedAddressId !== "new"
+        ? savedAddresses.find((a) => a.id === selectedAddressId) ?? null
+        : null;
+    const fields = target
+      ? {
+          full_name: target.full_name,
+          phone: target.phone,
+          line1: target.line1,
+          city: target.city,
+          state: target.state,
+          postal_code: target.postal_code,
+        }
+      : {
+          full_name: fullName,
+          phone,
+          line1,
+          city,
+          state,
+          postal_code: postalCode,
+        };
+    const addressCheck = validateCheckoutAddress(fields);
     if (!addressCheck.ok) {
-      const firstMissing = checkoutAddressFieldLabel(addressCheck.missing[0]);
-      toast(
-        `Please complete your delivery address (${firstMissing} required)`,
-        "error",
-      );
+      const firstIssue =
+        addressCheck.invalid[0] != null
+          ? checkoutAddressInvalidLabel(addressCheck.invalid[0])
+          : `${checkoutAddressFieldLabel(addressCheck.missing[0])} required`;
+      toast(`Please complete your delivery address (${firstIssue})`, "error");
       setAddressSheetOpen(true);
       return;
     }

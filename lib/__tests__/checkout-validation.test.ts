@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   validateCheckoutAddress,
   checkoutAddressFieldLabel,
+  checkoutAddressInvalidLabel,
 } from "@/lib/checkout-validation";
 
 const complete = {
@@ -31,6 +32,7 @@ describe("validateCheckoutAddress", () => {
     expect(result.missing.sort()).toEqual(
       ["city", "full_name", "line1", "phone", "postal_code", "state"].sort(),
     );
+    expect(result.invalid).toEqual([]);
   });
 
   it("treats whitespace-only fields as missing", () => {
@@ -54,6 +56,27 @@ describe("validateCheckoutAddress", () => {
     if (result.ok) return;
     expect(result.missing.sort()).toEqual(["postal_code", "state"].sort());
   });
+
+  it("rejects a phone with no digits", () => {
+    const result = validateCheckoutAddress({ ...complete, phone: "---" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.missing).toEqual([]);
+    expect(result.invalid).toContain("phone");
+  });
+
+  it("rejects a phone that is too short", () => {
+    const result = validateCheckoutAddress({ ...complete, phone: "12345" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.invalid).toContain("phone");
+  });
+
+  it("accepts a phone in the local 07x format", () => {
+    expect(validateCheckoutAddress({ ...complete, phone: "0771234567" })).toEqual({
+      ok: true,
+    });
+  });
 });
 
 describe("checkoutAddressFieldLabel", () => {
@@ -64,5 +87,15 @@ describe("checkoutAddressFieldLabel", () => {
     expect(checkoutAddressFieldLabel("city")).toBe("city");
     expect(checkoutAddressFieldLabel("state")).toBe("state");
     expect(checkoutAddressFieldLabel("phone")).toBe("phone");
+  });
+});
+
+describe("checkoutAddressInvalidLabel", () => {
+  it("uses a phone-specific message", () => {
+    expect(checkoutAddressInvalidLabel("phone")).toBe("phone number looks invalid");
+  });
+
+  it("falls back to the friendly missing label", () => {
+    expect(checkoutAddressInvalidLabel("state")).toBe("state looks invalid");
   });
 });

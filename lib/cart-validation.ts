@@ -258,42 +258,48 @@ export async function validateCartForCheckout(): Promise<CartCheckoutValidation>
   const items = useCart.getState().items;
   const productIds = [...new Set(Object.values(items).map((item) => item.productId))];
 
-  if (productIds.length > 0) {
-    const [productsResult, catalogVisibleStoreIds] = await Promise.all([
-      fetchCartProductSnapshots(productIds),
-      getCatalogVisibleStoreIds(),
-    ]);
+  if (productIds.length === 0) {
+    return {
+      ok: false,
+      error: "Your bag is empty.",
+      reconciliation: { remove: [], update: [] },
+    };
+  }
 
-    if (!productsResult.ok) {
-      return {
-        ok: false,
-        error: "Could not verify stock. Check your connection and try again.",
-        reconciliation: { remove: [], update: [] },
-      };
-    }
+  const [productsResult, catalogVisibleStoreIds] = await Promise.all([
+    fetchCartProductSnapshots(productIds),
+    getCatalogVisibleStoreIds(),
+  ]);
 
-    const reconciliation = buildCartReconciliation(
-      items,
-      productsResult.products,
-      catalogVisibleStoreIds,
-    );
+  if (!productsResult.ok) {
+    return {
+      ok: false,
+      error: "Could not verify stock. Check your connection and try again.",
+      reconciliation: { remove: [], update: [] },
+    };
+  }
 
-    if (reconciliation.remove.length > 0 || reconciliation.update.length > 0) {
-      applyCartReconciliation(reconciliation);
-    }
+  const reconciliation = buildCartReconciliation(
+    items,
+    productsResult.products,
+    catalogVisibleStoreIds,
+  );
 
-    if (reconciliation.remove.length > 0) {
-      const names = reconciliation.remove.map((issue) => issue.message).slice(0, 2);
-      const suffix =
-        reconciliation.remove.length > 2
-          ? ` (+${reconciliation.remove.length - 2} more)`
-          : "";
-      return {
-        ok: false,
-        error: `${names.join(" ")}${suffix}`,
-        reconciliation,
-      };
-    }
+  if (reconciliation.remove.length > 0 || reconciliation.update.length > 0) {
+    applyCartReconciliation(reconciliation);
+  }
+
+  if (reconciliation.remove.length > 0) {
+    const names = reconciliation.remove.map((issue) => issue.message).slice(0, 2);
+    const suffix =
+      reconciliation.remove.length > 2
+        ? ` (+${reconciliation.remove.length - 2} more)`
+        : "";
+    return {
+      ok: false,
+      error: `${names.join(" ")}${suffix}`,
+      reconciliation,
+    };
   }
 
   const remaining = Object.keys(useCart.getState().items).length;
@@ -301,7 +307,7 @@ export async function validateCartForCheckout(): Promise<CartCheckoutValidation>
   if (remaining === 0) {
     return {
       ok: false,
-      error: "Your bag is empty. Unavailable items were removed.",
+      error: "Your bag is empty. Stock for every item was exhausted.",
       reconciliation: { remove: [], update: [] },
     };
   }

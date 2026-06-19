@@ -31,9 +31,15 @@ export function migrateCartItemRecord(items: Record<string, CartItem>): Record<s
     const existing = migrated[nextKey];
 
     if (existing) {
+      // When either line's stock is unknown, treat it as "no cap" — the
+      // next reconciliation will correct any over-counted totals.
+      const cap =
+        existing.stock != null && item.stock != null
+          ? Math.min(existing.stock, item.stock)
+          : existing.stock ?? item.stock ?? Infinity;
       migrated[nextKey] = {
         ...existing,
-        quantity: Math.min(existing.quantity + item.quantity, existing.stock),
+        quantity: Math.min(existing.quantity + item.quantity, cap),
       };
       continue;
     }

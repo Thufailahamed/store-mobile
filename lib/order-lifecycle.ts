@@ -134,3 +134,34 @@ export type SellerManualRpcStatus = (typeof SELLER_MANUAL_RPC_STATUSES)[number];
 export function isSellerManualRpcStatus(status: string): status is SellerManualRpcStatus {
   return (SELLER_MANUAL_RPC_STATUSES as readonly string[]).includes(status);
 }
+
+/** 2-hour buyer cancellation window — mirrors web parity. */
+export const BUYER_CANCEL_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Buyer cancellation eligibility: status must be in `pending`/`confirmed` and
+ * the order must have been placed within the last 2 hours. When `placed_at`
+ * is missing/unparseable we fail closed (deny) rather than allow — the
+ * window check is a safety belt, not optional.
+ */
+export function canBuyerCancelInWindow(
+  status: OrderStatus,
+  placedAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!canBuyerCancel(status)) return false;
+  if (!placedAt) return false;
+  const placedMs = new Date(placedAt).getTime();
+  if (Number.isNaN(placedMs)) return false;
+  return nowMs - placedMs <= BUYER_CANCEL_WINDOW_MS;
+}
+
+/** Statuses that have a live delivery timeline worth showing to the buyer. */
+export const TRACKABLE_STATUSES: ReadonlyArray<OrderStatus> = [
+  "shipped",
+  "out_for_delivery",
+];
+
+export function isTrackableStatus(status: OrderStatus): boolean {
+  return (TRACKABLE_STATUSES as readonly OrderStatus[]).includes(status);
+}

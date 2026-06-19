@@ -1725,10 +1725,10 @@ export async function getSellerOrderById(
 export async function transitionOrderStatus(
   orderId: string,
   status: string,
-  opts?: { reason?: string; adminOverride?: boolean; skipSellerGuard?: boolean },
+  opts?: { reason?: string; adminOverride?: boolean; skipClientGuard?: boolean },
 ): Promise<Result<{ status: string }>> {
   try {
-    if (!opts?.skipSellerGuard) {
+    if (!opts?.skipClientGuard) {
       const { data: auth } = await supabase.auth.getUser();
       const userId = auth.user?.id;
       let isAdmin = false;

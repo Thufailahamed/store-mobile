@@ -26,7 +26,7 @@ export default function AdminOrderDetail() {
   });
 
   const transitionMutation = useMutation({
-    mutationFn: (status: string) => transitionOrderStatus(id!, status, { skipSellerGuard: true }),
+    mutationFn: (status: string) => transitionOrderStatus(id!, status, { skipClientGuard: true, adminOverride: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-order", id] });
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
