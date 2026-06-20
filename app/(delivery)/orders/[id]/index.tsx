@@ -39,6 +39,7 @@ import {
   type FailureEvidencePayload,
 } from "@/components/delivery/FailureEvidenceSheet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { safeOpenUrl } from "@/lib/utils/safe-open-url";
 import {
   MAX_DELIVERY_ATTEMPTS,
   attemptCount,
@@ -482,7 +483,7 @@ export default function DeliveryDetail() {
                   onPress={() => {
                     if (ship.phone) {
                       const cleaned = ship.phone.replace(/[^0-9+]/g, "");
-                      Linking.openURL(`tel:${cleaned}`);
+                      safeOpenUrl(`tel:${cleaned}`);
                     }
                   }}
                 >
@@ -494,7 +495,7 @@ export default function DeliveryDetail() {
                     if (ship.phone) {
                       const cleaned = ship.phone.replace(/[^0-9+]/g, "");
                       const text = encodeURIComponent(`Hi ${ship.full_name?.split(" ")[0] ?? ""}, I'm your LUXE delivery rider.`);
-                      Linking.openURL(`https://wa.me/${cleaned.replace(/^\+/, "")}?text=${text}`);
+                      safeOpenUrl(`https://wa.me/${cleaned.replace(/^\+/, "")}?text=${text}`);
                     }
                   }}
                 >
@@ -502,7 +503,7 @@ export default function DeliveryDetail() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.contactBtn}
-                  onPress={() => Linking.openURL(mapsUrl(ship))}
+                  onPress={() => safeOpenUrl(mapsUrl(ship))}
                 >
                   <Text style={styles.contactBtnText}>📍 Navigate</Text>
                 </TouchableOpacity>

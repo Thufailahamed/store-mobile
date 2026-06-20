@@ -39,6 +39,7 @@ import {
 } from "@/lib/settings-prefs";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { safeOpenUrl } from "@/lib/utils/safe-open-url";
 
 type PrivacyKey =
   | "public_profile"
@@ -482,7 +483,7 @@ export default function SettingsScreen() {
       if (Platform.OS === "ios" || Platform.OS === "android") {
         await Share.share({ message, title: "LUXE data export" });
       } else {
-        await Linking.openURL(
+        await safeOpenUrl(
           `mailto:support@luxe.com?subject=LUXE%20Data%20Export&body=${encodeURIComponent(message)}`
         );
       }
@@ -841,19 +842,19 @@ export default function SettingsScreen() {
             icon="document-text-outline"
             label="Terms of service"
             value=""
-            onPress={() => Linking.openURL("https://luxe.com/terms")}
+            onPress={() => safeOpenUrl("https://luxe.com/terms")}
           />
           <CommsRow
             icon="lock-closed-outline"
             label="Privacy policy"
             value=""
-            onPress={() => Linking.openURL("https://luxe.com/privacy")}
+            onPress={() => safeOpenUrl("https://luxe.com/privacy")}
           />
           <CommsRow
             icon="information-circle-outline"
             label="Open-source licences"
             value=""
-            onPress={() => Linking.openURL("https://luxe.com/licences")}
+            onPress={() => safeOpenUrl("https://luxe.com/licences")}
           />
           <View style={styles.versionRow}>
             <Label style={styles.versionLabel}>App version</Label>

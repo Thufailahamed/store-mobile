@@ -19,6 +19,9 @@ export type CartClampNotice = {
 
 let cartClampHandler: ((notice: CartClampNotice) => void) | null = null;
 
+/** Hard cap on distinct cart lines kept in AsyncStorage. */
+const MAX_CART_LINES = 50;
+
 /** Register a callback that fires whenever an `addItem` or `updateQuantity`
  *  silently caps the requested quantity to available stock. Matches the
  *  reservation-sync error-handler pattern so the toast layer can react. */
@@ -80,6 +83,20 @@ export const useCart = create<CartStore>()(
         const requestedQty = item.quantity ?? 1;
         set((state) => {
           const existing = state.items[key];
+          // Cap cart line count to 50 — anything beyond that exhausts
+          // AsyncStorage and (more importantly) is almost always a bug or
+          // an automation gone wrong. Update an existing line in place
+          // even when we're at the cap so the user can still adjust qty.
+          if (!existing && Object.keys(state.items).length >= MAX_CART_LINES) {
+            emitClamp({
+              productName: item.name,
+              variantLabel: item.variantLabel,
+              requested: 1,
+              capped: 0,
+              reason: "max_qty",
+            });
+            return state;
+          }
           // Prefer the new item's stock when known; otherwise fall back to
           // whatever the existing line carries. Only when we genuinely have
           // no signal do we cap at 99 — and in that case we still record
@@ -461,7 +478,11 @@ export const useCart = create<CartStore>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         couponCode: state.couponCode,
-        items: state.items,
+        // Truncate persisted items to MAX_CART_LINES so we never write
+        // an unbounded payload to AsyncStorage.
+        items: Object.fromEntries(
+          Object.entries(state.items).slice(0, MAX_CART_LINES),
+        ),
       }),
     }
   )

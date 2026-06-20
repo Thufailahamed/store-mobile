@@ -37,10 +37,13 @@ export async function registerForPushNotifications(userId: string): Promise<stri
       });
     }
 
-    await supabase
+    const { error: pushError } = await supabase
       .from("users")
       .update({ push_token: token })
       .eq("id", userId);
+    if (pushError) {
+      console.warn("[notifications] push_token update failed:", pushError.message);
+    }
 
     return token;
   } catch {
@@ -58,4 +61,20 @@ export function addNotificationReceivedListener(
   handler: (notification: Notifications.Notification) => void
 ) {
   return Notifications.addNotificationReceivedListener(handler);
+}
+
+/** Null the push_token column for a user — called on sign-out so the
+ *  server stops targeting the old device. */
+export async function clearPushToken(userId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from("users")
+      .update({ push_token: null })
+      .eq("id", userId);
+    if (error) {
+      console.warn("[notifications] push_token null-out failed:", error.message);
+    }
+  } catch (err) {
+    console.warn("[notifications] clearPushToken threw:", err);
+  }
 }

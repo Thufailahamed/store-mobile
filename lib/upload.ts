@@ -18,19 +18,45 @@ const AVATAR_BUCKET = "user-avatars";
 // heap and cause the upload to silently OOM before reaching storage.
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Explicit allow-list of extensions we will accept for uploads. We refuse
+ * anything else (`.svg`, `.html`, `.exe`, ...) so an attacker can't smuggle
+ * a script-bearing file into the storage bucket.
+ */
+const ALLOWED_EXTS = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"]);
+
+const ALLOWED_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+]);
+
+function isAllowedExt(ext: string): boolean {
+  return ALLOWED_EXTS.has(ext.toLowerCase());
+}
+
+function isAllowedMime(mime: string): boolean {
+  const m = mime.toLowerCase();
+  if (m.includes("svg")) return false;
+  if (m.includes("html")) return false;
+  return ALLOWED_MIMES.has(m) || m.startsWith("image/") || m === "application/pdf";
+}
+
 function normalizeExtension(ext?: string | null, mimeType?: string | null): string {
   const mime = (mimeType ?? "").toLowerCase();
   if (mime.includes("png")) return "png";
   if (mime.includes("webp")) return "webp";
   if (mime.includes("heic") || mime.includes("heif")) return "heic";
   if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("pdf")) return "pdf";
 
   const raw = (ext ?? "jpg").toLowerCase().split("?")[0];
   if (raw === "jpeg") return "jpg";
-  if (raw === "pdf") return "pdf";
-  if (["jpg", "png", "webp", "heic", "heif", "pdf"].includes(raw)) {
-    return raw === "heif" ? "heic" : raw;
-  }
+  if (raw === "heif") return "heic";
+  if (["jpg", "png", "webp", "heic", "pdf"].includes(raw)) return raw;
   return "jpg";
 }
 
@@ -90,7 +116,14 @@ async function uploadImageToBucket(
   uri: string,
   options?: { contentType?: string; upsert?: boolean; mimeType?: string | null }
 ): Promise<UploadResult> {
-  const ext = normalizeExtension(path.split(".").pop(), options?.mimeType);
+  const rawExt = path.split(".").pop();
+  const ext = normalizeExtension(rawExt, options?.mimeType);
+  if (!isAllowedExt(ext)) {
+    return { url: "", error: `Unsupported file type ".${ext}"` };
+  }
+  if (options?.mimeType && !isAllowedMime(options.mimeType)) {
+    return { url: "", error: `Unsupported mime type "${options.mimeType}"` };
+  }
   const contentType = options?.contentType ?? mimeForExtension(ext);
   const body = await readUriAsArrayBuffer(uri);
   if (body.byteLength > MAX_UPLOAD_BYTES) {
@@ -229,7 +262,8 @@ export async function uploadAvatar(
     });
     if (authError) return { url: "", error: authError.message };
 
-    await supabase.auth.refreshSession();
+    // No explicit refreshSession() — updateUser() already persists the
+    // new session, and an extra refresh races with concurrent calls.
 
     return { url: cacheBustedUrl };
   } catch (e: any) {
@@ -385,6 +419,12 @@ export async function uploadComplianceDocument(
       options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
       options?.mimeType
     );
+    if (!isAllowedExt(ext)) {
+      return { url: "", error: `Unsupported file type ".${ext}"` };
+    }
+    if (options?.mimeType && !isAllowedMime(options.mimeType)) {
+      return { url: "", error: `Unsupported mime type "${options.mimeType}"` };
+    }
     const path = `${storeId}/${docType}-${Date.now()}.${ext}`;
     const contentType = options?.mimeType ?? mimeForExtension(ext);
     const body = await readUriAsArrayBuffer(uri);

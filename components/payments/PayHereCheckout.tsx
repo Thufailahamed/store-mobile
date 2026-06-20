@@ -15,28 +15,53 @@ interface PayHereCheckoutProps {
   onReturnFromGateway: () => void;
 }
 
-function isPayHereSuccessReturn(url: string, orderId: string): boolean {
-  if (!url.includes("success=true")) return false;
+function isPayHereHost(url: string): boolean {
   try {
     const parsed = new URL(url);
-    if (parsed.searchParams.get("success") !== "true") return false;
-    return parsed.pathname.includes(orderId) || parsed.searchParams.get("pm") === "payhere";
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "payhere.lk" ||
+      host.endsWith(".payhere.lk") ||
+      host === "www.payhere.lk"
+    );
   } catch {
-    return url.includes(orderId);
+    return false;
+  }
+}
+
+function isPayHereSuccessReturn(url: string, orderId: string): boolean {
+  // Require an exact match on the order_id query param — substring checks
+  // on the raw URL are unsafe (an attacker could craft a URL containing
+  // "order_id=<other>" + the target orderId).
+  try {
+    const parsed = new URL(url);
+    if (!isPayHereHost(url)) return false;
+    if (parsed.searchParams.get("success") !== "true") return false;
+    return parsed.searchParams.get("order_id") === orderId;
+  } catch {
+    return false;
   }
 }
 
 function isPayHereCancelReturn(url: string, orderId: string): boolean {
-  if (!url.includes("cancelled=true")) return false;
   try {
     const parsed = new URL(url);
-    return (
-      parsed.searchParams.get("cancelled") === "true" &&
-      (parsed.pathname.includes(orderId) || url.includes(orderId))
-    );
+    if (!isPayHereHost(url)) return false;
+    if (parsed.searchParams.get("cancelled") !== "true") return false;
+    return parsed.searchParams.get("order_id") === orderId;
   } catch {
-    return url.includes(orderId);
+    return false;
   }
+}
+
+/** HTML-escape every value interpolated into the PayHere auto-submit form. */
+function htmlEscape(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/'/g, "&#39;")
+    .replace(/"/g, "&quot;");
 }
 
 export function PayHereCheckout({
@@ -52,10 +77,10 @@ export function PayHereCheckout({
 
   const html = useMemo(() => {
     const inputs = Object.entries(fields)
-      .map(([k, v]) => `<input type="hidden" name="${k}" value="${String(v).replace(/"/g, "&quot;")}" />`)
+      .map(([k, v]) => `<input type="hidden" name="${htmlEscape(k)}" value="${htmlEscape(String(v))}" />`)
       .join("\n");
     return `<!DOCTYPE html><html><body onload="document.forms[0].submit()">
-      <form method="post" action="${action}">${inputs}</form>
+      <form method="post" action="${htmlEscape(action)}">${inputs}</form>
       <p style="font-family:sans-serif;text-align:center;padding:40px">Redirecting to PayHere…</p>
     </body></html>`;
   }, [action, fields]);
@@ -81,6 +106,14 @@ export function PayHereCheckout({
       ) : (
         <WebView
           source={{ html }}
+          originWhitelist={["https://*.payhere.lk"]}
+          javaScriptCanOpenWindowsAutomatically={false}
+          setSupportMultipleWindows={false}
+          onShouldStartLoadWithRequest={(req) => {
+            // Only let the WebView navigate to PayHere origins. Anything
+            // else (tel:, mailto:, javascript:, etc.) is dropped.
+            return isPayHereHost(req.url) || req.url === "about:blank";
+          }}
           onNavigationStateChange={(nav) => {
             if (handledRef.current) return;
             if (isPayHereCancelReturn(nav.url, orderId)) {

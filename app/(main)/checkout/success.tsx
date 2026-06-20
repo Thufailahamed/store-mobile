@@ -222,6 +222,13 @@ export default function OrderSuccessScreen() {
     if (!referralCode) return;
     Clipboard.setString(referralCode);
     toast("Referral code copied to clipboard!", "success");
+    // Auto-clear the clipboard 60s later so the code doesn't sit in
+    // clipboard history / sync caches indefinitely.
+    setTimeout(() => {
+      try {
+        Clipboard.setString("");
+      } catch {}
+    }, 60_000);
   };
 
   const handleShareReferral = async () => {

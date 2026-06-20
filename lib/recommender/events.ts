@@ -106,18 +106,27 @@ export type RecommendationEvent =
 
 const EVENTS_SUFFIX = "rec_events";
 const MAX_EVENTS = 500; // hard cap to keep storage bounded
+/** Drop events older than this on read — the ranker is a near-real-time
+ *  signal, and stale entries just dilute the profile. */
+const MAX_EVENT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function storageKey(userId: string | null | undefined) {
   return `luxe:${userId ?? guestId}:${EVENTS_SUFFIX}`;
 }
 
-/** Read the event log for a user. */
+function isStale(event: RecommendationEvent): boolean {
+  const ageMs = Date.now() - (event.t ?? 0);
+  return ageMs > MAX_EVENT_AGE_MS;
+}
+
+/** Read the event log for a user, dropping events older than 7 days. */
 export async function readEvents(userId: string | null | undefined): Promise<RecommendationEvent[]> {
   try {
     const raw = await AsyncStorage.getItem(storageKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as RecommendationEvent[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as RecommendationEvent[]).filter((e) => !isStale(e));
   } catch {
     return [];
   }

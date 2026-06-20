@@ -40,3 +40,25 @@ export const supabase = createClient(URL, ANON_KEY, {
     detectSessionInUrl: false,
   },
 });
+
+/**
+ * Single-flight refresh.
+ *
+ * Concurrent calls to `supabase.auth.refreshSession()` can race and each
+ * mint a fresh refresh token, which then invalidates the other call.
+ * Centralising the call here means a second caller awaits the in-flight
+ * promise instead of starting its own refresh.
+ */
+let inFlightRefresh: Promise<Awaited<ReturnType<typeof supabase.auth.refreshSession>>> | null = null;
+
+export async function refreshSessionOnce() {
+  if (inFlightRefresh) return inFlightRefresh;
+  inFlightRefresh = (async () => {
+    try {
+      return await supabase.auth.refreshSession();
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+  return inFlightRefresh;
+}

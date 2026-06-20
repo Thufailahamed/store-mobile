@@ -11,6 +11,7 @@ import { supabase } from "./client";
 import type { Session, User } from "@supabase/supabase-js";
 import { releaseCartReservations } from "@/lib/inventory-reservations";
 import { useCart, useWishlist } from "@/lib/stores";
+import { clearPushToken } from "@/lib/notifications";
 
 export interface AuthState {
   session: Session | null;
@@ -29,17 +30,33 @@ export interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 async function resolveRole(authUser: User): Promise<string> {
+  // Always start with the safest default. user_metadata is user-writable
+  // (the user can patch it via supabase.auth.updateUser({ data })), so
+  // trusting it for routing/authz decisions would let any user escalate
+  // themselves to "admin". Only the row in `public.users` is authoritative.
   try {
     const { data } = await supabase
       .from("users")
       .select("role")
       .eq("id", authUser.id)
       .maybeSingle();
+    if (data?.role) return data.role;
     const metaRole = authUser.user_metadata?.role as string | undefined;
-    return data?.role ?? metaRole ?? "customer";
+    if (metaRole) {
+      console.warn(
+        `[auth] using unverified user_metadata.role="${metaRole}" as hint only; ` +
+          `no row found in public.users for ${authUser.id}`,
+      );
+    }
+    return "customer";
   } catch {
     const metaRole = authUser.user_metadata?.role as string | undefined;
-    return metaRole ?? "customer";
+    if (metaRole) {
+      console.warn(
+        `[auth] DB read failed; falling back to user_metadata.role="${metaRole}" as hint only`,
+      );
+    }
+    return "customer";
   }
 }
 
@@ -101,12 +118,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (cancelled) return;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setLoading(false);
       void applyRole(nextSession?.user ?? null);
+      // PASSWORD_RECOVERY fires when the user clicks the link in the
+      // "reset password" email. Supabase has issued a short-lived
+      // recovery session — route the user to a screen where they can
+      // set a new password (instead of bouncing them back to /login).
+      if (event === "PASSWORD_RECOVERY") {
+        try {
+          // Lazy import to avoid a cycle with expo-router at module load.
+          // Use a static-require-friendly import path string to keep the
+          // TypeScript "module" flag happy (it disallows `await import`).
+          const expoRouter = require("expo-router") as typeof import("expo-router");
+          expoRouter.router.push("/(auth)/reset-password");
+        } catch (err) {
+          console.warn("[auth] failed to route to reset-password:", err);
+        }
+      }
     });
 
     return () => {
@@ -139,6 +171,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await useCart.getState().syncToServer(userId);
         }
         await useWishlist.getState().syncToServer(userId);
+        // Null out the push_token so the server stops sending pushes to
+        // this device — a stale token would otherwise keep showing
+        // notifications for a user who is no longer signed in.
+        await clearPushToken(userId);
       } catch (err) {
         console.warn("[auth] signOut sync failed:", err);
       }

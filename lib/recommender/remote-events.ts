@@ -32,6 +32,14 @@ const FLUSH_INTERVAL_MS = 15_000;
 const QUEUE_HARD_CAP = 200;
 /** Server fetch cap on cold start. Matches client log cap. */
 const REMOTE_FETCH_LIMIT = 500;
+/** Drop events older than this on flush — the ranker is a near-real-time
+ *  signal, and stale entries just dilute the profile. */
+const MAX_EVENT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isStale(event: RecommendationEvent): boolean {
+  const ageMs = Date.now() - (event.t ?? 0);
+  return ageMs > MAX_EVENT_AGE_MS;
+}
 
 /** Per-user last-flush timestamp cache (module-local, in-memory). */
 const lastFlushAt = new Map<string, number>();
@@ -50,7 +58,8 @@ async function readQueue(userId: string | null | undefined): Promise<Recommendat
     const raw = await AsyncStorage.getItem(QUEUE_KEY(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as RecommendationEvent[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as RecommendationEvent[]).filter((e) => !isStale(e));
   } catch {
     return [];
   }
@@ -244,7 +253,7 @@ export async function fetchRemoteEvents(
     const out: RecommendationEvent[] = [];
     for (const row of data as RemoteEventRow[]) {
       const ev = fromRow(row);
-      if (ev) out.push(ev);
+      if (ev && !isStale(ev)) out.push(ev);
     }
     return out;
   } catch {

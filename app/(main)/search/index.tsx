@@ -103,12 +103,19 @@ export default function SearchScreen() {
   // Load recent searches from AsyncStorage
   useEffect(() => {
     AsyncStorage.getItem("luxe_search_history").then((v) => {
-      if (v) setRecentSearches(JSON.parse(v));
+      if (!v) return;
+      try {
+        const parsed = JSON.parse(v);
+        if (!Array.isArray(parsed)) return;
+        // Cap loaded history to 20 entries.
+        setRecentSearches(parsed.slice(0, 20));
+      } catch {}
     });
   }, []);
 
   const saveRecent = async (term: string) => {
-    const next = [term, ...recentSearches.filter((r) => r !== term)].slice(0, 12);
+    // Cap to 20 most recent unique searches so AsyncStorage stays bounded.
+    const next = [term, ...recentSearches.filter((r) => r !== term)].slice(0, 20);
     setRecentSearches(next);
     try {
       await AsyncStorage.setItem("luxe_search_history", JSON.stringify(next));

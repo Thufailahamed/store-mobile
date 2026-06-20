@@ -37,6 +37,8 @@ import {
 } from "@/lib/notifications";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
+import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush } from "@/lib/utils/safe-route";
+import { BiometricGate } from "@/components/auth/BiometricGate";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -136,21 +138,58 @@ function RootLayoutNav() {
   // Notification tap → deep link. Auth-gated: tapping a notif when signed
   // out redirects to login rather than landing on a screen with no session.
   useEffect(() => {
-    notifListenerRef.current = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data;
+    notifListenerRef.current = addNotificationResponseListener(async (response) => {
+      const data = response.notification.request.content.data as
+        | { screen?: string; order_id?: string }
+        | undefined;
       if (!user?.id) {
         router.replace("/(auth)/login");
         return;
       }
       if (data?.screen) {
-        router.push(data.screen as any);
+        // Validate against the allow-list before navigating. Unknown screens
+        // are dropped with a warning so a malicious payload can't route the
+        // user to an arbitrary path.
+        if (!isAllowedRoute(data.screen)) {
+          console.warn("[notif] rejected non-allow-listed screen:", data.screen);
+          return;
+        }
+        safeRoutePush(router, data.screen);
       } else if (data?.order_id) {
+        const orderId = sanitizeSlug(data.order_id);
+        if (!isUuid(orderId)) {
+          console.warn("[notif] rejected non-uuid order_id:", data.order_id);
+          return;
+        }
+        // Verify ownership before routing. Riders/admins bypass the
+        // ownership check because they are authorised to view any order.
+        const isPrivileged = role === "delivery" || role === "delivery_company" || role === "admin";
+        if (!isPrivileged) {
+          try {
+            // Use a static require to stay within the tsconfig's module
+            // setting (dynamic `await import` isn't allowed here).
+            const clientModule = require("@/lib/supabase/client") as typeof import("@/lib/supabase/client");
+            const supabase = clientModule.supabase;
+            const { data: orderRow } = await supabase
+              .from("orders")
+              .select("id, user_id")
+              .eq("id", orderId)
+              .maybeSingle();
+            if (!orderRow || orderRow.user_id !== user.id) {
+              console.warn("[notif] order ownership check failed for:", orderId);
+              return;
+            }
+          } catch (err) {
+            console.warn("[notif] order ownership check threw:", err);
+            return;
+          }
+        }
         // Route delivery / delivery_company roles into the driver app.
         const target =
           role === "delivery" || role === "delivery_company"
-            ? `/(delivery)/orders/${data.order_id}`
-            : `/(main)/account/orders/${data.order_id}`;
-        router.push(target as any);
+            ? `/(delivery)/orders/${orderId}`
+            : `/(main)/account/orders/${orderId}`;
+        safeRoutePush(router, target, { id: orderId });
       }
     });
     return () => {
@@ -168,8 +207,11 @@ function RootLayoutNav() {
       const parsed = Linking.parse(url);
 
       // Password reset: luxe://reset-password — public, no auth needed.
+      // Routed to the reset-password screen so the user can set a new one
+      // (the PASSWORD_RECOVERY event handled in lib/supabase/auth.ts will
+      // also land here for deep links that include the recovery fragment).
       if (parsed.hostname === "reset-password" || parsed.path === "/reset-password") {
-        router.push("/(auth)/login");
+        safeRoutePush(router, "/(auth)/reset-password");
         return;
       }
 
@@ -181,7 +223,7 @@ function RootLayoutNav() {
         const qs = new URLSearchParams();
         if (role) qs.set("role", role);
         if (code) qs.set("code", code);
-        router.push(`/(auth)/register?${qs.toString()}` as any);
+        safeRoutePush(router, `/(auth)/register${qs.toString() ? `?${qs.toString()}` : ""}`);
         return;
       }
 
@@ -193,21 +235,28 @@ function RootLayoutNav() {
 
       // Product deep link: luxe://product/<slug>
       if (parsed.hostname === "product" && parsed.path) {
-        const slug = parsed.path.replace("/", "");
-        if (slug) router.push(`/(main)/products/${slug}` as any);
+        const rawSlug = parsed.path.replace("/", "");
+        const slug = sanitizeSlug(rawSlug);
+        if (!slug) {
+          console.warn("[deeplink] rejected empty/non-slug product path:", rawSlug);
+          return;
+        }
+        safeRoutePush(router, `/(main)/products/${slug}`);
         return;
       }
 
       // Order deep link: luxe://order/<id>
       if (parsed.hostname === "order" && parsed.path) {
-        const orderId = parsed.path.replace("/", "");
-        if (orderId) {
-          const target =
-            role === "delivery" || role === "delivery_company"
-              ? `/(delivery)/orders/${orderId}`
-              : `/(main)/account/orders/${orderId}`;
-          router.push(target as any);
+        const orderId = sanitizeSlug(parsed.path.replace("/", ""));
+        if (!isUuid(orderId)) {
+          console.warn("[deeplink] rejected non-uuid order id:", orderId);
+          return;
         }
+        const target =
+          role === "delivery" || role === "delivery_company"
+            ? `/(delivery)/orders/${orderId}`
+            : `/(main)/account/orders/${orderId}`;
+        safeRoutePush(router, target, { id: orderId });
         return;
       }
 
@@ -215,7 +264,11 @@ function RootLayoutNav() {
       // Authenticated invitees only — anonymous users go to login first.
       if (parsed.hostname === "delivery-company" && parsed.path?.includes("accept")) {
         const token = parsed.queryParams?.token as string | undefined;
-        if (token) router.push(`/(delivery-company)/accept?token=${token}` as any);
+        if (!isValidToken(token)) {
+          console.warn("[deeplink] rejected delivery-company invite token");
+          return;
+        }
+        router.push(`/(delivery-company)/accept?token=${encodeURIComponent(token as string)}` as never);
         return;
       }
     };
@@ -229,12 +282,14 @@ function RootLayoutNav() {
 
   return (
     <ErrorBoundary>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.light.background },
-        }}
-      />
+      <BiometricGate>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.light.background },
+          }}
+        />
+      </BiometricGate>
     </ErrorBoundary>
   );
 }

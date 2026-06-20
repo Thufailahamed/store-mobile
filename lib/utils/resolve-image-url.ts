@@ -24,6 +24,11 @@ export function resolveImageUrl(url?: string | null): string {
   if (!url) return "";
   const trimmed = url.trim();
   if (!trimmed) return "";
+  // Reject script-bearing schemes outright. Without this guard an attacker
+  // could store "javascript:alert(1)" or a data:text/html URL in
+  // product_images.url and have the app evaluate it.
+  if (trimmed.startsWith("javascript:")) return "";
+  if (trimmed.startsWith("data:text/html")) return "";
   if (
     trimmed.startsWith("http://") ||
     trimmed.startsWith("https://") ||
