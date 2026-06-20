@@ -82,6 +82,20 @@ export function mergeCartItemRecords(
   return { items: merged, quantityConflicts };
 }
 
+/** Cross-device pull: server rows win; keep local-only lines not yet pushed. */
+export function mergeCartItemRecordsFromRemotePull(
+  server: Record<string, CartItem>,
+  local: Record<string, CartItem>,
+): Record<string, CartItem> {
+  const merged: Record<string, CartItem> = { ...server };
+  for (const [key, localItem] of Object.entries(local)) {
+    if (!merged[key]) {
+      merged[key] = localItem;
+    }
+  }
+  return merged;
+}
+
 export interface StoreConsistencyResult {
   /** Items that were re-keyed because the product moved to a different store. */
   rekeyed: CartItem[];

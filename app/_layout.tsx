@@ -27,7 +27,7 @@ import {
 import * as Linking from "expo-linking";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useAuth, AuthProvider } from "@/lib/supabase/auth";
-import { useSyncStores } from "@/lib/hooks";
+import { useSyncStores, useCartRemoteSync, useWishlistRemoteSync } from "@/lib/hooks";
 import { ToastProvider } from "@/components/ui";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { colors } from "@/lib/theme/tokens";
@@ -54,6 +54,8 @@ const queryClient = new QueryClient({
 function RootLayoutNav() {
   const { session, user, role, loading, roleLoading } = useAuth();
   useSyncStores();
+  useCartRemoteSync();
+  useWishlistRemoteSync();
   const router = useRouter();
   const segments = useSegments();
   const notifListenerRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null);

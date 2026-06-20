@@ -7,6 +7,7 @@ import type { CartReconciliation } from "@/lib/cart-validation";
 import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, assertStoreConsistency, buildCartLineKey } from "@/lib/cart-line-key";
 import { clearCheckoutSession } from "@/lib/cart-checkout-session";
 import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
+import { suppressRemoteSyncPull } from "@/lib/remote-sync-guard";
 
 /** Notice payload when a cart mutation was clamped to available stock. */
 export type CartClampNotice = {
@@ -66,6 +67,7 @@ export interface CartStore {
   clear: () => void;
   syncToServer: (userId: string) => Promise<import("@/lib/cart-sync").CartSyncResult>;
   loadFromServer: (userId: string) => Promise<CartLoadResult>;
+  refreshFromServer: (userId: string) => Promise<CartLoadResult>;
   applyReconciliation: (reconciliation: CartReconciliation) => void;
   itemCount: () => number;
   subtotal: () => number;
@@ -198,6 +200,8 @@ export const useCart = create<CartStore>()(
       syncToServer: async (userId): Promise<CartSyncResult> => {
         if (!get().hydrated) return { ok: true };
 
+        suppressRemoteSyncPull();
+
         try {
           const { data: existingCart, error: cartLookupError } = await supabase
             .from("cart")
@@ -287,8 +291,12 @@ export const useCart = create<CartStore>()(
         }
       },
 
-      loadFromServer: async (userId): Promise<CartLoadResult> => {
-        const loadFailed = "Could not load your bag. Showing items saved on this device.";
+      loadFromServer: async (userId, options?: { merge?: "login" | "remote" }): Promise<CartLoadResult> => {
+        const mergeMode = options?.merge ?? "login";
+        const loadFailed =
+          mergeMode === "remote"
+            ? "Could not refresh your bag."
+            : "Could not load your bag. Showing items saved on this device.";
         try {
           const { data: cart, error: cartLookupError } = await supabase
             .from("cart")
@@ -303,7 +311,11 @@ export const useCart = create<CartStore>()(
           }
 
           if (!cart) {
-            set({ hydrated: true });
+            if (mergeMode === "remote") {
+              set({ items: {}, hydrated: true });
+            } else {
+              set({ hydrated: true });
+            }
             return { ok: true };
           }
 
@@ -358,10 +370,17 @@ export const useCart = create<CartStore>()(
             };
           }
 
-          // Merge: any local items the server doesn't know about get added
-          // (covers the "added to cart while signed out" case).
+          // Merge: login keeps guest additions; remote pull trusts the server.
           const local = migrateCartItemRecord(get().items);
-          const { items: merged, quantityConflicts } = mergeCartItemRecords(serverItems, local);
+          let mergedItems: Record<string, CartItem>;
+          let quantityConflicts = 0;
+          if (mergeMode === "remote") {
+            mergedItems = serverItems;
+          } else {
+            const merged = mergeCartItemRecords(serverItems, local);
+            mergedItems = merged.items;
+            quantityConflicts = merged.quantityConflicts;
+          }
 
           // Re-validate store consistency. After merge the line keys may still
           // reference an old storeId if a product was transferred; re-key them
@@ -375,7 +394,7 @@ export const useCart = create<CartStore>()(
               };
             }
           }
-          const consistency = assertStoreConsistency(merged, productIndex);
+          const consistency = assertStoreConsistency(mergedItems, productIndex);
           if (
             consistency.dropped.length > 0 ||
             consistency.rekeyed.length > 0 ||
@@ -393,6 +412,8 @@ export const useCart = create<CartStore>()(
           return { ok: false, error: loadFailed };
         }
       },
+
+      refreshFromServer: async (userId) => get().loadFromServer(userId, { merge: "remote" }),
 
       applyReconciliation: (reconciliation) => {
         set((state) => {

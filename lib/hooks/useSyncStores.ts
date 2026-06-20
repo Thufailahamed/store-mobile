@@ -3,6 +3,7 @@ import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCart, useWishlist } from "@/lib/stores";
 import { setCartClampNoticeHandler } from "@/lib/stores/cart-store";
+import { suppressRemoteSyncPull } from "@/lib/remote-sync-guard";
 import { refreshCartFromCatalog } from "@/lib/cart-validation";
 import {
   cartItemsToReservations,
@@ -26,6 +27,7 @@ export function useSyncStores() {
   const cartCouponCode = useCart((s) => s.couponCode);
   const cartHydrated = useCart((s) => s.hydrated);
   const wishlistItems = useWishlist((s) => s.items);
+  const wishlistHydrated = useWishlist((s) => s.hydrated);
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wishlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUserIdRef = useRef<string | null>(null);
@@ -108,6 +110,7 @@ export function useSyncStores() {
           );
         }
       });
+    useWishlist.setState({ hydrated: false });
     useWishlist.getState().loadFromServer(userId);
   }, [user?.id, session, loading]);
 
@@ -127,6 +130,7 @@ export function useSyncStores() {
 
   useEffect(() => {
     if (!user?.id || !cartHydrated) return;
+    suppressRemoteSyncPull(1200);
     if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
     cartTimerRef.current = setTimeout(() => {
       void useCart.getState().syncToServer(user.id).then((result) => {
@@ -144,7 +148,8 @@ export function useSyncStores() {
   // Debounced push whenever wishlist changes.
   const wishlistSnapshot = `${Object.keys(wishlistItems).length}|${Object.keys(wishlistItems).join(",")}`;
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !wishlistHydrated) return;
+    suppressRemoteSyncPull(1200);
     if (wishlistTimerRef.current) clearTimeout(wishlistTimerRef.current);
     wishlistTimerRef.current = setTimeout(() => {
       useWishlist.getState().syncToServer(user.id);
@@ -153,5 +158,5 @@ export function useSyncStores() {
       if (wishlistTimerRef.current) clearTimeout(wishlistTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wishlistSnapshot, user?.id]);
+  }, [wishlistSnapshot, user?.id, wishlistHydrated]);
 }

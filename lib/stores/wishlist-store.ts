@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase/client";
+import { suppressRemoteSyncPull } from "@/lib/remote-sync-guard";
 
 interface WishlistStore {
   items: Record<string, boolean>;
@@ -13,6 +14,7 @@ interface WishlistStore {
   clear: () => void;
   syncToServer: (userId: string) => Promise<void>;
   loadFromServer: (userId: string) => Promise<void>;
+  refreshFromServer: (userId: string) => Promise<void>;
 }
 
 async function ensureWishlistId(userId: string): Promise<string | null> {
@@ -35,6 +37,24 @@ async function ensureWishlistId(userId: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function fetchServerWishlistItems(
+  userId: string,
+): Promise<Record<string, boolean>> {
+  const wishlistId = await ensureWishlistId(userId);
+  if (!wishlistId) return {};
+
+  const { data } = await supabase
+    .from("wishlist_items")
+    .select("product_id")
+    .eq("wishlist_id", wishlistId);
+
+  const serverItems: Record<string, boolean> = {};
+  for (const row of (data ?? []) as { product_id: string }[]) {
+    serverItems[row.product_id] = true;
+  }
+  return serverItems;
 }
 
 export const useWishlist = create<WishlistStore>()(
@@ -64,6 +84,10 @@ export const useWishlist = create<WishlistStore>()(
       },
 
       syncToServer: async (userId) => {
+        if (!get().hydrated) return;
+
+        suppressRemoteSyncPull();
+
         try {
           const wishlistId = await ensureWishlistId(userId);
           if (!wishlistId) return;
@@ -73,7 +97,7 @@ export const useWishlist = create<WishlistStore>()(
             .select("product_id")
             .eq("wishlist_id", wishlistId);
           const remoteIds = new Set(
-            (remote ?? []).map((r: { product_id: string }) => r.product_id)
+            (remote ?? []).map((r: { product_id: string }) => r.product_id),
           );
           const localIds = new Set(Object.keys(get().items));
 
@@ -81,11 +105,9 @@ export const useWishlist = create<WishlistStore>()(
           const toDelete = [...remoteIds].filter((id) => !localIds.has(id));
 
           if (toInsert.length > 0) {
-            await supabase
-              .from("wishlist_items")
-              .insert(
-                toInsert.map((product_id) => ({ wishlist_id: wishlistId, product_id }))
-              );
+            await supabase.from("wishlist_items").insert(
+              toInsert.map((product_id) => ({ wishlist_id: wishlistId, product_id })),
+            );
           }
           if (toDelete.length > 0) {
             await supabase
@@ -101,25 +123,21 @@ export const useWishlist = create<WishlistStore>()(
 
       loadFromServer: async (userId) => {
         try {
-          const wishlistId = await ensureWishlistId(userId);
-          if (!wishlistId) {
-            set({ hydrated: true });
-            return;
-          }
-          const { data } = await supabase
-            .from("wishlist_items")
-            .select("product_id")
-            .eq("wishlist_id", wishlistId);
-          const serverItems: Record<string, boolean> = {};
-          for (const row of (data ?? []) as { product_id: string }[]) {
-            serverItems[row.product_id] = true;
-          }
-          // Merge with local — union of server + local so a user who added
-          // items while signed out keeps them.
+          const serverItems = await fetchServerWishlistItems(userId);
           const merged = { ...serverItems, ...get().items };
           set({ items: merged, hydrated: true });
         } catch {
           set({ hydrated: true });
+        }
+      },
+
+      refreshFromServer: async (userId) => {
+        if (!get().hydrated) return;
+        try {
+          const serverItems = await fetchServerWishlistItems(userId);
+          set({ items: serverItems });
+        } catch {
+          // Keep current local state on transient errors.
         }
       },
     }),
@@ -127,6 +145,6 @@ export const useWishlist = create<WishlistStore>()(
       name: "wishlist-v1",
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ items: state.items }),
-    }
-  )
+    },
+  ),
 );

@@ -4,6 +4,7 @@ import {
   buildCartLineKeyFromItem,
   isStoreScopedCartLineKey,
   mergeCartItemRecords,
+  mergeCartItemRecordsFromRemotePull,
   migrateCartItemRecord,
   assertStoreConsistency,
 } from "@/lib/cart-line-key";
@@ -60,6 +61,19 @@ describe("cart-line-key", () => {
     const { items, quantityConflicts } = mergeCartItemRecords(server, local);
     expect(quantityConflicts).toBe(1);
     expect(items[buildCartLineKey("store-a", "prod-1", "var-1")].quantity).toBe(4);
+  });
+
+  it("remote pull keeps server quantity and local-only lines", () => {
+    const key = buildCartLineKey("store-a", "prod-1", "var-1");
+    const localOnlyKey = buildCartLineKey("store-b", "prod-2", "var-2");
+    const server = { [key]: makeItem({ quantity: 2 }) };
+    const local = {
+      [key]: makeItem({ quantity: 5 }),
+      [localOnlyKey]: makeItem({ productId: "prod-2", storeId: "store-b", variantId: "var-2", quantity: 1 }),
+    };
+    const merged = mergeCartItemRecordsFromRemotePull(server, local);
+    expect(merged[key].quantity).toBe(2);
+    expect(merged[localOnlyKey].quantity).toBe(1);
   });
 });
 
