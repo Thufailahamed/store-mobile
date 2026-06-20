@@ -72,6 +72,20 @@ describe("validateCheckoutAddress", () => {
     expect(result.invalid).toContain("phone");
   });
 
+  it("rejects a phone with letters mixed in", () => {
+    // Audit gap: the AddressFormSheet `validate()` only checked `.trim()`
+    // and accepted "abc" / "+94 77 abc 4567" as a phone. After the fix
+    // the shared validator must reject letters the same as the web does.
+    const result = validateCheckoutAddress({
+      ...complete,
+      phone: "+94 77 abc 4567",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.missing).toEqual([]);
+    expect(result.invalid).toContain("phone");
+  });
+
   it("accepts a phone in the local 07x format", () => {
     expect(validateCheckoutAddress({ ...complete, phone: "0771234567" })).toEqual({
       ok: true,

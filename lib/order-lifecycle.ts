@@ -4,7 +4,7 @@ import type { OrderStatus } from "@/lib/types";
 export const SELLER_NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   pending: "confirmed",
   confirmed: "processing",
-  processing: null,
+  processing: "shipped",
   shipped: null,
   out_for_delivery: null,
   delivered: null,

@@ -719,3 +719,162 @@ describe("delivery-workflow — failure recovery policy", () => {
     expect(isRecoverableReason(undefined)).toBe(false);
   });
 });
+
+describe("delivery-workflow — OTP contract (audit gap fix)", () => {
+  it("OTP_LENGTH is 6", () => {
+    expect(OTP_LENGTH).toBe(6);
+  });
+
+  it("OTP_REGEX accepts a 6-digit string", () => {
+    expect(OTP_REGEX.test("123456")).toBe(true);
+    expect(OTP_REGEX.test("000000")).toBe(true);
+    expect(OTP_REGEX.test("999999")).toBe(true);
+  });
+
+  it("OTP_REGEX rejects 5 / 7 digit strings", () => {
+    expect(OTP_REGEX.test("12345")).toBe(false);
+    expect(OTP_REGEX.test("1234567")).toBe(false);
+  });
+
+  it("OTP_REGEX rejects non-digits (letters, whitespace, dashes)", () => {
+    expect(OTP_REGEX.test("12345a")).toBe(false);
+    expect(OTP_REGEX.test("123 456")).toBe(false);
+    expect(OTP_REGEX.test("123-456")).toBe(false);
+    expect(OTP_REGEX.test("abcdef")).toBe(false);
+  });
+
+  it("isValidOtp accepts a 6-digit OTP", () => {
+    expect(isValidOtp("123456")).toBe(true);
+  });
+
+  it("isValidOtp trims before checking", () => {
+    expect(isValidOtp("  123456  ")).toBe(true);
+  });
+
+  it("isValidOtp rejects empty / null / undefined", () => {
+    expect(isValidOtp("")).toBe(false);
+    expect(isValidOtp("   ")).toBe(false);
+    expect(isValidOtp(null)).toBe(false);
+    expect(isValidOtp(undefined)).toBe(false);
+  });
+
+  it("isValidOtp rejects a phone-shaped OTP with letters", () => {
+    expect(isValidOtp("12ab56")).toBe(false);
+  });
+});
+
+describe("delivery-workflow — scan-action legality (audit parity)", () => {
+  const emptyProof: ProofContext = { hasProofPhoto: false, proofUrl: null };
+  const withProof: ProofContext = { hasProofPhoto: true, proofUrl: "https://x/y.jpg" };
+
+  it("rejects any action on a terminal order", () => {
+    for (const status of TERMINAL_ORDER_STATUSES) {
+      const r = isScanActionLegal("pack", "warehouse", status, emptyProof);
+      expect(r.ok, `expected reject for status=${status}`).toBe(false);
+    }
+  });
+
+  it("rejects start_delivery when order is not shipped", () => {
+    const r = isScanActionLegal("start_delivery", "in_transit", "pending", withProof);
+    expect(r.ok).toBe(false);
+  });
+
+  it("accepts start_delivery once status is shipped", () => {
+    const r = isScanActionLegal("start_delivery", "in_transit", "shipped", withProof);
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects verify_otp before out_for_delivery", () => {
+    const r = isScanActionLegal("verify_otp", "in_transit", "shipped", withProof);
+    expect(r.ok).toBe(false);
+  });
+
+  it("accepts verify_otp with proof + out_for_delivery", () => {
+    const r = isScanActionLegal(
+      "verify_otp",
+      "in_transit",
+      "out_for_delivery",
+      withProof,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects verify_otp when proof is missing", () => {
+    const r = isScanActionLegal(
+      "verify_otp",
+      "in_transit",
+      "out_for_delivery",
+      emptyProof,
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects fail_delivery after MAX_DELIVERY_ATTEMPTS", () => {
+    const r = isScanActionLegal(
+      "fail_delivery",
+      "in_transit",
+      "out_for_delivery",
+      emptyProof,
+      { attemptCount: MAX_DELIVERY_ATTEMPTS },
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it("isProofRequired true only for verify_*", () => {
+    expect(isProofRequired("verify_otp")).toBe(true);
+    expect(isProofRequired("verify_customer_qr")).toBe(true);
+    expect(isProofRequired("pack")).toBe(false);
+    expect(isProofRequired("fail_delivery")).toBe(false);
+  });
+
+  it("isSignatureRequired mirrors isProofRequired for the verify_* actions", () => {
+    expect(isSignatureRequired("verify_otp")).toBe(true);
+    expect(isSignatureRequired("verify_customer_qr")).toBe(true);
+    expect(isSignatureRequired("pack")).toBe(false);
+  });
+
+  it("legalActions drops illegal actions from a candidate list", () => {
+    const candidates = ["pack", "verify_otp"] as const;
+    const legal = legalActions(
+      candidates as unknown as Parameters<typeof legalActions>[0],
+      "warehouse",
+      "shipped",
+      withProof,
+    );
+    // verify_otp is illegal here because order is shipped, not out_for_delivery
+    expect(legal).toEqual(["pack"]);
+  });
+
+  it("canStartDelivery true only for shipped", () => {
+    expect(canStartDelivery("shipped")).toBe(true);
+    expect(canStartDelivery("pending")).toBe(false);
+    expect(canStartDelivery("out_for_delivery")).toBe(false);
+  });
+
+  it("canVerifyDelivery true only for out_for_delivery", () => {
+    expect(canVerifyDelivery("out_for_delivery")).toBe(true);
+    expect(canVerifyDelivery("shipped")).toBe(false);
+    expect(canVerifyDelivery("pending")).toBe(false);
+  });
+
+  it("isDeliveryTerminal matches TERMINAL_ORDER_STATUSES", () => {
+    for (const s of TERMINAL_ORDER_STATUSES) {
+      expect(isDeliveryTerminal(s)).toBe(true);
+    }
+    expect(isDeliveryTerminal("shipped")).toBe(false);
+    expect(isDeliveryTerminal("pending")).toBe(false);
+  });
+});
+
+describe("delivery-workflow — sequence + status set exports", () => {
+  it("DELIVERY_SEQUENCE is the documented happy-path", () => {
+    expect(DELIVERY_SEQUENCE).toEqual([
+      "pack",
+      "pickup",
+      "receive",
+      "dispatch",
+      "start_delivery",
+      "verify_otp",
+    ]);
+  });
+});

@@ -31,6 +31,7 @@ import {
 } from "@/lib/api/delivery-company-api";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import { isValidEmail } from "@/lib/contact-validation";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function CompanyDriversScreen() {
@@ -100,7 +101,7 @@ export default function CompanyDriversScreen() {
 
   const handleInvite = async () => {
     const email = inviteEmail.trim().toLowerCase();
-    if (!email || !email.includes("@")) {
+    if (!isValidEmail(email)) {
       Alert.alert("Invalid email", "Enter a valid email address.");
       return;
     }

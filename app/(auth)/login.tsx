@@ -16,6 +16,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Svg, { Path } from "react-native-svg";
 import { supabase } from "@/lib/supabase/client";
 import { isOperationalStoreStatus } from "@/lib/catalog-visibility";
+import { isValidEmail, isValidPhone } from "@/lib/contact-validation";
 import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -74,6 +75,11 @@ export default function LoginScreen() {
       return;
     }
 
+    if (!isValidEmail(email)) {
+      toast("Enter a valid email address", "error");
+      return;
+    }
+
     setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -123,6 +129,10 @@ export default function LoginScreen() {
       toast("Please enter your email", "error");
       return;
     }
+    if (!isValidEmail(email)) {
+      toast("Enter a valid email address", "error");
+      return;
+    }
 
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
@@ -147,6 +157,10 @@ export default function LoginScreen() {
   const sendPhoneOtp = async () => {
     if (!phone.trim()) {
       toast("Please enter your phone number", "error");
+      return;
+    }
+    if (!isValidPhone(phone)) {
+      toast("Phone number looks invalid", "error");
       return;
     }
 

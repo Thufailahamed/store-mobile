@@ -22,6 +22,7 @@ import {
   type DcDriverMember,
 } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { isValidEmail } from "@/lib/contact-validation";
 
 export default function CompanyTeamScreen() {
   const [members, setMembers] = useState<DcDriverMember[]>([]);
@@ -54,7 +55,7 @@ export default function CompanyTeamScreen() {
 
   const handleInvite = async () => {
     const email = inviteEmail.trim().toLowerCase();
-    if (!email.includes("@")) {
+    if (!isValidEmail(email)) {
       Alert.alert("Invalid email", "Enter a valid email.");
       return;
     }

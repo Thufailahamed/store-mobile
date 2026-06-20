@@ -13,7 +13,7 @@ describe("order-lifecycle", () => {
   it("defines seller next status for early pipeline only", () => {
     expect(getSellerNextStatus("pending")).toBe("confirmed");
     expect(getSellerNextStatus("confirmed")).toBe("processing");
-    expect(getSellerNextStatus("processing")).toBeNull();
+    expect(getSellerNextStatus("processing")).toBe("shipped");
   });
 
   it("rejects skipped-state jumps", () => {

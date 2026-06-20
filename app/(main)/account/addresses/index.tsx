@@ -18,6 +18,11 @@ import {
 } from "@/components/address/AddressFormSheet";
 import { useAuth } from "@/lib/supabase/auth";
 import {
+  validateCheckoutAddress,
+  checkoutAddressFieldLabel,
+  checkoutAddressInvalidLabel,
+} from "@/lib/checkout-validation";
+import {
   createAddress,
   deleteAddress,
   getAddresses,
@@ -80,6 +85,27 @@ export default function AddressesScreen() {
 
   const handleSubmit = async (payload: AddressFormPayload) => {
     if (!user?.id) return;
+
+    // Belt-and-braces pre-flight: the AddressFormSheet already validates
+    // before calling us, but if a future caller bypasses the sheet we still
+    // refuse to POST a junk address to the server.
+    const check = validateCheckoutAddress({
+      full_name: payload.full_name,
+      phone: payload.phone,
+      line1: payload.line1,
+      city: payload.city,
+      state: payload.state,
+      postal_code: payload.postal_code,
+    });
+    if (!check.ok) {
+      const firstIssue =
+        check.invalid[0] != null
+          ? checkoutAddressInvalidLabel(check.invalid[0])
+          : `${checkoutAddressFieldLabel(check.missing[0])} required`;
+      toast(`Address incomplete (${firstIssue})`, "error");
+      return;
+    }
+
     setSaving(true);
     try {
       const basePayload = {

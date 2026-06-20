@@ -44,9 +44,9 @@ export const TAX_RATE = 0.08;
 export const DEFAULT_SHIPPING_FEE = 350;
 
 export const SHIPPING_OPTIONS = [
-  { key: "standard" as const, label: "Standard", desc: "5–7 business days", fee: 0 },
-  { key: "express" as const, label: "Express", desc: "1–2 business days", fee: 1500 },
-  { key: "overnight" as const, label: "Overnight", desc: "Next business day", fee: 3500 },
+  { key: "standard" as const, label: "Standard", desc: "5–7 business days", fee: 0, minDays: 5, maxDays: 7 },
+  { key: "express" as const, label: "Express", desc: "1–2 business days", fee: 1500, minDays: 1, maxDays: 2 },
+  { key: "overnight" as const, label: "Overnight", desc: "Next business day", fee: 3500, minDays: 1, maxDays: 1 },
 ];
 
 export type ShippingKey = (typeof SHIPPING_OPTIONS)[number]["key"];

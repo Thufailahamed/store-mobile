@@ -11,6 +11,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { supabase } from "@/lib/supabase/client";
+import { isValidEmail, isValidPhone } from "@/lib/contact-validation";
 import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -54,8 +55,21 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      toast("Password must be at least 6 characters", "error");
+    if (!isValidEmail(email)) {
+      toast("Enter a valid email address", "error");
+      return;
+    }
+
+    // Phone is optional in this form, but when present it must look real —
+    // otherwise we hand garbage to Supabase auth and risk delivery failures
+    // on every order the user later places.
+    if (phone.trim() && !isValidPhone(phone)) {
+      toast("Phone number looks invalid", "error");
+      return;
+    }
+
+    if (password.length < 8) {
+      toast("Password must be at least 8 characters", "error");
       return;
     }
 

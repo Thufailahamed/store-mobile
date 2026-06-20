@@ -25,6 +25,11 @@ import { reverseGeocode } from "@/lib/maps";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
+import {
+  validateCheckoutAddress,
+  checkoutAddressFieldLabel,
+  checkoutAddressInvalidLabel,
+} from "@/lib/checkout-validation";
 
 export type AddressType = "home" | "work" | "other";
 
@@ -209,15 +214,31 @@ export function AddressFormSheet({
     setForm((prev) => ({ ...prev, [key]: value }));
 
   const validate = (): boolean => {
+    // Delegate to the shared checkout validator so the form, the checkout
+    // step-1 transition, and the place-order guard all reject the same
+    // inputs. Per-field "Required" vs "looks invalid" messages map via
+    // the existing label helpers.
+    const result = validateCheckoutAddress({
+      full_name: form.full_name,
+      phone: form.phone,
+      line1: form.line1,
+      city: form.city,
+      state: form.state,
+      postal_code: form.postal_code,
+    });
+    if (result.ok) {
+      setErrors({});
+      return true;
+    }
     const next: Record<string, string> = {};
-    if (!form.full_name.trim()) next.full_name = "Required";
-    if (!form.phone.trim()) next.phone = "Required";
-    if (!form.line1.trim()) next.line1 = "Required";
-    if (!form.city.trim()) next.city = "Required";
-    if (!form.state.trim()) next.state = "Required";
-    if (!form.postal_code.trim()) next.postal_code = "Required";
+    for (const key of result.missing) {
+      next[key] = "Required";
+    }
+    for (const key of result.invalid) {
+      next[key] = checkoutAddressInvalidLabel(key);
+    }
     setErrors(next);
-    return Object.keys(next).length === 0;
+    return false;
   };
 
   const handleSave = async () => {

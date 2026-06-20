@@ -7,11 +7,13 @@
  * - line2 is intentionally optional.
  * - country defaults to "Sri Lanka" server-side; not enforced here.
  *
- * Phone rules: at least 7 digits, only digits / `+` / spaces / dashes /
- * parentheses allowed. The strict E.164 normaliser lives next to the
- * address form; this check just blocks "abc" / "..." from being accepted
- * as a phone number.
+ * Phone rules live in `./contact-validation` (shared with the auth
+ * flows, drivers invite, and the web mirror). The strict E.164 normaliser
+ * lives next to the address form; this check just blocks "abc" / "..."
+ * from being accepted as a phone number.
  */
+import { PHONE_DIGIT_MIN, PHONE_CHARS_ALLOWED } from "./contact-validation";
+
 export interface CheckoutAddressFields {
   full_name?: string;
   phone?: string;
@@ -24,9 +26,6 @@ export interface CheckoutAddressFields {
 export type CheckoutAddressValidation =
   | { ok: true }
   | { ok: false; missing: string[]; invalid: string[] };
-
-const PHONE_DIGIT_MIN = 7;
-const PHONE_CHARS_ALLOWED = /^[0-9+\-\s()]+$/;
 
 export function validateCheckoutAddress(
   fields: CheckoutAddressFields,

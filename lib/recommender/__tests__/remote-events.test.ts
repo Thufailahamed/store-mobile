@@ -6,7 +6,7 @@
  * real storage.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // vi.mock factories are hoisted. We need a hoisted mock for the supabase rpc
 // and a hoisted storage map so they are available before any imports run.
@@ -74,6 +74,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   __resetThrottleForTest();
   vi.useRealTimers();
+  vi.spyOn(Date, "now").mockReturnValue(100000);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("enqueueRemoteEvent", () => {
