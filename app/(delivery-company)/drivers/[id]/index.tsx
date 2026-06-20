@@ -36,31 +36,39 @@ export default function DriverDetailScreen() {
   const [postals, setPostals] = useState("");
 
   const fetchData = useCallback(async () => {
-    if (!id || !hasStoreApi()) return;
-    const [driversRes, routesRes, packagesRes, whRes] = await Promise.all([
-      getDeliveryCompanyDrivers(),
-      getDeliveryCompanyRoutes({ driver_id: id }),
-      getDeliveryCompanyPackages(),
-      getDeliveryCompanyWarehouses(),
-    ]);
-    if (driversRes.ok) {
-      const m = driversRes.data.members.find((mem) => mem.user_id === id) ?? null;
-      setMember(m);
-      setPostals((m?.serviceable_postal_codes ?? []).join(", "));
+    if (!id || !hasStoreApi()) {
+      setLoading(false);
+      return;
     }
-    if (routesRes.ok) {
-      setRouteCount(routesRes.data.routes.length);
+    try {
+      const [driversRes, routesRes, packagesRes, whRes] = await Promise.all([
+        getDeliveryCompanyDrivers(),
+        getDeliveryCompanyRoutes({ driver_id: id }),
+        getDeliveryCompanyPackages(),
+        getDeliveryCompanyWarehouses(),
+      ]);
+      if (driversRes.ok) {
+        const m = driversRes.data.members.find((mem) => mem.user_id === id) ?? null;
+        setMember(m);
+        setPostals((m?.serviceable_postal_codes ?? []).join(", "));
+      }
+      if (routesRes.ok) {
+        setRouteCount(routesRes.data.routes.length);
+      }
+      if (packagesRes.ok) {
+        const stops = (packagesRes.data.route_stops as any[]).filter(
+          (s) => s.route?.driver_id === id,
+        );
+        setStopCount(stops.length);
+      }
+      if (whRes.ok) {
+        setWarehouses(whRes.data.warehouses.filter((w) => w.is_active !== false));
+      }
+    } catch (err) {
+      console.warn("[driver detail] fetch failed", err);
+    } finally {
+      setLoading(false);
     }
-    if (packagesRes.ok) {
-      const stops = (packagesRes.data.route_stops as any[]).filter(
-        (s) => s.route?.driver_id === id,
-      );
-      setStopCount(stops.length);
-    }
-    if (whRes.ok) {
-      setWarehouses(whRes.data.warehouses.filter((w) => w.is_active !== false));
-    }
-    setLoading(false);
   }, [id]);
 
   useEffect(() => {
@@ -72,61 +80,81 @@ export default function DriverDetailScreen() {
 
   const adjustCapacity = async (delta: number) => {
     if (!member) return;
+    if (saving) return; // double-tap guard
     const next = Math.max(1, Math.min(1000, capacity + delta));
     setSaving(true);
-    const res = await updateDriverMember(member.id, { capacity_max: next });
-    setSaving(false);
-    if (!res.ok) Alert.alert("Failed", res.error);
-    else fetchData();
+    try {
+      const res = await updateDriverMember(member.id, { capacity_max: next });
+      if (!res.ok) Alert.alert("Failed", res.error);
+      else fetchData();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const setDriverType = async (driverType: string) => {
-    if (!member) return;
+    if (!member || saving) return;
     setSaving(true);
-    const res = await updateDriverMember(member.id, { driver_type: driverType });
-    setSaving(false);
-    if (!res.ok) Alert.alert("Failed", res.error);
-    else fetchData();
+    try {
+      const res = await updateDriverMember(member.id, { driver_type: driverType });
+      if (!res.ok) Alert.alert("Failed", res.error);
+      else fetchData();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const setHomeWarehouse = async (warehouseId: string | null) => {
-    if (!member) return;
+    if (!member || saving) return;
     setSaving(true);
-    const res = await updateDriverMember(member.id, { home_warehouse_id: warehouseId });
-    setSaving(false);
-    if (!res.ok) Alert.alert("Failed", res.error);
-    else fetchData();
+    try {
+      const res = await updateDriverMember(member.id, { home_warehouse_id: warehouseId });
+      if (!res.ok) Alert.alert("Failed", res.error);
+      else fetchData();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const savePostals = async () => {
-    if (!member) return;
+    if (!member || saving) return;
     const list = postals
       .split(/[\s,;\n]+/)
       .map((p) => p.trim())
       .filter(Boolean);
     setSaving(true);
-    const res = await updateDriverMember(member.id, { serviceable_postal_codes: list });
-    setSaving(false);
-    if (!res.ok) Alert.alert("Failed", res.error);
-    else {
-      Alert.alert("Saved", "Serviceable postal codes updated.");
-      fetchData();
+    try {
+      const res = await updateDriverMember(member.id, { serviceable_postal_codes: list });
+      if (!res.ok) {
+        Alert.alert("Failed", res.error);
+      } else {
+        Alert.alert("Saved", "Serviceable postal codes updated.");
+        fetchData();
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   const zoneCount = member?.serviceable_postal_codes?.length ?? 0;
 
   const toggleActive = () => {
-    if (!member) return;
+    if (!member || saving) return;
     const next = !member.is_active;
-    Alert.alert(next ? "Activate" : "Deactivate", `Change status for ${member.user?.full_name}?`, [
+    const displayName = member.user?.full_name ?? "this driver";
+    Alert.alert(next ? "Activate" : "Deactivate", `Change status for ${displayName}?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Confirm",
         onPress: async () => {
-          const res = await updateDriverMember(member.id, { is_active: next });
-          if (!res.ok) Alert.alert("Failed", res.error);
-          else fetchData();
+          setSaving(true);
+          try {
+            const res = await updateDriverMember(member.id, { is_active: next });
+            if (!res.ok) Alert.alert("Failed", res.error);
+            else fetchData();
+          } finally {
+            setSaving(false);
+          }
         },
       },
     ]);

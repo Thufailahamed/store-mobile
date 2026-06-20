@@ -13,6 +13,11 @@ export interface UploadResult {
 
 const AVATAR_BUCKET = "user-avatars";
 
+// 8 MB cap on raw image bytes (camera shots at quality=0.85 are typically
+// 1-4 MB). Without this, picking a multi-MB photo can exhaust the device
+// heap and cause the upload to silently OOM before reaching storage.
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
 function normalizeExtension(ext?: string | null, mimeType?: string | null): string {
   const mime = (mimeType ?? "").toLowerCase();
   if (mime.includes("png")) return "png";
@@ -88,6 +93,9 @@ async function uploadImageToBucket(
   const ext = normalizeExtension(path.split(".").pop(), options?.mimeType);
   const contentType = options?.contentType ?? mimeForExtension(ext);
   const body = await readUriAsArrayBuffer(uri);
+  if (body.byteLength > MAX_UPLOAD_BYTES) {
+    return { url: "", error: `Image too large (${Math.round(body.byteLength / 1024 / 1024)} MB; max 8 MB)` };
+  }
 
   const { error: uploadError } = await supabase.storage
     .from(bucket)
@@ -344,8 +352,14 @@ export async function uploadDeliverySignature(
       return { url: "", error: "Signature payload is not a PNG dataURL" };
     }
     const base64 = match[1];
+    if (base64.length > 2 * 1024 * 1024) {
+      return { url: "", error: "Signature payload too large (max ~1.5 MB)" };
+    }
     const path = `${userId}/signature-${orderId}-${Date.now()}.png`;
     const bytes = base64ToArrayBuffer(base64);
+    if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+      return { url: "", error: "Signature too large after decoding" };
+    }
 
     const { error: uploadError } = await supabase.storage
       .from("review-media")

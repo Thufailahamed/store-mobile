@@ -73,6 +73,7 @@ export default function WarehouseReceiveScreen() {
     ).ok;
 
   const submit = async () => {
+    if (submitting) return;
     if (!warehouseId) {
       Alert.alert("Select hub", "Choose a warehouse to receive into.");
       return;
@@ -83,25 +84,27 @@ export default function WarehouseReceiveScreen() {
       return;
     }
     setSubmitting(true);
-    const lookup = await lookupDeliveryCompanyOrder(trimmed);
-    if (!lookup.ok) {
+    try {
+      const lookup = await lookupDeliveryCompanyOrder(trimmed);
+      if (!lookup.ok) {
+        Alert.alert("Order lookup failed", lookup.error);
+        return;
+      }
+      const res = await receiveAtWarehouse(warehouseId, lookup.data.order_id);
+      if (!res.ok) {
+        Alert.alert("Receive failed", res.error);
+        return;
+      }
+      const lastMileNote = res.data.last_mile_error
+        ? `\n\nAuto last-mile: ${res.data.last_mile_error.replace(/_/g, " ")}`
+        : "";
+      Alert.alert("Received", `Package recorded at hub (#${lookup.data.order_number}).${lastMileNote}`, [
+        { text: "Receive another", onPress: () => setOrderRef("") },
+        { text: "Done", onPress: () => router.back() },
+      ]);
+    } finally {
       setSubmitting(false);
-      Alert.alert("Order lookup failed", lookup.error);
-      return;
     }
-    const res = await receiveAtWarehouse(warehouseId, lookup.data.order_id);
-    setSubmitting(false);
-    if (!res.ok) {
-      Alert.alert("Receive failed", res.error);
-      return;
-    }
-    const lastMileNote = res.data.last_mile_error
-      ? `\n\nAuto last-mile: ${res.data.last_mile_error.replace(/_/g, " ")}`
-      : "";
-    Alert.alert("Received", `Package recorded at hub (#${lookup.data.order_number}).${lastMileNote}`, [
-      { text: "Receive another", onPress: () => setOrderRef("") },
-      { text: "Done", onPress: () => router.back() },
-    ]);
   };
 
   if (loading) {

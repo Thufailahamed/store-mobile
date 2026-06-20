@@ -34,18 +34,27 @@ export default function WarehouseDetailScreen() {
   const [warehouse, setWarehouse] = useState<DcWarehouse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState<WarehouseFormValues | null>(null);
   const [isActive, setIsActive] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!id || !hasStoreApi()) return;
-    const res = await getDeliveryCompanyWarehouse(id);
-    if (res.ok) {
-      setWarehouse(res.data.warehouse);
-      setForm(warehouseFormFromApi(res.data.warehouse));
-      setIsActive(res.data.warehouse.is_active !== false);
+    if (!id || !hasStoreApi()) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    try {
+      const res = await getDeliveryCompanyWarehouse(id);
+      if (res.ok) {
+        setWarehouse(res.data.warehouse);
+        setForm(warehouseFormFromApi(res.data.warehouse));
+        setIsActive(res.data.warehouse.is_active !== false);
+      }
+    } catch (err) {
+      console.warn("[warehouse detail] fetch failed", err);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -53,38 +62,46 @@ export default function WarehouseDetailScreen() {
   }, [fetchData]);
 
   const save = async () => {
-    if (!id || !form) return;
+    if (!id || !form || saving) return;
     if (!form.postal_code.trim()) {
       Alert.alert("Missing postal code", "Enter a valid postal code for the hub address.");
       return;
     }
     setSaving(true);
-    const payload = warehousePayloadFromForm(form);
-    const res = await updateWarehouse(id, {
-      ...payload,
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-      is_active: isActive,
-    });
-    setSaving(false);
-    if (!res.ok) Alert.alert("Save failed", res.error);
-    else {
-      Alert.alert("Saved", "Warehouse updated.");
-      fetchData();
+    try {
+      const payload = warehousePayloadFromForm(form);
+      const res = await updateWarehouse(id, {
+        ...payload,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        is_active: isActive,
+      });
+      if (!res.ok) Alert.alert("Save failed", res.error);
+      else {
+        Alert.alert("Saved", "Warehouse updated.");
+        fetchData();
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
   const remove = () => {
-    if (!id) return;
+    if (!id || deleting) return;
     Alert.alert("Delete warehouse", "Only empty hubs can be deleted.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          const res = await deleteWarehouse(id);
-          if (!res.ok) Alert.alert("Failed", res.error);
-          else router.back();
+          setDeleting(true);
+          try {
+            const res = await deleteWarehouse(id);
+            if (!res.ok) Alert.alert("Failed", res.error);
+            else router.back();
+          } finally {
+            setDeleting(false);
+          }
         },
       },
     ]);
@@ -139,8 +156,12 @@ export default function WarehouseDetailScreen() {
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.deleteBtn} onPress={remove}>
-          <Text style={styles.deleteText}>Delete warehouse</Text>
+        <TouchableOpacity style={[styles.deleteBtn, deleting && styles.disabled]} onPress={remove} disabled={deleting}>
+          {deleting ? (
+            <ActivityIndicator color="#dc2626" />
+          ) : (
+            <Text style={styles.deleteText}>Delete warehouse</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

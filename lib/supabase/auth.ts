@@ -149,6 +149,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setRole("customer");
     setRoleLoading(false);
+    // Clear persisted local state so the next user signing in on the same
+    // device doesn't see this user's cart/wishlist hydrated from localStorage
+    // before the server fetch completes. The `clear` action resets the store;
+    // `persist.clearStorage()` removes the localStorage key outright.
+    try {
+      useCart.getState().clear();
+      useCart.persist.clearStorage();
+      useWishlist.getState().clear();
+      useWishlist.persist.clearStorage();
+    } catch (err) {
+      console.warn("[auth] signOut local clear failed:", err);
+    }
   }, [user]);
 
   const resetPassword = useCallback(async (email: string) => {

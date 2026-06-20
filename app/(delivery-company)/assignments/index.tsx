@@ -159,35 +159,40 @@ export default function CompanyAssignmentsScreen() {
   };
 
   const runAutoAssign = async () => {
+    if (assigning) return; // double-tap guard
     const ids = Array.from(selected);
     if (ids.length === 0) {
       Alert.alert("Select orders", "Choose at least one package to assign.");
       return;
     }
     setAssigning(true);
-    const res = await autoAssignOrders(ids, leg, policy);
-    setAssigning(false);
-    if (!res.ok) {
-      Alert.alert("Assignment failed", res.error);
-      return;
+    try {
+      const res = await autoAssignOrders(ids, leg, policy);
+      if (!res.ok) {
+        Alert.alert("Assignment failed", res.error);
+        return;
+      }
+      const assigned = (res.data.assignments as unknown[] | undefined)?.length ?? 0;
+      const skipped = res.data.skipped ?? [];
+      const scoring = res.data.scoring;
+      const skipDetail =
+        skipped.length > 0
+          ? `\n\nSkipped:\n${skipped
+              .slice(0, 5)
+              .map((s) => `• ${formatAssignmentSkipReason(s.reason)}`)
+              .join("\n")}`
+          : "";
+      const scoringLine = scoring ? `\nScoring: ${scoring.method} (${scoring.leg})` : "";
+      Alert.alert("Done", `${assigned} assigned · ${skipped.length} skipped${scoringLine}${skipDetail}`);
+      setSelected(new Set());
+      load();
+    } finally {
+      setAssigning(false);
     }
-    const assigned = (res.data.assignments as unknown[] | undefined)?.length ?? 0;
-    const skipped = res.data.skipped ?? [];
-    const scoring = res.data.scoring;
-    const skipDetail =
-      skipped.length > 0
-        ? `\n\nSkipped:\n${skipped
-            .slice(0, 5)
-            .map((s) => `• ${formatAssignmentSkipReason(s.reason)}`)
-            .join("\n")}`
-        : "";
-    const scoringLine = scoring ? `\nScoring: ${scoring.method} (${scoring.leg})` : "";
-    Alert.alert("Done", `${assigned} assigned · ${skipped.length} skipped${scoringLine}${skipDetail}`);
-    setSelected(new Set());
-    load();
   };
 
   const openManual = async (order: (typeof pending)[0]) => {
+    if (loadingCandidates) return;
     setManualOrder({
       id: order.id,
       order_number: order.order_number,
@@ -196,32 +201,38 @@ export default function CompanyAssignmentsScreen() {
     setCandidates([]);
     setRoutingContext(null);
     setLoadingCandidates(true);
-    const res = await getAssignmentCandidates(order.id, leg);
-    setLoadingCandidates(false);
-    if (!res.ok) {
-      Alert.alert("Could not load drivers", res.error);
-      setManualOrder(null);
-      return;
+    try {
+      const res = await getAssignmentCandidates(order.id, leg);
+      if (!res.ok) {
+        Alert.alert("Could not load drivers", res.error);
+        setManualOrder(null);
+        return;
+      }
+      setRoutingContext(res.data.routing_context ?? null);
+      setCandidates(res.data.candidates ?? []);
+    } finally {
+      setLoadingCandidates(false);
     }
-    setRoutingContext(res.data.routing_context ?? null);
-    setCandidates(res.data.candidates ?? []);
   };
 
   const confirmManual = async (driverId: string) => {
-    if (!manualOrder) return;
+    if (!manualOrder || manualAssigning) return;
     setManualAssigning(true);
-    const res = await manualAssignOrder(manualOrder.id, driverId, {
-      leg,
-      warehouse_id: manualOrder.warehouse_id,
-    });
-    setManualAssigning(false);
-    if (!res.ok) {
-      Alert.alert("Assignment failed", res.error);
-      return;
+    try {
+      const res = await manualAssignOrder(manualOrder.id, driverId, {
+        leg,
+        warehouse_id: manualOrder.warehouse_id,
+      });
+      if (!res.ok) {
+        Alert.alert("Assignment failed", res.error);
+        return;
+      }
+      Alert.alert("Assigned", `Order #${manualOrder.order_number} assigned.`);
+      setManualOrder(null);
+      load();
+    } finally {
+      setManualAssigning(false);
     }
-    Alert.alert("Assigned", `Order #${manualOrder.order_number} assigned.`);
-    setManualOrder(null);
-    load();
   };
 
   return (

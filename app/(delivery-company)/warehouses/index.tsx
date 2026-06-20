@@ -109,21 +109,25 @@ export default function CompanyWarehousesScreen() {
   };
 
   const submitCreate = async () => {
+    if (saving) return;
     setSaving(true);
-    const payload = warehousePayloadFromForm(form);
-    const res = await createWarehouse({
-      ...payload,
-      latitude: payload.latitude ?? undefined,
-      longitude: payload.longitude ?? undefined,
-    });
-    setSaving(false);
-    if (!res.ok) {
-      Alert.alert("Could not create hub", res.error);
-      return;
+    try {
+      const payload = warehousePayloadFromForm(form);
+      const res = await createWarehouse({
+        ...payload,
+        latitude: payload.latitude ?? undefined,
+        longitude: payload.longitude ?? undefined,
+      });
+      if (!res.ok) {
+        Alert.alert("Could not create hub", res.error);
+        return;
+      }
+      setCreateOpen(false);
+      setForm(emptyWarehouseForm());
+      load();
+    } finally {
+      setSaving(false);
     }
-    setCreateOpen(false);
-    setForm(emptyWarehouseForm());
-    load();
   };
 
   return (

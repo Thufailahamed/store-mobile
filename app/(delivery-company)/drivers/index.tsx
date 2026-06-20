@@ -54,6 +54,7 @@ export default function CompanyDriversScreen() {
   const [inviteWarehouseId, setInviteWarehouseId] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [inviting, setInviting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const load = useCallback(async () => {
     if (!hasStoreApi()) {
@@ -107,21 +108,25 @@ export default function CompanyDriversScreen() {
       Alert.alert("Home hub required", "Pickup drivers must be based at a warehouse.");
       return;
     }
+    if (inviting) return;
     setInviting(true);
-    const res = await inviteDriver({
-      email,
-      driver_type: inviteType,
-      home_warehouse_id: inviteWarehouseId ?? undefined,
-    });
-    setInviting(false);
-    if (!res.ok) {
-      Alert.alert("Invite failed", res.error);
-      return;
+    try {
+      const res = await inviteDriver({
+        email,
+        driver_type: inviteType,
+        home_warehouse_id: inviteWarehouseId ?? undefined,
+      });
+      if (!res.ok) {
+        Alert.alert("Invite failed", res.error);
+        return;
+      }
+      Alert.alert("Invite sent", `Invitation emailed to ${email}`);
+      setInviteEmail("");
+      setInviteOpen(false);
+      load();
+    } finally {
+      setInviting(false);
     }
-    Alert.alert("Invite sent", `Invitation emailed to ${email}`);
-    setInviteEmail("");
-    setInviteOpen(false);
-    load();
   };
 
   const parseBulkEmails = (raw: string) =>
@@ -140,14 +145,19 @@ export default function CompanyDriversScreen() {
       Alert.alert("Home hub required", "Pickup drivers must be based at a warehouse.");
       return;
     }
+    if (bulkInviting) return;
+    const capped = list.slice(0, 50);
     setBulkInviting(true);
+    setBulkProgress({ done: 0, total: capped.length });
     let ok = 0;
     let fail = 0;
+    const failed: string[] = [];
     const postalList = bulkPostals
       .split(/[\s,;\n]+/)
       .map((p) => p.trim())
       .filter(Boolean);
-    for (const email of list.slice(0, 50)) {
+    for (let i = 0; i < capped.length; i++) {
+      const email = capped[i];
       const res = await inviteDriver({
         email,
         driver_type: inviteType,
@@ -155,10 +165,18 @@ export default function CompanyDriversScreen() {
         serviceable_postal_codes: postalList.length ? postalList : undefined,
       });
       if (res.ok) ok++;
-      else fail++;
+      else {
+        fail++;
+        failed.push(email);
+      }
+      setBulkProgress({ done: i + 1, total: capped.length });
     }
     setBulkInviting(false);
-    Alert.alert("Bulk invite complete", `${ok} sent${fail > 0 ? `, ${fail} failed` : ""}`);
+    setBulkProgress(null);
+    Alert.alert(
+      "Bulk invite complete",
+      `${ok} sent${fail > 0 ? `, ${fail} failed` : ""}${failed.length ? `\n\nFailed:\n${failed.slice(0, 5).join("\n")}${failed.length > 5 ? `\n… and ${failed.length - 5} more` : ""}` : ""}`,
+    );
     if (ok > 0) {
       setBulkEmails("");
       setBulkPostals("");
@@ -168,19 +186,26 @@ export default function CompanyDriversScreen() {
   };
 
   const toggleActive = (member: DcDriverMember) => {
+    if (inviting) return; // reuse as "any mutation in flight"
     const next = !member.is_active;
+    const displayName = member.user?.full_name ?? "this driver";
     Alert.alert(
       next ? "Activate driver" : "Deactivate driver",
-      next ? `Re-enable ${member.user?.full_name ?? "this driver"}?` : `Deactivate ${member.user?.full_name ?? "this driver"}?`,
+      next ? `Re-enable ${displayName}?` : `Deactivate ${displayName}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: next ? "Activate" : "Deactivate",
           style: next ? "default" : "destructive",
           onPress: async () => {
-            const res = await updateDriverMember(member.id, { is_active: next });
-            if (!res.ok) Alert.alert("Failed", res.error);
-            else load();
+            setInviting(true);
+            try {
+              const res = await updateDriverMember(member.id, { is_active: next });
+              if (!res.ok) Alert.alert("Failed", res.error);
+              else load();
+            } finally {
+              setInviting(false);
+            }
           },
         },
       ],
@@ -407,14 +432,28 @@ export default function CompanyDriversScreen() {
               value={bulkPostals}
               onChangeText={setBulkPostals}
               autoCapitalize="characters"
+              editable={!bulkInviting}
             />
+            {bulkInviting && bulkProgress ? (
+              <View style={styles.progressBox}>
+                <ActivityIndicator size="small" color={colors.light.primary} />
+                <Text style={styles.progressText}>
+                  Sending {bulkProgress.done}/{bulkProgress.total}…
+                </Text>
+              </View>
+            ) : null}
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancel} onPress={() => setBulkOpen(false)}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setBulkOpen(false)} disabled={bulkInviting}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSave} onPress={handleBulkInvite} disabled={bulkInviting}>
                 {bulkInviting ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <View style={styles.progressInline}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    {bulkProgress ? (
+                      <Text style={styles.modalSaveText}>{bulkProgress.done}/{bulkProgress.total}</Text>
+                    ) : null}
+                  </View>
                 ) : (
                   <Text style={styles.modalSaveText}>Send invites</Text>
                 )}
@@ -620,7 +659,22 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
     backgroundColor: colors.light.background,
   },
+  progressBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: colors.light.muted,
+    borderRadius: radii.lg,
+  },
+  progressText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.foreground,
+    fontWeight: typography.fontWeights.medium,
+  },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  progressInline: { flexDirection: "row", alignItems: "center", gap: 8 },
   modalCancel: {
     flex: 1,
     paddingVertical: 12,

@@ -133,10 +133,15 @@ function RootLayoutNav() {
     }
   }, [user?.id]);
 
-  // Notification tap → deep link
+  // Notification tap → deep link. Auth-gated: tapping a notif when signed
+  // out redirects to login rather than landing on a screen with no session.
   useEffect(() => {
     notifListenerRef.current = addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data;
+      if (!user?.id) {
+        router.replace("/(auth)/login");
+        return;
+      }
       if (data?.screen) {
         router.push(data.screen as any);
       } else if (data?.order_id) {
@@ -151,23 +156,46 @@ function RootLayoutNav() {
     return () => {
       notifListenerRef.current?.remove();
     };
-  }, [role]);
+  }, [role, user?.id]);
 
   // Deep link handler (password reset, shared URLs, etc.)
+  // Auth gate: deep links that target authed screens must redirect to
+  // /login if the user isn't signed in. This prevents a malicious or
+  // accidental URL from landing the user on a screen with no session.
   useEffect(() => {
     const handleDeepLink = ({ url }: { url: string }) => {
       if (!url) return;
       const parsed = Linking.parse(url);
 
-      // Password reset: luxe://reset-password
+      // Password reset: luxe://reset-password — public, no auth needed.
       if (parsed.hostname === "reset-password" || parsed.path === "/reset-password") {
         router.push("/(auth)/login");
+        return;
+      }
+
+      // Signup with role + invite: luxe://register?role=delivery&code=ABC
+      // — public; signup page handles its own auth.
+      if (parsed.hostname === "register") {
+        const role = parsed.queryParams?.role as string | undefined;
+        const code = parsed.queryParams?.code as string | undefined;
+        const qs = new URLSearchParams();
+        if (role) qs.set("role", role);
+        if (code) qs.set("code", code);
+        router.push(`/(auth)/register?${qs.toString()}` as any);
+        return;
+      }
+
+      // Everything below requires auth.
+      if (!user?.id) {
+        router.replace("/(auth)/login");
+        return;
       }
 
       // Product deep link: luxe://product/<slug>
       if (parsed.hostname === "product" && parsed.path) {
         const slug = parsed.path.replace("/", "");
         if (slug) router.push(`/(main)/products/${slug}` as any);
+        return;
       }
 
       // Order deep link: luxe://order/<id>
@@ -180,22 +208,15 @@ function RootLayoutNav() {
               : `/(main)/account/orders/${orderId}`;
           router.push(target as any);
         }
+        return;
       }
 
       // Driver invite: luxe://delivery-company/accept?token=...
+      // Authenticated invitees only — anonymous users go to login first.
       if (parsed.hostname === "delivery-company" && parsed.path?.includes("accept")) {
         const token = parsed.queryParams?.token as string | undefined;
         if (token) router.push(`/(delivery-company)/accept?token=${token}` as any);
-      }
-
-      // Signup with role + invite: luxe://register?role=delivery&code=ABC
-      if (parsed.hostname === "register") {
-        const role = parsed.queryParams?.role as string | undefined;
-        const code = parsed.queryParams?.code as string | undefined;
-        const qs = new URLSearchParams();
-        if (role) qs.set("role", role);
-        if (code) qs.set("code", code);
-        router.push(`/(auth)/register?${qs.toString()}` as any);
+        return;
       }
     };
 
@@ -204,7 +225,7 @@ function RootLayoutNav() {
       if (url) handleDeepLink({ url });
     });
     return () => sub.remove();
-  }, []);
+  }, [user?.id, role]);
 
   return (
     <ErrorBoundary>

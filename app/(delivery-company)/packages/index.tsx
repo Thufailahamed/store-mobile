@@ -159,18 +159,22 @@ export default function CompanyPackagesScreen() {
   }, [items, search, tab, warehouseId]);
 
   const handleLastMile = (orderId: string, whId?: string) => {
+    if (actingId) return;
     Alert.alert("Assign last mile", "Auto-assign a last-mile driver for this package?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Assign",
         onPress: async () => {
           setActingId(orderId);
-          const res = await assignLastMileBatch([orderId], whId);
-          setActingId(null);
-          if (!res.ok) Alert.alert("Failed", res.error);
-          else {
-            Alert.alert("Done", "Last-mile assignment queued.");
-            load();
+          try {
+            const res = await assignLastMileBatch([orderId], whId);
+            if (!res.ok) Alert.alert("Failed", res.error);
+            else {
+              Alert.alert("Done", "Last-mile assignment queued.");
+              load();
+            }
+          } finally {
+            setActingId(null);
           }
         },
       },

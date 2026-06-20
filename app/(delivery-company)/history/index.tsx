@@ -16,7 +16,9 @@ import {
   getDeliveryCompanyAudit,
   getDeliveryCompanyRoutes,
   hasStoreApi,
+  iterateDeliveryCompanyHistory,
   type DcAuditEntry,
+  type DcHistoryExportRow,
   type DcRoute,
 } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
@@ -26,6 +28,7 @@ export default function CompanyHistoryScreen() {
   const [audit, setAudit] = useState<DcAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     if (!hasStoreApi()) {
@@ -60,33 +63,41 @@ export default function CompanyHistoryScreen() {
   );
 
   const exportCsv = async () => {
-    const rows = routes.flatMap((r) =>
-      (r.stops ?? []).map((s) => ({
-        route_id: r.id,
-        driver: r.driver?.full_name ?? "",
-        warehouse: r.warehouse?.name ?? "",
-        sequence: s.sequence,
-        order_number: s.order?.order_number ?? "",
-        status: s.status,
-        completed_at: s.completed_at ?? "",
-      })),
-    );
-    if (rows.length === 0) {
-      Alert.alert("No history", "Nothing to export yet.");
-      return;
-    }
-    const headers = ["route_id", "driver", "warehouse", "sequence", "order_number", "status", "completed_at"];
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) => headers.map((h) => JSON.stringify((row as Record<string, unknown>)[h] ?? "")).join(",")),
-    ].join("\n");
+    if (exporting) return;
+    setExporting(true);
     try {
-      await Share.share({
-        message: csv,
-        title: `delivery-history-${new Date().toISOString().slice(0, 10)}.csv`,
-      });
-    } catch {
-      /* user dismissed */
+      const headers = [
+        "route_id", "driver", "warehouse", "status",
+        "sequence", "completed_at", "address", "cod_collected",
+      ];
+      const allRows: DcHistoryExportRow[] = [];
+      let pages = 0;
+      for await (const page of iterateDeliveryCompanyHistory({ pageSize: 200 })) {
+        allRows.push(...page.rows);
+        pages += 1;
+        if (page.done) break;
+        if (pages >= 25) break; // 25 × 200 = 5000 hard cap
+      }
+      if (allRows.length === 0) {
+        Alert.alert("No history", "Nothing to export yet.");
+        return;
+      }
+      const csv = [
+        headers.join(","),
+        ...allRows.map((row) =>
+          headers.map((h) => JSON.stringify((row as Record<string, unknown>)[h] ?? "")).join(","),
+        ),
+      ].join("\n");
+      try {
+        await Share.share({
+          message: csv,
+          title: `delivery-history-${new Date().toISOString().slice(0, 10)}.csv`,
+        });
+      } catch {
+        /* user dismissed */
+      }
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -103,8 +114,12 @@ export default function CompanyHistoryScreen() {
       <ScreenHeader
         title="History"
         right={
-          <TouchableOpacity onPress={exportCsv} style={styles.exportBtn}>
-            <Ionicons name="share-outline" size={22} color={colors.light.primary} />
+          <TouchableOpacity onPress={exportCsv} style={styles.exportBtn} disabled={exporting}>
+            {exporting ? (
+              <ActivityIndicator size="small" color={colors.light.primary} />
+            ) : (
+              <Ionicons name="share-outline" size={22} color={colors.light.primary} />
+            )}
           </TouchableOpacity>
         }
       />

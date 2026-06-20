@@ -522,6 +522,42 @@ export async function getDeliveryCompanyAudit(): Promise<DcApiResult<{ entries: 
   return storeApiFetch("/api/delivery-company/audit");
 }
 
+export type DcHistoryExportRow = {
+  route_id: string;
+  driver: string;
+  warehouse: string;
+  status: string;
+  sequence: number;
+  completed_at: string;
+  address: string;
+  cod_collected: number;
+};
+
+/** Stream a paginated history export. Loops server pages until `done=true`
+ *  or the hard cap is reached. Caller controls concurrency (default 1). */
+export async function* iterateDeliveryCompanyHistory(
+  opts?: { pageSize?: number; signal?: AbortSignal },
+): AsyncGenerator<{ rows: DcHistoryExportRow[]; cursor: number | null; done: boolean }> {
+  let cursor: number | null = 0;
+  const limit = Math.max(1, Math.min(200, opts?.pageSize ?? 200));
+  while (cursor !== null) {
+    if (opts?.signal?.aborted) return;
+    const params = new URLSearchParams();
+    params.set("cursor", String(cursor));
+    params.set("limit", String(limit));
+    const res = await storeApiFetch(`/api/delivery-company/history/export?${params.toString()}`);
+    if (!res.ok) return;
+    const data = res.data as {
+      rows: DcHistoryExportRow[];
+      next_cursor: number | null;
+      done: boolean;
+    };
+    yield { rows: data.rows, cursor: data.next_cursor, done: data.done };
+    cursor = data.next_cursor;
+    if (data.done) return;
+  }
+}
+
 export async function createDeliveryRoute(body: {
   driver_id: string;
   order_ids: string[];

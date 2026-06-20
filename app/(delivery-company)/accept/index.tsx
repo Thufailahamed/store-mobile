@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -8,11 +8,27 @@ import { acceptDriverInvite, hasStoreApi } from "@/lib/api/delivery-company-api"
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function AcceptInviteScreen() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const params = useLocalSearchParams<{ token?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [status, setStatus] = useState<"idle" | "accepting" | "ok" | "err">("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // Capture the token ONCE from the URL into a local ref, then immediately
+  // scrub it from the URL so it doesn't sit in router history, deep-link
+  // logs, or referer headers. Subsequent renders (and screen remounts)
+  // cannot resurrect it from the params.
+  const tokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    const fromUrl = typeof params.token === "string" ? params.token : Array.isArray(params.token) ? params.token[0] : undefined;
+    if (fromUrl && !tokenRef.current) {
+      tokenRef.current = fromUrl;
+      // Drop the token from the URL state.
+      router.setParams({ token: undefined });
+    }
+  }, [params.token, router]);
+
+  const token = tokenRef.current;
 
   if (!token) {
     return (
@@ -25,6 +41,7 @@ export default function AcceptInviteScreen() {
   }
 
   const accept = async () => {
+    if (status === "accepting" || status === "ok") return; // double-tap guard
     if (!hasStoreApi()) {
       Alert.alert("Not configured", "EXPO_PUBLIC_STORE_API_URL is required.");
       return;
@@ -32,6 +49,9 @@ export default function AcceptInviteScreen() {
     setStatus("accepting");
     setError(null);
     const res = await acceptDriverInvite(token);
+    // Zero out the ref as soon as the server has accepted the call so it
+    // can't be reused even if the component state lingers.
+    tokenRef.current = null;
     if (!res.ok) {
       setStatus("err");
       setError(res.error);
