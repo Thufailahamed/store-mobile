@@ -37,15 +37,24 @@ export function resolveImageUrl(url?: string | null): string {
     return trimmed;
   }
 
-  const supabaseUrl =
-    process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") ||
-    (Constants.expoConfig?.extra?.supabaseUrl as string | undefined)?.replace(/\/$/, "");
+  const cdnUrl =
+    process.env.EXPO_PUBLIC_CDN_URL?.replace(/\/$/, "") ||
+    (Constants.expoConfig?.extra?.cdnUrl as string | undefined)?.replace(/\/$/, "");
   if (
-    supabaseUrl &&
     !trimmed.startsWith("/") &&
     (trimmed.startsWith("storage/") || /^[a-z0-9-]+\//i.test(trimmed))
   ) {
-    return `${supabaseUrl}/storage/v1/object/public/${trimmed.replace(/^\//, "")}`;
+    if (cdnUrl) {
+      const cleanPath = trimmed.replace(/^storage\/v1\/object\/public\//, "").replace(/^\//, "");
+      return `${cdnUrl}/${cleanPath}`;
+    }
+
+    const supabaseUrl =
+      process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") ||
+      (Constants.expoConfig?.extra?.supabaseUrl as string | undefined)?.replace(/\/$/, "");
+    if (supabaseUrl) {
+      return `${supabaseUrl}/storage/v1/object/public/${trimmed.replace(/^\//, "")}`;
+    }
   }
 
   const host = getStoreApiHost();

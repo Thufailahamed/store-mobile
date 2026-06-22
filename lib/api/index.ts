@@ -4295,7 +4295,6 @@ export type ScanMatch = {
   confidence: number;
 };
 
-/** Upload a captured/picked image to the private `scan-uploads` bucket. */
 export async function uploadScanImage(
   uri: string,
   source: "library" | "camera",
@@ -4304,15 +4303,52 @@ export async function uploadScanImage(
     const { data: userRes } = await supabase.auth.getUser();
     const user = userRes?.user;
     if (!user) return fail("Not authenticated");
+
+    const { data: sessionRes } = await supabase.auth.getSession();
+    const token = sessionRes?.session?.access_token;
+    if (!token) return fail("Not authenticated");
+
     const ext = (uri.split(".").pop() ?? "jpg").toLowerCase().split("?")[0] || "jpg";
-    const path = `${user.id}/${Date.now()}.${ext}`;
+    const filename = `${Date.now()}.${ext}`;
+    const contentType = `image/${ext}`;
     const blob = await fetch(uri).then((r) => r.blob());
-    const { error } = await supabase.storage
-      .from("scan-uploads")
-      .upload(path, blob, { contentType: `image/${ext}` });
-    if (error) return fail(error.message);
-    const { data: pub } = supabase.storage.from("scan-uploads").getPublicUrl(path);
-    return ok({ path, url: pub?.publicUrl ?? "" });
+
+    const fromEnv = process.env.EXPO_PUBLIC_STORE_API_URL?.replace(/\/$/, "");
+    const host = fromEnv || "https://store-three-xi-58.vercel.app";
+
+    const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        bucket: "scan-uploads",
+        filename,
+        contentType,
+      }),
+    });
+
+    if (!presignedRes.ok) {
+      const errData = await presignedRes.json().catch(() => ({}));
+      return fail(errData.error || `Upload registration failed (HTTP ${presignedRes.status})`);
+    }
+
+    const { uploadUrl, publicUrl, key } = await presignedRes.json();
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: blob,
+    });
+
+    if (!putRes.ok) {
+      return fail(`Failed to stream data to Cloudflare (HTTP ${putRes.status})`);
+    }
+
+    return ok({ path: key, url: publicUrl });
   } catch (e: any) {
     return fail(e?.message ?? "Failed to upload scan");
   }

@@ -3,6 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { Alert } from "react-native";
 import { supabase } from "@/lib/supabase/client";
+import Constants from "expo-constants";
 import { assertSellerCanOperate } from "@/lib/api";
 import type { ComplianceDocType } from "@/lib/seller-access";
 
@@ -110,6 +111,12 @@ async function readUriAsArrayBuffer(uri: string): Promise<ArrayBuffer> {
   return response.arrayBuffer();
 }
 
+function getStoreApiHost(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_STORE_API_URL?.replace(/\/$/, "");
+  const fromExtra = Constants.expoConfig?.extra?.storeApiUrl as string | undefined;
+  return fromEnv || fromExtra?.replace(/\/$/, "") || "https://store-three-xi-58.vercel.app";
+}
+
 async function uploadImageToBucket(
   bucket: string,
   path: string,
@@ -130,14 +137,51 @@ async function uploadImageToBucket(
     return { url: "", error: `Image too large (${Math.round(body.byteLength / 1024 / 1024)} MB; max 8 MB)` };
   }
 
-  const { error: uploadError } = await supabase.storage
-    .from(bucket)
-    .upload(path, body, { contentType, upsert: options?.upsert ?? false });
+  try {
+    const host = getStoreApiHost();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      return { url: "", error: "Authentication session not found" };
+    }
 
-  if (uploadError) return { url: "", error: uploadError.message };
+    const filename = path.split("/").pop() || `file.${ext}`;
+    const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        bucket,
+        filename,
+        contentType,
+      }),
+    });
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-  return { url: data?.publicUrl ?? "" };
+    if (!presignedRes.ok) {
+      const errData = await presignedRes.json().catch(() => ({}));
+      return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
+    }
+
+    const { uploadUrl, publicUrl } = await presignedRes.json();
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body,
+    });
+
+    if (!putRes.ok) {
+      return { url: "", error: `Failed to stream data to Cloudflare (HTTP ${putRes.status})` };
+    }
+
+    return { url: publicUrl };
+  } catch (e: any) {
+    return { url: "", error: e?.message ?? "Upload process failed" };
+  }
 }
 
 export async function pickComplianceFile(): Promise<{
@@ -389,19 +433,53 @@ export async function uploadDeliverySignature(
     if (base64.length > 2 * 1024 * 1024) {
       return { url: "", error: "Signature payload too large (max ~1.5 MB)" };
     }
-    const path = `${userId}/signature-${orderId}-${Date.now()}.png`;
     const bytes = base64ToArrayBuffer(base64);
     if (bytes.byteLength > MAX_UPLOAD_BYTES) {
       return { url: "", error: "Signature too large after decoding" };
     }
 
-    const { error: uploadError } = await supabase.storage
-      .from("review-media")
-      .upload(path, bytes, { contentType: "image/png", upsert: false });
-    if (uploadError) return { url: "", error: uploadError.message };
+    const host = getStoreApiHost();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      return { url: "", error: "Authentication session not found" };
+    }
 
-    const { data } = supabase.storage.from("review-media").getPublicUrl(path);
-    return { url: data?.publicUrl ?? "" };
+    const filename = `signature-${orderId}-${Date.now()}.png`;
+
+    const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        bucket: "review-media",
+        filename,
+        contentType: "image/png",
+      }),
+    });
+
+    if (!presignedRes.ok) {
+      const errData = await presignedRes.json().catch(() => ({}));
+      return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
+    }
+
+    const { uploadUrl, publicUrl } = await presignedRes.json();
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "image/png",
+      },
+      body: bytes,
+    });
+
+    if (!putRes.ok) {
+      return { url: "", error: `Upload directly to R2 failed (HTTP ${putRes.status})` };
+    }
+
+    return { url: publicUrl };
   } catch (e: any) {
     return { url: "", error: e?.message ?? "Upload failed" };
   }
@@ -425,16 +503,51 @@ export async function uploadComplianceDocument(
     if (options?.mimeType && !isAllowedMime(options.mimeType)) {
       return { url: "", error: `Unsupported mime type "${options.mimeType}"` };
     }
-    const path = `${storeId}/${docType}-${Date.now()}.${ext}`;
     const contentType = options?.mimeType ?? mimeForExtension(ext);
     const body = await readUriAsArrayBuffer(uri);
 
-    const { error: uploadError } = await supabase.storage
-      .from("store-compliance")
-      .upload(path, body, { contentType, upsert: true });
+    const host = getStoreApiHost();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      return { url: "", error: "Authentication session not found" };
+    }
 
-    if (uploadError) return { url: "", error: uploadError.message };
-    return { url: path };
+    const filename = options?.fileName ?? `${docType}-${Date.now()}.${ext}`;
+
+    const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        bucket: "store-compliance",
+        filename,
+        contentType,
+      }),
+    });
+
+    if (!presignedRes.ok) {
+      const errData = await presignedRes.json().catch(() => ({}));
+      return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
+    }
+
+    const { uploadUrl, key } = await presignedRes.json();
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body,
+    });
+
+    if (!putRes.ok) {
+      return { url: "", error: `Failed to stream compliance file to Cloudflare (HTTP ${putRes.status})` };
+    }
+
+    return { url: key };
   } catch (e: any) {
     return { url: "", error: e?.message ?? "Upload failed" };
   }
@@ -445,9 +558,25 @@ export async function getComplianceDocumentSignedUrl(
   expiresIn = 3600
 ): Promise<string | null> {
   if (!storagePath || storagePath.startsWith("http")) return storagePath;
-  const { data, error } = await supabase.storage
-    .from("store-compliance")
-    .createSignedUrl(storagePath, expiresIn);
-  if (error) return null;
-  return data?.signedUrl ?? null;
+  try {
+    const host = getStoreApiHost();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return null;
+
+    const res = await fetch(
+      `${host}/api/storage/signed-url?bucket=store-compliance&key=${encodeURIComponent(storagePath)}`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      }
+    );
+    if (!res.ok) return null;
+    const { url } = await res.json();
+    return url ?? null;
+  } catch {
+    return null;
+  }
 }
