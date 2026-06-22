@@ -68,7 +68,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "storeApiUrl": "https://store-three-xi-58.vercel.app",
+      "storeApiUrl": "https://synapstore.shop",
       "supabaseUrl": "https://fipjjsbzrugqvobnwewm.supabase.co",
       "router": {
         "origin": false

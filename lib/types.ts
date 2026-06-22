@@ -60,6 +60,7 @@ export interface Store {
   bank_name?: string | null;
   account_name?: string | null;
   account_number_last4?: string | null;
+  is_online?: boolean;
 }
 
 export interface Brand {

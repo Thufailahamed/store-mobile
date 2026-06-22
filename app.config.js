@@ -42,7 +42,7 @@ module.exports = ({ config }) => {
   const googleMapsApiKey =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "GOOGLE_MAPS_API_KEY_PLACEHOLDER";
   const storeApiUrl =
-    process.env.EXPO_PUBLIC_STORE_API_URL || "https://store-three-xi-58.vercel.app";
+    process.env.EXPO_PUBLIC_STORE_API_URL || "https://synapstore.shop";
 
   const plugins = (config.plugins ?? []).map((plugin) => {
     if (plugin === "expo-font") return ["expo-font", { fonts: APP_FONTS }];

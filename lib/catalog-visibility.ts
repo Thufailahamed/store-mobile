@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
-import type { SellerComplianceDocument } from "@/lib/seller-access";
+import type { SellerComplianceDocument, SellerPayoutCompliance } from "@/lib/seller-access";
 
 /** Client-side operational statuses (includes legacy "active" on in-memory rows). */
 export const OPERATIONAL_STORE_STATUSES = ["approved", "active"] as const;

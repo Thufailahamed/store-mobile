@@ -10,14 +10,15 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { supabase } from "@/lib/supabase/client";
 import { Button, Input, useToast } from "@/components/ui";
+import { useAuth } from "@/lib/supabase/auth";
 import { colors, spacing } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { toast } = useToast();
+  const { resetPassword } = useAuth();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,13 +31,11 @@ export default function ForgotPasswordScreen() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: "luxe://reset-password",
-    });
+    const { error } = await resetPassword(email.trim());
     setLoading(false);
 
     if (error) {
-      toast(error.message, "error");
+      toast(error, "error");
     } else {
       setSent(true);
       toast("Reset link sent!", "success");

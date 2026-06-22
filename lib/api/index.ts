@@ -389,6 +389,7 @@ export async function getFeaturedStores(limit = 6): Promise<Result<Store[]>> {
       .select("*")
       .eq("status", "approved")
       .eq("is_featured", true)
+      .neq("is_online", true)
       .order("homepage_order")
       .limit(limit);
     if (error) return fail(error.message);
@@ -410,7 +411,8 @@ export async function getStores(opts: {
     let query = supabase
       .from("stores")
       .select("*", { count: "exact" })
-      .eq("status", "approved");
+      .eq("status", "approved")
+      .neq("is_online", true);
     if (search) query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
     switch (sort) {
       case "newest":

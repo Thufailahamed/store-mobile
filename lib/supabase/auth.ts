@@ -200,10 +200,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const resetPassword = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "luxe://reset-password",
-    });
-    return { error: error?.message };
+    const apiBase = (process.env.EXPO_PUBLIC_STORE_API_URL ?? "").replace(/\/$/, "");
+    if (!apiBase) {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: "luxe://reset-password",
+      });
+      return { error: error?.message };
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/api/auth/password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), redirectTo: "luxe://reset-password" }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        const msg =
+          typeof payload.error === "string"
+            ? payload.error
+            : payload.error?.message ?? "Failed to request password reset";
+        return { error: msg };
+      }
+      return { error: undefined };
+    } catch (e: any) {
+      return { error: e.message ?? "Network error requesting password reset" };
+    }
   }, []);
 
   const signInWithPhone = useCallback(async (phone: string) => {
