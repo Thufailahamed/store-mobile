@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { useTheme } from "@/lib/theme/provider";
 import { Button, useToast } from "@/components/ui";

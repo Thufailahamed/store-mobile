@@ -10,7 +10,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProductCard } from "@/components/product/ProductCard";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, View, Text, Pressable, StyleSheet } from "react-native";
+import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
 import { Tabs, useRouter, useSegments } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -65,12 +65,8 @@ export default function SellerLayout() {
     if (loading || roleLoading || storeLoading) return;
     if (role !== "store_owner") {
       router.replace("/(main)");
-      return;
     }
-    if (!access.canAccessSellerTools && !isSettingsRoute) {
-      router.replace("/(seller)/settings");
-    }
-  }, [role, roleLoading, loading, storeLoading, access.canAccessSellerTools, isSettingsRoute, router]);
+  }, [role, roleLoading, loading, storeLoading, router]);
 
   if (loading || roleLoading || storeLoading) {
     return (
@@ -87,18 +83,54 @@ export default function SellerLayout() {
   const locked = !access.canAccessSellerTools;
 
   if (locked && !isSettingsRoute) {
-    return (
-      <View style={styles.blockedContainer}>
-        <Ionicons name="shield-checkmark-outline" size={44} color={colors.light.primary} />
-        <Text style={styles.blockedTitle}>Seller access limited</Text>
-        <Text style={styles.blockedBody}>
-          {access.lockReason ?? "Complete seller verification to continue."}
-        </Text>
-        <Pressable style={styles.blockedButton} onPress={() => router.replace("/(seller)/settings")}>
-          <Text style={styles.blockedButtonText}>Open Seller Settings</Text>
-        </Pressable>
-      </View>
-    );
+    if (access.isPendingReview || !access.hasStore) {
+      return (
+        <View style={styles.blockedContainer}>
+          <View style={styles.reviewBadge}>
+            <Text style={styles.reviewBadgeText}>Under review</Text>
+          </View>
+          <Text style={styles.blockedTitle}>Store in review</Text>
+          <Text style={styles.blockedBody}>
+            Thank you for submitting your application. Our admin team is reviewing{" "}
+            {store?.name ? `"${store.name}"` : "your store"}. You&apos;ll get full seller access once it&apos;s approved.
+          </Text>
+          <View style={styles.reviewCard}>
+            <Text style={styles.reviewCardLabel}>Application status</Text>
+            <View style={styles.reviewCardRow}>
+              <Text style={styles.reviewStoreName}>{store?.name ?? "Your store"}</Text>
+              <View style={styles.pendingPill}>
+                <View style={styles.pendingDot} />
+                <Text style={styles.pendingPillText}>Pending review</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    if (access.isRejected) {
+      return (
+        <View style={styles.blockedContainer}>
+          <Ionicons name="close-circle-outline" size={44} color={colors.light.destructive} />
+          <Text style={styles.blockedTitle}>Application rejected</Text>
+          <Text style={styles.blockedBody}>
+            {access.lockReason ?? "Your store application was rejected. Contact support if you believe this is an error."}
+          </Text>
+        </View>
+      );
+    }
+
+    if (access.isSuspended) {
+      return (
+        <View style={styles.blockedContainer}>
+          <Ionicons name="ban-outline" size={44} color={colors.light.destructive} />
+          <Text style={styles.blockedTitle}>Account suspended</Text>
+          <Text style={styles.blockedBody}>
+            {access.lockReason ?? "Your seller account is suspended. Contact support to reactivate."}
+          </Text>
+        </View>
+      );
+    }
   }
 
   return (
@@ -207,5 +239,69 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
+  },
+  reviewBadge: {
+    alignSelf: "center",
+    backgroundColor: "#FEF3C7",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  reviewBadgeText: {
+    color: "#92400E",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.xs,
+    letterSpacing: typography.letterSpacing.wide,
+    textTransform: "uppercase",
+  },
+  reviewCard: {
+    marginTop: 20,
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+    padding: 16,
+    gap: 10,
+  },
+  reviewCardLabel: {
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    letterSpacing: typography.letterSpacing.wide,
+    textTransform: "uppercase",
+  },
+  reviewCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  reviewStoreName: {
+    flex: 1,
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+  },
+  pendingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pendingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#F59E0B",
+  },
+  pendingPillText: {
+    color: "#92400E",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10,
   },
 });

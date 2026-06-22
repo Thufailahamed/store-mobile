@@ -9,7 +9,7 @@ import {
   StatusBar,
 } from "react-native";
 import { Image } from "expo-image";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 
 const { width: W, height: H } = Dimensions.get("window");
 

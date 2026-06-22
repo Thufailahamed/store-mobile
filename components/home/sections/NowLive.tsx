@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 

@@ -9,7 +9,7 @@ import {
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { radii, shadows, spacing } from "@/lib/theme/tokens";
 import * as api from "@/lib/api";

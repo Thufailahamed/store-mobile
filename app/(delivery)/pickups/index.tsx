@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { getReturnPickups, type ReturnPickup } from "@/lib/api";
 import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
 import { useTheme } from "@/lib/hooks/useTheme";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { typography, radii } from "@/lib/theme/tokens";
 import { formatRelative, PICKUP_STATUS_COLORS } from "@/lib/utils/delivery-format";
 
@@ -71,10 +72,17 @@ export default function ReturnPickupsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Return pickups</Text>
-        <Text style={styles.count}>{active.length} active · {pickups.length} total</Text>
-      </View>
+      <ScreenHeader
+        title="Return pickups"
+        showBack={true}
+        right={
+          <View style={{ justifyContent: "center", height: "100%", paddingRight: 12 }}>
+            <Text style={{ fontSize: typography.fontSizes.sm, color: colors.mutedForeground }}>
+              {active.length} active
+            </Text>
+          </View>
+        }
+      />
 
       <FlatList
         data={pickups}

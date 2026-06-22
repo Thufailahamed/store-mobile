@@ -1,0 +1,55 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = join(__dirname, "../..");
+
+/**
+ * Coupon-hardening tests for the mobile API surface. Pins the contract
+ * of the fixes in lib/api/index.ts and the seller coupon screen.
+ */
+describe("mobile coupon API — getStoreCoupons", () => {
+  const api = readFileSync(join(root, "lib/api/index.ts"), "utf8");
+
+  it("filters by store_id, not by the scope enum (no-op fix)", () => {
+    // Pre-fix: `.eq("scope", storeId)` — compared the enum text to a
+    // UUID, returning every coupon in the system.
+    expect(api).not.toMatch(/from\("coupons"\)[\s\S]{0,200}\.eq\("scope", storeId\)/);
+    // Post-fix: matches the web admin's filter pattern.
+    expect(api).toMatch(/from\("coupons"\)[\s\S]{0,500}\.or\(`store_id\.eq\.\$\{storeId\},scope\.eq\.platform`\)/);
+  });
+});
+
+describe("mobile coupon API — input validation", () => {
+  const api = readFileSync(join(root, "lib/api/index.ts"), "utf8");
+
+  it("createStoreCoupon validates via Zod before inserting", () => {
+    expect(api).toMatch(/createStoreCoupon[\s\S]{0,300}CouponCreateSchema\.safeParse/);
+  });
+
+  it("createCoupon validates via Zod before inserting", () => {
+    expect(api).toMatch(/createCoupon[\s\S]{0,300}CouponCreateSchema\.safeParse/);
+  });
+
+  it("rejects percentage > 100", () => {
+    expect(api).toMatch(/Percentage coupons cannot exceed 100%/);
+  });
+
+  it("rejects expires_at <= starts_at", () => {
+    expect(api).toMatch(/expires_at must be after starts_at/);
+  });
+});
+
+describe("mobile seller coupon screen — BXGY badge", () => {
+  const screen = readFileSync(join(root, "app/(seller)/coupons/index.tsx"), "utf8");
+
+  it("renders a distinct badge for bxgy type", () => {
+    // Pre-fix: bxgy fell through to "FREE" badge (free_shipping style).
+    expect(screen).toMatch(/typeBadgeStyle/);
+    expect(screen).toMatch(/case "bxgy":\s*return s\.badgeBxgy/);
+    expect(screen).toMatch(/function typeBadgeLabel/);
+    expect(screen).toMatch(/coupon\.type === "bxgy"\)?\s*return "BXGY"/);
+  });
+});

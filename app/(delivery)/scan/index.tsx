@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   extractPackageToken,
@@ -30,6 +30,7 @@ import {
 } from "@/lib/upload";
 import { SignatureCanvas } from "@/components/delivery/SignatureCanvas";
 import { useTheme } from "@/lib/hooks/useTheme";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { typography, radii } from "@/lib/theme/tokens";
 import {
   isProofRequired,
@@ -370,9 +371,9 @@ export default function DeliveryScanScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Scan package</Text>
-        <Text style={styles.subtitle}>
+      <ScreenHeader title="Scan package" showBack={true} />
+      <View style={{ paddingHorizontal: 24, paddingVertical: 12 }}>
+        <Text style={{ fontSize: typography.fontSizes.sm, color: colors.mutedForeground }}>
           {awaitingCustomerQr
             ? "Scan the buyer's delivery QR"
             : "Scan a package label to advance delivery status"}

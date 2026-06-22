@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, View, Text, Pressable, StyleSheet } from "react-native";
 import { Tabs, useRouter, useSegments, useFocusEffect } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 import { getDeliveryCompanyMe, hasStoreApi } from "@/lib/api/delivery-company-api";

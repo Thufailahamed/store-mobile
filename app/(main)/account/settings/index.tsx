@@ -16,7 +16,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
 import { Avatar, Button, Chip, useToast } from "@/components/ui";
 import { Body, Display, Label } from "@/components/ui/Typography";

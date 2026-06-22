@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, Dimensions, Animated, Share } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground } from "@/components/layout";
 import { SectionHeader } from "@/components/layout";

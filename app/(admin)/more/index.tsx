@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getAdminOverviewStats } from "@/lib/api";
 import { Card, StatusDot } from "@/components/ui";

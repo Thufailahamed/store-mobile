@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import type { Testimonial } from "@/lib/types";

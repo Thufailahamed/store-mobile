@@ -24,16 +24,28 @@ export function setCartReservationSyncErrorHandler(
   syncErrorHandler = handler;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isReservationUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value.trim());
+}
+
 function normalizeItems(items: CartReservationItem[]): CartReservationItem[] {
   const byKey = new Map<string, CartReservationItem>();
   for (const item of items) {
-    if (!item.variant_id || !item.store_id || item.quantity <= 0) continue;
-    const key = `${item.variant_id}:${item.store_id}`;
+    const variant_id = String(item.variant_id ?? "").trim();
+    const store_id = String(item.store_id ?? "").trim();
+    const quantity = Math.floor(Number(item.quantity));
+    if (!isReservationUuid(variant_id) || !isReservationUuid(store_id) || quantity <= 0) {
+      continue;
+    }
+    const key = `${variant_id}:${store_id}`;
     const existing = byKey.get(key);
     if (existing) {
-      existing.quantity = Math.max(existing.quantity, item.quantity);
+      existing.quantity = Math.max(existing.quantity, quantity);
     } else {
-      byKey.set(key, { ...item });
+      byKey.set(key, { variant_id, store_id, quantity });
     }
   }
   return Array.from(byKey.values());

@@ -8,7 +8,7 @@ import {
   Pressable,
   TextInput,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Label, Display, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";
 import {

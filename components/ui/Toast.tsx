@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Animated,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, typography, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 

@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pres
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground, ScreenHeader, SectionHeader } from "@/components/layout";
 import { PayHereCheckout } from "@/components/payments/PayHereCheckout";

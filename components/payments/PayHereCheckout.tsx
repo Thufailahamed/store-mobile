@@ -1,7 +1,7 @@
 import React, { useMemo, useRef } from "react";
 import { Modal, View, StyleSheet, TouchableOpacity, Text, ActivityIndicator } from "react-native";
 import { WebView } from "react-native-webview";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii } from "@/lib/theme/tokens";
 
 interface PayHereCheckoutProps {

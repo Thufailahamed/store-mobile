@@ -10,7 +10,7 @@ import {
   Share,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground } from "@/components/layout";
 import { useTheme } from "@/lib/hooks/useTheme";

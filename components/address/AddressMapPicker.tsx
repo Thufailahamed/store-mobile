@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import * as Location from "expo-location";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

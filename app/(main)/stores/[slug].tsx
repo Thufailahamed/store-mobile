@@ -7,7 +7,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useRouter, useLocalSearchParams, Stack } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground } from "@/components/layout";
 import { Display, Body } from "@/components/ui/Typography";

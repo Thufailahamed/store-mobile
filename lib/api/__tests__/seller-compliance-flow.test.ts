@@ -26,50 +26,45 @@ const approvedDocs = [
 ];
 
 describe("seller compliance flow", () => {
-  it("blocks seller tools until documents are admin-approved", () => {
+  it("unlocks seller tools for approved stores even when documents are pending", () => {
     const pending = getSellerAccessState(baseStore, basePayout, [
       { doc_type: "business_registration", file_url: "path", status: "pending" },
       approvedDocs[1],
     ]);
-    expect(pending.canAccessSellerTools).toBe(false);
+    expect(pending.canAccessSellerTools).toBe(true);
 
     const approved = getSellerAccessState(baseStore, basePayout, approvedDocs);
     expect(approved.canAccessSellerTools).toBe(true);
   });
 
-  it("allows admin approval only when compliance gaps are empty", () => {
-    const gapsBefore = getSellerComplianceGaps(baseStore, basePayout, [
-      { doc_type: "business_registration", file_url: "path", status: "pending" },
-      approvedDocs[1],
-    ]);
-    expect(gapsBefore.length).toBeGreaterThan(0);
+  it("tracks optional compliance gaps without blocking access", () => {
+    const gapsBefore = getSellerComplianceGaps(baseStore, { ...basePayout, bank_name: null }, approvedDocs);
+    expect(gapsBefore).toContain("bank name");
 
     const gapsAfter = getSellerComplianceGaps(baseStore, basePayout, approvedDocs);
     expect(gapsAfter).toEqual([]);
   });
 
-  it("requires re-upload after document rejection", () => {
+  it("does not treat rejected optional documents as blocking gaps", () => {
     const gaps = getSellerComplianceGaps(baseStore, basePayout, [
       { doc_type: "business_registration", file_url: "path", status: "rejected" },
       approvedDocs[1],
     ]);
-    expect(gaps.some((g) => g.includes("rejected"))).toBe(true);
+    expect(gaps.some((g) => g.includes("rejected"))).toBe(false);
     expect(isComplianceDocumentApproved({ doc_type: "x", file_url: "p", status: "rejected" })).toBe(
       false
     );
   });
 
-  it("hides lapsed stores from public catalog", () => {
+  it("keeps approved stores visible in public catalog regardless of compliance", () => {
     const visible = new Set(["store-1"]);
+    expect(isStoreCatalogVisible(baseStore, basePayout, approvedDocs)).toBe(true);
     expect(
-      isStoreCatalogVisible(baseStore, basePayout, approvedDocs)
-    ).toBe(true);
-    expect(
-      isStoreCatalogVisible(baseStore, basePayout, [
+      isStoreCatalogVisible(baseStore, { ...basePayout, bank_name: null }, [
         { doc_type: "business_registration", file_url: "path", status: "rejected" },
         approvedDocs[1],
       ])
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isPublicCatalogProduct(
         { store_id: "store-1", store: { status: "approved" }, status: "active", is_active: true },

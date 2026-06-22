@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { Tabs, useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { AdminTopBar } from "@/components/layout";
 import { colors, typography } from "@/lib/theme/tokens";

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
 import { Button } from "@/components/ui";
 import { Badge } from "@/components/ui";

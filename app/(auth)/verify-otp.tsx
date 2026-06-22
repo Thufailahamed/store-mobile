@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { supabase } from "@/lib/supabase/client";
 import { Button, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";

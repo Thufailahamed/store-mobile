@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Tabs, useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
 import { supabase } from "@/lib/supabase/client";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { useTheme } from "@/lib/theme/provider";
+import { typography, radii } from "@/lib/theme/tokens";
 
 export default function DeliveryLayout() {
   const { user, role, roleLoading, loading } = useAuth();
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
   const router = useRouter();
   const [memberActive, setMemberActive] = useState<boolean | null>(null);
 
@@ -48,8 +51,8 @@ export default function DeliveryLayout() {
 
   if (role === "delivery_company" && (loading || roleLoading)) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.light.background }}>
-        <ActivityIndicator size="large" color={colors.light.primary} />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -76,11 +79,11 @@ export default function DeliveryLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.light.primary,
-        tabBarInactiveTintColor: colors.light.mutedForeground,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
-          backgroundColor: colors.light.card,
-          borderTopColor: colors.light.border,
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           height: 85,
           paddingTop: 8,
@@ -110,15 +113,20 @@ export default function DeliveryLayout() {
       <Tabs.Screen
         name="pickups/index"
         options={{
-          title: "Pickups",
-          tabBarIcon: ({ color, size }) => <Ionicons name="return-down-back-outline" size={size} color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
         name="scan/index"
         options={{
-          title: "Scan",
-          tabBarIcon: ({ color, size }) => <Ionicons name="qr-code-outline" size={size} color={color} />,
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="earnings"
+        options={{
+          title: "Earnings",
+          tabBarIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -135,13 +143,6 @@ export default function DeliveryLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="earnings"
-        options={{
-          title: "Earnings",
-          tabBarIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />,
-        }}
-      />
 
       <Tabs.Screen name="orders/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="pickups/[id]/index" options={{ href: null }} />
@@ -151,45 +152,47 @@ export default function DeliveryLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  suspendedContainer: {
-    flex: 1,
-    backgroundColor: colors.light.background,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  suspendedCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 24,
-    alignItems: "center",
-    gap: 12,
-  },
-  suspendedTitle: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.light.foreground,
-  },
-  suspendedBody: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  suspendedBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.light.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: radii.lg,
-    marginTop: 8,
-  },
-  suspendedBtnText: {
-    color: "#fff",
-    fontWeight: typography.fontWeights.semibold,
-  },
-});
+function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
+  return StyleSheet.create({
+    suspendedContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+      justifyContent: "center",
+      paddingHorizontal: 24,
+    },
+    suspendedCard: {
+      backgroundColor: colors.card,
+      borderRadius: radii.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 24,
+      alignItems: "center",
+      gap: 12,
+    },
+    suspendedTitle: {
+      fontSize: typography.fontSizes.xl,
+      fontWeight: typography.fontWeights.bold,
+      color: colors.foreground,
+    },
+    suspendedBody: {
+      fontSize: typography.fontSizes.sm,
+      color: colors.mutedForeground,
+      textAlign: "center",
+      lineHeight: 20,
+    },
+    suspendedBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: radii.lg,
+      marginTop: 8,
+    },
+    suspendedBtnText: {
+      color: "#fff",
+      fontWeight: typography.fontWeights.semibold,
+    },
+  });
+}

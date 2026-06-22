@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { CartItem } from "@/lib/stores/cart-store";

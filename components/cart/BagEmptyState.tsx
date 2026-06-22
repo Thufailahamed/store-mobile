@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Pressable, StyleSheet, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Body, Label } from "@/components/ui/Typography";

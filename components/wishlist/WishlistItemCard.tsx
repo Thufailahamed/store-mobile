@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Pressable, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, radii } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";

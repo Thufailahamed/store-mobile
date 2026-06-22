@@ -11,7 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { completeOnboarding } from "@/lib/onboarding";
 import { getOnboardingSlides, type OnboardingSlide } from "@/lib/api";
 import { fontFamilies } from "@/lib/theme/fonts";

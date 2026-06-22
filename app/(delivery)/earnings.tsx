@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useTheme } from "@/lib/theme/provider";
 import { useDriverEarnings } from "@/lib/hooks/useDriverEarnings";
 import { formatPrice } from "@/lib/utils/delivery-format";

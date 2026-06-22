@@ -20,7 +20,7 @@ import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
 import type { Product } from "@/lib/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { getAddresses, getProducts } from "@/lib/api";
 import { getCatalogVisibleStoreIds } from "@/lib/catalog-visibility";
 import { useCartRealtime } from "@/lib/hooks/useCartRealtime";

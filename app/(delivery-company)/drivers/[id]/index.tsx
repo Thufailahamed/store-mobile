@@ -8,9 +8,12 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   getDeliveryCompanyDrivers,
@@ -27,6 +30,7 @@ import { colors, typography, radii } from "@/lib/theme/tokens";
 export default function DriverDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [member, setMember] = useState<DcDriverMember | null>(null);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [routeCount, setRouteCount] = useState(0);
@@ -184,14 +188,22 @@ export default function DriverDetailScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title="Driver profile" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.hero}>
           <View style={styles.avatar}>
             <Ionicons name="person" size={32} color={colors.light.primary} />
           </View>
-          <Text style={styles.name}>{u?.full_name ?? "Driver"}</Text>
-          {u?.email ? <Text style={styles.meta}>{u.email}</Text> : null}
-          {u?.phone ? <Text style={styles.meta}>{u.phone}</Text> : null}
+          <Text style={styles.name} numberOfLines={2}>{u?.full_name ?? "Driver"}</Text>
+          {u?.email ? <Text style={styles.meta} numberOfLines={1}>{u.email}</Text> : null}
+          {u?.phone ? <Text style={styles.meta} numberOfLines={1}>{u.phone}</Text> : null}
           <View style={styles.tags}>
             <Tag label={member.company_role} />
             {member.driver_type ? <Tag label={member.driver_type.replace(/_/g, " ")} /> : null}
@@ -201,15 +213,15 @@ export default function DriverDetailScreen() {
 
         <View style={styles.kpiRow}>
           <View style={styles.kpi}>
-            <Text style={styles.kpiValue}>{activeLoad}/{capacity}</Text>
+            <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{activeLoad}/{capacity}</Text>
             <Text style={styles.kpiLabel}>Active load</Text>
           </View>
           <View style={styles.kpi}>
-            <Text style={styles.kpiValue}>{routeCount}</Text>
+            <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{routeCount}</Text>
             <Text style={styles.kpiLabel}>Routes</Text>
           </View>
           <View style={styles.kpi}>
-            <Text style={styles.kpiValue}>{stopCount}</Text>
+            <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{stopCount}</Text>
             <Text style={styles.kpiLabel}>Stops</Text>
           </View>
         </View>
@@ -280,25 +292,46 @@ export default function DriverDetailScreen() {
             style={[styles.stepBtn, capacity <= 1 && styles.stepBtnDisabled]}
             onPress={() => adjustCapacity(-1)}
             disabled={saving || capacity <= 1}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Decrease capacity"
           >
             <Ionicons name="remove" size={20} color={capacity <= 1 ? colors.light.mutedForeground : colors.light.foreground} />
           </TouchableOpacity>
           <Text style={styles.stepValue}>{capacity}</Text>
-          <TouchableOpacity style={styles.stepBtn} onPress={() => adjustCapacity(1)} disabled={saving || capacity >= 1000}>
+          <TouchableOpacity
+            style={styles.stepBtn}
+            onPress={() => adjustCapacity(1)}
+            disabled={saving || capacity >= 1000}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Increase capacity"
+          >
             <Ionicons name="add" size={20} color={capacity >= 1000 ? colors.light.mutedForeground : colors.light.foreground} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.actionBtn} onPress={toggleActive}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={toggleActive}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+        >
           <Ionicons name={member.is_active ? "power" : "power-outline"} size={18} color={colors.light.primary} />
           <Text style={styles.actionText}>{member.is_active ? "Deactivate driver" : "Activate driver"}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push(`/(delivery-company)/routes`)}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => router.push(`/(delivery-company)/routes`)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+        >
           <Ionicons name="map-outline" size={18} color={colors.light.primary} />
           <Text style={styles.actionText}>View routes</Text>
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -315,7 +348,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   content: { padding: 16, paddingBottom: 40 },
-  hero: { alignItems: "center", marginBottom: 20 },
+  hero: { alignItems: "center", marginBottom: 24, paddingHorizontal: 8 },
   avatar: {
     width: 72,
     height: 72,
@@ -325,32 +358,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
-  name: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.bold },
-  meta: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4 },
-  tags: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12, justifyContent: "center" },
+  name: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.bold, textAlign: "center" },
+  meta: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4, textAlign: "center" },
+  tags: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 14, justifyContent: "center" },
   tag: { backgroundColor: colors.light.muted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
   tagText: { fontSize: typography.fontSizes.xs, textTransform: "capitalize" },
-  kpiRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
+  kpiRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
   kpi: {
     flex: 1,
     backgroundColor: colors.light.card,
     borderRadius: radii.lg,
-    padding: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    minHeight: 72,
     borderWidth: 1,
     borderColor: colors.light.border,
     alignItems: "center",
+    justifyContent: "center",
   },
   kpiValue: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
   kpiLabel: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 4 },
   section: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.semibold,
     color: colors.light.mutedForeground,
     textTransform: "uppercase",
+    letterSpacing: typography.letterSpacing.wide,
     marginBottom: 10,
-    marginTop: 8,
+    marginTop: 20,
   },
-  sectionHint: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 10, marginTop: -6 },
+  sectionHint: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 12, lineHeight: typography.lineHeights.normal * typography.fontSizes.xs },
   postalInput: {
     borderWidth: 1,
     borderColor: colors.light.border,
@@ -366,17 +403,19 @@ const styles = StyleSheet.create({
   savePostalsBtn: {
     backgroundColor: colors.light.primary,
     paddingVertical: 12,
+    minHeight: 48,
     borderRadius: radii.lg,
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "center",
+    marginBottom: 8,
   },
   savePostalsText: { color: "#fff", fontWeight: typography.fontWeights.semibold },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.lg, backgroundColor: colors.light.muted },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, minHeight: 36, borderRadius: radii.lg, backgroundColor: colors.light.muted, alignItems: "center", justifyContent: "center" },
   chipActive: { backgroundColor: colors.light.primary },
   chipText: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, textTransform: "capitalize" },
   chipTextActive: { color: "#fff", fontWeight: typography.fontWeights.semibold },
-  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 20, marginBottom: 20 },
+  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 24, marginBottom: 20, marginTop: 4 },
   stepBtn: {
     width: 44,
     height: 44,
@@ -388,13 +427,14 @@ const styles = StyleSheet.create({
   stepBtnDisabled: {
     opacity: 0.5,
   },
-  stepValue: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold, minWidth: 40, textAlign: "center" },
+  stepValue: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold, minWidth: 48, textAlign: "center" },
   actionBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     backgroundColor: colors.light.card,
     padding: 14,
+    minHeight: 52,
     borderRadius: radii.lg,
     marginBottom: 10,
     borderWidth: 1,

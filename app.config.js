@@ -1,6 +1,8 @@
 const path = require("path");
 const fs = require("fs");
 
+/* global __dirname */
+
 const APP_FONTS = [
   "node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf",
   "node_modules/@expo-google-fonts/manrope/400Regular/Manrope_400Regular.ttf",

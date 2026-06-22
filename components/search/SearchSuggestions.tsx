@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Image } from "expo-image";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";

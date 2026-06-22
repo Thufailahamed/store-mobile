@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { View, TouchableOpacity, StyleSheet, Animated } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import type { Category } from "@/lib/types";

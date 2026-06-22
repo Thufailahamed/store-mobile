@@ -13,7 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getStoreCoupons, createStoreCoupon, toggleCoupon } from "@/lib/api";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
@@ -25,6 +25,25 @@ const COUPON_TYPES = [
   { key: "fixed", label: "Fixed Amount", icon: "cash-outline" as const },
   { key: "free_shipping", label: "Free Shipping", icon: "bicycle-outline" as const },
 ] as const;
+
+/** Map a coupon type to its badge background style. Was previously a
+ *  ternary that silently treated `bxgy` as `free_shipping` ("FREE" badge). */
+function typeBadgeStyle(type: AdminCoupon["type"]) {
+  switch (type) {
+    case "percentage":   return s.badgePercentage;
+    case "fixed":        return s.badgeFixed;
+    case "free_shipping": return s.badgeShipping;
+    case "bxgy":         return s.badgeBxgy;
+    default:             return s.badgeShipping;
+  }
+}
+
+function typeBadgeLabel(coupon: AdminCoupon) {
+  if (coupon.type === "percentage") return `${coupon.value}%`;
+  if (coupon.type === "fixed") return `Rs.${coupon.value}`;
+  if (coupon.type === "bxgy") return "BXGY";
+  return "FREE";
+}
 
 export default function SellerCoupons() {
   const { user } = useAuth();
@@ -184,9 +203,9 @@ export default function SellerCoupons() {
             <View key={coupon.id} style={s.couponCard}>
               <View style={s.couponHeader}>
                 <View style={s.couponCodeRow}>
-                  <View style={[s.couponTypeBadge, coupon.type === "percentage" ? s.badgePercentage : coupon.type === "fixed" ? s.badgeFixed : s.badgeShipping]}>
+                  <View style={[s.couponTypeBadge, typeBadgeStyle(coupon.type)]}>
                     <Text style={s.couponTypeText}>
-                      {coupon.type === "percentage" ? `${coupon.value}%` : coupon.type === "fixed" ? `Rs.${coupon.value}` : "FREE"}
+                      {typeBadgeLabel(coupon)}
                     </Text>
                   </View>
                   <Text style={s.couponCode}>{coupon.code}</Text>
@@ -204,6 +223,8 @@ export default function SellerCoupons() {
                     ? `${coupon.value}% off`
                     : coupon.type === "fixed"
                     ? `Rs. ${coupon.value} off`
+                    : coupon.type === "bxgy"
+                    ? "Buy X get Y"
                     : "Free shipping"}
                   {coupon.min_order_total ? ` (min Rs. ${coupon.min_order_total})` : ""}
                 </Text>
@@ -407,6 +428,7 @@ const s = StyleSheet.create({
   badgePercentage: { backgroundColor: colors.olive[100] },
   badgeFixed: { backgroundColor: "#dbeafe" },
   badgeShipping: { backgroundColor: "#fef3c7" },
+  badgeBxgy: { backgroundColor: "#ede9fe" },
   couponTypeText: {
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.bold as any,

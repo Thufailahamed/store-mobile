@@ -7,7 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getStoreReviews } from "@/lib/api";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";

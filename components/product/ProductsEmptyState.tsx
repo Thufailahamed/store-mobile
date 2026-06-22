@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useRouter } from "expo-router";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";

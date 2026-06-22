@@ -1,9 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
-import {
-  getSellerComplianceGaps,
-  type SellerComplianceDocument,
-  type SellerPayoutCompliance,
-} from "@/lib/seller-access";
+import type { SellerComplianceDocument } from "@/lib/seller-access";
 
 /** Client-side operational statuses (includes legacy "active" on in-memory rows). */
 export const OPERATIONAL_STORE_STATUSES = ["approved", "active"] as const;
@@ -14,6 +10,11 @@ export const BROWSABLE_STORE_DB_STATUSES = ["approved"] as const;
 export function isOperationalStoreStatus(status: string | null | undefined): boolean {
   const s = String(status ?? "").toLowerCase();
   return OPERATIONAL_STORE_STATUSES.includes(s as (typeof OPERATIONAL_STORE_STATUSES)[number]);
+}
+
+export function isSellerPortalBlockedStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? "").toLowerCase();
+  return s === "suspended" || s === "banned";
 }
 
 type StoreComplianceRow = {
@@ -34,15 +35,10 @@ type CatalogRow = {
 
 export function isStoreCatalogVisible(
   store: StoreComplianceRow,
-  payout?: SellerPayoutCompliance | null,
-  docs?: SellerComplianceDocument[] | null
+  _payout?: SellerPayoutCompliance | null,
+  _docs?: SellerComplianceDocument[] | null
 ): boolean {
-  if (!isOperationalStoreStatus(store.status)) return false;
-  return getSellerComplianceGaps(
-    { ...store, status: store.status ?? undefined } as Parameters<typeof getSellerComplianceGaps>[0],
-    payout ?? null,
-    docs ?? []
-  ).length === 0;
+  return isOperationalStoreStatus(store.status);
 }
 
 /** Approved/active stores — used for home, search, and product browse rails. */
@@ -54,59 +50,18 @@ export async function getBrowsableStoreIds(): Promise<Set<string>> {
   return new Set((stores ?? []).map((s) => s.id));
 }
 
-/** Operational stores with complete, approved compliance — used at cart/checkout. */
+/** Approved/active stores — used at cart/checkout. */
 export async function getCatalogVisibleStoreIds(): Promise<Set<string>> {
-  try {
-    const { data, error } = await supabase.rpc("get_catalog_visible_store_ids");
-    if (!error && Array.isArray(data)) {
-      return new Set((data as string[]).filter(Boolean));
-    }
-  } catch {
-    // Fall through to direct query (e.g. before migration is applied).
-  }
-
   const { data: stores } = await supabase
     .from("stores")
-    .select("id, status, legal_name, tax_id")
+    .select("id, status")
     .in("status", [...BROWSABLE_STORE_DB_STATUSES]);
 
-  const rows = (stores ?? []) as StoreComplianceRow[];
-  if (!rows.length) return new Set();
-
-  const ids = rows.map((s) => s.id);
-  const [{ data: payouts }, { data: docs }] = await Promise.all([
-    supabase
-      .from("payout_settings")
-      .select("store_id, bank_name, account_name, account_number_last4, tax_form_submitted")
-      .in("store_id", ids),
-    supabase
-      .from("store_compliance_documents")
-      .select("store_id, doc_type, file_url, file_name, status")
-      .in("store_id", ids),
-  ]);
-
-  const payoutByStore = new Map(
-    ((payouts ?? []) as (SellerPayoutCompliance & { store_id: string })[]).map((p) => [
-      p.store_id,
-      p,
-    ])
+  return new Set(
+    ((stores ?? []) as StoreComplianceRow[])
+      .filter((store) => isStoreCatalogVisible(store))
+      .map((store) => store.id),
   );
-  const docsByStore = new Map<string, SellerComplianceDocument[]>();
-  for (const row of (docs ?? []) as (SellerComplianceDocument & { store_id: string })[]) {
-    const list = docsByStore.get(row.store_id) ?? [];
-    list.push(row);
-    docsByStore.set(row.store_id, list);
-  }
-
-  const visible = new Set<string>();
-  for (const store of rows) {
-    const payout = payoutByStore.get(store.id);
-    const { store_id: _sid, ...payoutFields } = payout ?? { store_id: store.id };
-    if (isStoreCatalogVisible(store, payout ? payoutFields : null, docsByStore.get(store.id) ?? [])) {
-      visible.add(store.id);
-    }
-  }
-  return visible;
 }
 
 /** @deprecated Use getBrowsableStoreIds */

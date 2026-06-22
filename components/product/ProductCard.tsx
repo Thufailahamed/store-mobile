@@ -1,7 +1,7 @@
 import { View, TouchableOpacity, StyleSheet, Dimensions, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useCart, useWishlist } from "@/lib/stores";
 import { Label, Price, Body } from "@/components/ui/Typography";
 import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens";

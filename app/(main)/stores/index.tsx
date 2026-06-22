@@ -10,7 +10,7 @@ import {
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { Card } from "@/components/ui";
 import { Body, Display, Label } from "@/components/ui/Typography";

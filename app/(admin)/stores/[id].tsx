@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import {
   getAdminStoreDetail,
   approveStore,
@@ -223,13 +223,13 @@ export default function AdminStoreDetail() {
       <Card style={styles.section}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Compliance</Text>
-          <Badge variant={complianceComplete ? "default" : "destructive"}>
+          <Badge variant={complianceComplete ? "default" : "secondary"}>
             {complianceComplete ? "Complete" : `${complianceGaps.length} missing`}
           </Badge>
         </View>
         {!complianceComplete ? (
           <Text style={styles.warning}>
-            Approval requires: {complianceGaps.join(", ")}
+            Optional onboarding details — not required for approval. Seller can complete these after approval to unlock tools and checkout.
           </Text>
         ) : null}
         <View style={styles.complianceList}>
@@ -296,7 +296,7 @@ export default function AdminStoreDetail() {
                 variant="brand"
                 size="sm"
                 loading={approveM.isPending}
-                disabled={busy || !complianceComplete}
+                disabled={busy}
                 onPress={() =>
                   confirm("Approve store", `Approve "${s.name}"?`, () => approveM.mutate())
                 }
@@ -336,15 +336,9 @@ export default function AdminStoreDetail() {
               variant="brand"
               size="sm"
               loading={approveM.isPending}
-              disabled={busy || !complianceComplete}
+              disabled={busy}
               onPress={() =>
-                confirm(
-                  "Re-approve store",
-                  complianceComplete
-                    ? `Re-approve "${s.name}" after compliance review?`
-                    : "Compliance must be complete before re-approval.",
-                  () => approveM.mutate()
-                )
+                confirm("Re-approve store", `Re-approve "${s.name}"?`, () => approveM.mutate())
               }
             >
               Re-approve
@@ -355,24 +349,15 @@ export default function AdminStoreDetail() {
               variant="brand"
               size="sm"
               loading={reactivateM.isPending}
-              disabled={busy || !complianceComplete}
+              disabled={busy}
               onPress={() =>
-                confirm(
-                  "Reactivate store",
-                  complianceComplete
-                    ? `Reactivate "${s.name}"?`
-                    : "Compliance must be complete before reactivation.",
-                  () => reactivateM.mutate()
-                )
+                confirm("Reactivate store", `Reactivate "${s.name}"?`, () => reactivateM.mutate())
               }
             >
               Reactivate
             </Button>
           ) : null}
         </View>
-        {isPending && !complianceComplete ? (
-          <Text style={styles.hint}>Complete compliance before approving this store.</Text>
-        ) : null}
       </Card>
 
       {(s as any).owner ? (

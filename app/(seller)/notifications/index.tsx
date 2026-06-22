@@ -8,7 +8,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";

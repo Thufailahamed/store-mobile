@@ -8,7 +8,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label } from "@/components/ui/Typography";
 import { ProductCard } from "@/components/product/ProductCard";
 import { colors, spacing } from "@/lib/theme/tokens";

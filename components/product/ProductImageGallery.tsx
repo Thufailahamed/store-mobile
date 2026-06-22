@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { View, StyleSheet, TouchableOpacity, Dimensions, FlatList } from "react-native";
 import { Image } from "expo-image";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Label } from "@/components/ui/Typography";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

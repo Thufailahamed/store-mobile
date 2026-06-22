@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useCart, useWishlist } from "@/lib/stores";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

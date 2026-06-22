@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { HomeSectionHeader } from "./HomeSectionHeader";
 import { HomeProductCard } from "./HomeProductCard";
 import { useTrackEvent } from "@/lib/recommender";
@@ -31,7 +31,6 @@ export function ForYouRail({
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
   const visible = products.filter((p) => !hidden.has(p.id));
-  if (visible.length === 0 && !loading) return null;
 
   const handleRefresh = useCallback(async () => {
     if (!onRefresh) return;
@@ -59,6 +58,8 @@ export function ForYouRail({
     },
     [tracker],
   );
+
+  if (visible.length === 0 && !loading) return null;
 
   const left = (
     <View style={styles.titleBlock}>

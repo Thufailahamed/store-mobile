@@ -10,7 +10,7 @@ import {
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, Stack } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import * as api from "@/lib/api";
 import { pickImage, takePhoto } from "@/lib/upload";
 import { useTrackEvent } from "@/lib/recommender";

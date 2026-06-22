@@ -1,6 +1,6 @@
 import React from "react";
 import { View, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Label } from "@/components/ui/Typography";
 import { COLORS, SIZES, PRICE_BOUNDS, type ProductFilters } from "@/lib/api/facets";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";

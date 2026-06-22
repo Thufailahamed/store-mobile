@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { getAdminDeliveryCompanyDetail, getDeliveryPipelineZones, updateAdminDeliveryCompanyStatus } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton, Button } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";

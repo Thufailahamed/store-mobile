@@ -10,7 +10,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   cancelRoute,

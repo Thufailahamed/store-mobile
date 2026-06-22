@@ -12,7 +12,7 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { pickImage, uploadReviewPhoto } from "@/lib/upload";

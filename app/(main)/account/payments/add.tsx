@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Display } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";

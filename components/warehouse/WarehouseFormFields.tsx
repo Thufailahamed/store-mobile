@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import * as Location from "expo-location";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { AddressMapPicker } from "@/components/address/AddressMapPicker";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { reverseGeocode } from "@/lib/maps";

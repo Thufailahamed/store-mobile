@@ -8,6 +8,7 @@ import {
   reassignDelivery,
 } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
+import { z } from "zod";
 import type { IssueReason } from "@/lib/utils/delivery-format";
 import {
   mapProduct,
@@ -2418,27 +2419,6 @@ async function attachAdminStoreComplianceGaps(
 
 export async function approveStore(storeId: string, status: "approved" | "rejected"): Promise<Result<void>> {
   try {
-    if (status === "approved") {
-      const { data: store, error: storeErr } = await supabase
-        .from("stores")
-        .select("id, status, legal_name, tax_id")
-        .eq("id", storeId)
-        .maybeSingle();
-      if (storeErr) return fail(storeErr.message);
-      if (!store) return fail("Store not found");
-
-      const payoutRes = await getSellerPayoutSettings(storeId);
-      const docsRes = await getSellerComplianceDocuments(storeId);
-      const gaps = getSellerComplianceGaps(
-        store as Store & Record<string, unknown>,
-        payoutRes.ok ? payoutRes.data : null,
-        docsRes.ok ? docsRes.data : null
-      );
-      if (gaps.length > 0) {
-        return fail(`Cannot approve store — missing: ${gaps.join(", ")}`);
-      }
-    }
-
     const { error } = await supabase
       .from("stores")
       .update(
@@ -2734,7 +2714,11 @@ export async function getAdminCoupons(opts: {
 
 export async function createCoupon(c: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
   try {
-    const { data, error } = await supabase.from("coupons").insert(c).select().single();
+    const parsed = CouponCreateSchema.safeParse(c);
+    if (!parsed.success) {
+      return fail(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+    const { data, error } = await supabase.from("coupons").insert(parsed.data).select().single();
     if (error) return fail(error.message);
     return ok(data as AdminCoupon);
   } catch (e: any) {
@@ -3744,6 +3728,37 @@ export async function getReturnByGroupId(
   return ok(res.data.find((r) => r.return_group_id === returnGroupId) ?? null);
 }
 
+/**
+ * Cancel a return from the buyer side. Calls the server-side route
+ * `/api/returns/[id]/cancel` which delegates to the
+ * `cancel_return_by_buyer` RPC (0141) — never write to the
+ * `returns` table from the client.
+ */
+export async function cancelReturn(
+  returnGroupId: string,
+): Promise<Result<{ ok: true; returns: Array<{ id: string; status: string; cancelled_at: string | null }> }>> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) return fail("Not signed in");
+    const res = await fetch(`/api/returns/${returnGroupId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return fail(`cancel failed (${res.status}): ${text.slice(0, 200)}`);
+    }
+    const json = (await res.json()) as { ok: true; returns: Array<{ id: string; status: string; cancelled_at: string | null }> };
+    return ok(json);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to cancel return");
+  }
+}
+
 export interface CreateReturnInput {
   orderId: string;
   reason: string;
@@ -3877,19 +3892,22 @@ export async function decideSellerReturnGroup(
   if (!detail.ok) return detail;
   if (!detail.data) return fail("Return not found");
 
-  const returnIds = detail.data.items.map((i) => i.return_id);
-  if (returnIds.length === 0) return fail("No return items found");
+  const items = detail.data.items;
+  if (items.length === 0) return fail("No return items found");
 
-  if (action === "refund") {
-    const res = await decideSellerReturn(actorUserId, returnIds[0], "refund", {
-      note: opts.note,
-      refundAmount: detail.data.refund_amount,
+  // Per-item loop. The SQL decide_return only inserts a refunds row
+  // for the call's p_return_id (siblings get status mirrored but no
+  // refund row), so we MUST call once per item to issue a refund row
+  // for each order_item. Pre-fix code special-cased "refund" to
+  // returnIds[0], which only issued 1 refund row for the whole group.
+  // Pass the PER-ITEM refund_amount (not the group total) so the
+  // refunds table sums correctly to the buyer-visible total.
+  for (const item of items) {
+    const refundAmount = action === "refund" ? item.refund_amount : undefined;
+    const res = await decideSellerReturn(actorUserId, item.return_id, action, {
+      ...opts,
+      ...(refundAmount !== undefined ? { refundAmount } : {}),
     });
-    return res.ok ? ok(undefined) : res;
-  }
-
-  for (const returnId of returnIds) {
-    const res = await decideSellerReturn(actorUserId, returnId, action, opts);
     if (!res.ok) return res;
   }
   return ok(undefined);
@@ -3971,10 +3989,13 @@ export async function getStoreReviews(storeId: string, opts: {
 
 export async function getStoreCoupons(storeId: string): Promise<Result<AdminCoupon[]>> {
   try {
+    // scope is an enum ('platform'/'store'/'brand'/...), NOT the store
+    // id — previously the filter was .eq("scope", storeId) which
+    // matched nothing useful and returned the full table to the seller.
     const { data, error } = await supabase
       .from("coupons")
       .select("*")
-      .eq("scope", storeId)
+      .or(`store_id.eq.${storeId},scope.eq.platform`)
       .order("created_at", { ascending: false });
     if (error) return fail(error.message);
     return ok((data as AdminCoupon[]) ?? []);
@@ -3983,14 +4004,47 @@ export async function getStoreCoupons(storeId: string): Promise<Result<AdminCoup
   }
 }
 
+const CouponCreateSchema = z.object({
+  code: z.string().min(2).max(40).transform((s) => s.toUpperCase()),
+  type: z.enum(["percentage", "fixed", "free_shipping", "bxgy"]),
+  value: z.number().min(0).default(0),
+  min_order_value: z.number().min(0).default(0),
+  max_discount: z.number().min(0).optional(),
+  usage_limit: z.number().int().min(1).optional(),
+  per_user_limit: z.number().int().min(1).default(1),
+  starts_at: z.string().optional(),
+  expires_at: z.string().optional(),
+  is_active: z.boolean().optional(),
+  // Passthrough fields used by the caller to scope the coupon to a
+  // specific store. They're not validated here because RLS/role
+  // ownership is checked separately in createStoreCoupon.
+  store_id: z.string().optional(),
+  scope: z.string().optional(),
+}).superRefine((v, ctx) => {
+  if (v.type === "percentage" && v.value > 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Percentage coupons cannot exceed 100%" });
+  }
+  if (v.starts_at && v.expires_at) {
+    const s = Date.parse(v.starts_at);
+    const e = Date.parse(v.expires_at);
+    if (Number.isFinite(s) && Number.isFinite(e) && e <= s) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expires_at"], message: "expires_at must be after starts_at" });
+    }
+  }
+});
+
 export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
   try {
-    const storeId = (coupon as { store_id?: string }).store_id ?? coupon.scope;
+    const parsed = CouponCreateSchema.safeParse(coupon);
+    if (!parsed.success) {
+      return fail(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+    const storeId = (parsed.data as { store_id?: string }).store_id ?? parsed.data.scope;
     if (storeId) {
       const guard = await assertSellerCanOperate(storeId);
       if (!guard.ok) return guard;
     }
-    const { data, error } = await supabase.from("coupons").insert(coupon).select().single();
+    const { data, error } = await supabase.from("coupons").insert(parsed.data).select().single();
     if (error) return fail(error.message);
     return ok(data as AdminCoupon);
   } catch (e: any) {

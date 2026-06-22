@@ -9,7 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   getDeliveryCompanyReturns,

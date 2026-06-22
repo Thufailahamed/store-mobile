@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   getNotifications,
@@ -26,6 +26,7 @@ import { useTheme } from "@/lib/hooks/useTheme";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, radii, typography } from "@/lib/theme/tokens";
 import { PaperBackground } from "@/components/layout";
+import { useNotificationsRealtime } from "@/lib/hooks/useNotificationsRealtime";
 
 type NotifFilter = "all" | "messages" | "alerts" | "social" | "saved";
 
@@ -129,6 +130,18 @@ export default function NotificationsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
+  });
+
+  // Live-refresh: a new server-side notification arrives → invalidate
+  // the inbox query so the list + unread badge update without waiting
+  // for a manual pull-to-refresh.
+  useNotificationsRealtime({
+    userId: user?.id,
+    onChange: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    // Also show a local push so the user is alerted even if their
+    // Expo token registration failed upstream. The hook dedupes by
+    // (type, order_id) so we don't spam them.
+    showLocalPush: true,
   });
 
   const notifications = notificationsQuery.data ?? [];

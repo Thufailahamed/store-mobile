@@ -66,7 +66,7 @@ export interface CartStore {
   setCoupon: (code: string | null) => void;
   clear: () => void;
   syncToServer: (userId: string) => Promise<import("@/lib/cart-sync").CartSyncResult>;
-  loadFromServer: (userId: string) => Promise<CartLoadResult>;
+  loadFromServer: (userId: string, options?: { merge?: "login" | "remote" }) => Promise<CartLoadResult>;
   refreshFromServer: (userId: string) => Promise<CartLoadResult>;
   applyReconciliation: (reconciliation: CartReconciliation) => void;
   itemCount: () => number;
@@ -404,7 +404,7 @@ export const useCart = create<CartStore>()(
             return { ok: true, quantityConflicts };
           }
 
-          set({ items: merged, hydrated: true });
+          set({ items: mergedItems, hydrated: true });
           return { ok: true, quantityConflicts };
         } catch (err) {
           console.warn("[cart] load failed:", err);

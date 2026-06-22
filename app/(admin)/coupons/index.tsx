@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, Alert, Modal } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { getAdminCoupons, createCoupon, toggleCoupon } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton, Input, Button } from "@/components/ui";
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";

@@ -11,7 +11,7 @@ import {
   Switch,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import {
   getAdminCategoriesEnriched,
   getCategoryDeleteImpact,

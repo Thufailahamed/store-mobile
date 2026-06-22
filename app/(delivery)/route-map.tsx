@@ -11,7 +11,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useTheme } from "@/lib/theme/provider";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import {

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, StyleSheet, type ViewStyle, type StyleProp } from "react-native";
 import { Image, type ImageContentFit } from "expo-image";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii } from "@/lib/theme/tokens";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 

@@ -26,19 +26,24 @@ const approvedDocs = [
 ];
 
 describe("seller-access", () => {
-  it("allows access when store is approved and compliance is complete", () => {
+  it("allows access when store is approved regardless of bank details", () => {
     const access = getSellerAccessState(baseStore, basePayout, approvedDocs);
     expect(access.canAccessSellerTools).toBe(true);
     expect(access.missingComplianceFields).toEqual([]);
   });
 
-  it("blocks access when documents are pending admin review", () => {
+  it("does not block access when optional documents are pending admin review", () => {
     const access = getSellerAccessState(baseStore, basePayout, [
       { doc_type: "business_registration", file_url: "path", status: "pending" },
       { doc_type: "tax_certificate", file_url: "path2", status: "approved" },
     ]);
-    expect(access.canAccessSellerTools).toBe(false);
-    expect(access.missingComplianceFields.some((g) => g.includes("pending admin review"))).toBe(true);
+    expect(access.canAccessSellerTools).toBe(true);
+  });
+
+  it("does not block access when bank details are missing", () => {
+    const access = getSellerAccessState(baseStore, { ...basePayout, bank_name: null }, approvedDocs);
+    expect(access.canAccessSellerTools).toBe(true);
+    expect(access.missingComplianceFields).toContain("bank name");
   });
 
   it("blocks suspended stores separately from rejected applications", () => {
@@ -53,7 +58,7 @@ describe("seller-access", () => {
     expect(rejected.lockReason).toMatch(/rejected/i);
   });
 
-  it("requires admin-approved documents", () => {
+  it("requires approved document status for optional checklist items", () => {
     expect(
       isComplianceDocumentApproved({ doc_type: "tax_certificate", file_url: "x", status: "pending" })
     ).toBe(false);
@@ -62,23 +67,28 @@ describe("seller-access", () => {
     ).toBe(true);
   });
 
-  it("reports missing business documents in compliance gaps", () => {
+  it("does not treat missing optional documents as mandatory gaps", () => {
     const gaps = getSellerComplianceGaps(baseStore, basePayout, [
       { doc_type: "business_registration", file_url: "path", status: "approved" },
     ]);
-    expect(gaps.some((g) => g.includes("tax certificate"))).toBe(true);
+    expect(gaps).toEqual([]);
   });
 
-  it("reports rejected documents as gaps", () => {
+  it("does not treat rejected optional documents as mandatory gaps", () => {
     const gaps = collectComplianceGaps(baseStore, basePayout, [
       { doc_type: "business_registration", file_url: "path", status: "rejected" },
       ...approvedDocs.slice(1),
     ]);
-    expect(gaps.some((g) => g.includes("rejected"))).toBe(true);
+    expect(gaps).toEqual([]);
   });
 
   it("ignores store status when checking compliance-only gaps", () => {
     const gaps = getSellerComplianceGaps({ ...baseStore, status: "pending" }, basePayout, approvedDocs);
     expect(gaps).toEqual([]);
+  });
+
+  it("reports missing bank details as optional gaps", () => {
+    const gaps = getSellerComplianceGaps(baseStore, { ...basePayout, bank_name: null }, approvedDocs);
+    expect(gaps).toContain("bank name");
   });
 });

@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { pickImage } from "@/lib/upload";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import type { ProductImage } from "@/lib/types";

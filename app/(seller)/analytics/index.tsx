@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getStoreAnalytics } from "@/lib/api";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";

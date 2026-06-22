@@ -2,7 +2,7 @@ import React from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";

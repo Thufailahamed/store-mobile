@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
 import { getSellerAccessState } from "@/lib/seller-access";

@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Pressable, StyleSheet, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Body, Label } from "@/components/ui/Typography";
 import { colors, spacing, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

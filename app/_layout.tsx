@@ -25,7 +25,7 @@ import {
   JetBrainsMono_600SemiBold,
 } from "@expo-google-fonts/jetbrains-mono";
 import * as Linking from "expo-linking";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth, AuthProvider } from "@/lib/supabase/auth";
 import { useSyncStores, useCartRemoteSync, useWishlistRemoteSync } from "@/lib/hooks";
 import { ToastProvider } from "@/components/ui";

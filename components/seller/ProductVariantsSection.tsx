@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 
 export interface VariantDraft {

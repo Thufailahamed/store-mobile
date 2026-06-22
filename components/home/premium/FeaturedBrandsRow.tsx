@@ -3,7 +3,7 @@ import { View, ScrollView, TouchableOpacity, StyleSheet, Text } from "react-nati
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { HomeSectionHeader } from "./HomeSectionHeader";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

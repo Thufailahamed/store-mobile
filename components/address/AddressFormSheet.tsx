@@ -16,7 +16,7 @@ import {
 import * as Location from "expo-location";
 import { useToast } from "@/components/ui";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Body, Display, Label } from "@/components/ui/Typography";
 import { Button } from "@/components/ui/Button";
 import { AddressMapPicker } from "./AddressMapPicker";

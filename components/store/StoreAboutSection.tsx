@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Body, MonoLabel } from "@/components/ui/Typography";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";

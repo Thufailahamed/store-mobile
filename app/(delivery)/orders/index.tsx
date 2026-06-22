@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { getRiderOrders } from "@/lib/api";
 import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
 import { useTheme } from "@/lib/hooks/useTheme";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { typography, radii } from "@/lib/theme/tokens";
 import {
   formatPrice,
@@ -117,10 +118,17 @@ export default function DeliveryOrders() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Deliveries</Text>
-        <Text style={styles.count}>{orders.length} total</Text>
-      </View>
+      <ScreenHeader
+        title="Deliveries"
+        showBack={false}
+        right={
+          <View style={{ justifyContent: "center", height: "100%", paddingRight: 12 }}>
+            <Text style={{ fontSize: typography.fontSizes.sm, color: colors.mutedForeground }}>
+              {orders.length} total
+            </Text>
+          </View>
+        }
+      />
 
       <View style={styles.searchContainer}>
         <TextInput

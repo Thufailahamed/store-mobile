@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label } from "@/components/ui/Typography";
 import { colors, spacing, typography, shadows, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

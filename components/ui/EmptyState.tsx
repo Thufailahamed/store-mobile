@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, type ViewStyle } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 

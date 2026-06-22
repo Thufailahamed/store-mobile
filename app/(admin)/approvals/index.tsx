@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { View, Text, ScrollView, RefreshControl, Pressable, Alert, StyleSheet, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import {
   getAdminPendingApprovals,
   approveStore,

@@ -2,7 +2,7 @@ import React from "react";
 import { View, TouchableOpacity, StyleSheet, Text, Modal, ScrollView, ActivityIndicator, Pressable } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Label, Body, Display } from "@/components/ui/Typography";
 import { LiveTicker } from "./LiveTicker";
 import { useCart, useWishlist } from "@/lib/stores";
@@ -233,10 +233,10 @@ export function AppHeader({
                     >
                       <View style={styles.addressLeft}>
                         <View style={[styles.optionTypeIcon, { backgroundColor: colors.olive[50] }]}>
-                          <Ionicons 
-                            name={a.type === "home" ? "home-outline" : a.type === "work" ? "briefcase-outline" : "location-outline"} 
-                            size={16} 
-                            color={colors.light.primary} 
+                          <Ionicons
+                            name={a.type === "home" ? "home-outline" : a.type === "work" ? "briefcase-outline" : "location-outline"}
+                            size={16}
+                            color={colors.light.primary}
                           />
                         </View>
                         <View style={styles.addressInfo}>
@@ -290,7 +290,11 @@ function HeaderIcon({
 }) {
   return (
     <TouchableOpacity style={styles.iconBtn} onPress={onPress} activeOpacity={0.7}>
-      <Ionicons name={icon} size={22} color={colors.light.foreground} />
+      <Ionicons
+        name={icon}
+        size={22}
+        color={colors.light.foreground}
+      />
       {!!badge && badge > 0 && (
         <View style={styles.badge}>
           <Label style={styles.badgeText}>{badge > 99 ? "99+" : String(badge)}</Label>

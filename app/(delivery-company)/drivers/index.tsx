@@ -12,10 +12,11 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   getDeliveryCompanyDrivers,
@@ -219,17 +220,29 @@ export default function CompanyDriversScreen() {
         title="Drivers"
         showBack={false}
         right={
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <TouchableOpacity onPress={() => setBulkOpen(true)} style={styles.addBtn}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => setBulkOpen(true)}
+              style={styles.addBtn}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Bulk invite drivers"
+            >
               <Ionicons name="people-outline" size={22} color={colors.light.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setInviteOpen(true)} style={styles.addBtn}>
+            <TouchableOpacity
+              onPress={() => setInviteOpen(true)}
+              style={styles.addBtn}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Invite a driver"
+            >
               <Ionicons name="person-add-outline" size={22} color={colors.light.primary} />
             </TouchableOpacity>
           </View>
         }
       />
-      <Text style={styles.subtitle}>
+      <Text style={styles.subtitle} numberOfLines={1}>
         {activeCount} active · {members.length} total
         {invites.length > 0 ? ` · ${invites.length} pending invites` : ""}
       </Text>
@@ -317,7 +330,7 @@ export default function CompanyDriversScreen() {
 
       <Modal visible={inviteOpen} animationType="slide" transparent onRequestClose={() => setInviteOpen(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={styles.modalTitle}>Invite driver</Text>
             <Text style={styles.modalSub}>They will receive an email to join your company.</Text>
             <TextInput
@@ -380,69 +393,75 @@ export default function CompanyDriversScreen() {
 
       <Modal visible={bulkOpen} animationType="slide" transparent onRequestClose={() => setBulkOpen(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={styles.modalTitle}>Bulk invite</Text>
             <Text style={styles.modalSub}>Paste up to 50 emails (comma, space, or newline separated).</Text>
-            <TextInput
-              style={[styles.modalInput, { minHeight: 120, textAlignVertical: "top" }]}
-              placeholder={"a@x.com, b@x.com\nc@x.com"}
-              placeholderTextColor={colors.light.mutedForeground}
-              value={bulkEmails}
-              onChangeText={setBulkEmails}
-              multiline
-              autoCapitalize="none"
-            />
-            <Text style={styles.modalLabel}>{parseBulkEmails(bulkEmails).length} valid emails</Text>
-            <Text style={styles.modalLabel}>Driver type</Text>
-            <View style={styles.typeRow}>
-              {(["pickup", "last_mile", "both"] as const).map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.typeChip, inviteType === t && styles.typeChipActive]}
-                  onPress={() => setInviteType(t)}
-                >
-                  <Text style={[styles.typeChipText, inviteType === t && styles.typeChipTextActive]}>
-                    {t.replace(/_/g, " ")}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {(inviteType === "pickup" || inviteType === "both") && warehouses.length > 0 ? (
-              <>
-                <Text style={styles.modalLabel}>Home warehouse</Text>
-                <View style={styles.typeRow}>
-                  {warehouses.map((w) => (
-                    <TouchableOpacity
-                      key={w.id}
-                      style={[styles.typeChip, inviteWarehouseId === w.id && styles.typeChipActive]}
-                      onPress={() => setInviteWarehouseId(w.id)}
-                    >
-                      <Text style={[styles.typeChipText, inviteWarehouseId === w.id && styles.typeChipTextActive]}>
-                        {w.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            ) : null}
-            <Text style={styles.modalLabel}>Serviceable postal codes (optional)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="00500, 00501"
-              placeholderTextColor={colors.light.mutedForeground}
-              value={bulkPostals}
-              onChangeText={setBulkPostals}
-              autoCapitalize="characters"
-              editable={!bulkInviting}
-            />
-            {bulkInviting && bulkProgress ? (
-              <View style={styles.progressBox}>
-                <ActivityIndicator size="small" color={colors.light.primary} />
-                <Text style={styles.progressText}>
-                  Sending {bulkProgress.done}/{bulkProgress.total}…
-                </Text>
+            <ScrollView
+              style={{ maxHeight: 360 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <TextInput
+                style={[styles.modalInput, { minHeight: 120, textAlignVertical: "top" }]}
+                placeholder={"a@x.com, b@x.com\nc@x.com"}
+                placeholderTextColor={colors.light.mutedForeground}
+                value={bulkEmails}
+                onChangeText={setBulkEmails}
+                multiline
+                autoCapitalize="none"
+              />
+              <Text style={styles.modalLabel}>{parseBulkEmails(bulkEmails).length} valid emails</Text>
+              <Text style={styles.modalLabel}>Driver type</Text>
+              <View style={styles.typeRow}>
+                {(["pickup", "last_mile", "both"] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.typeChip, inviteType === t && styles.typeChipActive]}
+                    onPress={() => setInviteType(t)}
+                  >
+                    <Text style={[styles.typeChipText, inviteType === t && styles.typeChipTextActive]}>
+                      {t.replace(/_/g, " ")}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            ) : null}
+              {(inviteType === "pickup" || inviteType === "both") && warehouses.length > 0 ? (
+                <>
+                  <Text style={styles.modalLabel}>Home warehouse</Text>
+                  <View style={styles.typeRow}>
+                    {warehouses.map((w) => (
+                      <TouchableOpacity
+                        key={w.id}
+                        style={[styles.typeChip, inviteWarehouseId === w.id && styles.typeChipActive]}
+                        onPress={() => setInviteWarehouseId(w.id)}
+                      >
+                        <Text style={[styles.typeChipText, inviteWarehouseId === w.id && styles.typeChipTextActive]}>
+                          {w.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+              <Text style={styles.modalLabel}>Serviceable postal codes (optional)</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="00500, 00501"
+                placeholderTextColor={colors.light.mutedForeground}
+                value={bulkPostals}
+                onChangeText={setBulkPostals}
+                autoCapitalize="characters"
+                editable={!bulkInviting}
+              />
+              {bulkInviting && bulkProgress ? (
+                <View style={styles.progressBox}>
+                  <ActivityIndicator size="small" color={colors.light.primary} />
+                  <Text style={styles.progressText}>
+                    Sending {bulkProgress.done}/{bulkProgress.total}…
+                  </Text>
+                </View>
+              ) : null}
+            </ScrollView>
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => setBulkOpen(false)} disabled={bulkInviting}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -539,20 +558,23 @@ function DriverRow({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
-  addBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  addBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radii.lg },
   subtitle: {
     fontSize: typography.fontSizes.sm,
+    lineHeight: typography.lineHeights.snug * typography.fontSizes.sm,
     color: colors.light.mutedForeground,
     paddingHorizontal: 16,
-    marginBottom: 10,
+    paddingTop: 4,
+    marginBottom: 12,
   },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    minHeight: 44,
     backgroundColor: colors.light.card,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -594,6 +616,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.light.border,
     alignItems: "center",
+    minHeight: 72,
   },
   cardInactive: { opacity: 0.65 },
   avatar: {
@@ -617,15 +640,16 @@ const styles = StyleSheet.create({
   loadBar: { flex: 1, height: 6, backgroundColor: colors.light.muted, borderRadius: radii.full, overflow: "hidden" },
   loadFill: { height: "100%", backgroundColor: colors.light.primary, borderRadius: radii.full },
   loadText: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground },
-  toggleBtn: { padding: 8 },
-  empty: { alignItems: "center", paddingTop: 48, gap: 8 },
-  emptyTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold },
-  emptySub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, textAlign: "center", paddingHorizontal: 32 },
+  toggleBtn: { padding: 10, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  empty: { alignItems: "center", paddingTop: 56, paddingHorizontal: 24, gap: 8 },
+  emptyTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold, marginTop: 4 },
+  emptySub: { fontSize: typography.fontSizes.sm, lineHeight: typography.lineHeights.normal * typography.fontSizes.sm, color: colors.light.mutedForeground, textAlign: "center", marginBottom: 8 },
   emptyBtn: {
-    marginTop: 12,
+    marginTop: 8,
     backgroundColor: colors.light.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    minHeight: 44,
     borderRadius: radii.lg,
   },
   emptyBtnText: { color: "#fff", fontWeight: typography.fontWeights.semibold },
@@ -635,17 +659,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.card,
     borderTopLeftRadius: radii["2xl"],
     borderTopRightRadius: radii["2xl"],
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    maxHeight: "92%",
   },
   modalTitle: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
-  modalSub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4, marginBottom: 16 },
-  modalLabel: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 6, marginTop: 8 },
+  modalSub: { fontSize: typography.fontSizes.sm, lineHeight: typography.lineHeights.normal * typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 4, marginBottom: 16 },
+  modalLabel: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginBottom: 6, marginTop: 12, textTransform: "uppercase", letterSpacing: typography.letterSpacing.wide },
   typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
   typeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 36,
     borderRadius: radii.lg,
     backgroundColor: colors.light.muted,
+    alignItems: "center",
+    justifyContent: "center",
   },
   typeChipActive: { backgroundColor: colors.light.primary },
   typeChipText: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, textTransform: "capitalize" },
@@ -656,6 +685,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     paddingHorizontal: 12,
     paddingVertical: 12,
+    minHeight: 44,
     fontSize: typography.fontSizes.base,
     color: colors.light.foreground,
     backgroundColor: colors.light.background,
@@ -665,7 +695,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginTop: 10,
-    padding: 10,
+    padding: 12,
     backgroundColor: colors.light.muted,
     borderRadius: radii.lg,
   },
@@ -674,20 +704,24 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
     fontWeight: typography.fontWeights.medium,
   },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 20, paddingBottom: 20 },
   progressInline: { flexDirection: "row", alignItems: "center", gap: 8 },
   modalCancel: {
     flex: 1,
     paddingVertical: 12,
+    minHeight: 48,
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: radii.lg,
     backgroundColor: colors.light.muted,
   },
-  modalCancelText: { fontWeight: typography.fontWeights.semibold },
+  modalCancelText: { fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
   modalSave: {
     flex: 1,
     paddingVertical: 12,
+    minHeight: 48,
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: radii.lg,
     backgroundColor: colors.light.primary,
   },

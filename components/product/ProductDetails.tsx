@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";

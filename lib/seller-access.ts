@@ -16,10 +16,13 @@ export interface SellerComplianceDocument {
   status?: "pending" | "approved" | "rejected" | string;
 }
 
-export const REQUIRED_COMPLIANCE_DOC_TYPES: { type: ComplianceDocType; label: string }[] = [
+export const OPTIONAL_COMPLIANCE_DOC_TYPES: { type: ComplianceDocType; label: string }[] = [
   { type: "business_registration", label: "business registration document" },
   { type: "tax_certificate", label: "tax certificate" },
 ];
+
+/** @deprecated Use OPTIONAL_COMPLIANCE_DOC_TYPES */
+export const REQUIRED_COMPLIANCE_DOC_TYPES = OPTIONAL_COMPLIANCE_DOC_TYPES;
 
 type StoreLike = Partial<Store> & Record<string, unknown>;
 
@@ -34,11 +37,6 @@ export interface SellerAccessState {
   canAccessSellerTools: boolean;
   lockReason: string | null;
 }
-
-const STORE_FIELDS: { key: string; label: string }[] = [
-  { key: "legal_name", label: "legal name" },
-  { key: "tax_id", label: "tax ID" },
-];
 
 const BANK_FIELDS: { key: keyof SellerPayoutCompliance; label: string }[] = [
   { key: "bank_name", label: "bank name" },
@@ -61,40 +59,23 @@ export function isComplianceDocumentApproved(
   return Boolean(doc?.file_url?.trim()) && String(doc?.status ?? "").toLowerCase() === "approved";
 }
 
-function complianceDocumentGap(
-  doc: SellerComplianceDocument | undefined,
-  label: string
-): string | null {
-  if (!doc?.file_url?.trim()) return label;
-  const status = String(doc.status ?? "pending").toLowerCase();
-  if (status === "rejected") return `${label} (rejected — re-upload required)`;
-  if (status !== "approved") return `${label} (pending admin review)`;
-  return null;
+/** Blocking gaps — none; compliance never gates seller tools or catalog. */
+export function collectComplianceGaps(
+  _store?: StoreLike | null | undefined,
+  _payout?: SellerPayoutCompliance | null,
+  _docs?: SellerComplianceDocument[] | null
+): string[] {
+  return [];
 }
 
-export function collectComplianceGaps(
+/** Informational gaps for admin/onboarding — all fields are optional. */
+export function collectOptionalComplianceGaps(
   store: StoreLike | null | undefined,
   payout?: SellerPayoutCompliance | null,
-  docs?: SellerComplianceDocument[] | null
+  _docs?: SellerComplianceDocument[] | null
 ): string[] {
   if (!store) return [];
-
-  const missing: string[] = [
-    ...STORE_FIELDS.filter((field) => !hasValue(store[field.key])).map((field) => field.label),
-    ...BANK_FIELDS.filter((field) => !hasValue(payout?.[field.key])).map((field) => field.label),
-  ];
-
-  if (!hasValue(payout?.tax_form_submitted)) {
-    missing.push("tax declaration");
-  }
-
-  const docByType = new Map((docs ?? []).map((d) => [d.doc_type, d]));
-  for (const required of REQUIRED_COMPLIANCE_DOC_TYPES) {
-    const gap = complianceDocumentGap(docByType.get(required.type), required.label);
-    if (gap) missing.push(gap);
-  }
-
-  return missing;
+  return BANK_FIELDS.filter((field) => !hasValue(payout?.[field.key])).map((field) => field.label);
 }
 
 export function getSellerAccessState(
@@ -122,10 +103,9 @@ export function getSellerAccessState(
   const isRejected = status === "rejected";
   const isSuspended = status === "suspended" || status === "banned";
 
-  const missingComplianceFields = collectComplianceGaps(store, payout, docs);
+  const missingComplianceFields = collectOptionalComplianceGaps(store, payout, docs);
 
-  const canAccessSellerTools =
-    isApproved && !isRejected && !isSuspended && missingComplianceFields.length === 0;
+  const canAccessSellerTools = isApproved && !isRejected && !isSuspended;
 
   let lockReason: string | null = null;
   if (isSuspended) {
@@ -136,8 +116,6 @@ export function getSellerAccessState(
     lockReason = "Your store is pending admin approval.";
   } else if (!isApproved) {
     lockReason = "Your store is not active yet.";
-  } else if (missingComplianceFields.length > 0) {
-    lockReason = `Complete compliance details: ${missingComplianceFields.join(", ")}.`;
   }
 
   return {
@@ -159,5 +137,5 @@ export function getSellerComplianceGaps(
   docs?: SellerComplianceDocument[] | null
 ): string[] {
   if (!store) return [];
-  return collectComplianceGaps({ ...store, status: "approved" }, payout, docs);
+  return collectOptionalComplianceGaps({ ...store, status: "approved" }, payout, docs);
 }

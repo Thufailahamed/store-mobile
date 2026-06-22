@@ -10,7 +10,8 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getRiderOrders, getRiderPickupRuns, riderStartDelivery } from "@/lib/api";
 import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
@@ -34,6 +35,7 @@ const REFRESH_INTERVAL_MS = 30_000;
 
 export default function DeliveryDashboard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors);
@@ -139,7 +141,7 @@ export default function DeliveryDashboard() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       {/* Hero */}
-      <View style={styles.hero}>
+      <View style={[styles.hero, { paddingTop: insets.top + 16 }]}>
         <View style={styles.heroTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroDate}>

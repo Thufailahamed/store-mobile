@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/lib/supabase/auth";
 import { getRiderHistory } from "@/lib/api";
 import { useTheme } from "@/lib/hooks/useTheme";
+import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import { typography, radii } from "@/lib/theme/tokens";
 import { formatPrice, formatDateShort as formatDate, STATUS_COLORS } from "@/lib/utils/delivery-format";
 import type { Order } from "@/lib/types";
@@ -99,9 +100,7 @@ export default function DeliveryHistory() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Delivery History</Text>
-      </View>
+      <ScreenHeader title="Delivery History" showBack={false} />
 
       <View style={styles.statsRow}>
         <View style={[styles.statCard, styles.statDelivered]}>

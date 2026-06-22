@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { FilterSheet } from "@/components/search/FilterSheet";
 import { QuickRefine } from "@/components/search/QuickRefine";

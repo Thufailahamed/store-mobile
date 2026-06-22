@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, type ViewStyle } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";

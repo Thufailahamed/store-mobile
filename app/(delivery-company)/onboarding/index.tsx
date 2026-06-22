@@ -12,7 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";

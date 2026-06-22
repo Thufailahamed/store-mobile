@@ -1,7 +1,7 @@
 import React from "react";
 import { TouchableOpacity, StyleSheet, type ViewStyle, type StyleProp } from "react-native";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { navigateHome } from "@/lib/navigation";
 import { colors, radii } from "@/lib/theme/tokens";
 

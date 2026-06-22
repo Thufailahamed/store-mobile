@@ -2,9 +2,10 @@ import React from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display } from "@/components/ui/Typography";
-import { colors, radii } from "@/lib/theme/tokens";
+import { useTheme } from "@/lib/hooks/useTheme";
+import { radii } from "@/lib/theme/tokens";
 import { navigateHome } from "@/lib/navigation";
 
 interface ScreenHeaderProps {
@@ -24,6 +25,7 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   const handleBack = () => {
     if (onBack) {
@@ -38,20 +40,20 @@ export function ScreenHeader({
   };
 
   return (
-    <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.bar, { paddingTop: insets.top + 8, borderBottomColor: colors.border, backgroundColor: colors.card }]}>
       {showBack ? (
         <TouchableOpacity
           style={styles.iconBtn}
           onPress={handleBack}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
+          <Ionicons name="chevron-back" size={22} color={colors.foreground} />
         </TouchableOpacity>
       ) : (
         <View style={styles.iconBtn} />
       )}
       {title ? (
-        <Display size="lg" style={styles.title} numberOfLines={1}>
+        <Display size="lg" style={[styles.title, { color: colors.foreground }]} numberOfLines={1}>
           {title}
         </Display>
       ) : (
@@ -70,8 +72,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     minHeight: 56,
     borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
-    backgroundColor: colors.light.card,
   },
   iconBtn: {
     width: 40,

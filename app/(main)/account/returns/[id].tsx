@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
 import { Badge } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
-import { getReturnByGroupId, type MobileReturnRequest } from "@/lib/api";
+import { cancelReturn, getReturnByGroupId, type MobileReturnRequest } from "@/lib/api";
 import { type ReturnStatus } from "@/lib/account-local";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -59,6 +59,45 @@ export default function ReturnDetailScreen() {
   const { user } = useAuth();
   const [returnReq, setReturnReq] = useState<MobileReturnRequest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+
+  /**
+   * Mobile parity with web: the buyer can cancel a return as long as
+   * the seller hasn't received the items yet. Calls
+   * /api/returns/[id]/cancel → cancel_return_by_buyer (0141) so the
+   * cancel logic can't be bypassed via a direct UPDATE.
+   */
+  async function handleCancel() {
+    if (!returnReq) return;
+    if (returnReq.status !== "requested" && returnReq.status !== "approved") return;
+    Alert.alert(
+      "Cancel return?",
+      "This will close the return request. The seller will be notified.",
+      [
+        { text: "Keep return", style: "cancel" },
+        {
+          text: "Cancel return",
+          style: "destructive",
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              const res = await cancelReturn(returnReq.return_group_id);
+              if (!res.ok) {
+                Alert.alert("Couldn't cancel", res.error ?? "Please try again.");
+                return;
+              }
+              // Refresh the local view so the status pill flips to "rejected".
+              setReturnReq((prev) =>
+                prev ? { ...prev, status: "rejected" as const } : prev
+              );
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ],
+    );
+  }
 
   useEffect(() => {
     if (!user?.id || !id) return;
@@ -191,6 +230,20 @@ export default function ReturnDetailScreen() {
             </View>
             <Body size="sm" style={styles.noteBody}>{returnReq.seller_note}</Body>
           </View>
+        )}
+
+        {(returnReq.status === "requested" || returnReq.status === "approved") && (
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={handleCancel}
+            disabled={cancelling}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="close-circle-outline" size={16} color={colors.light.destructive} />
+            <Label style={styles.cancelBtnText}>
+              {cancelling ? "Cancelling…" : "Cancel return"}
+            </Label>
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity
@@ -341,6 +394,23 @@ const styles = StyleSheet.create({
   },
   supportBtnText: {
     color: colors.olive[950],
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: typography.fontSizes.sm,
+  },
+  cancelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    paddingVertical: spacing[3],
+    borderWidth: 1,
+    borderColor: colors.light.destructive,
+    marginBottom: spacing[3],
+  },
+  cancelBtnText: {
+    color: colors.light.destructive,
     fontFamily: fontFamilies.mono.medium,
     fontSize: typography.fontSizes.sm,
   },

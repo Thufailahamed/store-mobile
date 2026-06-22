@@ -1,6 +1,6 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, typography } from "@/lib/theme/tokens";
 
 export default function BrandLayout() {

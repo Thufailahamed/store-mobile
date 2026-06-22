@@ -8,7 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";
 import { useTheme } from "@/lib/hooks/useTheme";

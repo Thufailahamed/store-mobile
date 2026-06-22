@@ -13,7 +13,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground, ScreenHeader } from "@/components/layout";
 import { Skeleton } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
