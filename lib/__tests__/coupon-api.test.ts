@@ -13,12 +13,11 @@ const root = join(__dirname, "../..");
 describe("mobile coupon API — getStoreCoupons", () => {
   const api = readFileSync(join(root, "lib/api/index.ts"), "utf8");
 
-  it("filters by store_id, not by the scope enum (no-op fix)", () => {
-    // Pre-fix: `.eq("scope", storeId)` — compared the enum text to a
-    // UUID, returning every coupon in the system.
+  it("delegates to the backend API instead of querying coupons directly", () => {
+    // Pre-migration: used `from("coupons")` with `.eq("scope", storeId)` or
+    // `.or(...)`. Post-migration: delegates to B.getStoreCouponsBackend().
     expect(api).not.toMatch(/from\("coupons"\)[\s\S]{0,200}\.eq\("scope", storeId\)/);
-    // Post-fix: matches the web admin's filter pattern.
-    expect(api).toMatch(/from\("coupons"\)[\s\S]{0,500}\.or\(`store_id\.eq\.\$\{storeId\},scope\.eq\.platform`\)/);
+    expect(api).toMatch(/getStoreCouponsBackend/);
   });
 });
 

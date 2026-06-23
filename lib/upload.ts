@@ -5,6 +5,7 @@ import { Alert } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import Constants from "expo-constants";
 import { assertSellerCanOperate } from "@/lib/api";
+import { addProductImageBackend } from "@/lib/api/backend";
 import type { ComplianceDocType } from "@/lib/seller-access";
 
 export interface UploadResult {
@@ -338,14 +339,13 @@ export async function uploadProductImage(
     });
     if (uploaded.error || !uploaded.url) return uploaded;
 
-    const { error: insertError } = await supabase.from("product_images").insert({
-      product_id: productId,
+    const res = await addProductImageBackend(productId, {
       url: uploaded.url,
       position,
       is_primary: isPrimary,
       media_type: "image",
     });
-    if (insertError) return { url: "", error: insertError.message };
+    if (!res.ok) return { url: "", error: res.error || "image insert failed" };
 
     return uploaded;
   } catch (e: any) {

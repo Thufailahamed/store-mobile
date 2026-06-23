@@ -13,25 +13,50 @@
 
 import { supabase } from "@/lib/supabase/client";
 
-const STORE_API_URL = (process.env.EXPO_PUBLIC_STORE_API_URL ?? "").replace(/\/$/, "");
+import Constants from "expo-constants";
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-export async function getAccessToken(): Promise<string | null> {
-  try {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
-  } catch {
-    return null;
-  }
+let cachedToken: string | null = null;
+let tokenInitialized = false;
+let initPromise: Promise<string | null> | null = null;
+
+async function initTokenCache(): Promise<string | null> {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      cachedToken = data.session?.access_token ?? null;
+      // Keep in-memory cache updated with any auth transitions
+      supabase.auth.onAuthStateChange((_event, session) => {
+        cachedToken = session?.access_token ?? null;
+      });
+      tokenInitialized = true;
+      return cachedToken;
+    } catch {
+      return null;
+    } finally {
+      initPromise = null;
+    }
+  })();
+  return initPromise;
 }
 
-export async function hasStoreApi(): Promise<boolean> {
-  return STORE_API_URL.length > 0;
+export async function getAccessToken(): Promise<string | null> {
+  if (tokenInitialized) {
+    return cachedToken;
+  }
+  return initTokenCache();
 }
 
 export function getStoreApiUrl(): string {
-  return STORE_API_URL;
+  const envUrl = process.env.EXPO_PUBLIC_STORE_API_URL;
+  const extraUrl = Constants.expoConfig?.extra?.storeApiUrl as string | undefined;
+  return (envUrl || extraUrl || "").replace(/\/$/, "");
+}
+
+export async function hasStoreApi(): Promise<boolean> {
+  return getStoreApiUrl().length > 0;
 }
 
 export interface FetchOpts {
@@ -61,15 +86,16 @@ export async function fetchJson<T = unknown>(
   path: string,
   opts: FetchOpts = {},
 ): Promise<ApiResult<T>> {
-  if (!STORE_API_URL) {
+  const storeApiUrl = getStoreApiUrl();
+  if (!storeApiUrl) {
     return { ok: false, error: "EXPO_PUBLIC_STORE_API_URL is not configured" };
   }
   const requireAuth = opts.requireAuth ?? true;
-  const token = await getAccessToken();
+  const token = requireAuth ? await getAccessToken() : null;
   if (requireAuth && !token) {
     return { ok: false, error: "Not signed in" };
   }
-  const url = `${STORE_API_URL}${path.startsWith("/") ? "" : "/"}${path}${buildQuery(opts.query)}`;
+  const url = `${storeApiUrl}${path.startsWith("/") ? "" : "/"}${path}${buildQuery(opts.query)}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
   try {

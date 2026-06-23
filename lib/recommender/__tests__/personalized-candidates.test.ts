@@ -2,22 +2,30 @@
  * Personalized candidate puller tests.
  *
  * Validates the 50/50 split between affinity categories (from
- * get_user_top_categories RPC) and the general top-sellers pool, and
+ * getUserTopCategoriesBackend) and the general top-sellers pool, and
  * the fall-back paths.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { rpcMock, fromMock } = vi.hoisted(() => {
-  const rpcMock = vi.fn();
+const { getUserTopCategoriesBackendMock, fromMock } = vi.hoisted(() => {
+  const getUserTopCategoriesBackendMock = vi.fn();
   const fromMock = vi.fn();
-  return { rpcMock, fromMock };
+  return { getUserTopCategoriesBackendMock, fromMock };
+});
+
+vi.mock("@/lib/api/backend", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/backend")>();
+  return {
+    ...actual,
+    getUserTopCategoriesBackend: getUserTopCategoriesBackendMock,
+  };
 });
 
 vi.mock("@/lib/supabase/client", () => ({
   supabase: {
-    rpc: rpcMock,
-    from: fromMock,
+    rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
+    from: (...args: any[]) => fromMock(...args),
   },
 }));
 
@@ -88,27 +96,35 @@ describe("pullPersonalizedCandidates", () => {
     expect(out.map((p) => p.id)).toEqual(["g1"]);
   });
 
-  it("uses the general pool when the top-categories RPC returns no rows", async () => {
-    rpcMock.mockResolvedValueOnce({ data: [], error: null });
+  it("uses the general pool when the top-categories backend returns no rows", async () => {
+    getUserTopCategoriesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: { categories: [] },
+    });
     mockProductQuery([product({ id: "g1" })]);
     const out = await pullPersonalizedCandidates("user-1", 10);
     expect(out.map((p) => p.id)).toEqual(["g1"]);
   });
 
-  it("uses the general pool when the top-categories RPC errors", async () => {
-    rpcMock.mockResolvedValueOnce({ data: null, error: { message: "boom" } });
+  it("uses the general pool when the top-categories backend errors", async () => {
+    getUserTopCategoriesBackendMock.mockResolvedValueOnce({
+      ok: false,
+      error: "boom",
+    });
     mockProductQuery([product({ id: "g1" })]);
     const out = await pullPersonalizedCandidates("user-1", 10);
     expect(out.map((p) => p.id)).toEqual(["g1"]);
   });
 
   it("queries top categories + product pools when signal exists", async () => {
-    rpcMock.mockResolvedValueOnce({
-      data: [
-        { category_id: "shirts", weight: 12 },
-        { category_id: "jeans", weight: 8 },
-      ],
-      error: null,
+    getUserTopCategoriesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        categories: [
+          { category_id: "shirts", score: 12 },
+          { category_id: "jeans", score: 8 },
+        ],
+      },
     });
     const aff = product({ id: "shirt-1", category_id: "shirts" });
     const gen = product({ id: "general-1" });
@@ -128,18 +144,15 @@ describe("pullPersonalizedCandidates", () => {
     });
 
     const out = await pullPersonalizedCandidates("user-1", 10);
-    expect(rpcMock).toHaveBeenCalledWith("get_user_top_categories", {
-      p_user_id: "user-1",
-      p_limit: 2,
-    });
+    expect(getUserTopCategoriesBackendMock).toHaveBeenCalledWith(2);
     expect(out.find((p) => p.id === "shirt-1")).toBeTruthy();
     expect(out.find((p) => p.id === "general-1")).toBeTruthy();
   });
 
   it("dedupes products that appear in both affinity and general pools", async () => {
-    rpcMock.mockResolvedValueOnce({
-      data: [{ category_id: "shirts", weight: 5 }],
-      error: null,
+    getUserTopCategoriesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: { categories: [{ category_id: "shirts", score: 5 }] },
     });
     const shared = product({ id: "shared", category_id: "shirts" });
     // Both .from() calls return [shared]. After merge, list should have
@@ -158,21 +171,11 @@ describe("pullPersonalizedCandidates", () => {
   });
 
   it("falls back to general pool when affinity branch returns nothing", async () => {
-    rpcMock.mockResolvedValueOnce({
-      data: [{ category_id: "shirts", weight: 5 }],
-      error: null,
+    getUserTopCategoriesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: { categories: [{ category_id: "shirts", score: 5 }] },
     });
     const gen = product({ id: "general-1" });
-    fromMock.mockImplementation(() => {
-      const chain: any = {
-        then: (resolve: (v: any) => void) =>
-          resolve({ data: [gen], error: null }),
-      };
-      for (const key of ["select", "eq", "neq", "in", "order", "limit"]) {
-        chain[key] = vi.fn(() => chain);
-      }
-      return chain;
-    });
     // To force affinity branch to return empty, override: first from() = []
     // second from() = [gen].
     let callIndex = 0;

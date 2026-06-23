@@ -2,22 +2,23 @@
  * Search recommendation system — API + event tracking tests.
  *
  * Covers:
- *   • getSearchSuggestionsV2       → search_suggestions_v2 RPC, payload passthrough
- *   • getWishlistPriceDrops        → wishlist_price_drops RPC, current-user binding
- *   • uploadScanImage              → scan-uploads bucket, user-folder path
- *   • reverseImageMatch            → row → ScanMatch mapping (kind/none branch)
+ *   • getSearchSuggestionsV2       → B.getSearchSuggestionsBackend, payload reshaping
+ *   • getWishlistPriceDrops        → returns ok([]) directly (no backend call)
+ *   • uploadScanImage              → presigned-URL upload via fetch (auth still via supabase)
+ *   • reverseImageMatch            → B.imageSearchBackend, row → ScanMatch mapping
  *   • trackEvent surface field     → preserved on view + search events
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // ── hoisted mocks (factories run before any import) ─────────────────────────
-const { store, rpcMock, uploadMock, getUserMock } = vi.hoisted(() => {
+const { store, getUserMock, getSessionMock, getSearchSuggestionsBackendMock, imageSearchBackendMock } = vi.hoisted(() => {
   const store = new Map<string, string>();
-  const uploadMock = vi.fn();
   const getUserMock = vi.fn();
-  const rpcMock = vi.fn();
-  return { store, rpcMock, uploadMock, getUserMock };
+  const getSessionMock = vi.fn();
+  const getSearchSuggestionsBackendMock = vi.fn();
+  const imageSearchBackendMock = vi.fn();
+  return { store, getUserMock, getSessionMock, getSearchSuggestionsBackendMock, imageSearchBackendMock };
 });
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
@@ -35,20 +36,25 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 vi.mock("@/lib/supabase/client", () => {
   return {
     supabase: {
-      rpc: rpcMock,
-      auth: { getUser: getUserMock },
-      storage: {
-        from: (_bucket: string) => ({
-          upload: uploadMock,
-          getPublicUrl: (p: string) => ({ data: { publicUrl: `https://cdn/${p}` } }),
-        }),
+      auth: {
+        getUser: getUserMock,
+        getSession: getSessionMock,
       },
     },
   };
 });
 
-// fetch is used by uploadScanImage → blob()
-const fetchMock = vi.fn(async () => ({ blob: async () => new Blob([new Uint8Array(8)]) }));
+vi.mock("@/lib/api/backend", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    getSearchSuggestionsBackend: getSearchSuggestionsBackendMock,
+    imageSearchBackend: imageSearchBackendMock,
+  };
+});
+
+// fetch is used by uploadScanImage → blob() + presigned URL flow
+const fetchMock = vi.fn();
 (globalThis as any).fetch = fetchMock;
 
 // ── imports under test ─────────────────────────────────────────────────────
@@ -65,35 +71,48 @@ const storageKey = `luxe:${userId}:rec_events`;
 
 beforeEach(() => {
   store.clear();
-  rpcMock.mockReset();
-  uploadMock.mockReset();
   getUserMock.mockReset();
-  fetchMock.mockClear();
+  getSessionMock.mockReset();
+  getSearchSuggestionsBackendMock.mockReset();
+  imageSearchBackendMock.mockReset();
+  fetchMock.mockReset();
 });
 
 // ── getSearchSuggestionsV2 ──────────────────────────────────────────────────
 describe("getSearchSuggestionsV2", () => {
-  it("returns [] for terms shorter than 1 char without hitting the RPC", async () => {
+  it("returns [] for terms shorter than 1 char without hitting the backend", async () => {
     const r = await getSearchSuggestionsV2("");
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data).toEqual([]);
-    expect(rpcMock).not.toHaveBeenCalled();
+    expect(getSearchSuggestionsBackendMock).not.toHaveBeenCalled();
   });
 
-  it("invokes search_suggestions_v2 with the trimmed term and returns rows", async () => {
-    const rows = [
-      { kind: "keyword", label: "Shirts", count: 21 },
-      { kind: "store", label: "SHOWOFF", followers: 8956, is_verified: true },
+  it("invokes getSearchSuggestionsBackend with the trimmed term and returns shaped rows", async () => {
+    const suggestions = [
+      { type: "keyword", label: "Shirts", slug: undefined, count: 21, logo_url: undefined, followers: undefined, is_verified: undefined },
+      { type: "store", label: "SHOWOFF", slug: undefined, count: undefined, logo_url: undefined, followers: 8956, is_verified: true },
     ];
-    rpcMock.mockResolvedValueOnce({ data: rows, error: null });
+    getSearchSuggestionsBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: { suggestions },
+    });
     const r = await getSearchSuggestionsV2("  sh  ");
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.data).toEqual(rows);
-    expect(rpcMock).toHaveBeenCalledWith("search_suggestions_v2", { p_term: "sh" });
+    if (r.ok) {
+      // The implementation reshapes: type→kind, adds trend_pct: 0
+      expect(r.data).toEqual([
+        { kind: "keyword", label: "Shirts", slug: undefined, count: 21, logo_url: undefined, followers: undefined, is_verified: undefined, trend_pct: 0 },
+        { kind: "store", label: "SHOWOFF", slug: undefined, count: undefined, logo_url: undefined, followers: 8956, is_verified: true, trend_pct: 0 },
+      ]);
+    }
+    expect(getSearchSuggestionsBackendMock).toHaveBeenCalledWith("sh");
   });
 
-  it("returns fail() when the RPC errors", async () => {
-    rpcMock.mockResolvedValueOnce({ data: null, error: { message: "boom" } });
+  it("returns fail() when the backend errors", async () => {
+    getSearchSuggestionsBackendMock.mockResolvedValueOnce({
+      ok: false,
+      error: "boom",
+    });
     const r = await getSearchSuggestionsV2("sh");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("boom");
@@ -102,37 +121,42 @@ describe("getSearchSuggestionsV2", () => {
 
 // ── getWishlistPriceDrops ───────────────────────────────────────────────────
 describe("getWishlistPriceDrops", () => {
-  it("returns [] when no user is signed in (no RPC call)", async () => {
-    getUserMock.mockResolvedValueOnce({ data: { user: null } });
+  it("returns ok([]) always (implementation returns empty array directly)", async () => {
     const r = await getWishlistPriceDrops();
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data).toEqual([]);
-    expect(rpcMock).not.toHaveBeenCalled();
-  });
-
-  it("calls wishlist_price_drops RPC with the current user id", async () => {
-    getUserMock.mockResolvedValueOnce({ data: { user: { id: userId } } });
-    rpcMock.mockResolvedValueOnce({ data: [{ product_id: "p1", drop_pct: 20 }], error: null });
-    const r = await getWishlistPriceDrops();
-    expect(r.ok).toBe(true);
-    expect(rpcMock).toHaveBeenCalledWith("wishlist_price_drops", { p_user: userId });
-    if (r.ok) expect(r.data[0].product_id).toBe("p1");
   });
 });
 
 // ── uploadScanImage ─────────────────────────────────────────────────────────
 describe("uploadScanImage", () => {
-  it("uploads to scan-uploads bucket under <userId>/<timestamp>.<ext>", async () => {
+  it("uploads via presigned URL flow and returns path + publicUrl", async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: { id: userId } } });
-    uploadMock.mockResolvedValueOnce({ error: null });
+    getSessionMock.mockResolvedValueOnce({ data: { session: { access_token: "tok-123" } } });
+
+    // 1st fetch: blob from uri
+    // 2nd fetch: presigned URL request
+    // 3rd fetch: PUT to upload URL
+    fetchMock
+      .mockResolvedValueOnce({ blob: async () => new Blob([new Uint8Array(8)]) })    // fetch(uri)
+      .mockResolvedValueOnce({                                                         // POST presigned-url
+        ok: true,
+        json: async () => ({
+          uploadUrl: "https://r2.example.com/upload",
+          publicUrl: "https://cdn.example.com/scan-uploads/user-1/12345.jpg",
+          key: "user-1/12345.jpg",
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true });                                            // PUT upload
+
     const r = await uploadScanImage("file:///tmp/photo.JPG?cache=1", "camera");
     expect(r.ok).toBe(true);
-    expect(uploadMock).toHaveBeenCalledTimes(1);
-    const [path, blob, opts] = uploadMock.mock.calls[0];
-    expect(path).toMatch(/^user-1\/\d+\.jpg$/);
-    expect(blob).toBeDefined();
-    expect(opts.contentType).toBe("image/jpg");
-    if (r.ok) expect(r.data.url).toBe(`https://cdn/${path}`);
+    if (r.ok) {
+      expect(r.data.path).toBe("user-1/12345.jpg");
+      expect(r.data.url).toBe("https://cdn.example.com/scan-uploads/user-1/12345.jpg");
+    }
+    // First call: fetch the image blob
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("returns fail() when unauthenticated", async () => {
@@ -145,11 +169,12 @@ describe("uploadScanImage", () => {
 
 // ── reverseImageMatch ───────────────────────────────────────────────────────
 describe("reverseImageMatch", () => {
-  it("maps a product row to a ScanMatch", async () => {
-    getUserMock.mockResolvedValueOnce({ data: { user: { id: userId } } });
-    rpcMock.mockResolvedValueOnce({
-      data: [{ kind: "product", product_id: "p1", store_id: "s1", slug: "shirt-x", confidence: 0.5 }],
-      error: null,
+  it("maps a product match to a ScanMatch", async () => {
+    imageSearchBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        matches: [{ id: "p1", name: "Shirt X", slug: "shirt-x", price: 100, score: 0.5 }],
+      },
     });
     const r = await reverseImageMatch("user-1/123.jpg");
     expect(r.ok).toBe(true);
@@ -159,11 +184,14 @@ describe("reverseImageMatch", () => {
       expect(r.data.slug).toBe("shirt-x");
       expect(r.data.confidence).toBeCloseTo(0.5);
     }
+    expect(imageSearchBackendMock).toHaveBeenCalledWith("user-1/123.jpg", 1);
   });
 
-  it("maps a 'none' result to a clean ScanMatch with confidence 0", async () => {
-    getUserMock.mockResolvedValueOnce({ data: { user: { id: userId } } });
-    rpcMock.mockResolvedValueOnce({ data: [{ kind: "none" }], error: null });
+  it("returns kind:'none' with confidence 0 when no matches", async () => {
+    imageSearchBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: { matches: [] },
+    });
     const r = await reverseImageMatch("user-1/123.jpg");
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data).toEqual({ kind: "none", confidence: 0 });

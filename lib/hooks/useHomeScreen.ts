@@ -45,20 +45,14 @@ function dedupeProductRails(...rails: Product[][]): Product[][] {
 }
 
 export async function fetchHomeCatalogPrimary(): Promise<HomeCatalogPrimary> {
-  const [cats, heroBanners, flash, arrivalsRes, saleList] = await Promise.all([
+  const [cats, heroBanners, flash, arrivalsRes] = await Promise.all([
     api.getCategories(12),
     api.getBanners("home_hero"),
     api.getFlashSaleProducts(12),
     api.getHomepageProductPicks("new_arrivals_rail"),
-    api.getProductCards({ limit: 12, sort: "sale" }),
   ]);
 
-  const sale =
-    flash.ok && flash.data.length
-      ? flash.data
-      : saleList.ok
-        ? saleList.data
-        : [];
+  const sale = flash.ok && flash.data.length ? flash.data : [];
   const arrivals = arrivalsRes.ok ? arrivalsRes.data : [];
   const [dedupedSale, dedupedArrivals] = dedupeProductRails(sale, arrivals);
 

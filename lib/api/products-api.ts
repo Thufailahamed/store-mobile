@@ -14,8 +14,7 @@
 
 import { supabase } from "@/lib/supabase/client";
 import type { Product } from "@/lib/types";
-
-const STORE_API_URL = (process.env.EXPO_PUBLIC_STORE_API_URL ?? "").replace(/\/$/, "");
+import { getStoreApiUrl } from "./_fetch";
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -32,7 +31,8 @@ async function fetchJson<T>(
   path: string,
   init: RequestInit & { requireAuth?: boolean } = {},
 ): Promise<ApiResult<T>> {
-  if (!STORE_API_URL) {
+  const storeApiUrl = getStoreApiUrl();
+  if (!storeApiUrl) {
     return { ok: false, error: "EXPO_PUBLIC_STORE_API_URL is not configured" };
   }
   const { requireAuth, headers, ...rest } = init;
@@ -41,7 +41,7 @@ async function fetchJson<T>(
     return { ok: false, error: "Not signed in" };
   }
   try {
-    const res = await fetch(`${STORE_API_URL}${path}`, {
+    const res = await fetch(`${storeApiUrl}${path}`, {
       ...rest,
       headers: {
         "Content-Type": "application/json",

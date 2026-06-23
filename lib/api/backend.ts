@@ -158,8 +158,25 @@ export type HomepagePayload = {
   promises: unknown[];
 };
 
+let homepageCache: { data: HomepagePayload; timestamp: number } | null = null;
+let homepagePromise: Promise<ApiResult<HomepagePayload>> | null = null;
+
 export async function getHomepageBackend(): Promise<ApiResult<HomepagePayload>> {
-  return fetchJson("/api/homepage", { requireAuth: false });
+  const now = Date.now();
+  if (homepageCache && now - homepageCache.timestamp < 10000) {
+    return { ok: true, data: homepageCache.data };
+  }
+  if (homepagePromise) {
+    return homepagePromise;
+  }
+  homepagePromise = fetchJson<HomepagePayload>("/api/homepage", { requireAuth: false }).then((res) => {
+    homepagePromise = null;
+    if (res.ok) {
+      homepageCache = { data: res.data, timestamp: Date.now() };
+    }
+    return res;
+  });
+  return homepagePromise;
 }
 
 export type ImageSearchMatch = { id: string; name: string; slug: string; price: number; score?: number; image_url?: string; images?: Array<{ url: string; is_primary?: boolean }> };
@@ -573,8 +590,25 @@ export async function listMyReviewsBackend(): Promise<ApiResult<{ reviews: Revie
   return fetchJson("/api/account/reviews");
 }
 
-export async function addReviewBackend(input: { product_id: string; order_id?: string; rating: number; comment?: string; images?: string[] }): Promise<ApiResult<{ review: Review }>> {
-  return fetchJson("/api/reviews", { method: "POST", body: input });
+export async function addReviewBackend(input: {
+  product_id: string;
+  order_item_id?: string | null;
+  rating: number;
+  title?: string;
+  content: string;
+  photos?: string[];
+}): Promise<ApiResult<{ review: Review }>> {
+  return fetchJson("/api/reviews", {
+    method: "POST",
+    body: {
+      product_id: input.product_id,
+      order_item_id: input.order_item_id ?? null,
+      rating: input.rating,
+      title: input.title,
+      content: input.content,
+      photos: input.photos ?? [],
+    },
+  });
 }
 
 export async function deleteReviewBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
@@ -639,8 +673,41 @@ export async function getSellerStoreBackend(): Promise<ApiResult<{ store: Store 
   return fetchJson("/api/seller/store");
 }
 
+export async function createSellerStoreBackend(input: {
+  name: string;
+  slug?: string;
+  description?: string;
+}): Promise<ApiResult<{ store: Store }>> {
+  return fetchJson("/api/seller/store", { method: "POST", body: input });
+}
+
 export async function updateSellerStoreBackend(patch: Partial<Store>): Promise<ApiResult<{ store: Store }>> {
   return fetchJson("/api/seller/store", { method: "PATCH", body: patch });
+}
+
+export async function setProductActiveBackend(
+  id: string,
+  isActive: boolean,
+): Promise<ApiResult<{ product: CatalogProduct }>> {
+  return fetchJson(`/api/seller/products/${id}/active`, {
+    method: "PATCH",
+    body: { is_active: isActive },
+  });
+}
+
+export async function addProductImageBackend(
+  productId: string,
+  input: { url: string; position?: number; is_primary?: boolean; media_type?: string },
+): Promise<ApiResult<{ image: Record<string, unknown> }>> {
+  return fetchJson(`/api/seller/products/${productId}/images`, {
+    method: "POST",
+    body: {
+      url: input.url,
+      position: input.position ?? 0,
+      is_primary: input.is_primary ?? false,
+      media_type: input.media_type ?? "image",
+    },
+  });
 }
 
 export async function getSellerProductsBackend(opts: { limit?: number; offset?: number; status?: string; search?: string; sort?: string } = {}): Promise<ApiResult<{ products: CatalogProduct[]; total?: number; stats?: Record<string, number> }>> {
@@ -797,6 +864,25 @@ export async function getAdminBrandsBackend(opts: { limit?: number; offset?: num
 
 export async function approveBrandBackend(id: string, status: "approved" | "rejected"): Promise<ApiResult<{ brand: Brand }>> {
   return fetchJson(`/api/admin/brands/${id}/approve`, { method: "PATCH", body: { status } });
+}
+
+export async function reviewComplianceDocumentBackend(
+  id: string,
+  status: "approved" | "rejected" | "needs_more_info",
+  opts: { reviewNotes?: string; rejectionReason?: string } = {},
+): Promise<ApiResult<{ document: { id: string; status: string; reviewed_at: string; review_notes?: string; rejection_reason?: string } }>> {
+  return fetchJson(`/api/admin/compliance-document/${id}`, {
+    method: "PATCH",
+    body: {
+      status,
+      ...(opts.reviewNotes ? { review_notes: opts.reviewNotes } : {}),
+      ...(opts.rejectionReason ? { rejection_reason: opts.rejectionReason } : {}),
+    },
+  });
+}
+
+export async function getAdminDeliveryCompaniesBackend(opts: { status?: string; search?: string } = {}): Promise<ApiResult<{ companies: Array<Record<string, unknown>> }>> {
+  return fetchJson("/api/admin/delivery-companies", { query: { ...opts } });
 }
 
 export async function approveProductBackend(id: string, status: "active" | "rejected" | "archived"): Promise<ApiResult<{ product: CatalogProduct }>> {

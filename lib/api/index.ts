@@ -191,9 +191,13 @@ export async function getHomepageSections(): Promise<Result<HomepageSection[]>> 
 export async function getHomepageProductPicks(
   section: HomepageProductSection,
 ): Promise<Result<Product[]>> {
-  const cards = await getProductCards({ limit: 12, sort: "newest" });
-  if (!cards.ok) return fail(cards.error);
-  return ok(cards.data ?? []);
+  const res = await B.getHomepageBackend();
+  if (!res.ok) return fail(res.error);
+  const picks = (res.data.productPicks ?? []) as Array<{ product: any; section: string }>;
+  const filtered = picks
+    .filter((p) => p.section === section && p.product)
+    .map((p) => mapProduct(p.product));
+  return ok(filtered);
 }
 
 export async function getHomepagePromises(): Promise<Result<HomepagePromise[]>> {
@@ -308,10 +312,14 @@ export async function getHeroMeta(): Promise<Result<HeroMeta | null>> {
 }
 
 export async function getFlashSaleProducts(limit = 5): Promise<Result<Product[]>> {
-  const cards = await getProductCards({ limit, sort: "sale" });
-  if (!cards.ok) return cards;
-  const items = (cards.data ?? []).filter((p) => (p.discount_pct ?? 0) > 0);
-  return ok(items.length ? items.slice(0, limit) : cards.data.slice(0, limit));
+  const res = await B.getHomepageBackend();
+  if (!res.ok) return fail(res.error);
+  const drops = (res.data.drops ?? []) as Array<{ product: any }>;
+  const products = drops
+    .map((d) => d.product)
+    .filter(Boolean)
+    .map(mapProduct);
+  return ok(products.slice(0, limit));
 }
 
 export async function getFlashSaleEndsAt(): Promise<string> {
@@ -581,32 +589,18 @@ export async function getSellerStore(_ownerId: string): Promise<Result<Store | n
 }
 
 export async function createSellerStore(
-  ownerId: string,
+  _ownerId: string,
   input: { name: string; slug?: string; description?: string },
 ): Promise<Result<Store>> {
   const name = input.name.trim();
   if (!name) return fail("Store name is required");
-  const slug = (input.slug?.trim() || slugFromName(name)).toLowerCase();
-  // Use backend PATCH /api/seller/store after admin-side row insert? Backend
-  // doesn't expose create-store yet. Fall back to direct Supabase for this
-  // single mutation; seller product/store CRUD goes through backend.
-  try {
-    const { data, error } = await supabase
-      .from("stores")
-      .insert({
-        owner_id: ownerId,
-        name,
-        slug,
-        description: input.description?.trim() || null,
-        status: "pending",
-      })
-      .select()
-      .single();
-    if (error) return fail(error.message);
-    return ok(data as Store);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to create store");
-  }
+  const res = await B.createSellerStoreBackend({
+    name,
+    slug: input.slug?.trim() || undefined,
+    description: input.description?.trim() || undefined,
+  });
+  if (!res.ok) return fail(res.error);
+  return ok(loose<Store>(res.data.store));
 }
 
 export async function updateSellerStore(id: string, patch: Partial<Store>): Promise<Result<Store>> {
@@ -657,21 +651,13 @@ export async function reviewComplianceDocument(
   status: "approved" | "rejected",
   reviewNotes?: string,
 ): Promise<Result<void>> {
-  try {
-    const { error } = await supabase
-      .from("store_compliance_documents")
-      .update({
-        status,
-        review_notes: reviewNotes ?? null,
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: (await supabase.auth.getUser()).data.user?.id ?? null,
-      })
-      .eq("id", docId);
-    if (error) return fail(error.message);
-    return ok(undefined);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to review document");
-  }
+  const res = await B.reviewComplianceDocumentBackend(
+    docId,
+    status,
+    { reviewNotes },
+  );
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
 }
 
 export async function assertSellerCanOperate(storeId: string): Promise<Result<void>> {
@@ -1208,13 +1194,9 @@ export async function setProductFeatured(productId: string, isFeatured: boolean)
 }
 
 export async function setProductActive(productId: string, isActive: boolean): Promise<Result<void>> {
-  try {
-    const { error } = await supabase.from("products").update({ is_active: isActive }).eq("id", productId);
-    if (error) return fail(error.message);
-    return ok(undefined);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to update product");
-  }
+  const res = await B.setProductActiveBackend(productId, isActive);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
 }
 
 export async function archiveProductAdmin(productId: string): Promise<Result<void>> {
@@ -1524,23 +1506,13 @@ export interface DeliveryCompany {
   } | null;
 }
 
-export async function getAdminDeliveryCompanies(_opts?: {
+export async function getAdminDeliveryCompanies(opts?: {
   status?: string;
   search?: string;
 }): Promise<Result<DeliveryCompany[]>> {
-  // Backend has these endpoints; we keep the legacy direct-Supabase
-  // path here because the admin deliveries UI already calls
-  // delivery-company-api — this branch is the fallback.
-  try {
-    const { data, error } = await supabase
-      .from("delivery_companies")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) return fail(error.message);
-    return ok((data as DeliveryCompany[]) ?? []);
-  } catch (e: any) {
-    return fail(e?.message ?? "Failed to fetch delivery companies");
-  }
+  const res = await B.getAdminDeliveryCompaniesBackend(opts ?? {});
+  if (!res.ok) return fail(res.error);
+  return ok(loose<DeliveryCompany[]>((res.data.companies ?? []) as unknown as DeliveryCompany[]));
 }
 
 export interface AdminDeliveryCompanyDetail {

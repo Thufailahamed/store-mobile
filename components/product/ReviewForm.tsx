@@ -22,6 +22,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { getEligibleReviewOrders } from "@/lib/api";
 import type { EligibleReviewOrder } from "@/lib/types";
 import { friendlyReviewError, formatReviewDate } from "@/lib/review-error";
+import { addReviewBackend } from "@/lib/api/backend";
 
 interface ReviewFormProps {
   visible: boolean;
@@ -122,25 +123,24 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
       uploadedUrls = uploads.filter((u) => u.url).map((u) => u.url);
     }
 
-    // Server is the source of truth for `is_verified_purchase` — never
-    // send it. Server computes from `order_item_id` + delivered status
-    // + ownership. Status always enters as "pending" for moderation.
-    const { error } = await supabase.from("reviews").insert({
-      user_id: user.id,
+    // Server is the source of truth for `is_verified_purchase` and
+    // `status` — never send them. Server computes verified-purchase from
+    // `order_item_id` + delivered status + ownership. Status always
+    // enters as "pending" for moderation.
+    const res = await addReviewBackend({
       product_id: productId,
       order_item_id: selectedOrderItemId,
       rating,
       title: title.trim() || undefined,
       content: content.trim(),
       photos: uploadedUrls,
-      status: "pending",
     });
 
     if (!mountedRef.current) return; // unmounted mid-submit — bail
     setSubmitting(false);
 
-    if (error) {
-      toast(friendlyReviewError(error.message), "error");
+    if (!res.ok) {
+      toast(friendlyReviewError(res.error || "Failed to submit review"), "error");
     } else {
       toast(
         selectedOrderItemId

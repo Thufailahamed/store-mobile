@@ -8,16 +8,24 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { rpcMock, fromMock } = vi.hoisted(() => {
-  const rpcMock = vi.fn();
+const { getCoPurchasesBackendMock, fromMock } = vi.hoisted(() => {
+  const getCoPurchasesBackendMock = vi.fn();
   const fromMock = vi.fn();
-  return { rpcMock, fromMock };
+  return { getCoPurchasesBackendMock, fromMock };
+});
+
+vi.mock("@/lib/api/backend", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/backend")>();
+  return {
+    ...actual,
+    getCoPurchasesBackend: getCoPurchasesBackendMock,
+  };
 });
 
 vi.mock("@/lib/supabase/client", () => ({
   supabase: {
-    rpc: rpcMock,
-    from: fromMock,
+    rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
+    from: (...args: any[]) => fromMock(...args),
   },
 }));
 
@@ -81,35 +89,36 @@ beforeEach(() => {
 });
 
 describe("getPairsWellWith — Tier 0 (co-purchases)", () => {
-  it("returns co-purchased products when the RPC yields enough", async () => {
+  it("returns co-purchased products when the backend yields enough", async () => {
     const anchor = product({ id: "anchor" });
     const coA = product({ id: "co-a" });
     const coB = product({ id: "co-b" });
-    rpcMock.mockResolvedValueOnce({
-      data: [
-        { co_product_id: "co-a", pair_count: 5, last_purchased_at: "2026-01-01T00:00:00Z" },
-        { co_product_id: "co-b", pair_count: 3, last_purchased_at: "2025-12-01T00:00:00Z" },
-      ],
-      error: null,
+    getCoPurchasesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        results: [
+          { product_id: "co-a", score: 5 },
+          { product_id: "co-b", score: 3 },
+        ],
+      },
     });
     mockProductQuery([coA, coB]);
 
     const res = await getPairsWellWith("user-1", anchor, 2);
     expect(res.ok).toBe(true);
-    expect(rpcMock).toHaveBeenCalledWith("get_product_co_purchases", {
-      p_product_id: "anchor",
-      p_limit: 4,
-    });
+    expect(getCoPurchasesBackendMock).toHaveBeenCalledWith("anchor", 4);
     expect(res.data?.map((p) => p.id)).toEqual(["co-a", "co-b"]);
   });
 
-  it("filters out the anchor id even if the RPC returns it", async () => {
+  it("filters out the anchor id even if the backend returns it", async () => {
     const anchor = product({ id: "anchor" });
-    rpcMock.mockResolvedValueOnce({
-      data: [
-        { co_product_id: "anchor", pair_count: 99, last_purchased_at: "2026-01-01T00:00:00Z" },
-      ],
-      error: null,
+    getCoPurchasesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        results: [
+          { product_id: "anchor", score: 99 },
+        ],
+      },
     });
     // Lower tiers will be consulted; pre-seed them to return one fallback.
     mockProductQuery([product({ id: "fallback" })]);
@@ -121,7 +130,10 @@ describe("getPairsWellWith — Tier 0 (co-purchases)", () => {
 
   it("falls through to lower tiers when co-purchases is empty", async () => {
     const anchor = product({ id: "anchor" });
-    rpcMock.mockResolvedValue({ data: [], error: null });
+    getCoPurchasesBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: { results: [] },
+    });
     mockProductQuery([product({ id: "lower-tier" })]);
 
     const res = await getPairsWellWith("user-1", anchor, 1);
@@ -129,9 +141,12 @@ describe("getPairsWellWith — Tier 0 (co-purchases)", () => {
     expect(res.data?.length).toBeGreaterThanOrEqual(0);
   });
 
-  it("returns ok with [] when the RPC errors out", async () => {
+  it("returns ok with [] when the backend errors out", async () => {
     const anchor = product({ id: "anchor" });
-    rpcMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+    getCoPurchasesBackendMock.mockResolvedValueOnce({
+      ok: false,
+      error: "boom",
+    });
     mockProductQuery([]);
 
     const res = await getPairsWellWith("user-1", anchor, 2);

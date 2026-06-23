@@ -1,18 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { rpcMock, fromMock, authGetUserMock, insertMock } = vi.hoisted(() => {
-  const rpcMock = vi.fn();
-  const fromMock = vi.fn();
-  const authGetUserMock = vi.fn();
-  const insertMock = vi.fn().mockResolvedValue({ error: null });
-  return { rpcMock, fromMock, authGetUserMock, insertMock };
+const { fetchJsonMock } = vi.hoisted(() => {
+  const fetchJsonMock = vi.fn();
+  return { fetchJsonMock };
 });
 
+vi.mock("@/lib/api/backend", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/backend")>();
+  return {
+    ...actual,
+    fetchJson: fetchJsonMock,
+  };
+});
+
+// Still need supabase mock because _fetch.ts imports it for getAccessToken
 vi.mock("@/lib/supabase/client", () => ({
   supabase: {
-    rpc: (...args: any[]) => rpcMock(...args),
-    auth: { getUser: () => authGetUserMock() },
-    from: (table: string) => fromMock(table),
+    auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: "tok" } } }) },
+    rpc: vi.fn(),
+    from: vi.fn(),
   },
 }));
 
@@ -23,22 +29,14 @@ import {
 } from "@/lib/api/category-admin";
 
 beforeEach(() => {
-  rpcMock.mockReset();
-  fromMock.mockReset();
-  insertMock.mockClear();
-  authGetUserMock.mockReset();
-  authGetUserMock.mockResolvedValue({ data: { user: { id: "admin-1" } } });
-  fromMock.mockImplementation((table: string) => {
-    if (table === "admin_audit_log") return { insert: insertMock };
-    return { insert: insertMock };
-  });
+  fetchJsonMock.mockReset();
 });
 
 describe("getCategoryDeleteImpact", () => {
-  it("calls RPC and parses counts", async () => {
-    rpcMock.mockResolvedValueOnce({
-      data: { productCount: 3, childCount: 1, couponCount: 2 },
-      error: null,
+  it("calls the backend API and parses counts", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { impact: { productCount: 3, childCount: 1, couponCount: 2 } },
     });
 
     const r = await getCategoryDeleteImpact("cat-1");
@@ -46,43 +44,43 @@ describe("getCategoryDeleteImpact", () => {
     if (r.ok) {
       expect(r.data).toEqual({ productCount: 3, childCount: 1, couponCount: 2 });
     }
-    expect(rpcMock).toHaveBeenCalledWith("get_category_delete_impact", { p_category_id: "cat-1" });
+    expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/admin/categories/cat-1/delete-impact",
+    );
   });
 });
 
 describe("createCategory", () => {
-  it("writes audit log after create", async () => {
-    fromMock.mockImplementation((table: string) => {
-      if (table === "categories") {
-        const chain: any = {
-          select: vi.fn(() => chain),
-          single: vi.fn().mockResolvedValue({
-            data: { id: "new-cat", name: "Shoes", slug: "shoes" },
-            error: null,
-          }),
-        };
-        return { insert: vi.fn(() => chain) };
-      }
-      return { insert: insertMock };
+  it("calls the backend POST and returns the new category", async () => {
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { category: { id: "new-cat", name: "Shoes", slug: "shoes" } },
     });
 
     const r = await createCategory({ name: "Shoes", slug: "shoes" });
     expect(r.ok).toBe(true);
-    expect(fromMock).toHaveBeenCalledWith("admin_audit_log");
-    expect(insertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "categories.create", target_id: "new-cat" }),
+    if (r.ok) {
+      expect(r.data).toEqual({ id: "new-cat", name: "Shoes", slug: "shoes" });
+    }
+    expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/admin/categories",
+      { method: "POST", body: { name: "Shoes", slug: "shoes" } },
     );
   });
 });
 
 describe("deleteCategoryWithOptions", () => {
-  it("re-fetches impact, calls transactional RPC, and audits", async () => {
-    rpcMock
-      .mockResolvedValueOnce({
-        data: { productCount: 2, childCount: 0, couponCount: 0 },
-        error: null,
-      })
-      .mockResolvedValueOnce({ data: null, error: null });
+  it("re-fetches impact, calls backend DELETE, and returns ok", async () => {
+    // First call: getCategoryDeleteImpact → GET /api/admin/categories/root/delete-impact
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { impact: { productCount: 2, childCount: 0, couponCount: 0 } },
+    });
+    // Second call: DELETE /api/admin/categories/root
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { result: null },
+    });
 
     const r = await deleteCategoryWithOptions(
       "root",
@@ -94,23 +92,30 @@ describe("deleteCategoryWithOptions", () => {
     );
 
     expect(r.ok).toBe(true);
-    expect(rpcMock).toHaveBeenLastCalledWith("delete_category_with_options", {
-      p_category_id: "root",
-      p_product_action: "reassign",
-      p_product_reassign_id: "other",
-      p_child_action: "detach",
-      p_child_reassign_parent_id: null,
-    });
-    expect(fromMock).toHaveBeenCalledWith("admin_audit_log");
-    expect(insertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "categories.delete", target_id: "root" }),
+    // Verify the impact fetch
+    expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/admin/categories/root/delete-impact",
+    );
+    // Verify the delete call
+    expect(fetchJsonMock).toHaveBeenLastCalledWith(
+      "/api/admin/categories/root",
+      {
+        method: "DELETE",
+        body: {
+          productAction: "reassign",
+          productReassignId: "other",
+          childAction: "detach",
+          childReassignParentId: null,
+        },
+      },
     );
   });
 
-  it("returns validation errors without calling delete RPC", async () => {
-    rpcMock.mockResolvedValueOnce({
-      data: { productCount: 1, childCount: 0, couponCount: 0 },
-      error: null,
+  it("returns validation errors without calling delete", async () => {
+    // Impact fetch
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { impact: { productCount: 1, childCount: 0, couponCount: 0 } },
     });
 
     const r = await deleteCategoryWithOptions(
@@ -121,7 +126,7 @@ describe("deleteCategoryWithOptions", () => {
 
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("Choose a category");
-    expect(rpcMock).toHaveBeenCalledTimes(1);
-    expect(fromMock).not.toHaveBeenCalledWith("admin_audit_log");
+    // Only the impact fetch should have been called, not the delete
+    expect(fetchJsonMock).toHaveBeenCalledTimes(1);
   });
 });
