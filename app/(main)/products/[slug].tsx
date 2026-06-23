@@ -66,31 +66,42 @@ export default function ProductDetailScreen() {
 
   const fetchProduct = useCallback(async () => {
     if (!slug) return;
+    setLoading(true);
     const res = await api.getProductBySlug(slug);
     if (res.ok && res.data) {
-      setProduct(res.data);
-      const first = res.data.variants?.[0];
+      const productData = res.data;
+      setProduct(productData);
+      const first = productData.variants?.[0];
       if (first) {
         setSelectedVariant(first);
         setSelectedSize(first.size || null);
         setSelectedColor(first.color || null);
       }
-      const r = await api.getReviews(res.data.id);
-      if (r.ok) setReviews(r.data);
-      // Content-similar products (no profile required).
-      const similar = await getSimilarProducts(res.data, 8);
-      if (similar.ok) setRelatedProducts(similar.data);
-      // Personalized "you may also like" (falls back to similar for new users).
-      const ymal = await getYouMayAlsoLike(user?.id ?? null, res.data, 8);
-      if (ymal.ok) setYouMayAlsoLike(ymal.data);
-      // Co-occurrence / pairs well with.
-      const pairs = await getPairsWellWithRail(user?.id ?? null, res.data, 6);
-      if (pairs.ok) setPairsWellWith(pairs.data);
-      // Recently viewed (excluding current product).
-      const recent = await getRecentlyViewedRail(user?.id ?? null, 8, [res.data.id]);
-      if (recent.ok) setRecentlyViewed(recent.data);
+      setLoading(false);
+
+      // Fetch auxiliary data (reviews, recommendations) in parallel in the background
+      Promise.all([
+        api.getReviews(productData.id).then((r) => {
+          if (r.ok) setReviews(r.data);
+        }),
+        getSimilarProducts(productData, 8).then((similar) => {
+          if (similar.ok) setRelatedProducts(similar.data);
+        }),
+        getYouMayAlsoLike(user?.id ?? null, productData, 8).then((ymal) => {
+          if (ymal.ok) setYouMayAlsoLike(ymal.data);
+        }),
+        getPairsWellWithRail(user?.id ?? null, productData, 6).then((pairs) => {
+          if (pairs.ok) setPairsWellWith(pairs.data);
+        }),
+        getRecentlyViewedRail(user?.id ?? null, 8, [productData.id]).then((recent) => {
+          if (recent.ok) setRecentlyViewed(recent.data);
+        })
+      ]).catch((err) => {
+        console.error("Failed to load auxiliary product details:", err);
+      });
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
   }, [slug, user?.id]);
 
   useEffect(() => { fetchProduct(); }, [fetchProduct]);

@@ -34,6 +34,9 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
   const displayImages = sorted.length ? sorted : [
     { id: "placeholder", url: "", product_id: "", position: 0, is_primary: true, media_type: "image" as const },
   ];
+
+  const imageKey = (item: ProductImage, index: number) =>
+    item.id?.trim() ? `${item.id}-${item.position}` : `image-${item.position}-${index}`;
   const pct = discountPct(mrp, price);
 
   const onMomentumScroll = (e: any) => {
@@ -60,7 +63,7 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
         <FlatList
           ref={mainRef}
           data={displayImages}
-          keyExtractor={(item) => item.id}
+          keyExtractor={imageKey}
           horizontal
           decelerationRate="fast"
           snapToInterval={SNAP_INTERVAL}
@@ -111,9 +114,9 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
         {displayImages.length > 1 && (
           <View style={styles.dotsOverlay}>
             <View style={styles.dotsCapsule}>
-              {displayImages.map((_, i) => (
+              {displayImages.map((img, i) => (
                 <View
-                  key={i}
+                  key={imageKey(img, i)}
                   style={[styles.dot, i === activeIndex && styles.dotActive]}
                 />
               ))}
@@ -127,7 +130,7 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
         <FlatList
           ref={thumbRef}
           data={displayImages}
-          keyExtractor={(item) => `thumb-${item.id}`}
+          keyExtractor={(item, index) => `thumb-${imageKey(item, index)}`}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.thumbContainer}
