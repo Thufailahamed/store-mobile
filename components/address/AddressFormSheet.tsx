@@ -21,7 +21,7 @@ import { Body, Display, Label } from "@/components/ui/Typography";
 import { Button } from "@/components/ui/Button";
 import { AddressMapPicker } from "./AddressMapPicker";
 import { useDebounce } from "@/lib/hooks/useDebounce";
-import { reverseGeocode } from "@/lib/maps";
+import { reverseGeocode, type GeocodeResult } from "@/lib/maps";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
@@ -116,42 +116,56 @@ export function AddressFormSheet({
   const [fetchingLoc, setFetchingLoc] = useState(false);
   const { toast } = useToast();
 
+  const applyGeocodeResult = useCallback((res: GeocodeResult) => {
+    setForm((prev) => ({
+      ...prev,
+      line1: res.components.line1 || res.formatted.split(",")[0]?.trim() || prev.line1,
+      city: res.components.city || prev.city,
+      state: res.components.state || prev.state,
+      postal_code: res.components.postal_code || prev.postal_code,
+      country: res.components.country || prev.country,
+      latitude: res.lat,
+      longitude: res.lng,
+    }));
+    lastReverseKey.current = `${res.lat.toFixed(5)}|${res.lng.toFixed(5)}`;
+  }, []);
+
   const handleAutoFetch = async () => {
     if (fetchingLoc) return;
     setFetchingLoc(true);
     try {
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        toast("Turn on location services in your phone settings", "error");
+        return;
+      }
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         toast("Permission to access location was denied", "error");
         return;
       }
       const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
       });
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      
+
+      lastReverseKey.current = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
       setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
-      
+
       setGeoBusy(true);
       const res = await reverseGeocode(lat, lng);
       setGeoBusy(false);
-      
+
       if (res) {
-        setForm((prev) => ({
-          ...prev,
-          line1: res.components.line1 || prev.line1,
-          city: res.components.city || prev.city,
-          state: res.components.state || prev.state,
-          postal_code: res.components.postal_code || prev.postal_code,
-          country: res.components.country || prev.country,
-        }));
+        applyGeocodeResult(res);
         toast("Address auto-filled successfully!", "success");
       } else {
-        toast("Could not resolve address details. Please fill manually.", "error");
+        toast("Got your location but could not resolve the address. Drag the pin or fill manually.", "error");
       }
-    } catch (err: any) {
-      toast(err?.message || "Failed to get current location", "error");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to get current location";
+      toast(message, "error");
     } finally {
       setFetchingLoc(false);
     }
@@ -178,19 +192,12 @@ export function AddressFormSheet({
       if (cancelled) return;
       setGeoBusy(false);
       if (!res) return;
-      setForm((prev) => ({
-        ...prev,
-        line1: res.components.line1 || prev.line1,
-        city: res.components.city || prev.city,
-        state: res.components.state || prev.state,
-        postal_code: res.components.postal_code || prev.postal_code,
-        country: res.components.country || prev.country,
-      }));
+      applyGeocodeResult(res);
     });
     return () => {
       cancelled = true;
     };
-  }, [debouncedLatLng.lat, debouncedLatLng.lng]);
+  }, [debouncedLatLng.lat, debouncedLatLng.lng, applyGeocodeResult]);
 
   const handlePlaceSelect = useCallback((res: { lat: number; lng: number; components: { line1: string; city: string; state: string; postal_code: string; country: string } }) => {
     setForm((prev) => ({
@@ -273,14 +280,8 @@ export function AddressFormSheet({
             </Pressable>
           </View>
 
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={styles.body}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Type chips */}
-            <View>
+          <View style={styles.mapSection}>
+            <View style={styles.typeBlock}>
               <Label style={styles.sectionLabel}>Type</Label>
               <View style={styles.typeRow}>
                 {(["home", "work", "other"] as AddressType[]).map((t) => {
@@ -307,7 +308,6 @@ export function AddressFormSheet({
               <Body muted size="xs" style={styles.typeCopy}>{TYPE_META[form.type].copy}</Body>
             </View>
 
-            {/* Auto-detect location button */}
             <TouchableOpacity
               onPress={handleAutoFetch}
               disabled={fetchingLoc}
@@ -324,26 +324,31 @@ export function AddressFormSheet({
               </Label>
             </TouchableOpacity>
 
-            {/* Map */}
-            <View style={styles.field}>
-              <Label style={styles.sectionLabel}>Pin location</Label>
-              <AddressMapPicker
-                latitude={form.latitude}
-                longitude={form.longitude}
-                onLocationChange={handleMapChange}
-              />
-              {geoBusy ? (
-                <View style={styles.geoStatus}>
-                  <ActivityIndicator size="small" color={colors.light.primary} />
-                  <Text style={styles.geoStatusText}>Resolving address…</Text>
-                </View>
-              ) : (
-                <Body muted size="xs" style={styles.helper}>
-                  Drag the pin, tap the map, or hit the locate button to refine.
-                </Body>
-              )}
-            </View>
+            <Label style={styles.sectionLabel}>Pin location</Label>
+            <AddressMapPicker
+              latitude={form.latitude}
+              longitude={form.longitude}
+              onLocationChange={handleMapChange}
+            />
+            {geoBusy ? (
+              <View style={styles.geoStatus}>
+                <ActivityIndicator size="small" color={colors.light.primary} />
+                <Text style={styles.geoStatusText}>Resolving address…</Text>
+              </View>
+            ) : (
+              <Body muted size="xs" style={styles.helper}>
+                Drag the pin, tap the map, or hit the locate button to refine.
+              </Body>
+            )}
+          </View>
 
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
             {/* Manual fields */}
             <View style={styles.fieldRow}>
               <View style={{ flex: 1 }}>
@@ -549,6 +554,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[5],
     paddingBottom: spacing[6],
     gap: spacing[4],
+  },
+  mapSection: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
+    gap: spacing[3],
+  },
+  typeBlock: {
+    gap: 0,
   },
   sectionLabel: {
     fontFamily: fontFamilies.mono.medium,

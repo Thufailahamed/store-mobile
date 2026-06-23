@@ -59,6 +59,7 @@ module.exports = ({ config }) => {
       ...config.extra,
       storeApiUrl,
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
+      googleMapsApiKey: googleMapsApiKey,
     },
     ios: {
       ...config.ios,

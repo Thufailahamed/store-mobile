@@ -4,6 +4,29 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+def resolveGoogleMapsApiKey = {
+    def placeholder = "GOOGLE_MAPS_API_KEY_PLACEHOLDER"
+    for (envName in [".env.local", ".env"]) {
+        def envFile = new File(projectRoot, envName)
+        if (!envFile.exists()) continue
+        for (line in envFile.readLines()) {
+            def trimmed = line.trim()
+            if (!trimmed || trimmed.startsWith("#")) continue
+            if (!trimmed.startsWith("EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=")) continue
+            def value = trimmed.substring("EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=".length()).trim()
+            if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.substring(1, value.length() - 1)
+            }
+            if (value && value != placeholder && !value.startsWith("your-")) {
+                return value
+            }
+        }
+    }
+    return placeholder
+}
+
+def googleMapsApiKey = resolveGoogleMapsApiKey()
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -93,6 +116,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+        manifestPlaceholders = [googleMapsApiKey: googleMapsApiKey]
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

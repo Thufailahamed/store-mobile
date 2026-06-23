@@ -102,7 +102,7 @@ export function WarehouseFormFields({ values, onChange, showCapacity = true }: W
       setGeoBusy(false);
       if (!res) return;
       onChange({
-        line1: res.components.line1 || values.line1,
+        line1: res.components.line1 || res.formatted.split(",")[0]?.trim() || values.line1,
         city: res.components.city || values.city,
         state: res.components.state || values.state,
         postal_code: res.components.postal_code || values.postal_code,
@@ -120,16 +120,17 @@ export function WarehouseFormFields({ values, onChange, showCapacity = true }: W
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") return;
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
+      lastReverseKey.current = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
       onChange({ latitude: lat, longitude: lng });
       setGeoBusy(true);
       const res = await reverseGeocode(lat, lng);
       setGeoBusy(false);
       if (res) {
         onChange({
-          line1: res.components.line1 || values.line1,
+          line1: res.components.line1 || res.formatted.split(",")[0]?.trim() || values.line1,
           city: res.components.city || values.city,
           state: res.components.state || values.state,
           postal_code: res.components.postal_code || values.postal_code,
@@ -137,7 +138,6 @@ export function WarehouseFormFields({ values, onChange, showCapacity = true }: W
           latitude: lat,
           longitude: lng,
         });
-        lastReverseKey.current = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
       }
     } finally {
       setFetchingLoc(false);

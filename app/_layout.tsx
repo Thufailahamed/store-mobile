@@ -1,6 +1,7 @@
 import "react-native-gesture-handler";
 import "@/lib/theme/setup-android-text";
 import React, { useEffect, useRef, useState } from "react";
+import { Appearance } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -41,6 +42,9 @@ import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush } fro
 import { BiometricGate } from "@/components/auth/BiometricGate";
 
 SplashScreen.preventAutoHideAsync();
+
+// Force light mode even when the OS is set to dark theme.
+Appearance.setColorScheme("light");
 
 const queryClient = new QueryClient({
   defaultOptions: {

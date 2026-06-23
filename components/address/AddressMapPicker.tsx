@@ -23,7 +23,6 @@ interface AddressMapPickerProps {
   disabled?: boolean;
 }
 
-// Default to Sri Lanka (Colombo) when no pin yet.
 const FALLBACK_REGION: Region = {
   latitude: 6.9271,
   longitude: 79.8612,
@@ -31,10 +30,26 @@ const FALLBACK_REGION: Region = {
   longitudeDelta: 0.08,
 };
 
+function regionForPin(
+  lat: number,
+  lng: number,
+  delta: { latitudeDelta: number; longitudeDelta: number }
+): Region {
+  return {
+    latitude: lat,
+    longitude: lng,
+    latitudeDelta: delta.latitudeDelta,
+    longitudeDelta: delta.longitudeDelta,
+  };
+}
+
+function coordKey(lat: number, lng: number): string {
+  return `${lat.toFixed(6)}|${lng.toFixed(6)}`;
+}
+
 /**
- * Map with a single draggable Marker. Dragging the pin calls
- * `onLocationChange` so the parent can reverse-geocode the new
- * coordinates. A "Use my location" FAB sits on the top-right.
+ * Map with a draggable pin. Parent receives coordinate updates for reverse-geocoding.
+ * Kept outside ScrollView parents when possible — nested scroll steals map gestures on Android.
  */
 export function AddressMapPicker({
   latitude,
@@ -46,36 +61,54 @@ export function AddressMapPicker({
   disabled = false,
 }: AddressMapPickerProps) {
   const mapRef = useRef<MapView | null>(null);
+  const lastPropKey = useRef<string | null>(null);
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(
     latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null
   );
+  const [initialRegion] = useState<Region>(() =>
+    latitude != null && longitude != null
+      ? regionForPin(latitude, longitude, initialDelta)
+      : FALLBACK_REGION
+  );
+  const [mapReady, setMapReady] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
 
-  // Keep internal pin in sync if parent resets it.
-  useEffect(() => {
-    if (latitude != null && longitude != null) {
-      setPin({ lat: latitude, lng: longitude });
-    }
-  }, [latitude, longitude]);
+  const animateTo = (lat: number, lng: number) => {
+    if (!mapRef.current || !mapReady) return;
+    mapRef.current.animateToRegion(regionForPin(lat, lng, initialDelta), 350);
+  };
 
-  // Animate to the pin when it first appears.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!mapRef.current || !pin) return;
-    mapRef.current.animateToRegion(
-      {
-        latitude: pin.lat,
-        longitude: pin.lng,
-        latitudeDelta: initialDelta.latitudeDelta,
-        longitudeDelta: initialDelta.longitudeDelta,
-      },
-      400
-    );
-  }, [pin?.lat, pin?.lng]);
-
-  const handleDragEnd = (e: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-    const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
+  const setPinCoords = (lat: number, lng: number, animate: boolean) => {
+    const key = coordKey(lat, lng);
+    lastPropKey.current = key;
     setPin({ lat, lng });
+    if (animate) animateTo(lat, lng);
+  };
+
+  // Sync when parent pushes new coordinates (e.g. auto-detect).
+  useEffect(() => {
+    if (latitude == null || longitude == null) return;
+    const key = coordKey(latitude, longitude);
+    if (key === lastPropKey.current) return;
+    lastPropKey.current = key;
+    setPin({ lat: latitude, lng: longitude });
+    animateTo(latitude, longitude);
+  }, [latitude, longitude, mapReady]);
+
+  const handleDragEnd = (e: {
+    nativeEvent: { coordinate: { latitude: number; longitude: number } };
+  }) => {
+    const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
+    setPinCoords(lat, lng, false);
+    onLocationChange(lat, lng);
+  };
+
+  const handleMapPress = (e: {
+    nativeEvent: { coordinate: { latitude: number; longitude: number } };
+  }) => {
+    if (disabled) return;
+    const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
+    setPinCoords(lat, lng, false);
     onLocationChange(lat, lng);
   };
 
@@ -89,11 +122,11 @@ export function AddressMapPicker({
         return;
       }
       const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
       });
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
-      setPin({ lat, lng });
+      setPinCoords(lat, lng, true);
       onLocationChange(lat, lng);
     } catch {
       onUseMyLocation?.();
@@ -102,64 +135,55 @@ export function AddressMapPicker({
     }
   };
 
-  const initialRegion: Region = pin
-    ? {
-        latitude: pin.lat,
-        longitude: pin.lng,
-        latitudeDelta: initialDelta.latitudeDelta,
-        longitudeDelta: initialDelta.longitudeDelta,
-      }
-    : FALLBACK_REGION;
-
   return (
-    <View style={[styles.container, { height }]}>
+    <View style={[styles.container, { height }]} collapsable={false}>
       <MapView
         ref={mapRef}
-        style={StyleSheet.absoluteFillObject}
+        style={styles.map}
         provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         initialRegion={initialRegion}
-        onPress={(e) => {
-          if (disabled) return;
-          const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
-          setPin({ lat, lng });
-          onLocationChange(lat, lng);
-        }}
-        pointerEvents={disabled ? "none" : undefined}
+        onPress={handleMapPress}
+        onMapReady={() => setMapReady(true)}
+        scrollEnabled={!disabled}
+        zoomEnabled={!disabled}
+        rotateEnabled={false}
+        pitchEnabled={false}
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
-        mapPadding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+        loadingEnabled
+        moveOnMarkerPress={false}
       >
-        {pin && (
+        {pin ? (
           <Marker
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             draggable={!disabled}
             onDragEnd={handleDragEnd}
             anchor={{ x: 0.5, y: 1 }}
-            tracksViewChanges={false}
-          >
-            <View style={styles.pinWrap}>
-              <View style={styles.pinShadow} />
-              <View style={styles.pinDot} />
-            </View>
-          </Marker>
-        )}
+            pinColor={colors.light.primary}
+          />
+        ) : null}
       </MapView>
 
-      {/* Crosshair hint when no pin yet */}
-      {!pin && !loadingLocation && (
+      {!mapReady ? (
+        <View pointerEvents="none" style={styles.loadingOverlay}>
+          <ActivityIndicator size="small" color={colors.light.primary} />
+          <Text style={styles.loadingText}>Loading map…</Text>
+        </View>
+      ) : null}
+
+      {!pin && !loadingLocation && mapReady ? (
         <View pointerEvents="none" style={styles.hint}>
           <Ionicons name="hand-left-outline" size={14} color={colors.light.primaryForeground} />
           <Text style={styles.hintText}>Tap map to drop a pin</Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Use my location FAB */}
       <Pressable
         accessibilityRole="button"
         onPress={handleUseMyLocation}
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        disabled={loadingLocation}
+        disabled={loadingLocation || disabled}
       >
         {loadingLocation ? (
           <ActivityIndicator size="small" color={colors.light.primary} />
@@ -168,7 +192,6 @@ export function AddressMapPicker({
         )}
       </Pressable>
 
-      {/* Bottom gradient + coordinates */}
       <View pointerEvents="none" style={styles.coordsBar}>
         <Ionicons name="pin" size={11} color={colors.light.primaryForeground} />
         <Text style={styles.coordsText} numberOfLines={1}>
@@ -191,30 +214,20 @@ const styles = StyleSheet.create({
     position: "relative",
     ...shadows.soft,
   },
-  pinWrap: {
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "center",
+    gap: spacing[2],
+    backgroundColor: colors.olive[50],
   },
-  pinShadow: {
-    position: "absolute",
-    bottom: -2,
-    width: 12,
-    height: 4,
-    borderRadius: 6,
-    backgroundColor: "rgba(0,0,0,0.25)",
-  },
-  pinDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.light.primary,
-    borderWidth: 3,
-    borderColor: colors.paper.cream,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
+  loadingText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
   },
   hint: {
     position: "absolute",
@@ -243,6 +256,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
     ...shadows.soft,
   },
   fabPressed: { opacity: 0.8 },

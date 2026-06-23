@@ -34,7 +34,6 @@ import {
   getLocalSettingsPrefs,
   setLocalSettingsPrefs,
   type LocalSettingsPrefs,
-  type ThemeMode,
   type TextSize,
 } from "@/lib/settings-prefs";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
@@ -82,7 +81,6 @@ const CURRENCIES = [
 ];
 
 const TEXT_SIZE_LABEL: Record<TextSize, string> = { sm: "Small", md: "Default", lg: "Large" };
-const THEME_LABEL: Record<ThemeMode, string> = { system: "Match system", light: "Light", dark: "Dark" };
 
 const PRIVACY_DESCRIPTIONS: Record<PrivacyKey, { title: string; detail: string }> = {
   public_profile: {
@@ -623,22 +621,9 @@ export default function SettingsScreen() {
         <Section
           kicker="02"
           title="Appearance"
-          subtitle="Device-only. Synced across reinstalls on this device."
+          subtitle="Display preferences on this device."
         >
-          <Label style={styles.subLabel}>Theme</Label>
-          <ChipRow>
-            {(["system", "light", "dark"] as ThemeMode[]).map((mode) => (
-              <Chip
-                key={mode}
-                selected={local.theme === mode}
-                onPress={() => updateLocal({ theme: mode })}
-              >
-                {THEME_LABEL[mode]}
-              </Chip>
-            ))}
-          </ChipRow>
-
-          <Label style={[styles.subLabel, styles.subLabelTop]}>Text size</Label>
+          <Label style={styles.subLabel}>Text size</Label>
           <ChipRow>
             {(["sm", "md", "lg"] as TextSize[]).map((size) => (
               <Chip
