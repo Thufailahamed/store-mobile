@@ -440,13 +440,33 @@ export async function getSearchSuggestions(query: string): Promise<Result<Search
 export async function getOrders(_userId: string, limit = 20): Promise<Result<Order[]>> {
   const res = await B.listOrdersBackend(limit);
   if (!res.ok) return fail(res.error);
-  return ok(loose<Order[]>(res.data.orders ?? []));
+  const rows = loose<Array<Record<string, unknown>>>(res.data.orders ?? []);
+  return ok(rows.map(normalizeOrder));
+}
+
+function normalizeOrder(row: Record<string, unknown>): Order {
+  return {
+    ...(row as unknown as Order),
+    order_number: String(row.order_number ?? ""),
+    user_id: String(row.user_id ?? ""),
+    placed_at: String(row.placed_at ?? row.created_at ?? new Date().toISOString()),
+    subtotal: Number(row.subtotal ?? 0),
+    discount: Number(row.discount ?? 0),
+    shipping_fee: Number(row.shipping_fee ?? 0),
+    tax: Number(row.tax ?? 0),
+    total: Number(row.total ?? 0),
+    currency: String(row.currency ?? "LKR"),
+    status: (row.status ?? "pending") as Order["status"],
+    payment_status: (row.payment_status ?? "pending") as Order["payment_status"],
+    items: Array.isArray(row.items) ? (row.items as Order["items"]) : [],
+  };
 }
 
 export async function getOrderById(orderId: string): Promise<Result<Order | null>> {
   const res = await B.getOrderByIdBackend(orderId);
   if (!res.ok) return fail(res.error);
-  return ok(loose<Order | null>(res.data.order ?? null));
+  const row = res.data.order;
+  return ok(row ? normalizeOrder(row as unknown as Record<string, unknown>) : null);
 }
 
 export interface TrackingEvent {
