@@ -71,11 +71,11 @@ export async function registerForPushNotifications(userId: string): Promise<stri
     });
     token = tokenData.data;
   } catch (err) {
-    lastState = {
-      status: "failed",
-      reason: err instanceof Error ? err.message : "token fetch failed",
-    };
-    surfaceFailureOnce("Couldn't get a push token. Check your network and try again.");
+    const reason = err instanceof Error ? err.message : "token fetch failed";
+    lastState = { status: "failed", reason };
+    // Missing FCM / google-services.json on local APK builds is common —
+    // not something the user can fix from this dialog.
+    console.warn("[notifications] getExpoPushTokenAsync failed:", reason);
     return null;
   }
 
@@ -124,7 +124,7 @@ export async function registerForPushNotifications(userId: string): Promise<stri
         status: "failed",
         reason: `register ${res.status}: ${txt.slice(0, 200)}`,
       };
-      surfaceFailureOnce("Couldn't register this device for push. We'll retry on next launch.");
+      console.warn("[notifications] push-token register failed:", res.status, txt.slice(0, 200));
       return null;
     }
     lastState = { status: "registered", token };
@@ -134,7 +134,7 @@ export async function registerForPushNotifications(userId: string): Promise<stri
       status: "failed",
       reason: err instanceof Error ? err.message : "network failed",
     };
-    surfaceFailureOnce("Network error registering for push. We'll retry next time you open the app.");
+    console.warn("[notifications] push-token register threw:", lastState.reason);
     return null;
   }
 }

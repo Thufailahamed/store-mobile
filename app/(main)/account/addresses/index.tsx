@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { ScreenHeader } from "@/components/layout";
-import { Badge, Button, Skeleton, useToast } from "@/components/ui";
-import { Body, Display, Label } from "@/components/ui/Typography";
+import { PaperBackground } from "@/components/layout";
+import { Skeleton, useToast } from "@/components/ui";
 import {
   AddressFormSheet,
   type AddressFormPayload,
@@ -29,16 +31,30 @@ import {
   updateAddress,
 } from "@/lib/api";
 import type { Address } from "@/lib/types";
-import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
+import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const TYPE_META: Record<AddressType, { label: string; icon: keyof typeof Ionicons.glyphMap; copy: string }> = {
-  home: { label: "Home", icon: "home-outline", copy: "Where you live, where things get tried on." },
-  work: { label: "Work", icon: "briefcase-outline", copy: "Office or studio — for daytime deliveries." },
-  other: { label: "Other", icon: "location-outline", copy: "A second home, a friend's, a hotel…" },
+const TYPE_META: Record<AddressType, { label: string }> = {
+  home: { label: "Home" },
+  work: { label: "Work" },
+  other: { label: "Other" },
 };
 
+function formatFullAddress(a: Address): string {
+  const locality = [a.city, a.state, a.postal_code].filter(Boolean).join(", ");
+  return [a.line1, a.line2, locality, a.country].filter(Boolean).join(", ");
+}
+
+function savedPlacesSubtitle(count: number, defaultType?: AddressType): string {
+  if (count === 0) return "NO SAVED PLACES YET";
+  const base = `${count} SAVED PLACE${count === 1 ? "" : "S"}`;
+  if (!defaultType) return base;
+  return `${base} · DEFAULT IS ${TYPE_META[defaultType].label.toUpperCase()}`;
+}
+
 export default function AddressesScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { toast } = useToast();
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -86,9 +102,6 @@ export default function AddressesScreen() {
   const handleSubmit = async (payload: AddressFormPayload) => {
     if (!user?.id) return;
 
-    // Belt-and-braces pre-flight: the AddressFormSheet already validates
-    // before calling us, but if a future caller bypasses the sheet we still
-    // refuse to POST a junk address to the server.
     const check = validateCheckoutAddress({
       full_name: payload.full_name,
       phone: payload.phone,
@@ -132,12 +145,9 @@ export default function AddressesScreen() {
         }
       }
 
-      let res;
-      if (editing) {
-        res = await updateAddress(editing.id, basePayload as any);
-      } else {
-        res = await createAddress(basePayload as any);
-      }
+      const res = editing
+        ? await updateAddress(editing.id, basePayload as any)
+        : await createAddress(basePayload as any);
 
       if (!res.ok) {
         toast(res.error, "error");
@@ -165,7 +175,6 @@ export default function AddressesScreen() {
               await updateAddress(nextDefault.id, { is_default: true });
             }
           }
-
           const res = await deleteAddress(a.id);
           if (!res.ok) {
             toast(res.error, "error");
@@ -193,175 +202,62 @@ export default function AddressesScreen() {
     refresh();
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <ScreenHeader title="Addresses" />
-        <View style={styles.loading}>
-          {[1, 2].map((i) => (
-            <View key={i} style={styles.skeletonRow}>
-              <Skeleton height={120} borderRadius={radii.xl} />
-            </View>
-          ))}
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const defaultAddress = addresses.find((a) => a.is_default);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScreenHeader
-        title="Addresses"
-        right={
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
-            <Ionicons name="add" size={20} color={colors.light.primaryForeground} />
-          </TouchableOpacity>
-        }
-      />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          <View>
-            <Label style={styles.heroLabel}>Saved places</Label>
-            <Display size="2xl" style={styles.heroTitle}>
-              Where to send the boxes
-            </Display>
-            <Body muted>Pick a default to speed up checkout. Add as many as you like.</Body>
-          </View>
-          <View style={styles.iconBadge}>
-            <Ionicons name="map-outline" size={20} color={colors.light.primaryForeground} />
-          </View>
-        </View>
-
-        <View style={styles.statsRow}>
-          <Stat label="Saved" value={addresses.length} icon="location-outline" />
-          <Stat
-            label="Default"
-            value={addresses.find((a) => a.is_default)?.type ?? "—"}
-            icon="checkmark-circle-outline"
-          />
-        </View>
-
-        {addresses.length === 0 ? (
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="location-outline" size={28} color={colors.light.mutedForeground} />
-            </View>
-            <Display size="xl">No saved addresses</Display>
-            <Body muted>Add a place where you'd love to receive parcels.</Body>
-            <Button onPress={openAdd}>
-              <Ionicons
-                name="add"
-                size={14}
-                color={colors.light.primaryForeground}
-                style={{ marginRight: 6 }}
-              />
-              Add new address
-            </Button>
-          </View>
-        ) : (
-          <View style={styles.list}>
-            {addresses.map((a) => {
-              const meta = TYPE_META[a.type];
-              return (
-                <View key={a.id} style={styles.addressCard}>
-                  <View style={styles.typeStripe} />
-                  <View style={styles.addressBody}>
-                    <View style={styles.addressHeader}>
-                      <View style={styles.typeRow}>
-                        <View style={styles.typeIcon}>
-                          <Ionicons name={meta.icon} size={14} color={colors.light.primary} />
-                        </View>
-                        <Label style={styles.typeLabel}>{meta.label.toUpperCase()}</Label>
-                        {a.is_default && (
-                          <Badge style={{ backgroundColor: colors.olive[100] }}>
-                            <Label style={{ color: colors.olive[700], fontSize: 9 }}>DEFAULT</Label>
-                          </Badge>
-                        )}
-                      </View>
-                      <View style={styles.actionRow}>
-                        <TouchableOpacity onPress={() => openEdit(a)} style={styles.iconBtn}>
-                          <Ionicons
-                            name="create-outline"
-                            size={16}
-                            color={colors.light.foreground}
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleDelete(a)}
-                          style={styles.iconBtn}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={16}
-                            color={colors.light.destructive}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    <Body size="sm" style={styles.addressName}>{a.full_name}</Body>
-                    <Body muted size="xs" style={styles.addressLine}>
-                      {a.line1}
-                      {a.line2 ? `, ${a.line2}` : ""}
-                    </Body>
-                    <Body muted size="xs" style={styles.addressLine}>
-                      {a.city}, {a.state} {a.postal_code}
-                    </Body>
-                    <Body muted size="xs" style={styles.addressLine}>
-                      {a.country}
-                    </Body>
-                    {a.latitude && a.longitude ? (
-                      <View style={styles.coordsPill}>
-                        <Ionicons
-                          name="navigate-outline"
-                          size={11}
-                          color={colors.olive[700]}
-                        />
-                        <Label style={styles.coordsText}>
-                          PINNED · {a.latitude.toFixed(3)}, {a.longitude.toFixed(3)}
-                        </Label>
-                      </View>
-                    ) : null}
-                    <View style={styles.addressFooter}>
-                      <Body muted size="xs">
-                        <Ionicons
-                          name="call-outline"
-                          size={11}
-                          color={colors.light.mutedForeground}
-                        />{" "}
-                        {a.phone}
-                      </Body>
-                      {!a.is_default && (
-                        <TouchableOpacity onPress={() => setDefault(a)} style={styles.setDefaultBtn}>
-                          <Ionicons
-                            name="star-outline"
-                            size={12}
-                            color={colors.olive[700]}
-                          />
-                          <Label style={styles.setDefaultText}>Make default</Label>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={styles.addRow}
-          onPress={openAdd}
-          activeOpacity={0.85}
-        >
-          <View style={styles.addRowIcon}>
-            <Ionicons name="add" size={18} color={colors.light.primary} />
-          </View>
-          <View>
-            <Body size="sm" style={styles.addRowTitle}>Add a new address</Body>
-            <Body muted size="xs">Home, work, or anywhere in between.</Body>
-          </View>
+    <PaperBackground style={styles.screen}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerSide} hitSlop={8}>
+          <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
         </TouchableOpacity>
-      </ScrollView>
+        <Text style={styles.headerTitle}>Addresses</Text>
+        <TouchableOpacity onPress={openAdd} style={styles.headerSide} hitSlop={8}>
+          <Ionicons name="ellipsis-vertical" size={20} color={colors.light.foreground} />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.loading}>
+          <Skeleton height={28} width="70%" borderRadius={4} />
+          <Skeleton height={14} width="50%" borderRadius={4} />
+          <Skeleton height={180} borderRadius={radii.lg} />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing[10] }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.pageTitle}>Where we deliver</Text>
+          <Text style={styles.pageSubtitle}>
+            {savedPlacesSubtitle(addresses.length, defaultAddress?.type)}
+          </Text>
+
+          {addresses.length > 0 ? (
+            <View style={styles.list}>
+              {addresses.map((a) => (
+                <AddressCard
+                  key={a.id}
+                  address={a}
+                  onEdit={() => openEdit(a)}
+                  onDelete={() => handleDelete(a)}
+                  onSetDefault={() => setDefault(a)}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={openAdd}
+            style={({ pressed }) => [styles.addDashed, pressed && styles.addDashedPressed]}
+          >
+            <View style={styles.addSquare}>
+              <Ionicons name="add" size={22} color={colors.light.foreground} />
+            </View>
+            <Text style={styles.addTitle}>Add another address</Text>
+            <Text style={styles.addSub}>Home, work, or anywhere else</Text>
+          </Pressable>
+        </ScrollView>
+      )}
 
       <AddressFormSheet
         visible={sheetOpen}
@@ -371,207 +267,293 @@ export default function AddressesScreen() {
         onClose={closeSheet}
         onSubmit={handleSubmit}
       />
-    </SafeAreaView>
+    </PaperBackground>
   );
 }
 
-function Stat({
-  label,
-  value,
-  icon,
+function AddressCard({
+  address: a,
+  onEdit,
+  onDelete,
+  onSetDefault,
 }: {
-  label: string;
-  value: string | number;
-  icon: keyof typeof Ionicons.glyphMap;
+  address: Address;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSetDefault: () => void;
 }) {
+  const typeLabel = TYPE_META[a.type].label.toUpperCase();
+
   return (
-    <View style={styles.statCard}>
-      <View style={styles.statIcon}>
-        <Ionicons name={icon} size={16} color={colors.light.primary} />
+    <View style={styles.cardOuter}>
+      <View style={styles.pinBadge}>
+        <Ionicons name="pin" size={13} color={colors.light.foreground} />
       </View>
-      <Body size="sm" numberOfLines={1} style={styles.statValue}>
-        {typeof value === "number" ? value.toLocaleString() : value}
-      </Body>
-      <Label style={styles.statLabel}>{label}</Label>
+
+      <View style={styles.card}>
+        <View style={styles.cardHead}>
+          <View style={styles.cardHeadMain}>
+            <Text style={styles.cardName} numberOfLines={1}>
+              {a.full_name}
+            </Text>
+            <View style={styles.pillRow}>
+              <View style={styles.typePill}>
+                <Text style={styles.typePillText}>{typeLabel}</Text>
+              </View>
+              {a.is_default ? (
+                <View style={styles.defaultPill}>
+                  <Text style={styles.defaultPillText}>Default</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+          <View style={styles.cardActions}>
+            <TouchableOpacity onPress={onEdit} hitSlop={8} style={styles.iconTap}>
+              <Ionicons name="pencil-outline" size={18} color={colors.light.foreground} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDelete} hitSlop={8} style={styles.iconTap}>
+              <Ionicons name="trash-outline" size={18} color={colors.light.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.detailRow}>
+          <Ionicons
+            name="location-outline"
+            size={15}
+            color={colors.light.mutedForeground}
+            style={styles.detailIcon}
+          />
+          <Text style={styles.detailText}>{formatFullAddress(a)}</Text>
+        </View>
+
+        <View style={[styles.detailRow, styles.phoneRow]}>
+          <Ionicons
+            name="call-outline"
+            size={15}
+            color={colors.light.mutedForeground}
+            style={styles.detailIcon}
+          />
+          <Text style={styles.detailText}>{a.phone}</Text>
+        </View>
+
+        {!a.is_default ? (
+          <TouchableOpacity onPress={onSetDefault} style={styles.setDefaultLink}>
+            <Text style={styles.setDefaultText}>Set as default</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  loading: { flex: 1, padding: spacing[5], gap: 12 },
-  skeletonRow: { marginBottom: 4 },
-  content: { padding: spacing[5], paddingBottom: spacing[8] },
-  addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.light.primary,
-  },
-  hero: {
+  screen: { flex: 1 },
+  header: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
-    marginBottom: spacing[5],
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
   },
-  heroLabel: { color: colors.light.mutedForeground },
-  heroTitle: { marginTop: spacing[2], marginBottom: spacing[2] },
-  iconBadge: {
+  headerSide: {
     width: 40,
     height: 40,
-    borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.primary,
   },
-  statsRow: { flexDirection: "row", gap: 10, marginBottom: spacing[5] },
-  statCard: {
+  headerTitle: {
     flex: 1,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: 4,
+    textAlign: "center",
+    fontFamily: fontFamilies.display.regular,
+    fontSize: typography.fontSizes["2xl"],
+    color: colors.light.foreground,
   },
-  statIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.olive[50],
-    marginBottom: 4,
+  loading: {
+    padding: spacing[5],
+    gap: spacing[4],
   },
-  statValue: { fontFamily: fontFamilies.mono.semibold, color: colors.light.foreground },
-  statLabel: { color: colors.light.mutedForeground, fontSize: typography.fontSizes.xs },
-  empty: {
-    alignItems: "center",
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[8],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: spacing[3],
+  content: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[6],
   },
-  emptyIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.olive[50],
+  pageTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 34,
+    lineHeight: 40,
+    color: colors.light.foreground,
+    marginBottom: spacing[2],
   },
-  list: { gap: 12, marginBottom: spacing[4] },
-  addressCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    flexDirection: "row",
-    overflow: "hidden",
-    ...shadows.soft,
-  },
-  typeStripe: { width: 4, backgroundColor: colors.light.primary },
-  addressBody: { flex: 1, padding: 14, gap: 4 },
-  addressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  typeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  typeIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.olive[50],
-  },
-  typeLabel: {
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
-  actionRow: { flexDirection: "row", gap: 4 },
-  iconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.olive[50],
-  },
-  addressName: { fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
-  addressLine: { lineHeight: 16 },
-  coordsPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    marginTop: 6,
-  },
-  coordsText: {
-    color: colors.olive[700],
+  pageSubtitle: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 0.4,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: colors.light.mutedForeground,
+    textTransform: "uppercase",
+    marginBottom: spacing[6],
   },
-  addressFooter: {
+  list: {
+    gap: spacing[6],
+    marginBottom: spacing[6],
+  },
+  cardOuter: {
+    position: "relative",
+    marginTop: spacing[3],
+  },
+  pinBadge: {
+    position: "absolute",
+    top: -14,
+    left: spacing[4],
+    zIndex: 2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  card: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.lg,
+    backgroundColor: colors.paper.cream,
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[4],
+  },
+  cardHead: {
     flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 6,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
+    gap: spacing[2],
   },
-  setDefaultBtn: {
+  cardHeadMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing[2],
+  },
+  cardName: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: typography.fontSizes.xl,
+    color: colors.light.foreground,
+  },
+  pillRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: colors.olive[50],
-    paddingHorizontal: 8,
+    gap: 6,
+  },
+  typePill: {
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: radii.full,
+    backgroundColor: colors.light.secondary,
   },
-  setDefaultText: {
-    color: colors.olive[700],
+  typePillText: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: colors.light.foreground,
   },
-  addRow: {
+  defaultPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.foreground,
+  },
+  defaultPillText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: colors.paper.cream,
+    textTransform: "uppercase",
+  },
+  cardActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-    borderStyle: "dashed",
-    padding: spacing[4],
+    flexShrink: 0,
+    paddingTop: 2,
   },
-  addRowIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.lg,
+  iconTap: {
+    padding: 2,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.light.border,
+    marginVertical: spacing[4],
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  detailIcon: {
+    marginTop: 2,
+    marginRight: spacing[2],
+  },
+  detailText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 21,
+    color: colors.light.foreground,
+  },
+  phoneRow: {
+    marginTop: spacing[3],
+  },
+  setDefaultLink: {
+    marginTop: spacing[4],
+    alignSelf: "flex-start",
+  },
+  setDefaultText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.primary,
+    textDecorationLine: "underline",
+  },
+  addDashed: {
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[4],
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.light.border,
+    borderRadius: radii.lg,
+    backgroundColor: "transparent",
+  },
+  addDashedPressed: {
+    opacity: 0.85,
     backgroundColor: colors.olive[50],
   },
-  addRowTitle: { fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
+  addSquare: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.paper.cream,
+    marginBottom: spacing[3],
+  },
+  addTitle: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    color: colors.light.foreground,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  addSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+  },
 });
