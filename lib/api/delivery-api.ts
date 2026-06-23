@@ -33,7 +33,21 @@ export async function storeApiFetch<T = unknown>(
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { ok: false, error: (json as { error?: string }).error ?? `Request failed (${res.status})` };
+      // Backend envelope v2: { ok:false, error:{ code, message, ... }, version:2 }.
+      // Legacy handlers may return { error: string }. Handle both.
+      const err = (json as { error?: unknown }).error;
+      const message =
+        typeof err === "string"
+          ? err
+          : err && typeof err === "object" && "message" in err
+            ? String((err as { message?: unknown }).message)
+            : `Request failed (${res.status})`;
+      return { ok: false, error: message };
+    }
+    // Envelope v2: { ok:true, data, version:2 }. Legacy: bare resource.
+    const env = json as { ok?: boolean; data?: unknown };
+    if (env && typeof env === "object" && "ok" in env && env.ok) {
+      return { ok: true, data: (env.data ?? json) as T };
     }
     return { ok: true, data: json as T };
   } catch (e: any) {
