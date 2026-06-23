@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "@/lib/supabase/client";
+import { getCartBackend, putCartBackend } from "@/lib/api/backend";
 import { getVariantAvailableStock } from "@/lib/inventory";
 import type { CartReconciliation } from "@/lib/cart-validation";
 import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, assertStoreConsistency, buildCartLineKey } from "@/lib/cart-line-key";
@@ -197,93 +197,25 @@ export const useCart = create<CartStore>()(
         void clearCheckoutSession();
       },
 
-      syncToServer: async (userId): Promise<CartSyncResult> => {
+      syncToServer: async (_userId): Promise<CartSyncResult> => {
         if (!get().hydrated) return { ok: true };
 
         suppressRemoteSyncPull();
 
         try {
-          const { data: existingCart, error: cartLookupError } = await supabase
-            .from("cart")
-            .select("id")
-            .eq("user_id", userId)
-            .maybeSingle();
-
-          if (cartLookupError) {
-            console.warn("[cart] sync lookup failed:", cartLookupError.message);
-            return { ok: false, error: "Could not sync your bag. Try again shortly." };
-          }
-
-          let cartId = existingCart?.id;
-
-          if (!cartId) {
-            const { data: newCart, error: createError } = await supabase
-              .from("cart")
-              .insert({ user_id: userId })
-              .select("id")
-              .single();
-            if (createError || !newCart?.id) {
-              console.warn("[cart] sync create cart failed:", createError?.message);
-              return { ok: false, error: "Could not sync your bag. Try again shortly." };
-            }
-            cartId = newCart.id;
-          }
-
-          const { data: remoteRows, error: remoteError } = await supabase
-            .from("cart_items")
-            .select("id, product_id, variant_id, store_id, quantity, unit_price")
-            .eq("cart_id", cartId);
-
-          if (remoteError) {
-            console.warn("[cart] sync read failed:", remoteError.message);
-            return { ok: false, error: "Could not sync your bag. Try again shortly." };
-          }
-
           const localItems = Object.values(get().items);
-          const plan = planCartSync(localItems, remoteRows ?? []);
-
-          if (plan.toDelete.length > 0) {
-            const { error } = await supabase
-              .from("cart_items")
-              .delete()
-              .in(
-                "id",
-                plan.toDelete.map((row) => row.id),
-              );
-            if (error) {
-              console.warn("[cart] sync delete failed:", error.message);
-              return { ok: false, error: "Could not sync your bag. Try again shortly." };
-            }
+          const lines = localItems.map((item) => ({
+            product_id: item.productId,
+            variant_id: item.variantId,
+            store_id: item.storeId,
+            quantity: item.quantity,
+            unit_price: item.price,
+          }));
+          const res = await putCartBackend(lines, "LKR");
+          if (!res.ok) {
+            console.warn("[cart] sync failed:", res.error);
+            return { ok: false, error: "Could not sync your bag. Try again shortly." };
           }
-
-          for (const patch of plan.toUpdate) {
-            const { error } = await supabase
-              .from("cart_items")
-              .update({ quantity: patch.quantity, unit_price: patch.unit_price })
-              .eq("id", patch.id);
-            if (error) {
-              console.warn("[cart] sync update failed:", error.message);
-              return { ok: false, error: "Could not sync your bag. Try again shortly." };
-            }
-          }
-
-          if (plan.toInsert.length > 0) {
-            const { error } = await supabase.from("cart_items").insert(
-              plan.toInsert.map((item) => ({
-                cart_id: cartId,
-                product_id: item.productId,
-                variant_id: item.variantId,
-                store_id: item.storeId,
-                quantity: item.quantity,
-                unit_price: item.price,
-              })),
-            );
-            if (error) {
-              console.warn("[cart] sync insert failed:", error.message);
-              return { ok: false, error: "Could not sync your bag. Try again shortly." };
-            }
-          }
-
           return { ok: true };
         } catch (err) {
           console.warn("[cart] sync failed:", err);
@@ -291,86 +223,60 @@ export const useCart = create<CartStore>()(
         }
       },
 
-      loadFromServer: async (userId, options?: { merge?: "login" | "remote" }): Promise<CartLoadResult> => {
+      loadFromServer: async (_userId, options?: { merge?: "login" | "remote" }): Promise<CartLoadResult> => {
         const mergeMode = options?.merge ?? "login";
         const loadFailed =
           mergeMode === "remote"
             ? "Could not refresh your bag."
             : "Could not load your bag. Showing items saved on this device.";
         try {
-          const { data: cart, error: cartLookupError } = await supabase
-            .from("cart")
-            .select("id")
-            .eq("user_id", userId)
-            .maybeSingle();
-
-          if (cartLookupError) {
-            console.warn("[cart] load lookup failed:", cartLookupError.message);
+          const res = await getCartBackend();
+          if (!res.ok) {
+            console.warn("[cart] load failed:", res.error);
             set({ hydrated: true });
             return { ok: false, error: loadFailed };
           }
 
-          if (!cart) {
-            if (mergeMode === "remote") {
-              set({ items: {}, hydrated: true });
-            } else {
-              set({ hydrated: true });
-            }
-            return { ok: true };
-          }
-
-          const { data: rows, error: rowsError } = await supabase
-            .from("cart_items")
-            .select(
-              "*, product:products(id, name, status, is_active, store_id, images:product_images(url, is_primary), variants:product_variants(*, inventory(quantity, reserved))), variant:product_variants(*, inventory(quantity, reserved))",
-            )
-            .eq("cart_id", cart.id);
-
-          if (rowsError) {
-            console.warn("[cart] load rows failed:", rowsError.message);
-            set({ hydrated: true });
-            return { ok: false, error: loadFailed };
-          }
-
+          const remoteRows = (res.data.lines ?? []) as unknown[];
           const serverItems: Record<string, CartItem> = {};
-          for (const row of (rows ?? []) as any[]) {
-            const product = row.product;
-            const productVariants = product?.variants ?? [];
-            let variant = row.variant;
-            let variantId = row.variant_id as string | null;
-            if (!variantId && productVariants.length === 1) {
-              variantId = productVariants[0].id;
-              variant = productVariants[0];
-            }
-            const productMissing = !product?.id;
+          for (const row of remoteRows) {
+            const r = row as {
+              product_id: string;
+              variant_id?: string | null;
+              store_id?: string;
+              product_name?: string;
+              variant_label?: string | null;
+              unit_price?: number;
+              quantity?: number;
+              product?: { id: string; name: string; status?: string; is_active?: boolean };
+              variant?: { id?: string; color?: string; size?: string; inventory?: unknown; is_active?: boolean };
+            };
+            if (!r.product_id || !r.store_id) continue;
             const productInactive =
-              product?.status !== "active" || product?.is_active === false;
-            const variantMissing = variantId && !variant?.id;
-            const variantInactive = variant?.is_active === false;
-            if (productMissing || productInactive || variantMissing || variantInactive) {
-              continue;
-            }
+              r.product?.status !== "active" || r.product?.is_active === false;
+            const variantInactive = r.variant?.is_active === false;
+            if (productInactive || variantInactive) continue;
 
             const key = buildCartLineKeyFromItem({
-              storeId: row.store_id,
-              productId: row.product_id,
-              variantId,
+              storeId: r.store_id,
+              productId: r.product_id,
+              variantId: r.variant_id ?? null,
             });
             serverItems[key] = {
-              productId: row.product_id,
-              variantId,
-              storeId: row.store_id,
-              name: product?.name ?? "Product",
-              variantLabel: variant
-                ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim() || undefined
-                : undefined,
-              price: row.unit_price,
-              quantity: row.quantity,
-              stock: getVariantAvailableStock({ inventory: variant?.inventory }, 99),
+              productId: r.product_id,
+              variantId: r.variant_id ?? null,
+              storeId: r.store_id,
+              name: r.product_name ?? r.product?.name ?? "Product",
+              variantLabel: r.variant_label ?? undefined,
+              price: Number(r.unit_price ?? 0),
+              quantity: Number(r.quantity ?? 1),
+              stock: getVariantAvailableStock(
+                { inventory: r.variant?.inventory as never },
+                99,
+              ),
             };
           }
 
-          // Merge: login keeps guest additions; remote pull trusts the server.
           const local = migrateCartItemRecord(get().items);
           let mergedItems: Record<string, CartItem>;
           let quantityConflicts = 0;
@@ -382,16 +288,11 @@ export const useCart = create<CartStore>()(
             quantityConflicts = merged.quantityConflicts;
           }
 
-          // Re-validate store consistency. After merge the line keys may still
-          // reference an old storeId if a product was transferred; re-key them
-          // silently using the fresh product snapshot we already fetched above.
           const productIndex: Record<string, { id: string; store_id: string }> = {};
-          for (const row of (rows ?? []) as any[]) {
-            if (row.product?.id) {
-              productIndex[row.product.id] = {
-                id: row.product.id,
-                store_id: row.product.store_id,
-              };
+          for (const row of remoteRows) {
+            const r = row as { product_id: string; product?: { id: string; store_id?: string } };
+            if (r.product?.id && r.product.store_id) {
+              productIndex[r.product_id] = { id: r.product.id, store_id: r.product.store_id };
             }
           }
           const consistency = assertStoreConsistency(mergedItems, productIndex);

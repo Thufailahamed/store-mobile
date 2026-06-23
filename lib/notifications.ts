@@ -2,7 +2,8 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Alert, Platform } from "react-native";
 import Constants from "expo-constants";
-import { supabase } from "./supabase/client";
+import { registerPushTokenBackend, unregisterPushTokenBackend } from "@/lib/api/backend";
+import { hasStoreApi } from "@/lib/api/delivery-api";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -30,18 +31,18 @@ export function getLastPushRegistrationState(): PushRegistrationState {
   return lastState;
 }
 
+let lastRegisteredToken: string | null = null;
+
 /**
  * Register for Expo push notifications and persist the token to the
  * backend via `/api/notifications/push-token` (which writes to the
- * `push_tokens` table introduced in migration 0140 — the legacy
- * `users.push_token` write the previous version used silently failed
- * because no migration ever created that column).
+ * `push_tokens` table introduced in migration 0140).
  *
  * On any failure we update `lastState` AND raise a single non-blocking
  * Alert the first time per session so the user can act on it
  * (open Settings to grant permission, retry, etc.).
  */
-export async function registerForPushNotifications(userId: string): Promise<string | null> {
+export async function registerForPushNotifications(_userId: string): Promise<string | null> {
   if (!Device.isDevice) {
     lastState = { status: "unsupported" };
     return null;
@@ -94,39 +95,33 @@ export async function registerForPushNotifications(userId: string): Promise<stri
     }
   }
 
-  // Persist via the server route. We send the session JWT so the
-  // server can authenticate the upsert against the `push_tokens`
-  // RLS policy.
+  // Persist via the backend wrapper. We only POST when the token
+  // actually changes — Expo sometimes re-emits the same token on
+  // app foreground, and the server's rate limit (10/min) is per-user.
+  if (token === lastRegisteredToken) {
+    lastState = { status: "registered", token };
+    return token;
+  }
+
+  if (!hasStoreApi()) {
+    lastState = { status: "failed", reason: "Store API not configured" };
+    return null;
+  }
+
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
-      lastState = { status: "failed", reason: "no session" };
-      surfaceFailureOnce("You're not signed in. Push notifications will resume after you sign in.");
-      return null;
-    }
-    const res = await fetch("/api/notifications/push-token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        token,
-        platform: "expo",
-        appVersion: (Constants?.expoConfig?.version as string | undefined) ?? null,
-        userAgent: `${Platform.OS} ${Platform.Version}`,
-      }),
+    const res = await registerPushTokenBackend({
+      token,
+      platform: Platform.OS === "android" ? "android" : "ios",
     });
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
       lastState = {
         status: "failed",
-        reason: `register ${res.status}: ${txt.slice(0, 200)}`,
+        reason: `register failed: ${res.error}`,
       };
-      console.warn("[notifications] push-token register failed:", res.status, txt.slice(0, 200));
+      console.warn("[notifications] push-token register failed:", lastState.reason);
       return null;
     }
+    lastRegisteredToken = token;
     lastState = { status: "registered", token };
     return token;
   } catch (err) {
@@ -162,23 +157,15 @@ export function addNotificationReceivedListener(
 }
 
 /** Deactivate the current device's push token — called on sign-out. */
-export async function clearPushToken(userId: string): Promise<void> {
+export async function clearPushToken(_userId: string): Promise<void> {
+  const token = lastRegisteredToken;
+  if (!token || !hasStoreApi()) {
+    lastRegisteredToken = null;
+    return;
+  }
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    if (!accessToken) {
-      // Fallback: try the legacy direct write so the column at least
-      // gets nulled out for callers that still read it.
-      await supabase.from("users").update({ push_token: null }).eq("id", userId);
-      return;
-    }
-    await fetch("/api/notifications/push-token", {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    await unregisterPushTokenBackend(token);
+    lastRegisteredToken = null;
   } catch (err) {
     console.warn("[notifications] clearPushToken threw:", err);
   }

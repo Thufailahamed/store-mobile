@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { getLoyaltyBalanceBackend, redeemLoyaltyBackend } from "@/lib/api/backend";
 import { useAuth } from "@/lib/supabase/auth";
 
 export type LoyaltyTier = "Bronze" | "Silver" | "Gold" | "Platinum";
@@ -49,22 +49,18 @@ export function useLoyalty() {
       return;
     }
     setLoading(true);
-    const [{ data: profile }, { data: txns }] = await Promise.all([
-      supabase.from("users").select("loyalty_points").eq("id", user.id).maybeSingle(),
-      supabase
-        .from("loyalty_transactions")
-        .select("points")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
-    const points = profile?.loyalty_points ?? 0;
-    const lifetime = (txns ?? []).reduce(
+    const res = await getLoyaltyBalanceBackend();
+    if (!res.ok) {
+      setLoading(false);
+      return;
+    }
+    const txns = res.data.transactions ?? [];
+    const lifetime = txns.reduce(
       (s, t) => s + Math.max(0, Number(t.points) || 0),
       0
     );
     setState({
-      points,
+      points: Number(res.data.points ?? 0),
       lifetime_points: lifetime,
       tier: tierFromPoints(lifetime),
     });
@@ -76,14 +72,10 @@ export function useLoyalty() {
   }, [reload]);
 
   const redeem = useCallback(
-    async (points: number, referenceId?: string) => {
+    async (points: number, _referenceId?: string) => {
       if (!user || points <= 0) return { ok: false as const, error: "Invalid points" };
-      const { error } = await supabase.rpc("loyalty_redeem_atomic", {
-        p_points: points,
-        p_reason: `Redeemed ${points} pts at checkout`,
-        ...(referenceId ? { p_reference_id: referenceId } : {}),
-      });
-      if (error) return { ok: false as const, error: error.message };
+      const res = await redeemLoyaltyBackend(points, "Redeemed at checkout");
+      if (!res.ok) return { ok: false as const, error: res.error };
       await reload();
       return { ok: true as const, value: points };
     },

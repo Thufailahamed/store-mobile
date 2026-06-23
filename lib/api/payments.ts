@@ -1,4 +1,17 @@
+/**
+ * Payments — session creation + status polling.
+ *
+ * Status polling: prefer the new backend endpoint
+ *   GET /api/payments/orders/:id/status
+ * which reads from the cross-provider status view in Postgres. Falls
+ * back to the legacy direct-Supabase poll if the backend doesn't
+ * expose that endpoint yet (older deployments).
+ */
+
 import { supabase } from "@/lib/supabase/client";
+import { fetchJson, type ApiResult } from "@/lib/api/backend";
+import { hasStoreApi } from "@/lib/api/delivery-api";
+import type { PaymentStatus } from "@/lib/api/backend";
 
 const STORE_API_URL = process.env.EXPO_PUBLIC_STORE_API_URL ?? "";
 
@@ -14,6 +27,49 @@ export async function pollOrderPaymentStatus(
   const intervalMs = opts.intervalMs ?? 3000;
   const maxAttempts = opts.maxAttempts ?? 40;
 
+  // Backend path — preferred.
+  if (hasStoreApi()) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res: ApiResult<PaymentStatus> = await fetchJson(
+        `/api/payments/orders/${orderId}/status`,
+        { timeoutMs: 10_000 },
+      );
+      if (res.ok) {
+        if (res.data.payment_status === "paid") {
+          return { ok: true, paymentStatus: "paid" };
+        }
+        if (res.data.status === "cancelled") {
+          return {
+            ok: false,
+            error: "Order was cancelled",
+            paymentStatus: res.data.payment_status ?? undefined,
+          };
+        }
+      } else if (!res.error.toLowerCase().includes("not found")) {
+        // Transient — keep polling.
+      } else {
+        // 404 → backend route missing, fall back to direct Supabase.
+        return pollOrderPaymentStatusFallback(orderId, intervalMs, maxAttempts);
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+    return {
+      ok: false,
+      error: "Payment confirmation timed out. Check your orders for status.",
+    };
+  }
+
+  return pollOrderPaymentStatusFallback(orderId, intervalMs, maxAttempts);
+}
+
+async function pollOrderPaymentStatusFallback(
+  orderId: string,
+  intervalMs: number,
+  maxAttempts: number,
+): Promise<PaymentPollResult> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const { data, error } = await supabase
       .from("orders")
@@ -32,12 +88,10 @@ export async function pollOrderPaymentStatus(
         paymentStatus: data.payment_status ?? undefined,
       };
     }
-
     if (attempt < maxAttempts - 1) {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
   }
-
   return {
     ok: false,
     error: "Payment confirmation timed out. Check your orders for status.",

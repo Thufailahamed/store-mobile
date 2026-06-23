@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
 import { getPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { placeOrderGroupBackend, abandonOrderGroupBackend } from "@/lib/api/backend";
 import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
@@ -546,21 +547,25 @@ export default function CheckoutScreen() {
       // reservation lookup. Re-syncing here would clobber the TTL with no
       // benefit and could leak holds if the group call fails.
 
-      const { data: groupData, error: groupErr } = await supabase.rpc(
-        "place_order_group",
-        {
-          p_user_id: user.id,
-          p_address_id: addressId,
-          p_shipping_address: shippingAddress,
-          p_currency: "LKR",
-          p_payment_method: paymentMethod,
-          p_coupon_id: couponId,
-          p_coupon_code: couponInput.trim() || null,
-          p_loyalty_points_redeemed: freshPointsToUse,
-          p_orders: ordersPayload,
-          p_group_id: groupId,
-        },
-      );
+      const { data: groupData, error: groupErr } = await (async () => {
+        const res = await placeOrderGroupBackend({
+          cart_groups: ordersPayload.map((row) => ({
+            store_id: row.store_id,
+            items: row.items
+              .filter((i) => i.variant_id != null)
+              .map((i) => ({
+                variant_id: i.variant_id as string,
+                quantity: i.quantity,
+              })),
+          })),
+          address_id: addressId ?? "",
+          payment_method: paymentMethod,
+          coupon_code: couponInput.trim() || null,
+          currency: "LKR",
+        });
+        if (!res.ok) return { data: null, error: { message: res.error } };
+        return { data: res.data, error: null };
+      })();
 
       if (groupErr) {
         throw new Error(groupErr.message);
@@ -578,7 +583,7 @@ export default function CheckoutScreen() {
         pendingLoyaltyPointsRef.current = freshPointsToUse;
         const session = await getPayHereSession(firstOrderId, { groupId });
         if (!session.ok) {
-          await supabase.rpc("abandon_unpaid_order_group", { p_group_id: groupId });
+          await abandonOrderGroupBackend(groupId);
           orderPlaced = false;
           throw new Error(session.error);
         }

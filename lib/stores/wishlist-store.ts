@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "@/lib/supabase/client";
+import { listWishlistBackend, addWishlistBackend, removeWishlistBackend } from "@/lib/api/backend";
 import { suppressRemoteSyncPull } from "@/lib/remote-sync-guard";
 
 interface WishlistStore {
@@ -17,41 +17,11 @@ interface WishlistStore {
   refreshFromServer: (userId: string) => Promise<void>;
 }
 
-async function ensureWishlistId(userId: string): Promise<string | null> {
-  try {
-    const { data: existing } = await supabase
-      .from("wishlists")
-      .select("id")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (existing?.id) return existing.id;
-
-    const { data: created } = await supabase
-      .from("wishlists")
-      .insert({ user_id: userId, name: "My Wishlist" })
-      .select("id")
-      .single();
-    return created?.id ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchServerWishlistItems(
-  userId: string,
-): Promise<Record<string, boolean>> {
-  const wishlistId = await ensureWishlistId(userId);
-  if (!wishlistId) return {};
-
-  const { data } = await supabase
-    .from("wishlist_items")
-    .select("product_id")
-    .eq("wishlist_id", wishlistId);
-
+async function fetchServerWishlistItems(): Promise<Record<string, boolean>> {
+  const res = await listWishlistBackend();
+  if (!res.ok) return {};
   const serverItems: Record<string, boolean> = {};
-  for (const row of (data ?? []) as { product_id: string }[]) {
+  for (const row of (res.data.items ?? []) as Array<{ product_id: string }>) {
     serverItems[row.product_id] = true;
   }
   return serverItems;
@@ -83,47 +53,31 @@ export const useWishlist = create<WishlistStore>()(
         set({ items: {}, hydrated: false });
       },
 
-      syncToServer: async (userId) => {
+      syncToServer: async (_userId) => {
         if (!get().hydrated) return;
-
         suppressRemoteSyncPull();
-
         try {
-          const wishlistId = await ensureWishlistId(userId);
-          if (!wishlistId) return;
-
-          const { data: remote } = await supabase
-            .from("wishlist_items")
-            .select("product_id")
-            .eq("wishlist_id", wishlistId);
-          const remoteIds = new Set(
-            (remote ?? []).map((r: { product_id: string }) => r.product_id),
-          );
           const localIds = new Set(Object.keys(get().items));
-
+          const serverItems = await fetchServerWishlistItems();
+          const remoteIds = new Set(Object.keys(serverItems));
           const toInsert = [...localIds].filter((id) => !remoteIds.has(id));
           const toDelete = [...remoteIds].filter((id) => !localIds.has(id));
-
-          if (toInsert.length > 0) {
-            await supabase.from("wishlist_items").insert(
-              toInsert.map((product_id) => ({ wishlist_id: wishlistId, product_id })),
-            );
+          for (const productId of toInsert) {
+            const res = await addWishlistBackend(productId);
+            if (!res.ok) break;
           }
-          if (toDelete.length > 0) {
-            await supabase
-              .from("wishlist_items")
-              .delete()
-              .eq("wishlist_id", wishlistId)
-              .in("product_id", toDelete);
+          for (const productId of toDelete) {
+            const res = await removeWishlistBackend(productId);
+            if (!res.ok) break;
           }
         } catch {
           // Silent fail — local wishlist still works offline.
         }
       },
 
-      loadFromServer: async (userId) => {
+      loadFromServer: async (_userId) => {
         try {
-          const serverItems = await fetchServerWishlistItems(userId);
+          const serverItems = await fetchServerWishlistItems();
           const merged = { ...serverItems, ...get().items };
           set({ items: merged, hydrated: true });
         } catch {
@@ -131,10 +85,10 @@ export const useWishlist = create<WishlistStore>()(
         }
       },
 
-      refreshFromServer: async (userId) => {
+      refreshFromServer: async (_userId) => {
         if (!get().hydrated) return;
         try {
-          const serverItems = await fetchServerWishlistItems(userId);
+          const serverItems = await fetchServerWishlistItems();
           set({ items: serverItems });
         } catch {
           // Keep current local state on transient errors.

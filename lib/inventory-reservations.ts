@@ -1,4 +1,10 @@
-import { supabase } from "@/lib/supabase/client";
+import {
+  syncCartReservationsBackend,
+  releaseCartReservationsBackend,
+  cancelOrderBackend,
+  abandonOrderGroupBackend,
+  cancelOrderGroupBackend,
+} from "@/lib/api/backend";
 
 export type CartReservationItem = {
   variant_id: string;
@@ -57,26 +63,18 @@ export async function syncCartReservations(
   ttlMinutes = DEFAULT_TTL_MINUTES,
 ): Promise<CartReservationSyncResult> {
   const payload = normalizeItems(items);
-  const { data, error } = await supabase.rpc("sync_cart_reservations", {
-    p_items: payload,
-    p_ttl_minutes: ttlMinutes,
-  });
-
-  if (error) {
-    return { ok: false, error: error.message };
-  }
-
-  const row = (data ?? {}) as { synced?: number; expires_at?: string };
+  const res = await syncCartReservationsBackend(payload, ttlMinutes);
+  if (!res.ok) return { ok: false, error: res.error };
   return {
     ok: true,
-    synced: Number(row.synced ?? payload.length),
-    expiresAt: row.expires_at,
+    synced: Number(res.data.synced ?? payload.length),
+    expiresAt: res.data.expires_at ?? undefined,
   };
 }
 
 /** Release all holds for the signed-in user (e.g. after checkout or sign-out). */
 export async function releaseCartReservations(): Promise<void> {
-  await supabase.rpc("release_cart_reservations");
+  await releaseCartReservationsBackend();
 }
 
 /** Debounced sync after cart mutations. No-op when userId is null. */
@@ -109,8 +107,8 @@ export function scheduleCartReservationSync(
 export async function abandonUnpaidPayHereOrder(
   orderId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await supabase.rpc("cancel_order", { p_order_id: orderId });
-  if (error) return { ok: false, error: error.message };
+  const res = await cancelOrderBackend(orderId);
+  if (!res.ok) return { ok: false, error: res.error };
   await releaseCartReservations();
   return { ok: true };
 }
@@ -123,16 +121,13 @@ export async function abandonUnpaidPayHereOrder(
 export async function abandonUnpaidPayHereGroup(
   groupId: string,
 ): Promise<{ ok: true; cancelled: number; noop: number } | { ok: false; error: string }> {
-  const { data, error } = await supabase.rpc("abandon_unpaid_order_group", {
-    p_group_id: groupId,
-  });
-  if (error) return { ok: false, error: error.message };
-  const payload = (data ?? {}) as { cancelled?: number; noop?: number };
+  const res = await abandonOrderGroupBackend(groupId);
+  if (!res.ok) return { ok: false, error: res.error };
   await releaseCartReservations();
   return {
     ok: true,
-    cancelled: Number(payload.cancelled ?? 0),
-    noop: Number(payload.noop ?? 0),
+    cancelled: Number(res.data.cancelled ?? 0),
+    noop: Number(res.data.noop ?? 0),
   };
 }
 
@@ -144,8 +139,8 @@ export async function abandonUnpaidPayHereGroup(
 export async function cancelPlacedOrder(
   orderId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await supabase.rpc("cancel_order", { p_order_id: orderId });
-  if (error) return { ok: false, error: error.message };
+  const res = await cancelOrderBackend(orderId);
+  if (!res.ok) return { ok: false, error: res.error };
   return { ok: true };
 }
 
@@ -157,17 +152,13 @@ export async function cancelPlacedOrderGroup(
   groupId: string,
   reason?: string,
 ): Promise<{ ok: true; cancelled: number; refunded: number; noop: number } | { ok: false; error: string }> {
-  const { data, error } = await supabase.rpc("cancel_order_group", {
-    p_group_id: groupId,
-    p_reason: reason ?? null,
-  });
-  if (error) return { ok: false, error: error.message };
-  const payload = (data ?? {}) as { cancelled?: number; refunded?: number; noop?: number };
+  const res = await cancelOrderGroupBackend(groupId, reason);
+  if (!res.ok) return { ok: false, error: res.error };
   return {
     ok: true,
-    cancelled: Number(payload.cancelled ?? 0),
-    refunded:  Number(payload.refunded  ?? 0),
-    noop:      Number(payload.noop      ?? 0),
+    cancelled: Number(res.data.cancelled ?? 0),
+    refunded: Number(res.data.refunded ?? 0),
+    noop: Number(res.data.noop ?? 0),
   };
 }
 

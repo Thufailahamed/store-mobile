@@ -1,7 +1,7 @@
 /**
  * Remote event sync.
  *
- * Mirrors the device-local event log to Supabase so the user profile
+ * Mirrors the device-local event log to the backend so the user profile
  * (and therefore the personalized feed) survives reinstall, works across
  * devices, and is available the moment the user signs in on a new phone.
  *
@@ -17,7 +17,11 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "@/lib/supabase/client";
+import {
+  appendEventsBackend,
+  fetchRecentEventsBackend,
+  clearEventsBackend,
+} from "@/lib/api/backend";
 import type { RecommendationEvent } from "./events";
 
 const QUEUE_KEY = (userId: string | null | undefined) =>
@@ -85,90 +89,94 @@ async function writeQueue(
 /*  Wire format                                                         */
 /* ------------------------------------------------------------------ */
 
-interface RemoteEventRow {
-  clientId: string;
-  t: number;
+interface WireEvent {
   type: string;
-  query?: string | null;
-  tokens?: string[] | null;
-  resultCount?: number | null;
-  dwellMs?: number | null;
-  surface?: string | null;
-  quantity?: number | null;
-  product?: {
-    id: string;
-    category_id?: string | null;
-    brand_id?: string | null;
-    store_id?: string | null;
-    material?: string | null;
-    gender?: string | null;
-    garment?: string | null;
-    price?: number | null;
-    colors?: string[] | null;
-    tags?: string[] | null;
-  } | null;
+  product_id?: string;
+  category_id?: string;
+  metadata: Record<string, unknown>;
+  occurred_at?: string;
 }
 
-/** Serialize a typed event to the wire shape the RPC expects. */
-function toRow(event: RecommendationEvent): RemoteEventRow {
-  const base: RemoteEventRow = {
-    clientId: `${event.t}-${Math.random().toString(36).slice(2, 8)}`,
+interface RemoteEventRow {
+  type: string;
+  product_id?: string | null;
+  category_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  occurred_at?: string | null;
+}
+
+/** Serialize a typed event to the wire shape the backend endpoint accepts. */
+function toRow(event: RecommendationEvent): WireEvent {
+  const metadata: Record<string, unknown> = {
+    client_id: `${event.t}-${Math.random().toString(36).slice(2, 8)}`,
     t: event.t,
-    type: event.type,
   };
+  let product_id: string | null = null;
+  let category_id: string | null = null;
+
   if (event.type === "search") {
-    base.query = event.query;
-    base.tokens = event.tokens;
-    base.resultCount = event.resultCount;
-  } else if (event.type === "view") {
-    base.dwellMs = event.dwellMs ?? null;
-    base.product = event.product as any;
-  } else if (event.type === "purchase") {
-    base.quantity = event.quantity;
-    base.product = event.product as any;
-  } else if (event.type === "dismiss") {
-    base.surface = event.surface ?? null;
-    base.product = event.product as any;
-  } else if (event.type === "not_interested" || event.type === "wishlist_add" || event.type === "wishlist_remove" || event.type === "cart_add") {
-    base.product = (event as any).product;
+    metadata.query = event.query;
+    metadata.tokens = event.tokens;
+    metadata.resultCount = event.resultCount;
+  } else if ("product" in event && event.product) {
+    const p = event.product as { id: string; category_id?: string | null };
+    product_id = p.id ?? null;
+    category_id = p.category_id ?? null;
+    metadata.product = p;
+    if (event.type === "view") metadata.dwellMs = event.dwellMs ?? null;
+    if (event.type === "purchase") metadata.quantity = event.quantity;
+    if (event.type === "dismiss") metadata.surface = event.surface ?? null;
   }
-  return base;
+
+  return {
+    type: event.type,
+    ...(product_id ? { product_id } : {}),
+    ...(category_id ? { category_id } : {}),
+    metadata,
+    occurred_at: new Date(event.t).toISOString(),
+  };
 }
 
 /** Hydrate a row from the server back into a typed RecommendationEvent. */
 function fromRow(row: RemoteEventRow): RecommendationEvent | null {
+  const meta = row.metadata ?? {};
+  const t =
+    typeof meta.t === "number"
+      ? (meta.t as number)
+      : row.occurred_at
+        ? Date.parse(row.occurred_at)
+        : Date.now();
+  const product = (meta.product as RecommendationEvent extends { product?: infer P } ? P : never) ?? null;
+
   if (row.type === "search") {
     return {
       type: "search",
-      t: row.t,
-      query: row.query ?? "",
-      tokens: row.tokens ?? [],
-      resultCount: row.resultCount ?? 0,
+      t,
+      query: String(meta.query ?? ""),
+      tokens: Array.isArray(meta.tokens) ? (meta.tokens as string[]) : [],
+      resultCount: Number(meta.resultCount ?? 0),
     };
   }
-  if (row.type === "view") {
-    if (!row.product) return null;
-    return { type: "view", t: row.t, product: row.product as any, dwellMs: row.dwellMs ?? undefined };
+  if (row.type === "view" && product) {
+    return { type: "view", t, product: product as never, dwellMs: Number(meta.dwellMs ?? 0) || undefined };
   }
-  if (row.type === "purchase") {
-    if (!row.product) return null;
-    return { type: "purchase", t: row.t, product: row.product as any, quantity: row.quantity ?? 1 };
+  if (row.type === "purchase" && product) {
+    return { type: "purchase", t, product: product as never, quantity: Number(meta.quantity ?? 1) };
   }
-  if (row.type === "wishlist_add" || row.type === "wishlist_remove") {
-    if (!row.product) return null;
-    return { type: row.type, t: row.t, product: row.product as any };
+  if (row.type === "wishlist_add" && product) {
+    return { type: "wishlist_add", t, product: product as never };
   }
-  if (row.type === "cart_add") {
-    if (!row.product) return null;
-    return { type: "cart_add", t: row.t, product: row.product as any };
+  if (row.type === "wishlist_remove" && product) {
+    return { type: "wishlist_remove", t, product: product as never };
   }
-  if (row.type === "dismiss") {
-    if (!row.product) return null;
-    return { type: "dismiss", t: row.t, product: row.product as any, surface: row.surface ?? undefined };
+  if (row.type === "cart_add" && product) {
+    return { type: "cart_add", t, product: product as never };
   }
-  if (row.type === "not_interested") {
-    if (!row.product) return null;
-    return { type: "not_interested", t: row.t, product: row.product as any };
+  if (row.type === "dismiss" && product) {
+    return { type: "dismiss", t, product: product as never, surface: (meta.surface as string | undefined) ?? undefined };
+  }
+  if (row.type === "not_interested" && product) {
+    return { type: "not_interested", t, product: product as never };
   }
   return null;
 }
@@ -213,10 +221,8 @@ export async function flushQueue(
 
   try {
     const rows = queue.map(toRow);
-    const { data, error } = await supabase.rpc("append_user_events", {
-      p_events: rows as any,
-    });
-    if (error) {
+    const res = await appendEventsBackend(rows);
+    if (!res.ok) {
       // Keep the queue intact so we retry next time.
       return 0;
     }
@@ -224,7 +230,7 @@ export async function flushQueue(
     // server side (ON CONFLICT DO NOTHING) so a partial success is fine;
     // we just clear the whole batch.
     await writeQueue(userId, []);
-    return typeof data === "number" ? data : rows.length;
+    return Number(res.data.appended ?? rows.length);
   } catch {
     return 0;
   }
@@ -245,13 +251,10 @@ export async function fetchRemoteEvents(
 ): Promise<RecommendationEvent[]> {
   if (!userId) return [];
   try {
-    const { data, error } = await supabase.rpc("fetch_user_recent_events", {
-      p_limit: Math.max(1, Math.min(limit, REMOTE_FETCH_LIMIT)),
-    });
-    if (error || !data) return [];
-    if (!Array.isArray(data)) return [];
+    const res = await fetchRecentEventsBackend(Math.max(1, Math.min(limit, REMOTE_FETCH_LIMIT)));
+    if (!res.ok || !Array.isArray(res.data.events)) return [];
     const out: RecommendationEvent[] = [];
-    for (const row of data as RemoteEventRow[]) {
+    for (const row of res.data.events as RemoteEventRow[]) {
       const ev = fromRow(row);
       if (ev && !isStale(ev)) out.push(ev);
     }
@@ -296,7 +299,7 @@ export async function clearRemoteEvents(
 ): Promise<void> {
   if (!userId) return;
   try {
-    await supabase.rpc("clear_user_events");
+    await clearEventsBackend();
   } catch {
     // ignore
   }

@@ -18,6 +18,7 @@
  */
 
 import { supabase } from "@/lib/supabase/client";
+import { getCoPurchasesBackend } from "@/lib/api/backend";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { readEvents, type ViewEvent } from "./events";
 import { isProductInStock } from "./inventory";
@@ -59,12 +60,17 @@ interface CoPurchaseRow {
 
 async function tryCoPurchases(anchorId: string, limit: number): Promise<string[]> {
   try {
-    const { data, error } = await supabase.rpc("get_product_co_purchases", {
-      p_product_id: anchorId,
-      p_limit: limit * 2,
-    });
-    if (error || !data || !Array.isArray(data)) return [];
-    return (data as CoPurchaseRow[])
+    const res = await getCoPurchasesBackend(anchorId, limit * 2);
+    if (!res.ok || !Array.isArray(res.data.results)) return [];
+    // Backend returns { product_id, score, product }; the legacy local shape
+    // expected { co_product_id, pair_count, last_purchased_at }. Bridge via
+    // a one-line mapper rather than rewriting downstream sort/slice logic.
+    const rows = (res.data.results as unknown as Array<{ product_id: string; score: number }>).map((r) => ({
+      co_product_id: r.product_id,
+      pair_count: Number(r.score ?? 0),
+      last_purchased_at: new Date(0).toISOString(),
+    })) as CoPurchaseRow[];
+    return rows
       .sort((a, b) => {
         if (b.pair_count !== a.pair_count) return b.pair_count - a.pair_count;
         return b.last_purchased_at.localeCompare(a.last_purchased_at);

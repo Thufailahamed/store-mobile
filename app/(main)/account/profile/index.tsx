@@ -18,6 +18,7 @@ import { Avatar, Button, useToast } from "@/components/ui";
 import { Body, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
+import { getProfileBackend, updateProfileBackend } from "@/lib/api/backend";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { pickImage, takePhoto, uploadAvatar } from "@/lib/upload";
@@ -58,11 +59,8 @@ export default function ProfileScreen() {
 
     let cancelled = false;
     (async () => {
-      const { data: profile } = await supabase
-        .from("users")
-        .select("full_name, phone, avatar_url, metadata")
-        .eq("id", user.id)
-        .maybeSingle();
+      const res = await getProfileBackend();
+      const profile = res.ok ? res.data.user : null;
 
       if (cancelled) return;
 
@@ -161,22 +159,13 @@ export default function ProfileScreen() {
   const handleSave = useCallback(async () => {
     if (!user) return;
     setSaving(true);
-    // Read existing metadata so we don't clobber fields we don't manage.
-    const { data: existing } = await supabase
-      .from("users")
-      .select("metadata")
-      .eq("id", user.id)
-      .maybeSingle();
-    const prevMeta = (existing?.metadata as Record<string, unknown> | null) ?? {};
-
-    const { error } = await supabase
-      .from("users")
-      .update({
-        full_name: form.name,
-        phone: form.phone || null,
-        metadata: { ...prevMeta, dob: form.dob, bio: form.bio },
-      })
-      .eq("id", user.id);
+    // Backend /api/account/me handles the metadata merge server-side.
+    const res = await updateProfileBackend({
+      full_name: form.name,
+      phone: form.phone || null,
+      metadata: { dob: form.dob, bio: form.bio },
+    });
+    const error = res.ok ? null : { message: res.error };
 
     // Mirror full_name into Supabase Auth user_metadata so the session
     // reflects the change immediately (useAuth hydrates from this).

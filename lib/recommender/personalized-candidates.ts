@@ -21,6 +21,7 @@
  */
 
 import { supabase } from "@/lib/supabase/client";
+import { getUserTopCategoriesBackend } from "@/lib/api/backend";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
 import { isProductInStock } from "./inventory";
@@ -43,12 +44,15 @@ async function fetchTopCategories(
   limit: number = 2,
 ): Promise<string[]> {
   try {
-    const { data, error } = await supabase.rpc("get_user_top_categories", {
-      p_user_id: userId,
-      p_limit: limit,
-    });
-    if (error || !data || !Array.isArray(data)) return [];
-    return (data as TopCategoryRow[])
+    const res = await getUserTopCategoriesBackend(limit);
+    if (!res.ok || !Array.isArray(res.data.categories)) return [];
+    // Backend returns { category_id, score, category }; legacy local shape
+    // expected { category_id, weight }. Map score → weight.
+    const rows = (res.data.categories as unknown as Array<{ category_id: string; score: number }>).map((r) => ({
+      category_id: r.category_id,
+      weight: Number(r.score ?? 0),
+    })) as TopCategoryRow[];
+    return rows
       .filter((r) => r.category_id && r.weight > 0)
       .map((r) => r.category_id);
   } catch {
