@@ -24,6 +24,7 @@ import {
   expandColorTerms,
   fuzzyMatch,
   scoreProduct,
+  isColorWord,
 } from "@/lib/utils/search-utils";
 import type {
   Product, ProductVariant, ProductImage, Brand, Store, Category,
@@ -350,16 +351,26 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
     return ok(mapProducts(fallback.data.products) ?? []);
   }
 
-  const browsableStoreIds = await getBrowsableStoreIds();
-  const backendProducts = (res.data.products as unknown[]).filter((p) =>
-    isPublicCatalogProduct(p as { store_id?: string | null }, browsableStoreIds)
-  );
+  const rawProducts = res.data.products ?? [];
+  const matchedIds = rawProducts.map((p) => p.id);
+
+  let backendProducts: Product[] = [];
+  if (matchedIds.length > 0) {
+    const detailsRes = await B.getProductsByIdsBackend(matchedIds);
+    if (!detailsRes.ok) return fail(detailsRes.error);
+    const browsableStoreIds = await getBrowsableStoreIds();
+    backendProducts = (mapProducts(detailsRes.data.products) ?? []).filter((p) =>
+      isPublicCatalogProduct(p, browsableStoreIds)
+    );
+  }
 
   // Color expansion: also fetch products whose variants match colour terms.
   const colorTerms = new Set<string>();
   for (const word of words) {
-    for (const variantVal of expandColorTerms(word)) {
-      colorTerms.add(variantVal);
+    if (isColorWord(word)) {
+      for (const variantVal of expandColorTerms(word)) {
+        colorTerms.add(variantVal);
+      }
     }
   }
   const colorHits: Product[] = [];
@@ -368,7 +379,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
     const extra = await B.getProductsBackend({ search: colorQ, limit });
     if (extra.ok) {
       for (const p of mapProducts(extra.data.products) ?? []) {
-        if (!backendProducts.find((b) => (b as { id: string }).id === p.id)) colorHits.push(p);
+        if (!backendProducts.find((b) => b.id === p.id)) colorHits.push(p);
       }
     }
   }
@@ -379,7 +390,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
     if (all.ok) {
       const lower = term.toLowerCase();
       const mapped = mapProducts(all.data.products) ?? [];
-      const seen = new Set([...backendProducts, ...colorHits].map((p) => (p as { id: string }).id));
+      const seen = new Set([...backendProducts, ...colorHits].map((p) => p.id));
       const fuzzy = mapped.filter((p) => {
         const name = (p.name ?? "").toLowerCase();
         const desc = (p.description ?? "").toLowerCase();
@@ -396,10 +407,11 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
   }
 
   // Rank locally by scoring utility, then cap to limit.
-  const combined = [...backendProducts, ...colorHits] as Product[];
+  const combined = [...backendProducts, ...colorHits];
   const scored = combined.map((p) => ({ product: p, score: scoreProduct(p, words, term.toLowerCase()) }));
   const ranked = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).map((s) => s.product);
   return ok(ranked.slice(0, limit));
+
 }
 
 export type SearchSuggestion = {

@@ -58,6 +58,14 @@ export async function getProductBySlugBackend(slug: string): Promise<ApiResult<{
   return fetchJson(`/api/catalog/products/slug/${slug}`, { requireAuth: false });
 }
 
+export async function getProductsByIdsBackend(ids: string[], includeInactive?: boolean): Promise<ApiResult<{ products: CatalogProduct[] }>> {
+  return fetchJson("/api/catalog/products/by-ids", {
+    method: "POST",
+    requireAuth: false,
+    body: { ids, include_inactive: includeInactive },
+  });
+}
+
 export type SearchResultRow = {
   id: string;
   name: string;
@@ -99,7 +107,7 @@ export async function getBrandByIdBackend(id: string): Promise<ApiResult<{ brand
 }
 
 export async function getBrandBySlugBackend(slug: string): Promise<ApiResult<{ brand: Brand & { followers?: Array<{ count: number }> } }>> {
-  return fetchJson(`/api/catalog/brands/slug/${slug}`, { requireAuth: false });
+  return fetchJson(`/api/catalog/brands/by-slug/${slug}`, { requireAuth: false });
 }
 
 export type Store = { id: string; name: string; slug: string; logo_url?: string | null; banner_url?: string | null; description?: string | null; is_active?: boolean; status?: string; followers_count?: number; total_followers?: number };
@@ -113,7 +121,7 @@ export async function getStoreByIdBackend(id: string): Promise<ApiResult<{ store
 }
 
 export async function getStoreBySlugBackend(slug: string): Promise<ApiResult<{ store: Store }>> {
-  return fetchJson(`/api/catalog/stores/slug/${slug}`, { requireAuth: false });
+  return fetchJson(`/api/catalog/stores/by-slug/${slug}`, { requireAuth: false });
 }
 
 export type Category = { id: string; name: string; slug: string; parent_id?: string | null; image_url?: string | null; is_active?: boolean; position?: number };
@@ -425,12 +433,61 @@ export async function applyReferralCodeBackend(code: string): Promise<ApiResult<
 
 export type NotificationPrefs = Record<string, boolean>;
 
+/** Maps the app's `orders_email` keys to the backend's `email_orders` keys. */
+function toBackendPrefs(prefs: NotificationPrefs): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  const map: Record<string, string> = {
+    orders_email: "email_orders",
+    orders_sms: "sms_orders",
+    orders_push: "push_orders",
+    marketing_email: "email_marketing",
+    marketing_sms: "sms_marketing",
+    marketing_push: "push_marketing",
+    social_email: "email_reviews",
+    social_push: "push_reviews",
+    security_email: "email_marketing",
+    security_sms: "sms_marketing",
+    security_push: "push_marketing",
+  };
+  for (const [k, v] of Object.entries(prefs)) {
+    const target = map[k] ?? k;
+    if (typeof v === "boolean") out[target] = v;
+  }
+  return out;
+}
+
+function fromBackendPrefs(prefs: Record<string, boolean>): NotificationPrefs {
+  const out: NotificationPrefs = {};
+  const map: Record<string, string> = {
+    email_orders: "orders_email",
+    sms_orders: "orders_sms",
+    push_orders: "orders_push",
+    email_marketing: "marketing_email",
+    sms_marketing: "marketing_sms",
+    push_marketing: "marketing_push",
+    email_reviews: "social_email",
+    push_reviews: "social_push",
+  };
+  for (const [k, v] of Object.entries(prefs)) {
+    const target = map[k] ?? k;
+    if (typeof v === "boolean") out[target] = v;
+  }
+  return out;
+}
+
 export async function getNotificationPrefsBackend(): Promise<ApiResult<{ prefs: NotificationPrefs }>> {
-  return fetchJson("/api/users/notification-prefs");
+  const res = await fetchJson<{ preferences: Record<string, boolean> }>("/api/users/notification-preferences");
+  if (!res.ok) return res;
+  return { ok: true, data: { prefs: fromBackendPrefs(res.data.preferences ?? {}) } };
 }
 
 export async function saveNotificationPrefsBackend(prefs: NotificationPrefs): Promise<ApiResult<{ prefs: NotificationPrefs }>> {
-  return fetchJson("/api/users/notification-prefs", { method: "PUT", body: { prefs } });
+  const res = await fetchJson<{ preferences: Record<string, boolean> }>("/api/users/notification-preferences", {
+    method: "PUT",
+    body: toBackendPrefs(prefs),
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: { prefs: fromBackendPrefs(res.data.preferences ?? {}) } };
 }
 
 // =========================================================================
@@ -532,8 +589,8 @@ export async function cancelOrderBackend(id: string, reason?: string): Promise<A
   });
 }
 
-export async function cancelOrderItemsBackend(orderId: string, itemIds: string[]): Promise<ApiResult<{ order: Order }>> {
-  return fetchJson(`/api/orders/${orderId}/cancel-items`, { method: "POST", body: { item_ids: itemIds } });
+export async function cancelOrderItemsBackend(_orderId: string, itemIds: string[]): Promise<ApiResult<{ order: Order }>> {
+  return fetchJson(`/api/orders/items/cancel`, { method: "POST", body: { item_ids: itemIds } });
 }
 
 export type ReturnRequest = {
@@ -620,17 +677,17 @@ export async function voteReviewHelpfulBackend(id: string): Promise<ApiResult<{ 
 }
 
 export async function getEligibleReviewOrdersBackend(productId: string): Promise<ApiResult<{ orders: Array<{ id: string; order_number?: string; delivered_at?: string }> }>> {
-  return fetchJson(`/api/products/${productId}/eligible-review-orders`);
+  return fetchJson(`/api/reviews/eligible`, { query: { productId } });
 }
 
 export type Question = { id: string; product_id: string; question: string; answer?: string | null; answered_at?: string | null; created_at: string; user?: { id: string; full_name?: string } };
 
 export async function listQuestionsBackend(productId: string): Promise<ApiResult<{ questions: Question[] }>> {
-  return fetchJson(`/api/products/${productId}/questions`);
+  return fetchJson(`/api/qa`, { query: { productId } });
 }
 
 export async function addQuestionBackend(productId: string, question: string): Promise<ApiResult<{ question: Question }>> {
-  return fetchJson(`/api/products/${productId}/questions`, { method: "POST", body: { question } });
+  return fetchJson(`/api/qa`, { method: "POST", body: { product_id: productId, question } });
 }
 
 export async function answerQuestionBackend(questionId: string, answer: string): Promise<ApiResult<{ question: Question }>> {
