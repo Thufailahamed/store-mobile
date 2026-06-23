@@ -61,6 +61,10 @@ module.exports = ({ config }) => {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
       googleMapsApiKey: googleMapsApiKey,
     },
+    // Hermes is the JS engine on SDK 52 by default for both iOS and
+    // Android — makes `expo start` boots ~30% faster and shrinks the
+    // install bundle. Declared here so any future downgrade is loud.
+    jsEngine: "hermes",
     ios: {
       ...config.ios,
       config: {

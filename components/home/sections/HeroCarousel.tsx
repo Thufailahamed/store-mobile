@@ -86,14 +86,19 @@ export function HeroCarousel({ banners }: HeroCarouselProps) {
         scrollEventThrottle={16}
         style={styles.slidesWrap}
       >
-        {list.map((b) => (
+        {list.map((b, i) => (
           <View key={b.id} style={styles.slide}>
             {b.image_url ? (
               <Image
                 source={{ uri: b.image_url }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
-                transition={400}
+                transition={300}
+                // First slide is the LCP — skip the fade transition and
+                // let expo-image prioritise its prefetch.
+                priority={i === 0 ? "high" : "normal"}
+                cachePolicy="memory-disk"
+                recyclingKey={b.id}
               />
             ) : null}
             <LinearGradient

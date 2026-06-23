@@ -15,9 +15,14 @@ export const HOME_PRODUCT_CARD_WIDTH = 148;
 interface HomeProductCardProps {
   product: Product;
   showSaleBadge?: boolean;
+  /**
+   * Index in the rail. Card 0..2 are above the fold; expo-image uses
+   * `priority` on those so the OS image cache fills before paint.
+   */
+  index?: number;
 }
 
-export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCardProps) {
+function HomeProductCardInner({ product, showSaleBadge = true, index = 99 }: HomeProductCardProps) {
   const router = useRouter();
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
   const toggle = useWishlist((s) => s.toggle);
@@ -38,7 +43,18 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
     >
       <View style={styles.imageWrap}>
         {primaryImage ? (
-          <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={250} />
+          <Image
+            source={{ uri: primaryImage }}
+            style={styles.image}
+            contentFit="cover"
+            transition={200}
+            // Above-the-fold cards skip the fade so the first frame
+            // already shows the product. expo-image prefetches when
+            // priority is set.
+            priority={index < 3 ? "high" : "normal"}
+            cachePolicy="memory-disk"
+            recyclingKey={product.id}
+          />
         ) : (
           <View style={styles.placeholder}>
             <Ionicons name="shirt-outline" size={24} color={colors.light.mutedForeground} />
@@ -73,10 +89,12 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
       {storeOrBrandName ? (
         <View style={styles.storeRow}>
           {product.store?.logo_url || product.brand?.logo_url ? (
-            <Image 
-              source={{ uri: product.store?.logo_url || product.brand?.logo_url }} 
-              style={styles.storeLogo} 
-              contentFit="cover" 
+            <Image
+              source={{ uri: product.store?.logo_url || product.brand?.logo_url }}
+              style={styles.storeLogo}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              recyclingKey={`logo-${product.id}`}
             />
           ) : (
             <View style={styles.storeLogoFallback}>
@@ -111,6 +129,20 @@ export function HomeProductCard({ product, showSaleBadge = true }: HomeProductCa
     </TouchableOpacity>
   );
 }
+
+/**
+ * Memoised card. The only props that change across the same `product.id`
+ * are `isWishlisted` (subscribed inside the card) and `index`. A custom
+ * comparator skips re-render when the product reference is stable and
+ * index is unchanged — the common case during scroll.
+ */
+export const HomeProductCard = React.memo(
+  HomeProductCardInner,
+  (prev, next) =>
+    prev.product === next.product &&
+    prev.showSaleBadge === next.showSaleBadge &&
+    prev.index === next.index,
+);
 
 const styles = StyleSheet.create({
   card: {

@@ -33,8 +33,8 @@ export function ProductRail({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {list.map((p) => (
-          <HomeProductCard key={p.id} product={p} showSaleBadge={showSaleBadge} />
+        {list.map((p, i) => (
+          <HomeProductCard key={p.id} product={p} showSaleBadge={showSaleBadge} index={i} />
         ))}
       </ScrollView>
     </View>

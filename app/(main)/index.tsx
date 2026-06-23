@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
@@ -35,6 +36,26 @@ export default function HomeScreen() {
 
   const catalogData = catalog.data;
   const wishlistRailData = wishlistRail.data ?? { wishlist: [], companions: [] };
+
+  // Prefetch above-the-fold images into expo-image's memory + disk cache
+  // so the first paint of the hero banner + first product rail has no
+  // network wait. Runs once per catalog change.
+  useEffect(() => {
+    if (!catalogData) return;
+    const hero = catalogData.banners?.[0]?.image_url;
+    const heroSources: string[] = [];
+    if (hero) heroSources.push(hero);
+    for (const p of catalogData.saleProducts.slice(0, 6)) {
+      const url = p.images?.find((i) => i.is_primary)?.url ?? p.images?.[0]?.url;
+      if (url) heroSources.push(url);
+    }
+    for (const p of catalogData.newArrivals.slice(0, 4)) {
+      const url = p.images?.find((i) => i.is_primary)?.url ?? p.images?.[0]?.url;
+      if (url) heroSources.push(url);
+    }
+    if (heroSources.length === 0) return;
+    Image.prefetch(heroSources, { cachePolicy: "memory-disk" }).catch(() => {});
+  }, [catalogData]);
 
   const showForYouRail = useMemo(
     () => (forYou.data?.products?.length ?? 0) > 0 || forYou.isLoading,

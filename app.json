@@ -65,7 +65,9 @@
       "expo-asset"
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "tsconfigPaths": true,
+      "importSourceRewriting": "enabled"
     },
     "extra": {
       "storeApiUrl": "https://synapstore.shop",

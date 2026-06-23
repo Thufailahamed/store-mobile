@@ -49,8 +49,19 @@ Appearance.setColorScheme("light");
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
+      // Catalogue + authed data: keep fresh for 5 min. Avoids a network
+      // round-trip when the user navigates Home → product → Home or pulls
+      // to refresh within the same session.
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
+      // Reuse identical responses across mounted screens; saves a Supabase
+      // hit on screens that share a query key (Home rails + product page).
+      structuralSharing: true,
       retry: 1,
+      // Don't block first paint on a network blip when the device was
+      // offline. Keep cached data on screen, retry in background.
+      networkMode: "offlineFirst",
+      refetchOnWindowFocus: false,
     },
   },
 });
@@ -134,11 +145,15 @@ function RootLayoutNav() {
     return () => clearTimeout(timeout);
   }, []);
 
-  // Push notification registration
+  // Push notification registration — deferred until the first frame has
+  // been painted so the home render isn't blocked behind token negotiation
+  // with APNs/FCM (can be 300-800ms cold).
   useEffect(() => {
-    if (user?.id) {
-      registerForPushNotifications(user.id);
-    }
+    if (!user?.id) return;
+    const handle = setTimeout(() => {
+      registerForPushNotifications(user.id as string);
+    }, 1500);
+    return () => clearTimeout(handle);
   }, [user?.id]);
 
   // Notification tap → deep link. Auth-gated: tapping a notif when signed
