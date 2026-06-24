@@ -102,12 +102,15 @@ export async function getProducts(opts: {
   search?: string;
 } = {}): Promise<Result<{ products: Product[]; total: number }>> {
   const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search } = opts;
+  let gender = opts.gender;
   // Resolve slug → id via backend list endpoints so callers don't need to
   // hit Supabase directly. The backend's /api/catalog/products expects ids.
   let category_id: string | undefined;
   let brand_id: string | undefined;
   let store_id: string | undefined;
-  if (categorySlug && !GENDER_SLUGS.has(categorySlug)) {
+  if (categorySlug && GENDER_SLUGS.has(categorySlug)) {
+    gender = gender ?? categorySlug;
+  } else if (categorySlug) {
     const cat = await B.getCategoryBySlugBackend(categorySlug);
     if (!cat.ok) return fail(cat.error);
     if (!cat.data.category) return ok({ products: [], total: 0 });
@@ -129,6 +132,7 @@ export async function getProducts(opts: {
     brand: brand_id,
     store: store_id,
     category: category_id,
+    gender,
     search,
     sort: sort as "newest" | "price_asc" | "price_desc" | "rating" | "popularity" | undefined,
     limit,

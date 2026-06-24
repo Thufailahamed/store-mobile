@@ -62,19 +62,14 @@ export async function syncCartReservations(
   items: CartReservationItem[],
   ttlMinutes = DEFAULT_TTL_MINUTES,
 ): Promise<CartReservationSyncResult> {
-  const payload = normalizeItems(items);
-  const res = await syncCartReservationsBackend(payload, ttlMinutes);
-  if (!res.ok) return { ok: false, error: res.error };
-  return {
-    ok: true,
-    synced: Number(res.data.synced ?? payload.length),
-    expiresAt: res.data.expires_at ?? undefined,
-  };
+  // Stock holds are disabled. Return a success result with 0 synced items.
+  return { ok: true, synced: 0 };
 }
 
 /** Release all holds for the signed-in user (e.g. after checkout or sign-out). */
 export async function releaseCartReservations(): Promise<void> {
-  await releaseCartReservationsBackend();
+  // Stock holds are disabled. Do nothing.
+  return;
 }
 
 /** Debounced sync after cart mutations. No-op when userId is null. */

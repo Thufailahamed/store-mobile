@@ -42,6 +42,7 @@ export async function getProductsBackend(opts: {
   brand?: string;
   store?: string;
   category?: string;
+  gender?: string;
   search?: string;
   sort?: "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
   limit?: number;
