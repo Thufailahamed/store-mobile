@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { store, supabaseMock } = vi.hoisted(() => {
+const {
+  store,
+  supabaseMock,
+  getCandidatesBackendMock,
+  getColdStartBackendMock,
+  getCoPurchasesBackendMock,
+  getCoViewsBackendMock,
+  getUserTopCategoriesBackendMock,
+  fetchRecentEventsBackendMock,
+  appendEventsBackendMock,
+} = vi.hoisted(() => {
   const store = new Map<string, string>();
   let mockProducts: any[] = [];
   let mockViews: any[] = [];
@@ -34,7 +44,25 @@ const { store, supabaseMock } = vi.hoisted(() => {
     },
   };
 
-  return { store, supabaseMock };
+  const getCandidatesBackendMock = vi.fn();
+  const getColdStartBackendMock = vi.fn();
+  const getCoPurchasesBackendMock = vi.fn();
+  const getCoViewsBackendMock = vi.fn();
+  const getUserTopCategoriesBackendMock = vi.fn();
+  const fetchRecentEventsBackendMock = vi.fn();
+  const appendEventsBackendMock = vi.fn();
+
+  return {
+    store,
+    supabaseMock,
+    getCandidatesBackendMock,
+    getColdStartBackendMock,
+    getCoPurchasesBackendMock,
+    getCoViewsBackendMock,
+    getUserTopCategoriesBackendMock,
+    fetchRecentEventsBackendMock,
+    appendEventsBackendMock,
+  };
 });
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
@@ -51,6 +79,16 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 
 vi.mock("@/lib/supabase/client", () => ({
   supabase: supabaseMock,
+}));
+
+vi.mock("@/lib/api/backend", () => ({
+  getCandidatesBackend: getCandidatesBackendMock,
+  getColdStartBackend: getColdStartBackendMock,
+  getCoPurchasesBackend: getCoPurchasesBackendMock,
+  getCoViewsBackend: getCoViewsBackendMock,
+  getUserTopCategoriesBackend: getUserTopCategoriesBackendMock,
+  fetchRecentEventsBackend: fetchRecentEventsBackendMock,
+  appendEventsBackend: appendEventsBackendMock,
 }));
 
 vi.mock("@/lib/api/product-mapper", () => ({
@@ -219,6 +257,44 @@ describe("recommender engine", () => {
     vi.clearAllMocks();
     supabaseMock.__setMockProducts(CATALOG);
     supabaseMock.__setMockViews([]);
+
+    // Default API mocks using CATALOG
+    getCandidatesBackendMock.mockImplementation(async (opts = {}) => {
+      let products = [...CATALOG];
+      if (opts.category_id) {
+        products = products.filter((p) => p.category_id === opts.category_id);
+      }
+      if (opts.brand_id) {
+        products = products.filter((p) => p.brand_id === opts.brand_id);
+      }
+      if (opts.exclude_ids) {
+        const excludeSet = new Set(opts.exclude_ids);
+        products = products.filter((p) => !excludeSet.has(p.id));
+      }
+      const limit = opts.limit ?? 24;
+      if (products.length < limit) {
+        const excludeSet = new Set(products.map((p) => p.id));
+        if (opts.exclude_ids) {
+          opts.exclude_ids.forEach((id) => excludeSet.add(id));
+        }
+        const fallback = CATALOG.filter((p) => !excludeSet.has(p.id));
+        products = [...products, ...fallback];
+      }
+      products = products.slice(0, limit);
+      return { ok: true, data: { products, categories: [] } };
+    });
+
+    getColdStartBackendMock.mockImplementation(async (limit = 12) => {
+      return { ok: true, data: { products: CATALOG.slice(0, limit) } };
+    });
+
+    getCoPurchasesBackendMock.mockResolvedValue({ ok: true, data: { results: [] } });
+    getCoViewsBackendMock.mockResolvedValue({ ok: true, data: { results: [] } });
+    getUserTopCategoriesBackendMock.mockResolvedValue({ ok: true, data: { categories: [] } });
+    fetchRecentEventsBackendMock.mockResolvedValue({ ok: true, data: { events: [] } });
+    appendEventsBackendMock.mockImplementation(async (events: any[]) => {
+      return { ok: true, data: { appended: events.length } };
+    });
   });
 
   describe("getForYouRail", () => {

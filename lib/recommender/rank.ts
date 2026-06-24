@@ -268,8 +268,8 @@ export function rankProducts(
     minScore = -Infinity,
     filterInStock = true,
     storeCap = 3,
-    brandCap = 2,
-    categoryCap = 3,
+    brandCap = 3,
+    categoryCap = 4,
   } = options;
   const exclude = new Set<string>([...excludeIds, ...profile.excludedProductIds]);
   if (anchorProduct) exclude.add(anchorProduct.id);

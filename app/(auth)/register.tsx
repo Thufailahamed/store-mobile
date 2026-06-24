@@ -11,7 +11,8 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { supabase } from "@/lib/supabase/client";
-import { isValidEmail, isValidPhone } from "@/lib/contact-validation";
+import { isValidEmail, isValidPhone, normalizePhoneE164 } from "@/lib/contact-validation";
+import { checkUniqueBackend } from "@/lib/api/backend";
 import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -80,6 +81,30 @@ export default function RegisterScreen() {
 
     setLoading(true);
 
+    const formattedPhone = phone.trim() ? normalizePhoneE164(phone.trim()) : undefined;
+
+    if (await hasStoreApi()) {
+      const unique = await checkUniqueBackend({
+        email: email.trim(),
+        phone: formattedPhone,
+      });
+      if (!unique.ok) {
+        setLoading(false);
+        toast("Unable to verify registration details. Try again.", "error");
+        return;
+      }
+      if (unique.data.emailExists) {
+        setLoading(false);
+        toast("Email address is already in use", "error");
+        return;
+      }
+      if (formattedPhone && unique.data.phoneExists) {
+        setLoading(false);
+        toast("Phone number is already in use", "error");
+        return;
+      }
+    }
+
     const { error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -87,7 +112,7 @@ export default function RegisterScreen() {
         data: {
           full_name: fullName.trim(),
           role: role,
-          phone: phone.trim() || undefined,
+          phone: formattedPhone,
         },
       },
     });

@@ -39,6 +39,8 @@ import {
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { safeOpenUrl } from "@/lib/utils/safe-open-url";
+import { normalizePhoneE164 } from "@/lib/contact-validation";
+import { checkUniqueBackend } from "@/lib/api/backend";
 
 type PrivacyKey =
   | "public_profile"
@@ -357,12 +359,30 @@ export default function SettingsScreen() {
       toast("Enter a valid phone", "error");
       return;
     }
+    const formatted = normalizePhoneE164(newPhone.trim());
+    if (formatted === phone) {
+      toast("That's already your number", "error");
+      return;
+    }
+
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({ phone: newPhone });
+    const unique = await checkUniqueBackend({ phone: formatted }, { requireAuth: true });
+    if (!unique.ok) {
+      setSaving(false);
+      toast("Could not verify phone number", "error");
+      return;
+    }
+    if (unique.data.phoneExists) {
+      setSaving(false);
+      toast("This number is linked to another account", "error");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ phone: formatted });
     setSaving(false);
     if (error) {
       // Fallback: if phone auth is disabled, allow updating settings table directly
-      const usersPatch = { ...snapshot, phone: newPhone };
+      const usersPatch = { ...snapshot, phone: formatted };
       const { error: settingsError } = await supabase.rpc("update_user_settings", {
         p_patch: usersPatch,
       });
@@ -370,11 +390,12 @@ export default function SettingsScreen() {
         toast(error.message, "error");
         return;
       }
-      setPhone(newPhone);
+      setPhone(formatted);
       toast("Phone number updated", "success");
       setChangePhoneOpen(false);
       return;
     }
+    setNewPhone(formatted);
     toast("Verification code sent", "success");
     setPhoneOtp("");
     setPhoneStep(2);
@@ -389,7 +410,7 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
-        phone: newPhone,
+        phone: normalizePhoneE164(newPhone),
         token: phoneOtp.trim(),
         type: "phone_change",
       });
@@ -397,8 +418,9 @@ export default function SettingsScreen() {
         toast(error.message, "error");
         return;
       }
-      
-      const usersPatch = { ...snapshot, phone: newPhone };
+
+      const formatted = normalizePhoneE164(newPhone);
+      const usersPatch = { ...snapshot, phone: formatted };
       const { error: settingsError } = await supabase.rpc("update_user_settings", {
         p_patch: usersPatch,
       });
@@ -406,8 +428,8 @@ export default function SettingsScreen() {
         toast("Verified, but could not sync profile", "error");
       }
       
-      setPhone(newPhone);
-      initialSnapshot.current = JSON.stringify({ ...snapshot, phone: newPhone });
+      setPhone(formatted);
+      initialSnapshot.current = JSON.stringify({ ...snapshot, phone: formatted });
       toast("Phone number linked successfully", "success");
       setChangePhoneOpen(false);
     } catch (error: any) {

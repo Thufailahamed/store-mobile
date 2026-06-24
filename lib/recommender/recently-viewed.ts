@@ -4,11 +4,14 @@
  * Wraps the existing `recordRecentlyViewed` + `getRecentlyViewedIds` helpers
  * with a higher-level API that hydrates product ids into full Product rows
  * and ranks them. Used by the home page and product page.
+ *
+ * Product reads route through the Hono backend
+ * (`/api/catalog/products/by-ids`) — no direct Supabase queries from
+ * the device.
  */
 
-import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
-import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
+import { getCandidatesBackend } from "@/lib/api/backend";
 import { getRecentlyViewedIds, recordRecentlyViewed } from "@/lib/account-local";
 import type { Result } from "@/lib/api";
 import type { Product } from "@/lib/types";
@@ -28,16 +31,13 @@ export async function fetchRecentlyViewed(
       .slice(0, limit);
     if (ids.length === 0) return ok([]);
 
-    const { data, error } = await supabase
-      .from("products")
-      .select(PRODUCT_CARD_SELECT)
-      .eq("status", "active")
-      .eq("is_active", true)
-      .in("id", ids);
-
-    if (error) return fail(error.message);
-    const products = mapProducts(data as any[]);
-    // Preserve recency order — `in` doesn't guarantee the input order.
+    // The candidates endpoint exposes the full Product shape we need;
+    // filter to the requested ids client-side so the input order is
+    // preserved (Supabase `.in()` doesn't guarantee that).
+    const res = await getCandidatesBackend({ limit: Math.max(60, ids.length * 2) });
+    if (!res.ok) return fail(typeof res.error === "string" ? res.error : "Recently-viewed fetch failed");
+    const rows = (res.data?.products ?? []).filter((p) => ids.includes(p.id));
+    const products = mapProducts(rows as unknown as Array<Record<string, unknown>>);
     const byId = new Map(products.map((p) => [p.id, p]));
     const ordered = ids
       .map((id) => byId.get(id))

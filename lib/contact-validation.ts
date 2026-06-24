@@ -34,3 +34,18 @@ export function isValidEmail(value: string | null | undefined): boolean {
   if (!value) return false;
   return EMAIL_REGEX.test(value.trim());
 }
+
+/** Normalize to E.164 (+94…) — mirrors backend + web store. */
+export function normalizePhoneE164(phone: string): string {
+  let cleaned = phone.replace(/[^\d+]/g, "");
+  if (!cleaned.startsWith("+")) {
+    if (cleaned.startsWith("94")) {
+      cleaned = `+${cleaned}`;
+    } else if (cleaned.startsWith("0")) {
+      cleaned = `+94${cleaned.slice(1)}`;
+    } else {
+      cleaned = `+94${cleaned}`;
+    }
+  }
+  return cleaned;
+}

@@ -6,7 +6,8 @@
  *   0. Purchase co-occurrence (server-side aggregation: products
  *      bought together in the same paid order). Strongest signal —
  *      actual conversion, not passive viewing.
- *   1. Aggregate co-view data from a `product_views` table if available.
+ *   1. Aggregate co-view data from `product_views` via the backend RPC
+ *      added in migration 0153.
  *   2. The user's own view history (their co-viewed items).
  *   3. A content-based complementary category fallback (e.g. a "top" pairs
  *      with "bottom" or "accessory").
@@ -15,10 +16,11 @@
  *
  * Tier 0 wins when it yields enough products; the lower tiers fill in.
  * Out-of-stock items are filtered at every tier.
+ *
+ * All product reads route through the Hono backend.
  */
 
-import { supabase } from "@/lib/supabase/client";
-import { getCoPurchasesBackend } from "@/lib/api/backend";
+import { getCoPurchasesBackend, getCoViewsBackend, getCandidatesBackend } from "@/lib/api/backend";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { readEvents, type ViewEvent } from "./events";
 import { isProductInStock } from "./inventory";
@@ -48,6 +50,25 @@ function categorySlug(product: Product): string {
   return "";
 }
 
+/**
+ * Hydrate a list of product ids to full Product rows via the backend
+ * candidates endpoint (full product shape, scoped to active products).
+ * Preserves input order in the returned array.
+ */
+async function hydrateIds(ids: string[]): Promise<Product[]> {
+  if (ids.length === 0) return [];
+  try {
+    const res = await getCandidatesBackend({ limit: Math.max(60, ids.length * 2) });
+    if (!res.ok) return [];
+    const rows = (res.data?.products ?? []).filter((p) => ids.includes(p.id));
+    const products = mapProducts(rows as unknown as Array<Record<string, unknown>>).filter(isProductInStock);
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return ids.map((id) => byId.get(id)).filter((p): p is Product => Boolean(p));
+  } catch {
+    return [];
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Tier 0 — purchase co-occurrence                                    */
 /* ------------------------------------------------------------------ */
@@ -62,9 +83,6 @@ async function tryCoPurchases(anchorId: string, limit: number): Promise<string[]
   try {
     const res = await getCoPurchasesBackend(anchorId, limit * 2);
     if (!res.ok || !Array.isArray(res.data.results)) return [];
-    // Backend returns { product_id, score, product }; the legacy local shape
-    // expected { co_product_id, pair_count, last_purchased_at }. Bridge via
-    // a one-line mapper rather than rewriting downstream sort/slice logic.
     const rows = (res.data.results as unknown as Array<{ product_id: string; score: number }>).map((r) => ({
       co_product_id: r.product_id,
       pair_count: Number(r.score ?? 0),
@@ -83,43 +101,18 @@ async function tryCoPurchases(anchorId: string, limit: number): Promise<string[]
 }
 
 async function tryAggregateCoViews(anchorId: string, limit: number): Promise<string[]> {
-  // Attempt a typical co-view query. The exact schema may vary; we only
-  // return ids if the call succeeds and yields rows.
   try {
-    const { data, error } = await supabase
-      .from("product_views")
-      .select("product_id, session_id, user_id, viewed_at")
-      .order("viewed_at", { ascending: false })
-      .limit(2000);
-    if (error || !data || !Array.isArray(data) || data.length === 0) return [];
-
-    type Row = { product_id: string; session_id?: string | null; user_id?: string | null; viewed_at?: string };
-    const rows = data as Row[];
-
-    // Find sessions/users that viewed the anchor.
-    const coSessionIds = new Set<string>();
-    const coUserIds = new Set<string>();
-    for (const r of rows) {
-      if (r.product_id === anchorId) {
-        if (r.session_id) coSessionIds.add(r.session_id);
-        if (r.user_id) coUserIds.add(r.user_id);
-      }
-    }
-    if (coSessionIds.size === 0 && coUserIds.size === 0) return [];
-
-    const counts = new Map<string, number>();
-    for (const r of rows) {
-      if (r.product_id === anchorId) continue;
-      const matches =
-        (r.session_id && coSessionIds.has(r.session_id)) ||
-        (r.user_id && coUserIds.has(r.user_id));
-      if (!matches) continue;
-      counts.set(r.product_id, (counts.get(r.product_id) ?? 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
+    const res = await getCoViewsBackend(anchorId, limit * 2);
+    if (!res.ok || !Array.isArray(res.data.results)) return [];
+    type Row = { co_product_id: string; view_count: number; last_viewed_at: string };
+    const rows = (res.data.results as unknown as Row[]).slice();
+    return rows
+      .sort((a, b) => {
+        if (b.view_count !== a.view_count) return Number(b.view_count) - Number(a.view_count);
+        return b.last_viewed_at.localeCompare(a.last_viewed_at);
+      })
       .slice(0, limit)
-      .map(([id]) => id);
+      .map((r) => r.co_product_id);
   } catch {
     return [];
   }
@@ -128,7 +121,6 @@ async function tryAggregateCoViews(anchorId: string, limit: number): Promise<str
 async function userCoViews(userId: string | null | undefined, anchorId: string, limit: number): Promise<string[]> {
   try {
     const events = await readEvents(userId);
-    // Products the user has viewed within a 30-min window of the anchor.
     const recentViews = events
       .filter((e): e is ViewEvent => e.type === "view")
       .slice(0, 200);
@@ -152,20 +144,16 @@ async function complementaryCandidates(anchor: Product, limit: number): Promise<
   const slug = categorySlug(anchor);
   const compSlugs = COMPLEMENTARY[slug] ?? Object.keys(COMPLEMENTARY).filter((k) => k !== slug);
   if (compSlugs.length === 0) return [];
-
   try {
-    const { data, error } = await supabase
-      .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
-      .eq("status", "active")
-      .eq("is_active", true)
-      .in("category.slug", compSlugs)
-      .neq("id", anchor.id)
-      .order("total_sales", { ascending: false })
-      .limit(limit);
-    if (error || !data) return [];
-    const products = mapProducts(data as any[]).filter(isProductInStock);
-    return products;
+    // Pull a wide pool; filter by complementary category slugs client-side.
+    const res = await getCandidatesBackend({ limit: Math.max(60, limit * 3) });
+    if (!res.ok) return [];
+    const rows = (res.data?.products ?? []).filter((p) => {
+      const ps = ((p as { category?: { slug?: string; name?: string } }).category?.slug ?? "").toLowerCase();
+      return p.id !== anchor.id && compSlugs.includes(ps);
+    });
+    const products = mapProducts(rows as unknown as Array<Record<string, unknown>>).filter(isProductInStock);
+    return products.slice(0, limit);
   } catch {
     return [];
   }
@@ -174,18 +162,13 @@ async function complementaryCandidates(anchor: Product, limit: number): Promise<
 async function brandCompanions(anchor: Product, limit: number): Promise<Product[]> {
   if (!anchor.brand_id) return [];
   try {
-    const { data, error } = await supabase
-      .from("products")
-      .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
-      .eq("status", "active")
-      .eq("is_active", true)
-      .eq("brand_id", anchor.brand_id)
-      .neq("id", anchor.id)
-      .neq("category_id", anchor.category_id ?? "")
-      .order("total_sales", { ascending: false })
-      .limit(limit);
-    if (error || !data) return [];
-    return mapProducts(data as any[]).filter(isProductInStock);
+    const res = await getCandidatesBackend({ limit: Math.max(60, limit * 3), brand_id: anchor.brand_id });
+    if (!res.ok) return [];
+    const rows = (res.data?.products ?? []).filter(
+      (p) => p.id !== anchor.id && (p as { category_id?: string }).category_id !== (anchor.category_id ?? ""),
+    );
+    const products = mapProducts(rows as unknown as Array<Record<string, unknown>>).filter(isProductInStock);
+    return products.slice(0, limit);
   } catch {
     return [];
   }
@@ -200,23 +183,11 @@ export async function getPairsWellWith(
   try {
     let products: Product[] = [];
 
-    // Tier 0: purchase co-occurrence — strongest signal, comes first.
-    // If the table is freshly populated and the anchor has strong pairs,
-    // we can return immediately without going to the lower tiers.
+    // Tier 0: purchase co-occurrence.
     const coIds = await tryCoPurchases(anchor.id, limit);
     if (coIds.length > 0) {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
-        .eq("status", "active")
-        .eq("is_active", true)
-        .in("id", coIds);
-      if (!error && data) {
-        const byId = new Map(mapProducts(data as any[]).map((p) => [p.id, p]));
-        products = coIds
-          .map((id) => byId.get(id))
-          .filter((p): p is Product => p != null && p.id !== anchor.id && isProductInStock(p));
-      }
+      const hydrated = await hydrateIds(coIds);
+      products = hydrated.filter((p) => p.id !== anchor.id && isProductInStock(p));
     }
     if (products.length >= limit) {
       return ok(products.slice(0, limit));
@@ -226,22 +197,13 @@ export async function getPairsWellWith(
     if (products.length < limit) {
       const aggIds = await tryAggregateCoViews(anchor.id, (limit - products.length) * 2);
       if (aggIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
-          .eq("status", "active")
-          .eq("is_active", true)
-          .in("id", aggIds);
-        if (!error && data) {
-          const byId = new Map(mapProducts(data as any[]).map((p) => [p.id, p]));
-          const seen = new Set(products.map((p) => p.id));
-          for (const id of aggIds) {
-            const p = byId.get(id);
-            if (!p || seen.has(p.id) || p.id === anchor.id || !isProductInStock(p)) continue;
-            products.push(p);
-            seen.add(p.id);
-            if (products.length >= limit) break;
-          }
+        const hydrated = await hydrateIds(aggIds);
+        const seen = new Set(products.map((p) => p.id));
+        for (const p of hydrated) {
+          if (seen.has(p.id) || p.id === anchor.id || !isProductInStock(p)) continue;
+          products.push(p);
+          seen.add(p.id);
+          if (products.length >= limit) break;
         }
       }
     }
@@ -250,20 +212,13 @@ export async function getPairsWellWith(
     if (products.length < limit) {
       const userIds = await userCoViews(userId, anchor.id, limit);
       if (userIds.length > 0) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), category:categories(slug, name)")
-          .eq("status", "active")
-          .eq("is_active", true)
-          .in("id", userIds);
-        if (!error && data) {
-          const seen = new Set(products.map((p) => p.id));
-          for (const p of mapProducts(data as any[])) {
-            if (seen.has(p.id) || p.id === anchor.id || !isProductInStock(p)) continue;
-            products.push(p);
-            seen.add(p.id);
-            if (products.length >= limit) break;
-          }
+        const hydrated = await hydrateIds(userIds);
+        const seen = new Set(products.map((p) => p.id));
+        for (const p of hydrated) {
+          if (seen.has(p.id) || p.id === anchor.id || !isProductInStock(p)) continue;
+          products.push(p);
+          seen.add(p.id);
+          if (products.length >= limit) break;
         }
       }
     }

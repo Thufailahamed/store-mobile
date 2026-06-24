@@ -8,10 +8,14 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { getCoPurchasesBackendMock, fromMock } = vi.hoisted(() => {
+let mockProductsList: any[] = [];
+
+const { getCoPurchasesBackendMock, getCoViewsBackendMock, getCandidatesBackendMock, fromMock } = vi.hoisted(() => {
   const getCoPurchasesBackendMock = vi.fn();
+  const getCoViewsBackendMock = vi.fn().mockResolvedValue({ ok: true, data: { results: [] } });
+  const getCandidatesBackendMock = vi.fn();
   const fromMock = vi.fn();
-  return { getCoPurchasesBackendMock, fromMock };
+  return { getCoPurchasesBackendMock, getCoViewsBackendMock, getCandidatesBackendMock, fromMock };
 });
 
 vi.mock("@/lib/api/backend", async (importOriginal) => {
@@ -19,6 +23,8 @@ vi.mock("@/lib/api/backend", async (importOriginal) => {
   return {
     ...actual,
     getCoPurchasesBackend: getCoPurchasesBackendMock,
+    getCoViewsBackend: getCoViewsBackendMock,
+    getCandidatesBackend: getCandidatesBackendMock,
   };
 });
 
@@ -74,6 +80,7 @@ function product(over: Partial<Product> = {}): Product {
 
 /** Build a supabase `from` chain that returns the given product rows. */
 function mockProductQuery(rows: any[]) {
+  mockProductsList = rows;
   const chain: any = {
     then: (resolve: (v: any) => void) => resolve({ data: rows, error: null }),
   };
@@ -86,6 +93,10 @@ function mockProductQuery(rows: any[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockProductsList = [];
+  getCandidatesBackendMock.mockImplementation(async () => {
+    return { ok: true, data: { products: mockProductsList } };
+  });
 });
 
 describe("getPairsWellWith — Tier 0 (co-purchases)", () => {

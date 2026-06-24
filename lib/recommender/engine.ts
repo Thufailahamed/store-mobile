@@ -18,9 +18,8 @@
  * can scope by category/brand/gender if they want.
  */
 
-import { supabase } from "@/lib/supabase/client";
+import { getCandidatesBackend } from "@/lib/api/backend";
 import { mapProducts } from "@/lib/api/product-mapper";
-import { PRODUCT_CARD_SELECT } from "@/lib/api/product-queries";
 import type { Product } from "@/lib/types";
 import type { Result } from "@/lib/api";
 import { loadProfile, type UserProfile } from "./profile";
@@ -65,19 +64,14 @@ async function pullCandidates(
   ctx: RailContext = {},
 ): Promise<Product[]> {
   try {
-    let query = supabase
-      .from("products")
-      .select(PRODUCT_CARD_SELECT)
-      .eq("status", "active")
-      .eq("is_active", true)
-      .limit(Math.min(limit, HARD_CAP));
-    if (ctx.categoryId) query = query.eq("category_id", ctx.categoryId);
-    if (ctx.brandId) query = query.eq("brand_id", ctx.brandId);
-    if (ctx.gender) query = query.eq("gender", ctx.gender);
-    query = query.order("total_sales", { ascending: false });
-    const { data, error } = await query;
-    if (error) return [];
-    return mapProducts(data as any[]);
+    const res = await getCandidatesBackend({
+      limit: Math.min(limit, HARD_CAP),
+      category_id: ctx.categoryId,
+      brand_id: ctx.brandId,
+      gender: ctx.gender,
+    });
+    if (!res.ok || !res.data?.products) return [];
+    return mapProducts(res.data.products as unknown as Array<Record<string, unknown>>);
   } catch {
     return [];
   }
@@ -303,14 +297,13 @@ export async function getFromWishlistRail(
       cacheSet(key, out, TTL_FOR_YOU);
       return out;
     }
-    const { data, error } = await supabase
-      .from("products")
-      .select(PRODUCT_CARD_SELECT)
-      .eq("status", "active")
-      .eq("is_active", true)
-      .in("id", wishlistIds);
-    if (error) return fail(error.message);
-    const products = mapProducts(data as any[]).filter(isProductInStock);
+    // Hydrate wishlist products via the backend. Use the personalised
+    // candidates endpoint and then filter to the requested ids — this
+    // keeps every read going through the Hono backend.
+    const res = await getCandidatesBackend({ limit: Math.max(60, wishlistIds.length * 2) });
+    if (!res.ok) return fail(typeof res.error === "string" ? res.error : "Failed to fetch wishlist");
+    const rows = (res.data?.products ?? []).filter((p) => wishlistIds.includes(p.id));
+    const products = mapProducts(rows as unknown as Array<Record<string, unknown>>).filter(isProductInStock);
     const byId = new Map(products.map((p) => [p.id, p]));
     const wishlist = wishlistIds
       .map((id) => byId.get(id))

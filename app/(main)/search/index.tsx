@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
@@ -14,11 +16,8 @@ import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ProductCard } from "@/components/product/ProductCard";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
-import {
-  SearchOrbitBackground,
-  SearchOrbitChrome,
-} from "@/components/search/SearchOrbitChrome";
-import { SearchOrbitDiscovery } from "@/components/search/SearchOrbitDiscovery";
+import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
+import { SearchDiscover } from "@/components/search/SearchDiscover";
 import { SearchSuggestions } from "@/components/search/SearchSuggestions";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";
@@ -169,9 +168,10 @@ export default function SearchScreen() {
     }
 
     for (const label of SUGGESTIONS) {
+      const lower = label.toLowerCase();
       if (
-        label.toLowerCase().includes(term) &&
-        !items.some((item) => item.label.toLowerCase() === label.toLowerCase())
+        (lower.startsWith(term) || lower.includes(term)) &&
+        !items.some((item) => item.label.toLowerCase() === lower)
       ) {
         items.push({ kind: "keyword", label });
       }
@@ -389,9 +389,11 @@ export default function SearchScreen() {
   }, [searched, loading, totalCount, user?.id]);
 
   return (
-    <View style={styles.screen}>
-      <SearchOrbitBackground />
-
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+    >
       <SearchOrbitChrome
         topInset={insets.top}
         draft={draft}
@@ -401,6 +403,8 @@ export default function SearchScreen() {
         searched={searched}
         query={query}
         totalCount={totalCount}
+        onImageSearch={() => runScan("library")}
+        onCameraSearch={() => runScan("camera")}
       />
 
       {showSuggestions ? (
@@ -416,35 +420,15 @@ export default function SearchScreen() {
           onCameraSearch={() => runScan("camera")}
           onPriceDropPress={(d) => router.push(`/(main)/products/${d.slug}`)}
         />
-      ) : null}
-
-      <View style={styles.body}>
-        {!searched && !showSuggestions ? (
-          <ScrollViewWrapper>
-            <SearchOrbitDiscovery onSearch={doSearch} />
-            {recentSearches.length > 0 ? (
-              <View style={styles.recentSection}>
-                <View style={styles.recentHeader}>
-                  <Label style={styles.recentKicker}>RECENT SEARCHES</Label>
-                  <TouchableOpacity onPress={clearRecent}>
-                    <Label style={styles.clearLabel}>Clear</Label>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.chipRow}>
-                  {recentSearches.slice(0, 6).map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={styles.recentChip}
-                      onPress={() => doSearch(s)}
-                    >
-                      <Body size="sm">{s}</Body>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-          </ScrollViewWrapper>
-        ) : showSuggestions ? null : loading ? (
+      ) : (
+        <View style={styles.body}>
+          {!searched ? (
+            <SearchDiscover
+              recentSearches={recentSearches}
+              onSearch={doSearch}
+              onClearRecent={clearRecent}
+            />
+          ) : loading ? (
           /* ─── Loading ─── */
           <View style={styles.center}>
             <ActivityIndicator size="large" color={INK} />
@@ -794,7 +778,8 @@ export default function SearchScreen() {
             </ScrollView>
           </View>
         )}
-      </View>
+        </View>
+      )}
 
       {/* Filter sheet */}
       <SearchFilterSheet
@@ -803,7 +788,7 @@ export default function SearchScreen() {
         filters={filters}
         onApply={setFilters}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -844,7 +829,7 @@ function Price({ size = "base", style, children }: { size?: string; style?: any;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.paper.DEFAULT,
+    backgroundColor: "#ffffff",
   },
   /* Body */
   body: {

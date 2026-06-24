@@ -1104,23 +1104,49 @@ export async function deleteAdminCategoryBackend(id: string): Promise<ApiResult<
 // =========================================================================
 
 export async function getCoPurchasesBackend(productId: string, limit = 10): Promise<ApiResult<{ results: Array<{ product_id: string; score: number; product?: CatalogProduct }> }>> {
-  return fetchJson("/api/admin/recommender/co-purchases", { query: { product_id: productId, limit } });
+  return fetchJson("/api/recommender/co-purchases", { query: { product_id: productId, limit } });
+}
+
+export async function getCoViewsBackend(productId: string, limit = 10): Promise<ApiResult<{ results: Array<{ co_product_id: string; view_count: number; last_viewed_at: string }> }>> {
+  return fetchJson("/api/recommender/co-views", { query: { product_id: productId, limit } });
+}
+
+export async function getSimilarProductsBackend(productId: string, limit = 12): Promise<ApiResult<{ results: Array<{ product_id: string; score: number }> }>> {
+  return fetchJson("/api/recommender/similar", { query: { product_id: productId, limit } });
+}
+
+export async function getColdStartBackend(limit = 12): Promise<ApiResult<{ products: CatalogProduct[] }>> {
+  return fetchJson("/api/recommender/cold-start", { query: { limit } });
+}
+
+export async function getCandidatesBackend(opts: { limit?: number; category_id?: string; brand_id?: string; gender?: string; exclude_ids?: string[]; cursor?: string } = {}): Promise<ApiResult<{ categories: Array<{ category_id: string; score: number }>; products: Array<{ id: string; name: string; slug: string; price: number; mrp?: number; currency?: string; images?: Array<{ url: string; is_primary?: boolean }>; category_id: string }>; nextCursor?: string | null }>> {
+  const { limit = 24, category_id, brand_id, gender, exclude_ids, cursor } = opts;
+  return fetchJson("/api/recommender/candidates", {
+    query: {
+      limit,
+      ...(category_id ? { category_id } : {}),
+      ...(brand_id ? { brand_id } : {}),
+      ...(gender ? { gender } : {}),
+      ...(exclude_ids?.length ? { exclude_ids: exclude_ids.join(",") } : {}),
+      ...(cursor ? { cursor } : {}),
+    },
+  });
 }
 
 export async function appendEventsBackend(events: Array<{ type: string; product_id?: string; category_id?: string; metadata?: Record<string, unknown>; occurred_at?: string }>): Promise<ApiResult<{ appended: number }>> {
-  return fetchJson("/api/admin/recommender/events", { method: "POST", body: { events } });
+  return fetchJson("/api/recommender/events", { method: "POST", body: { events } });
 }
 
 export async function fetchRecentEventsBackend(limit = 50): Promise<ApiResult<{ events: unknown[] }>> {
-  return fetchJson("/api/admin/recommender/events", { query: { limit } });
+  return fetchJson("/api/recommender/events", { query: { limit } });
 }
 
 export async function clearEventsBackend(): Promise<ApiResult<{ cleared: boolean }>> {
-  return fetchJson("/api/admin/recommender/events", { method: "DELETE" });
+  return fetchJson("/api/recommender/events", { method: "DELETE" });
 }
 
 export async function getUserTopCategoriesBackend(limit = 5): Promise<ApiResult<{ categories: Array<{ category_id: string; score: number; category?: Category }> }>> {
-  return fetchJson("/api/admin/recommender/top-categories", { query: { limit } });
+  return fetchJson("/api/recommender/top-categories", { query: { limit } });
 }
 
 // =========================================================================
@@ -1165,4 +1191,19 @@ export type SearchSuggestion = { type: "product" | "brand" | "category" | "store
 
 export async function getSearchSuggestionsBackend(term: string): Promise<ApiResult<{ suggestions: SearchSuggestion[] }>> {
   return fetchJson("/api/catalog/search-suggestions", { query: { q: term } });
+}
+
+// =========================================================================
+// AUTH — identity probes
+// =========================================================================
+
+export async function checkUniqueBackend(
+  body: { email?: string; phone?: string },
+  opts?: { requireAuth?: boolean },
+): Promise<ApiResult<{ emailExists: boolean; phoneExists: boolean }>> {
+  return fetchJson("/api/auth/check-unique", {
+    method: "POST",
+    requireAuth: opts?.requireAuth ?? false,
+    body,
+  });
 }

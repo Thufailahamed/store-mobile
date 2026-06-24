@@ -5,7 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
+  FlatList,
+  type ListRenderItem,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
@@ -30,7 +31,13 @@ interface SearchSuggestionsProps {
   onPriceDropPress?: (drop: WishlistPriceDrop) => void;
 }
 
-function highlightMatch(label: string, query: string, styleMatch?: any, styleRegular?: any) {
+type Row =
+  | { type: "search"; label: string }
+  | { type: "suggestion"; item: V2Suggestion }
+  | { type: "loading" }
+  | { type: "empty" };
+
+function highlightMatch(label: string, query: string, styleMatch?: object, styleRegular?: object) {
   const term = query.trim();
   if (!term) return <Text style={[styles.itemLabel, styleRegular]}>{label}</Text>;
 
@@ -58,14 +65,13 @@ export function SearchSuggestions({
   loading,
   priceDrops,
   onSelect,
-  onImageSearch,
-  onCameraSearch,
+  onSearchDraft,
   onPriceDropPress,
 }: SearchSuggestionsProps) {
   const merged = useMemo(() => {
     const seen = new Set<string>();
     const items: V2Suggestion[] = [];
-    for (const item of [...suggestions, ...localSuggestions]) {
+    for (const item of [...localSuggestions, ...suggestions]) {
       const key = `${item.kind}::${item.label.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -74,153 +80,152 @@ export function SearchSuggestions({
     return items;
   }, [localSuggestions, suggestions]);
 
-  const keywords = useMemo(() => merged.filter((i) => i.kind === "keyword"), [merged]);
-  const stores = useMemo(() => merged.filter((i) => i.kind === "store" || i.kind === "brand"), [merged]);
-
   const term = draft.trim();
   if (term.length < 1) return null;
 
-  return (
-    <View style={styles.panel}>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        style={styles.list}
-        nestedScrollEnabled
+  const rows: Row[] = [{ type: "search", label: term }];
+  if (loading && merged.length === 0) {
+    rows.push({ type: "loading" });
+  } else if (!loading && merged.length === 0) {
+    rows.push({ type: "empty" });
+  } else {
+    for (const item of merged) {
+      rows.push({ type: "suggestion", item });
+    }
+  }
+
+  const renderItem: ListRenderItem<Row> = ({ item: row }) => {
+    if (row.type === "search") {
+      return (
+        <TouchableOpacity style={styles.item} activeOpacity={0.7} onPress={onSearchDraft}>
+          <View style={styles.searchIconWrap}>
+            <Ionicons name="search" size={18} color={colors.light.primary} />
+          </View>
+          <Text style={styles.searchDraftText}>
+            Search for <Text style={styles.searchDraftTerm}>“{row.label}”</Text>
+          </Text>
+          <Ionicons name="arrow-forward" size={16} color={MUTED} />
+        </TouchableOpacity>
+      );
+    }
+
+    if (row.type === "loading") {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={colors.light.primary} />
+          <Text style={styles.loadingText}>Finding matches…</Text>
+        </View>
+      );
+    }
+
+    if (row.type === "empty") {
+      return (
+        <View style={styles.empty}>
+          <Text style={styles.emptyText}>No suggestions — press search to see all results</Text>
+        </View>
+      );
+    }
+
+    const item = row.item;
+    const isStore = item.kind === "store" || item.kind === "brand";
+
+    return (
+      <TouchableOpacity
+        style={styles.item}
+        activeOpacity={0.7}
+        onPress={() => onSelect(item)}
       >
-        {loading && merged.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.light.primary} />
+        {isStore ? (
+          item.logo_url ? (
+            <Image source={{ uri: item.logo_url }} style={styles.avatar} contentFit="cover" />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarFallbackText}>{item.label.charAt(0).toUpperCase()}</Text>
+            </View>
+          )
+        ) : (
+          <View style={styles.searchIconWrap}>
+            <Ionicons name="search-outline" size={16} color={colors.light.mutedForeground} />
           </View>
-        ) : null}
+        )}
 
-        {/* ── Keyword rows ── */}
-        {keywords.map((item) => {
-          const trendUp = (item.trend_pct ?? 0) > 0;
-          return (
-            <TouchableOpacity
-              key={`k-${item.label}`}
-              style={styles.item}
-              activeOpacity={0.8}
-              onPress={() => onSelect(item)}
-            >
-              <View style={styles.searchIconWrap}>
-                <Ionicons name="search-outline" size={16} color={colors.light.mutedForeground} />
-              </View>
-              <View style={styles.itemCopy}>
-                {highlightMatch(item.label, term)}
-              </View>
-              {item.count !== undefined && item.count > 0 ? (
-                <Text style={styles.countText}>{item.count.toLocaleString()}</Text>
-              ) : null}
-              <Ionicons
-                name={trendUp ? "trending-up" : "trending-up-outline"}
-                size={16}
-                color={trendUp ? colors.olive[600] : colors.light.mutedForeground}
-                style={styles.arrowIcon}
-              />
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* ── Wishlist price drops ── */}
-        {priceDrops.length > 0 ? (
-          <View style={styles.dropsWrap}>
-            <Text style={styles.dropsHeader}>Price dropped on items you wishlisted</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.dropsRow}
-            >
-              {priceDrops.map((d) => (
-                <TouchableOpacity
-                  key={d.product_id}
-                  style={styles.dropCard}
-                  activeOpacity={0.85}
-                  onPress={() => onPriceDropPress?.(d)}
-                >
-                  {d.image_url ? (
-                    <Image source={{ uri: d.image_url }} style={styles.dropImage} contentFit="cover" transition={200} />
-                  ) : (
-                    <View style={[styles.dropImage, styles.dropImageFallback]}>
-                      <Ionicons name="image-outline" size={20} color={MUTED} />
-                    </View>
-                  )}
-                  <Text style={styles.dropName} numberOfLines={1}>{d.name}</Text>
-                  <View style={styles.dropPriceRow}>
-                    <Text style={styles.dropNewPrice}>{formatPrice(d.new_price)}</Text>
-                    <Text style={styles.dropOldPrice}>{formatPrice(d.old_price)}</Text>
-                  </View>
-                  <Text style={styles.dropPct}>{d.drop_pct}% OFF</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {/* ── Store / brand rows ── */}
-        {stores.map((item) => (
-          <TouchableOpacity
-            key={`s-${item.label}`}
-            style={styles.item}
-            activeOpacity={0.8}
-            onPress={() => onSelect(item)}
-          >
-            {item.logo_url ? (
-              <Image source={{ uri: item.logo_url }} style={styles.avatar} contentFit="cover" transition={200} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>
-                  {item.label.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.itemCopy}>
+        <View style={styles.itemCopy}>
+          {isStore ? (
+            <>
               <View style={styles.titleRow}>
                 {highlightMatch(item.label, term, styles.storeMatch, styles.storeRegular)}
-                {item.is_verified && (
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={14}
-                    color={colors.accent2.rust}
-                    style={styles.verifiedIcon}
-                  />
-                )}
+                {item.is_verified ? (
+                  <Ionicons name="checkmark-circle" size={14} color={colors.accent2.rust} style={styles.verifiedIcon} />
+                ) : null}
               </View>
               <Text style={styles.followersText}>
                 {(item.followers ?? 0).toLocaleString()} followers
               </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </>
+          ) : (
+            highlightMatch(item.label, term)
+          )}
+        </View>
 
-        {!loading && merged.length === 0 && term.length >= 2 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No matches found</Text>
-          </View>
+        {item.count !== undefined && item.count > 0 ? (
+          <Text style={styles.countText}>{item.count.toLocaleString()}</Text>
         ) : null}
-      </ScrollView>
+        <Ionicons name="chevron-forward" size={16} color={MUTED} />
+      </TouchableOpacity>
+    );
+  };
 
-      {/* ── Bottom action buttons ── */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          activeOpacity={0.8}
-          onPress={onImageSearch}
-        >
-          <Ionicons name="image-outline" size={20} color={INK} />
-          <Text style={styles.actionText}>Image Search</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          activeOpacity={0.8}
-          onPress={onCameraSearch}
-        >
-          <Ionicons name="camera-outline" size={20} color={INK} />
-          <Text style={styles.actionText}>Camera Search</Text>
-        </TouchableOpacity>
-      </View>
+  return (
+    <View style={styles.panel}>
+      {priceDrops.length > 0 ? (
+        <View style={styles.dropsWrap}>
+          <Text style={styles.dropsHeader}>Price drops on your wishlist</Text>
+          <FlatList
+            horizontal
+            data={priceDrops}
+            keyExtractor={(d) => d.product_id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dropsRow}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item: d }) => (
+              <TouchableOpacity
+                style={styles.dropCard}
+                activeOpacity={0.85}
+                onPress={() => onPriceDropPress?.(d)}
+              >
+                {d.image_url ? (
+                  <Image source={{ uri: d.image_url }} style={styles.dropImage} contentFit="cover" />
+                ) : (
+                  <View style={[styles.dropImage, styles.dropImageFallback]}>
+                    <Ionicons name="image-outline" size={20} color={MUTED} />
+                  </View>
+                )}
+                <Text style={styles.dropName} numberOfLines={1}>{d.name}</Text>
+                <View style={styles.dropPriceRow}>
+                  <Text style={styles.dropNewPrice}>{formatPrice(d.new_price)}</Text>
+                  <Text style={styles.dropOldPrice}>{formatPrice(d.old_price)}</Text>
+                </View>
+                <Text style={styles.dropPct}>{d.drop_pct}% OFF</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      ) : null}
+
+      <FlatList
+        data={rows}
+        keyExtractor={(row, index) => {
+          if (row.type === "search") return "search";
+          if (row.type === "loading") return "loading";
+          if (row.type === "empty") return "empty";
+          return `s-${row.item.kind}-${row.item.label}-${index}`;
+        }}
+        renderItem={renderItem}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+      />
     </View>
   );
 }
@@ -230,40 +235,56 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#ffffff",
   },
-  list: {
-    flex: 1,
+  listContent: {
+    paddingBottom: spacing[8],
   },
   loadingContainer: {
-    paddingVertical: spacing[4],
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    paddingVertical: spacing[6],
+  },
+  loadingText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: MUTED,
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: spacing[4],
     paddingVertical: spacing[3.5],
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#f1f1f1",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ececec",
+    gap: spacing[2],
   },
   searchIconWrap: {
-    marginRight: spacing[3],
-    opacity: 0.7,
+    width: 32,
+    alignItems: "center",
+  },
+  searchDraftText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
+    color: INK,
+  },
+  searchDraftTerm: {
+    fontFamily: fontFamilies.sans.semibold,
   },
   avatar: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: radii.md,
-    marginRight: spacing[3],
     backgroundColor: "#f5f5f5",
   },
   avatarFallback: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: radii.md,
     backgroundColor: colors.olive[100],
     alignItems: "center",
     justifyContent: "center",
-    marginRight: spacing[3],
   },
   avatarFallbackText: {
     fontFamily: fontFamilies.sans.bold,
@@ -289,67 +310,60 @@ const styles = StyleSheet.create({
   },
   itemLabel: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 14.5,
+    fontSize: 15,
     color: "#4a4a4a",
   },
   itemLabelMatch: {
     fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
     color: INK,
   },
   storeRegular: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 14.5,
+    fontSize: 14,
     color: colors.light.mutedForeground,
     textTransform: "uppercase",
   },
   storeMatch: {
     fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
     color: INK,
     textTransform: "uppercase",
   },
   countText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
+    fontSize: 12,
     color: colors.light.mutedForeground,
-    marginRight: spacing[3],
-  },
-  arrowIcon: {
-    opacity: 0.85,
   },
   empty: {
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[6],
     alignItems: "center",
   },
   emptyText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     color: MUTED,
+    textAlign: "center",
   },
-
-  /* Wishlist price drops */
   dropsWrap: {
     backgroundColor: "rgba(27,28,28,0.04)",
     paddingTop: spacing[3],
-    paddingBottom: spacing[4],
-    borderBottomWidth: 0.5,
+    paddingBottom: spacing[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#ececec",
   },
   dropsHeader: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: INK,
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[3],
+    paddingHorizontal: spacing[4],
+    marginBottom: spacing[2],
   },
   dropsRow: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: spacing[4],
     gap: spacing[3],
   },
   dropCard: {
-    width: 132,
+    width: 128,
     backgroundColor: "#fff",
     borderRadius: radii.lg,
     padding: spacing[2],
@@ -358,7 +372,7 @@ const styles = StyleSheet.create({
   },
   dropImage: {
     width: "100%",
-    height: 96,
+    height: 88,
     borderRadius: radii.md,
     backgroundColor: "#f5f5f5",
     marginBottom: spacing[2],
@@ -380,7 +394,7 @@ const styles = StyleSheet.create({
   },
   dropNewPrice: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 12.5,
+    fontSize: 12,
     color: INK,
   },
   dropOldPrice: {
@@ -391,37 +405,8 @@ const styles = StyleSheet.create({
   },
   dropPct: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 10.5,
+    fontSize: 10,
     color: colors.olive[600],
     marginTop: 2,
-  },
-
-  /* Action buttons */
-  actions: {
-    flexDirection: "row",
-    gap: spacing[3],
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[4],
-    borderTopWidth: 0.5,
-    borderTopColor: "#ececec",
-    backgroundColor: "#fff",
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[2],
-    height: 52,
-    borderRadius: radii.full,
-    backgroundColor: "#f6f6f6",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-  },
-  actionText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: INK,
   },
 });
