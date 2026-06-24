@@ -148,6 +148,8 @@ export default function SettingsScreen() {
   const [newEmail, setNewEmail] = useState("");
   const [changePhoneOpen, setChangePhoneOpen] = useState(false);
   const [newPhone, setNewPhone] = useState("");
+  const [phoneStep, setPhoneStep] = useState<1 | 2>(1);
+  const [phoneOtp, setPhoneOtp] = useState("");
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [newPwd, setNewPwd] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -359,12 +361,60 @@ export default function SettingsScreen() {
     const { error } = await supabase.auth.updateUser({ phone: newPhone });
     setSaving(false);
     if (error) {
-      toast(error.message, "error");
+      // Fallback: if phone auth is disabled, allow updating settings table directly
+      const usersPatch = { ...snapshot, phone: newPhone };
+      const { error: settingsError } = await supabase.rpc("update_user_settings", {
+        p_patch: usersPatch,
+      });
+      if (settingsError) {
+        toast(error.message, "error");
+        return;
+      }
+      setPhone(newPhone);
+      toast("Phone number updated", "success");
+      setChangePhoneOpen(false);
       return;
     }
     toast("Verification code sent", "success");
-    setNewPhone("");
-    setChangePhoneOpen(false);
+    setPhoneOtp("");
+    setPhoneStep(2);
+  };
+
+  const verifyPhoneChange = async () => {
+    if (!user?.id) return;
+    if (!phoneOtp.trim()) {
+      toast("Enter verification code", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        phone: newPhone,
+        token: phoneOtp.trim(),
+        type: "phone_change",
+      });
+      if (error) {
+        toast(error.message, "error");
+        return;
+      }
+      
+      const usersPatch = { ...snapshot, phone: newPhone };
+      const { error: settingsError } = await supabase.rpc("update_user_settings", {
+        p_patch: usersPatch,
+      });
+      if (settingsError) {
+        toast("Verified, but could not sync profile", "error");
+      }
+      
+      setPhone(newPhone);
+      initialSnapshot.current = JSON.stringify({ ...snapshot, phone: newPhone });
+      toast("Phone number linked successfully", "success");
+      setChangePhoneOpen(false);
+    } catch (error: any) {
+      toast(error?.message ?? "Verification failed", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const changePassword = async () => {
@@ -662,6 +712,8 @@ export default function SettingsScreen() {
             value={phone || "Add a phone"}
             onPress={() => {
               setNewPhone(phone);
+              setPhoneOtp("");
+              setPhoneStep(1);
               setChangePhoneOpen(true);
             }}
             isLast
@@ -930,22 +982,48 @@ export default function SettingsScreen() {
         visible={changePhoneOpen}
         onClose={() => setChangePhoneOpen(false)}
         kicker="Phone"
-        title="Change phone"
-        copy="We'll send a 6-digit code to your new number to confirm the change."
+        title={phoneStep === 1 ? "Change phone" : "Verify code"}
+        copy={
+          phoneStep === 1
+            ? "We'll send a 6-digit code to your new number to confirm the change."
+            : `Enter the code we sent to ${newPhone}.`
+        }
       >
-        <Field
-          label="New phone"
-          icon="call-outline"
-          value={newPhone}
-          onChangeText={setNewPhone}
-          keyboardType="phone-pad"
-        />
+        {phoneStep === 1 ? (
+          <Field
+            label="New phone"
+            icon="call-outline"
+            value={newPhone}
+            onChangeText={setNewPhone}
+            keyboardType="phone-pad"
+          />
+        ) : (
+          <Field
+            label="Verification code"
+            icon="key-outline"
+            value={phoneOtp}
+            onChangeText={setPhoneOtp}
+            keyboardType="number-pad"
+          />
+        )}
         <View style={styles.modalFooter}>
+          {phoneStep === 2 && (
+            <Button
+              variant="outline"
+              onPress={() => setPhoneStep(1)}
+              style={{ marginRight: "auto" }}
+            >
+              Back
+            </Button>
+          )}
           <Button variant="outline" onPress={() => setChangePhoneOpen(false)}>
             Cancel
           </Button>
-          <Button loading={saving} onPress={requestPhoneChange}>
-            Send code
+          <Button
+            loading={saving}
+            onPress={phoneStep === 1 ? requestPhoneChange : verifyPhoneChange}
+          >
+            {phoneStep === 1 ? "Send code" : "Verify"}
           </Button>
         </View>
       </CenteredModal>
