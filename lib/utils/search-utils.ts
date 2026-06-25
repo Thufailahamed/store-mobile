@@ -421,3 +421,170 @@ export function fuzzyMatch(a: string, b: string, threshold = 2): boolean {
   if (Math.abs(a.length - b.length) > threshold) return false;
   return levenshtein(a, b) <= threshold;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Smart search — demographic + garment query maps                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Demographic (audience) synonym map. Mirrors the SQL `expand_search_query`
+ * migration 0158 so the mobile typeahead and did-you-mean chips can
+ * resolve "girls" → kids without a round-trip.
+ */
+export const DEMOGRAPHIC_SYNONYMS: Record<string, string[]> = {
+  girl: ["girl", "girls", "kid", "kids", "child", "children", "baby"],
+  girls: ["girls", "girl", "kid", "kids", "child", "children", "baby"],
+  boy: ["boy", "boys", "kid", "kids", "child", "children", "baby"],
+  boys: ["boys", "boy", "kid", "kids", "child", "children", "baby"],
+  kid: ["kid", "kids", "child", "children", "girl", "girls", "boy", "boys", "baby"],
+  kids: ["kids", "kid", "child", "children", "girl", "girls", "boy", "boys", "baby"],
+  child: ["child", "children", "kid", "kids"],
+  children: ["children", "child", "kid", "kids"],
+  baby: ["baby", "infant", "toddler", "kid", "kids"],
+  men: ["men", "mens", "man", "gent", "gents"],
+  mens: ["mens", "men", "man", "gent", "gents"],
+  man: ["man", "men", "mens", "gent", "gents"],
+  gents: ["gents", "gent", "men", "mens", "man"],
+  gent: ["gent", "gents", "men", "mens", "man"],
+  women: ["women", "womens", "woman", "lady", "ladies"],
+  womens: ["womens", "women", "woman", "lady", "ladies"],
+  woman: ["woman", "women", "womens", "lady", "ladies"],
+  ladies: ["ladies", "lady", "women", "womens", "woman"],
+  lady: ["lady", "ladies", "women", "womens", "woman"],
+};
+
+/** Garment query tokens — for typeahead + did-you-mean UX. */
+export const GARMENT_QUERY_TOKENS: Record<string, string[]> = {
+  dress: ["dress", "dresses", "gown", "maxi", "midi"],
+  dresses: ["dresses", "dress", "gown", "maxi", "midi"],
+  gown: ["gown", "dress", "dresses", "maxi"],
+  shirt: ["shirt", "shirts", "top", "tops", "blouse", "tee", "t-shirt", "tshirt"],
+  shirts: ["shirts", "shirt", "top", "tops", "blouse", "tee", "t-shirt", "tshirt"],
+  top: ["top", "tops", "shirt", "shirts", "blouse"],
+  tops: ["tops", "top", "shirt", "shirts", "blouse"],
+  pant: ["pant", "pants", "trouser", "trousers", "bottom", "bottoms"],
+  pants: ["pants", "pant", "trouser", "trousers", "bottom", "bottoms"],
+  jean: ["jean", "jeans", "denim"],
+  jeans: ["jeans", "jean", "denim"],
+  shoe: ["shoe", "shoes", "sneaker", "sneakers", "heel", "heels", "sandal", "sandals", "boot", "boots", "loafer", "loafers", "footwear"],
+  shoes: ["shoes", "shoe", "sneaker", "sneakers", "heel", "heels", "sandal", "sandals", "boot", "boots", "loafer", "loafers", "footwear"],
+  sneaker: ["sneaker", "sneakers", "shoe", "shoes", "footwear"],
+  sneakers: ["sneakers", "sneaker", "shoe", "shoes", "footwear"],
+  boot: ["boot", "boots", "shoe", "shoes", "footwear"],
+  boots: ["boots", "boot", "shoe", "shoes", "footwear"],
+  heel: ["heel", "heels", "shoe", "shoes", "footwear"],
+  heels: ["heels", "heel", "shoe", "shoes", "footwear"],
+  jacket: ["jacket", "jackets", "coat", "blazer"],
+  jackets: ["jackets", "jacket", "coat", "blazer"],
+  skirt: ["skirt", "skirts"],
+  short: ["short", "shorts"],
+  bag: ["bag", "bags", "handbag", "tote", "backpack", "clutch"],
+  watch: ["watch", "watches", "timepiece"],
+  hat: ["hat", "hats", "cap", "caps"],
+};
+
+const SMART_STOPWORDS = new Set([
+  "for", "the", "a", "an", "with", "and", "or", "in", "of", "to", "on",
+  "my", "his", "her", "their", "our", "your", "i", "we", "you", "me",
+  "want", "need", "looking", "find", "show", "get",
+]);
+
+function singularise(w: string): string {
+  if (w.length < 4) return w;
+  if (w.endsWith("ies")) return w.slice(0, -3) + "y";
+  if (w.endsWith("es") && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
+  return w;
+}
+
+function lookupDemographic(word: string): string[] | null {
+  const lower = word.toLowerCase();
+  if (DEMOGRAPHIC_SYNONYMS[lower]) return DEMOGRAPHIC_SYNONYMS[lower];
+  const sing = singularise(lower);
+  if (sing !== lower && DEMOGRAPHIC_SYNONYMS[sing]) return DEMOGRAPHIC_SYNONYMS[sing];
+  for (const values of Object.values(DEMOGRAPHIC_SYNONYMS)) {
+    if (values.includes(lower)) return values;
+  }
+  return null;
+}
+
+function lookupGarment(word: string): string[] | null {
+  const lower = word.toLowerCase();
+  if (GARMENT_QUERY_TOKENS[lower]) return GARMENT_QUERY_TOKENS[lower];
+  const sing = singularise(lower);
+  if (sing !== lower && GARMENT_QUERY_TOKENS[sing]) return GARMENT_QUERY_TOKENS[sing];
+  for (const values of Object.values(GARMENT_QUERY_TOKENS)) {
+    if (values.includes(lower)) return values;
+  }
+  return null;
+}
+
+function inferGender(word: string): "men" | "women" | "kids" | null {
+  const lower = word.toLowerCase();
+  const sing = singularise(lower);
+  for (const key of [lower, sing]) {
+    if (DEMOGRAPHIC_SYNONYMS[key]) {
+      if (["men", "mens", "man", "gents", "gent"].includes(key)) return "men";
+      if (["women", "womens", "woman", "ladies", "lady"].includes(key)) return "women";
+      if (["girl", "girls", "boy", "boys", "kid", "kids", "child", "children", "baby"].includes(key)) return "kids";
+    }
+  }
+  return null;
+}
+
+export interface ExpandedQuery {
+  tokens: string[];
+  gender: "men" | "women" | "kids" | null;
+  garment: string | null;
+}
+
+/**
+ * Client-side expansion of a raw query. Mirrors the server-side
+ * `expand_search_query` RPC. Used by the typeahead + empty-state
+ * did-you-mean chips.
+ */
+export function expandQueryTerms(q: string): ExpandedQuery {
+  const cleaned = (q ?? "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return { tokens: [], gender: null, garment: null };
+  const tokens = new Set<string>();
+  let gender: "men" | "women" | "kids" | null = null;
+  let garment: string | null = null;
+  for (const raw of cleaned.split(/\s+/)) {
+    if (raw.length < 2 || SMART_STOPWORDS.has(raw)) continue;
+    const demo = lookupDemographic(raw);
+    if (demo) {
+      const g = inferGender(raw);
+      if (g && !gender) gender = g;
+      for (const t of demo) tokens.add(t);
+      continue;
+    }
+    const gar = lookupGarment(raw);
+    if (gar) {
+      if (!garment) garment = singularise(raw);
+      for (const t of gar) tokens.add(t);
+      continue;
+    }
+    tokens.add(raw);
+  }
+  return { tokens: [...tokens], gender, garment };
+}
+
+/**
+ * Build up to 3 "Did you mean?" reformulations for an empty-results page.
+ */
+export function buildDidYouMean(q: string, expanded?: ExpandedQuery): string[] {
+  const exp = expanded ?? expandQueryTerms(q);
+  const out: string[] = [];
+  const seen = new Set<string>([q.trim().toLowerCase()]);
+  const push = (s: string) => {
+    const k = s.trim().toLowerCase();
+    if (!k || seen.has(k) || out.includes(s)) return;
+    seen.add(k);
+    out.push(s);
+  };
+  if (exp.gender && exp.garment) push(`${exp.gender} ${exp.garment}`);
+  if (exp.garment) push(exp.garment);
+  const trimmed = q.trim();
+  if (trimmed) push(trimmed);
+  return out.slice(0, 3);
+}

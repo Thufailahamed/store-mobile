@@ -336,26 +336,60 @@ export async function getFlashSaleEndsAt(): Promise<string> {
 // Search
 // ============================================================================
 
-export async function searchProducts(query: string, limit = 20): Promise<Result<Product[]>> {
+export async function searchProducts(
+  query: string,
+  limit = 20,
+  opts?: { gender?: "men" | "women" | "kids" | "unisex" },
+): Promise<Result<Product[]>> {
   const term = query.trim();
   if (!term) return ok([]);
   const words = tokenizeQuery(term);
   if (words.length === 0) return ok([]);
 
-  // Use backend's /api/catalog/search RPC.
+  // Use backend's /api/catalog/search RPC. The backend runs
+  // expand_search_query server-side and forwards synonyms to
+  // search_products so "girls dress" → kids+dresses matches.
   const res = await B.searchProductsBackend({
     q: term,
     sort: "relevance",
     limit: Math.max(limit * 2, 40),
+    gender: opts?.gender,
   });
-  if (!res.ok) {
+
+  let rawProducts: Array<{ id: string }> = [];
+  if (res.ok) {
+    rawProducts = res.data.products ?? [];
+  }
+
+  // Per-word OR fallback: when the full query returns nothing and
+  // contains multiple words (e.g. "girls dress"), retry each word
+  // individually and merge the results so partial matches surface.
+  if (rawProducts.length === 0 && words.length >= 2) {
+    const seen = new Set<string>();
+    for (const word of words) {
+      const wordRes = await B.searchProductsBackend({
+        q: word,
+        sort: "relevance",
+        limit: Math.max(limit * 2, 40),
+      });
+      if (wordRes.ok) {
+        for (const p of (wordRes.data.products ?? [])) {
+          if (!seen.has(p.id)) {
+            seen.add(p.id);
+            rawProducts.push(p);
+          }
+        }
+      }
+    }
+  }
+
+  if (!res.ok && rawProducts.length === 0) {
     // Fuzzy fallback via /api/catalog/products with text search.
     const fallback = await B.getProductsBackend({ search: term, limit });
     if (!fallback.ok) return fail(fallback.error);
     return ok(mapProducts(fallback.data.products) ?? []);
   }
 
-  const rawProducts = res.data.products ?? [];
   const matchedIds = rawProducts.map((p) => p.id);
 
   let backendProducts: Product[] = [];
@@ -388,25 +422,29 @@ export async function searchProducts(query: string, limit = 20): Promise<Result<
     }
   }
 
-  // Fuzzy fallback if too few.
+  // Fuzzy fallback if too few — try individual words for broader coverage.
   if (backendProducts.length + colorHits.length < 3 && term.length >= 3) {
-    const all = await B.getProductsBackend({ search: term, limit: 80 });
-    if (all.ok) {
-      const lower = term.toLowerCase();
-      const mapped = mapProducts(all.data.products) ?? [];
-      const seen = new Set([...backendProducts, ...colorHits].map((p) => p.id));
-      const fuzzy = mapped.filter((p) => {
-        const name = (p.name ?? "").toLowerCase();
-        const desc = (p.description ?? "").toLowerCase();
-        const short = (p.short_description ?? "").toLowerCase();
-        return fuzzyMatch(name, lower, 2) || fuzzyMatch(desc, lower, 2) || fuzzyMatch(short, lower, 2);
-      });
-      for (const p of fuzzy) {
-        if (!seen.has(p.id)) {
-          colorHits.push(p);
-          seen.add(p.id);
+    const searchTerms = words.length >= 2 ? [term, ...words] : [term];
+    const seen = new Set([...backendProducts, ...colorHits].map((p) => p.id));
+    for (const searchTerm of searchTerms) {
+      const all = await B.getProductsBackend({ search: searchTerm, limit: 80 });
+      if (all.ok) {
+        const lower = searchTerm.toLowerCase();
+        const mapped = mapProducts(all.data.products) ?? [];
+        const fuzzy = mapped.filter((p) => {
+          const name = (p.name ?? "").toLowerCase();
+          const desc = (p.description ?? "").toLowerCase();
+          const short = (p.short_description ?? "").toLowerCase();
+          return fuzzyMatch(name, lower, 2) || fuzzyMatch(desc, lower, 2) || fuzzyMatch(short, lower, 2);
+        });
+        for (const p of fuzzy) {
+          if (!seen.has(p.id)) {
+            colorHits.push(p);
+            seen.add(p.id);
+          }
         }
       }
+      if (backendProducts.length + colorHits.length >= limit) break;
     }
   }
 

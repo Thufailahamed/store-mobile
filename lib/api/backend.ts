@@ -86,6 +86,7 @@ export async function searchProductsBackend(opts: {
   brand?: string;
   store?: string;
   category?: string;
+  gender?: "men" | "women" | "kids" | "unisex";
   min_price?: number;
   max_price?: number;
   min_rating?: number;
@@ -93,7 +94,7 @@ export async function searchProductsBackend(opts: {
   sort?: "relevance" | "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
   limit?: number;
   offset?: number;
-} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[] }>> {
+} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
   return fetchJson("/api/catalog/search", { requireAuth: false, query: { ...opts } });
 }
 

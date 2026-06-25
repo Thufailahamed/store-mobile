@@ -32,7 +32,7 @@ import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";
 import type { Product, Brand, Store, Category } from "@/lib/types";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { useTrackEvent, getForYouRail } from "@/lib/recommender";
-import { tokenizeQuery } from "@/lib/utils/search-utils";
+import { tokenizeQuery, expandQueryTerms, buildDidYouMean } from "@/lib/utils/search-utils";
 import { useAuth } from "@/lib/supabase/auth";
 import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
 import { pickImage, takePhoto } from "@/lib/upload";
@@ -282,8 +282,19 @@ export default function SearchScreen() {
   );
 
   // Client-side filter + sort pipeline
+  // Smart-search "Did you mean?" reformulations. Computed only when
+  // the user has a multi-token query that returned zero results.
+  const didYouMean = useMemo(() => {
+    if (!query) return [];
+    const trimmed = query.trim();
+    const tokens = trimmed.split(/\s+/).filter((t) => t.length >= 2);
+    if (tokens.length < 2) return [];
+    return buildDidYouMean(trimmed, expandQueryTerms(trimmed));
+  }, [query]);
+
   const filtered = useMemo(() => {
     let list = [...results];
+
 
     // Price filter
     if (filters.price && (filters.price[0] > PRICE_BOUNDS.min || filters.price[1] < PRICE_BOUNDS.max)) {
@@ -416,6 +427,10 @@ export default function SearchScreen() {
           priceDrops={priceDrops}
           onSelect={handleSuggestionSelect}
           onSearchDraft={() => doSearch(draft)}
+          onSearchDraftWith={(t) => {
+            setDraft(t);
+            doSearch(t);
+          }}
           onImageSearch={() => runScan("library")}
           onCameraSearch={() => runScan("camera")}
           onPriceDropPress={(d) => router.push(`/(main)/products/${d.slug}`)}
@@ -445,6 +460,26 @@ export default function SearchScreen() {
               <Body muted style={styles.emptyDesc}>
                 We couldn't find anything for "{query}". Try a different spelling, or browse the suggestions.
               </Body>
+              {didYouMean.length > 0 && (
+                <View style={styles.didYouMeanRow}>
+                  <View style={styles.didYouMeanHeader}>
+                    <Ionicons name="compass-outline" size={14} color={INK} />
+                    <Label style={{ color: INK, fontSize: 12 }}>Did you mean</Label>
+                  </View>
+                  <View style={styles.chipRow}>
+                    {didYouMean.map((s) => (
+                      <TouchableOpacity
+                        key={`dym-${s}`}
+                        style={styles.didYouMeanChip}
+                        onPress={() => doSearch(s)}
+                      >
+                        <Ionicons name="sparkles-outline" size={14} color={INK} />
+                        <Body size="sm" style={{ marginLeft: 6, color: INK }}>{s}</Body>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
               <View style={styles.chipRow}>
                 {SUGGESTIONS.slice(0, 4).map((s) => (
                   <TouchableOpacity
@@ -889,6 +924,29 @@ const styles = StyleSheet.create({
     marginBottom: spacing[2],
     maxWidth: "100%",
     ...GLASS,
+  },
+  didYouMeanRow: {
+    width: "100%",
+    marginBottom: spacing[3],
+    alignItems: "center",
+  },
+  didYouMeanHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: spacing[2],
+  },
+  didYouMeanChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    marginRight: spacing[2],
+    marginBottom: spacing[2],
+    backgroundColor: "rgba(27, 28, 28, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(27, 28, 28, 0.25)",
   },
   recentChip: {
     paddingHorizontal: 14,

@@ -14,6 +14,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
+import { expandQueryTerms } from "@/lib/utils/search-utils";
 
 const INK = "#1b1c1c";
 const MUTED = "#5e5e5d";
@@ -26,6 +27,7 @@ interface SearchSuggestionsProps {
   priceDrops: WishlistPriceDrop[];
   onSelect: (suggestion: V2Suggestion) => void;
   onSearchDraft: () => void;
+  onSearchDraftWith?: (term: string) => void;
   onImageSearch: () => void;
   onCameraSearch: () => void;
   onPriceDropPress?: (drop: WishlistPriceDrop) => void;
@@ -33,6 +35,7 @@ interface SearchSuggestionsProps {
 
 type Row =
   | { type: "search"; label: string }
+  | { type: "intent"; label: string; canonical: string }
   | { type: "suggestion"; item: V2Suggestion }
   | { type: "loading" }
   | { type: "empty" };
@@ -66,6 +69,7 @@ export function SearchSuggestions({
   priceDrops,
   onSelect,
   onSearchDraft,
+  onSearchDraftWith,
   onPriceDropPress,
 }: SearchSuggestionsProps) {
   const merged = useMemo(() => {
@@ -80,10 +84,28 @@ export function SearchSuggestions({
     return items;
   }, [localSuggestions, suggestions]);
 
+  // Smart-search intent chip: when the user's draft has a known
+  // demographic + garment mapping, surface a "Shop X Y" suggestion
+  // at the top of the typeahead.
+  const expanded = useMemo(() => expandQueryTerms(draft.trim()), [draft]);
+
   const term = draft.trim();
   if (term.length < 1) return null;
 
   const rows: Row[] = [{ type: "search", label: term }];
+  if (expanded.gender && expanded.garment) {
+    rows.push({
+      type: "intent",
+      label: `Shop ${expanded.gender} ${expanded.garment}`,
+      canonical: `${expanded.gender} ${expanded.garment}`,
+    });
+  } else if (expanded.gender) {
+    rows.push({
+      type: "intent",
+      label: `Shop ${expanded.gender}`,
+      canonical: expanded.gender,
+    });
+  }
   if (loading && merged.length === 0) {
     rows.push({ type: "loading" });
   } else if (!loading && merged.length === 0) {
@@ -105,6 +127,22 @@ export function SearchSuggestions({
             Search for <Text style={styles.searchDraftTerm}>“{row.label}”</Text>
           </Text>
           <Ionicons name="arrow-forward" size={16} color={MUTED} />
+        </TouchableOpacity>
+      );
+    }
+
+    if (row.type === "intent") {
+      return (
+        <TouchableOpacity
+          style={[styles.item, styles.intentItem]}
+          activeOpacity={0.7}
+          onPress={() => onSearchDraftWith?.(row.canonical)}
+        >
+          <View style={[styles.searchIconWrap, styles.intentIconWrap]}>
+            <Ionicons name="sparkles" size={16} color={colors.light.primary} />
+          </View>
+          <Text style={[styles.searchDraftText, styles.intentText]}>{row.label}</Text>
+          <Ionicons name="arrow-forward" size={16} color={colors.light.primary} />
         </TouchableOpacity>
       );
     }
@@ -216,6 +254,7 @@ export function SearchSuggestions({
         data={rows}
         keyExtractor={(row, index) => {
           if (row.type === "search") return "search";
+          if (row.type === "intent") return `intent-${row.canonical}`;
           if (row.type === "loading") return "loading";
           if (row.type === "empty") return "empty";
           return `s-${row.item.kind}-${row.item.label}-${index}`;
@@ -262,6 +301,18 @@ const styles = StyleSheet.create({
   searchIconWrap: {
     width: 32,
     alignItems: "center",
+  },
+  intentItem: {
+    backgroundColor: "rgba(27,28,28,0.04)",
+  },
+  intentIconWrap: {
+    backgroundColor: "rgba(27,28,28,0.08)",
+    borderRadius: 16,
+    paddingVertical: 4,
+  },
+  intentText: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: INK,
   },
   searchDraftText: {
     flex: 1,
