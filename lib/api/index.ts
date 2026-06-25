@@ -782,19 +782,19 @@ export async function getSellerProducts(storeId: string, opts: {
   return ok({ products: products ?? [], total: res.data.total ?? products.length });
 }
 
-export async function createSellerProduct(product: Partial<Product>): Promise<Result<Product>> {
+export async function createSellerProduct(product: Partial<Product>): Promise<Result<{ product: Product; moderation: B.SellerModerationBlock }>> {
   if (!product.store_id) return fail("Store is required");
   const guard = await assertSellerCanOperate(product.store_id);
   if (!guard.ok) return guard;
   const res = await B.createSellerProductBackend(product as Partial<B.CatalogProduct> & { name: string; price: number });
   if (!res.ok) return fail(res.error);
-  return ok(mapProduct(res.data.product));
+  return ok({ product: mapProduct(res.data.product), moderation: res.data.moderation ?? null });
 }
 
-export async function updateSellerProduct(id: string, patch: Partial<Product>): Promise<Result<Product>> {
+export async function updateSellerProduct(id: string, patch: Partial<Product>): Promise<Result<{ product: Product; moderation: B.SellerModerationBlock }>> {
   const res = await B.updateSellerProductBackend(id, patch as Partial<B.CatalogProduct>);
   if (!res.ok) return fail(res.error);
-  return ok(mapProduct(res.data.product));
+  return ok({ product: mapProduct(res.data.product), moderation: res.data.moderation ?? null });
 }
 
 export async function deleteSellerProduct(id: string): Promise<Result<void>> {

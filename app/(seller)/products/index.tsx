@@ -11,12 +11,53 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getSellerProducts, deleteSellerProduct } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Product } from "@/lib/types";
 
-const STATUS_TABS = ["all", "active", "draft", "pending", "archived"] as const;
+const STATUS_TABS = ["all", "active", "draft", "pending", "flagged", "archived"] as const;
+
+function ModerationChip({ p }: { p: Product }) {
+  const reasons = (p.suspicious_reasons ?? []) as { blocking: boolean }[];
+  if (p.status === "active" && p.auto_approved) {
+    return (
+      <View style={[styles.modChip, { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" }]}>
+        <Ionicons name="shield-checkmark" size={11} color="#059669" />
+        <Text style={[styles.modChipText, { color: "#047857" }]}>auto</Text>
+      </View>
+    );
+  }
+  if (p.is_flagged) {
+    const blocking = reasons.some((r) => r.blocking);
+    return (
+      <View
+        style={[
+          styles.modChip,
+          {
+            backgroundColor: blocking ? "#ede9fe" : "#fff1f2",
+            borderColor: blocking ? "#c4b5fd" : "#fecdd3",
+          },
+        ]}
+      >
+        <Ionicons name={blocking ? "close-circle" : "alert-circle"} size={11} color={blocking ? "#7c3aed" : "#e11d48"} />
+        <Text style={[styles.modChipText, { color: blocking ? "#6d28d9" : "#be123c" }]}>
+          flagged · {p.risk_score ?? 0}
+        </Text>
+      </View>
+    );
+  }
+  if (p.status === "pending") {
+    return (
+      <View style={[styles.modChip, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
+        <Ionicons name="alert-circle" size={11} color="#d97706" />
+        <Text style={[styles.modChipText, { color: "#b45309" }]}>review</Text>
+      </View>
+    );
+  }
+  return null;
+}
 
 function formatPrice(n: number) {
   return `Rs. ${n.toLocaleString("en-LK")}`;
@@ -97,10 +138,13 @@ export default function SellerProducts() {
         <View style={styles.productInfo}>
           <View style={styles.productHeader}>
             <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-            <View style={[styles.statusBadge, item.status === "active" ? styles.statusActive : item.status === "draft" ? styles.statusDraft : styles.statusPending]}>
-              <Text style={[styles.statusText, item.status === "active" ? styles.statusTextActive : item.status === "draft" ? styles.statusTextDraft : styles.statusTextPending]}>
-                {item.status}
-              </Text>
+            <View style={styles.badges}>
+              <View style={[styles.statusBadge, item.status === "active" ? styles.statusActive : item.status === "draft" ? styles.statusDraft : styles.statusPending]}>
+                <Text style={[styles.statusText, item.status === "active" ? styles.statusTextActive : item.status === "draft" ? styles.statusTextDraft : styles.statusTextPending]}>
+                  {item.status}
+                </Text>
+              </View>
+              <ModerationChip p={item} />
             </View>
           </View>
           <Text style={styles.productSku}>{item.sku ?? "No SKU"}</Text>
@@ -306,6 +350,17 @@ const styles = StyleSheet.create({
   statusTextActive: { color: "#166534" },
   statusTextDraft: { color: "#6b7280" },
   statusTextPending: { color: "#854d0e" },
+  badges: { flexDirection: "row", alignItems: "center", gap: 4 },
+  modChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+  },
+  modChipText: { fontSize: 10, fontWeight: "600" },
 
   productSku: {
     fontSize: typography.fontSizes.xs,

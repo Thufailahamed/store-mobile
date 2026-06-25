@@ -109,6 +109,10 @@ export interface Product {
   attributes?: Record<string, unknown>;
   is_featured: boolean;
   is_active: boolean;
+  risk_score?: number | null;
+  is_flagged?: boolean | null;
+  auto_approved?: boolean | null;
+  suspicious_reasons?: { rule_id: string; message: string; weight: number; blocking: boolean }[] | null;
   rating: number;
   total_reviews: number;
   total_sales: number;

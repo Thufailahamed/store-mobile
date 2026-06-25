@@ -777,11 +777,21 @@ export async function getSellerProductByIdBackend(id: string): Promise<ApiResult
   return fetchJson(`/api/seller/products/${id}`);
 }
 
-export async function createSellerProductBackend(input: Partial<CatalogProduct> & { name: string; price: number }): Promise<ApiResult<{ product: CatalogProduct }>> {
+export type ModerationReasonLite = { rule_id: string; message: string; weight: number; blocking: boolean };
+
+export type SellerModerationBlock = {
+  auto_approved: boolean;
+  score: number;
+  threshold: number;
+  flagged: boolean;
+  reasons: ModerationReasonLite[];
+} | null;
+
+export async function createSellerProductBackend(input: Partial<CatalogProduct> & { name: string; price: number }): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
   return fetchJson("/api/seller/products", { method: "POST", body: input });
 }
 
-export async function updateSellerProductBackend(id: string, patch: Partial<CatalogProduct>): Promise<ApiResult<{ product: CatalogProduct }>> {
+export async function updateSellerProductBackend(id: string, patch: Partial<CatalogProduct>): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
   return fetchJson(`/api/seller/products/${id}`, { method: "PATCH", body: patch });
 }
 

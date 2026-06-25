@@ -35,6 +35,10 @@ import {
   createEmptyVariant,
   type VariantDraft,
 } from "@/components/seller/ProductVariantsSection";
+import {
+  ModerationResultBanner,
+  type ModerationResult,
+} from "@/components/seller/ModerationResultBanner";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Product, ProductImage, Category } from "@/lib/types";
 
@@ -70,6 +74,7 @@ export default function SellerProductEdit() {
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [pendingImages, setPendingImages] = useState<PendingProductImage[]>([]);
   const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
+  const [moderation, setModeration] = useState<ModerationResult>(null);
 
   const [variants, setVariants] = useState<VariantDraft[]>([createEmptyVariant()]);
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
@@ -298,10 +303,13 @@ export default function SellerProductEdit() {
       if (isNew) {
         const res = await createSellerProduct(productData);
         if (!res.ok) throw new Error(res.error);
-        productId = res.data.id;
+        productId = res.data.product.id;
+        setModeration(res.data.moderation);
       } else {
         const res = await updateSellerProduct(id!, productData);
         if (!res.ok) throw new Error(res.error);
+        productId = res.data.product.id;
+        setModeration(res.data.moderation);
       }
 
       if (!productId) throw new Error("Product could not be saved");
@@ -322,7 +330,12 @@ export default function SellerProductEdit() {
       );
       if (!variantRes.ok) throw new Error(variantRes.error);
 
-      Alert.alert("Success", isNew ? "Product created" : "Product updated", [
+      let banner = isNew ? "Product created" : "Product updated";
+      if (moderation) {
+        if (moderation.auto_approved) banner = `Auto-approved · score ${moderation.score}/${moderation.threshold} — live now`;
+        else if (moderation.flagged) banner = `Pending review · score ${moderation.score}/${moderation.threshold}`;
+      }
+      Alert.alert("Saved", banner, [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (e: any) {
@@ -389,6 +402,7 @@ export default function SellerProductEdit() {
           <Text style={styles.title}>{isNew ? "New Product" : "Edit Product"}</Text>
           <Text style={styles.subtitle}>Photos, variants, and listing details</Text>
         </View>
+        {moderation ? <ModerationResultBanner result={moderation} isNew={isNew} /> : null}
 
         <ProductMediaSection
           existing={visibleExistingImages}
