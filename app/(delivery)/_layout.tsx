@@ -8,8 +8,15 @@ import { useRiderRealtime } from "@/lib/hooks/useRiderRealtime";
 import { supabase } from "@/lib/supabase/client";
 import { useTheme } from "@/lib/theme/provider";
 import { typography, radii } from "@/lib/theme/tokens";
+import { isInternalDeliveryVisibleMobile } from "@/lib/feature-flags";
+import { CourierManagedExternally } from "@/components/courier/courier-managed-externally";
 
 export default function DeliveryLayout() {
+  // When internal delivery is retired, replace the rider hub with a notice.
+  if (!isInternalDeliveryVisibleMobile()) {
+    return <CourierManagedExternally role="rider" />;
+  }
+
   const { user, role, roleLoading, loading } = useAuth();
   const { colors } = useTheme();
   const styles = makeStyles(colors);

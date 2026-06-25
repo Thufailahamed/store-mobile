@@ -14,8 +14,10 @@ import { ScreenHeader } from "@/components/layout";
 import { Badge, Button, useToast } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { getOrderTracking, type OrderTracking, type TrackingEvent } from "@/lib/api";
+import { getShipmentByOrder, type CourierShipment } from "@/lib/api/courier-api";
 import { useTrackEvent } from "@/lib/recommender";
 import { formatPrice } from "@/lib/utils";
+import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { OrderStatus } from "@/lib/types";
@@ -50,6 +52,7 @@ export default function OrderTrackScreen() {
   const [data, setData] = useState<OrderTracking | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [courier, setCourier] = useState<CourierShipment | null>(null);
 
   const load = async (showLoading = true) => {
     if (!id) return;
@@ -61,6 +64,11 @@ export default function OrderTrackScreen() {
       return;
     }
     setData(res.data);
+    // External courier (Phase 0162). Best-effort fetch — never fails the page.
+    if (isExternalCourierEnabledMobile()) {
+      const c = await getShipmentByOrder(id);
+      if (c.ok) setCourier(c.data.shipment);
+    }
     setLoading(false);
     tracker.screen("order_tracking", {
       orderId: id,
@@ -141,6 +149,38 @@ export default function OrderTrackScreen() {
             ) : null}
           </View>
         </View>
+
+        {courier ? (
+          <View style={styles.riderCard}>
+            <View style={styles.riderLeft}>
+              <View style={styles.riderIcon}>
+                <Ionicons name="bicycle-outline" size={20} color={colors.olive[700]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Label style={styles.riderKicker}>EXTERNAL COURIER</Label>
+                <Body size="sm" style={styles.riderName}>
+                  {courier.provider_name}
+                </Body>
+                <Body muted size="xs">
+                  Status: {courier.status.replace(/_/g, " ")}
+                </Body>
+                {courier.external_tracking_id ? (
+                  <Body muted size="xs" selectable>
+                    Tracking: {courier.external_tracking_id}
+                  </Body>
+                ) : null}
+              </View>
+            </View>
+            {courier.external_tracking_url ? (
+              <TouchableOpacity
+                style={styles.riderCall}
+                onPress={() => Linking.openURL(courier.external_tracking_url!)}
+              >
+                <Ionicons name="open-outline" size={18} color={colors.olive[700]} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
         {rider ? (
           <View style={styles.riderCard}>

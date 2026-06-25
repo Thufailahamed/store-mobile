@@ -57,6 +57,7 @@ export default function AdminMore() {
       { key: "content", label: "Content", description: "Reviews & Q&A", icon: "chatbubbles-outline", route: "/(admin)/content", group: "Engagement" },
       { key: "notifications", label: "Notifications", description: "Broadcasts & pushes", icon: "notifications-outline", route: "/(admin)/notifications", group: "Engagement" },
       { key: "blog", label: "Blog", description: "Editorial posts", icon: "document-text-outline", route: "/(admin)/blog", group: "Engagement" },
+      { key: "courier", label: "Courier Providers", description: "External delivery partners", icon: "bicycle-outline", route: "/(admin)/courier/index", group: "Operations" },
       { key: "delivery", label: "Delivery", description: "Delivery companies", icon: "car-outline", route: "/(admin)/delivery", group: "Operations" },
       { key: "commissions", label: "Commissions", description: "Tier management", icon: "wallet-outline", route: "/(admin)/commissions", group: "Operations" },
       { key: "homepage", label: "Homepage CMS", description: "Sections & ordering", icon: "globe-outline", route: "/(admin)/homepage", group: "Operations" },

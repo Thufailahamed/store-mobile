@@ -14,10 +14,16 @@ import { normalizeDeliveryCompanyAccess } from "@/lib/delivery-company-api-guard
 import type { DeliveryCompany } from "@/lib/api/delivery-company-api";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { isInternalDeliveryVisibleMobile } from "@/lib/feature-flags";
+import { CourierManagedExternally } from "@/components/courier/courier-managed-externally";
 
 const PUBLIC_SEGMENTS = new Set(["onboarding", "accept"]);
 
 export default function DeliveryCompanyLayout() {
+  // When internal delivery is retired, replace the company hub with a notice.
+  if (!isInternalDeliveryVisibleMobile()) {
+    return <CourierManagedExternally role="delivery_company" />;
+  }
   const { user, role, roleLoading, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
