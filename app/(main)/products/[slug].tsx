@@ -13,6 +13,7 @@ import { ProductStoreCard } from "@/components/product/ProductStoreCard";
 import { ProductDetails } from "@/components/product/ProductDetails";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ReviewForm } from "@/components/product/ReviewForm";
+import { PriceAlertPill } from "@/components/product/PriceAlertPill";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
@@ -386,6 +387,14 @@ export default function ProductDetailScreen() {
               Buy Now
             </Button>
           </View>
+          {!soldOut && (
+            <PriceAlertPill
+              productId={product.id}
+              variantId={selectedVariant?.id ?? null}
+              currency={product.currency || "LKR"}
+              currentPrice={unitPrice}
+            />
+          )}
         </View>
 
         {/* Trust & highlights */}

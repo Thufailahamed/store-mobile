@@ -1,7 +1,7 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useWishlist } from "@/lib/stores";
 import { useTrackEvent } from "@/lib/recommender";
@@ -101,9 +101,19 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99 }: Hom
               <Text style={styles.storeInitial}>{storeOrBrandName.charAt(0)}</Text>
             </View>
           )}
-          <Text style={styles.storeName} numberOfLines={1}>
-            {storeOrBrandName}
-          </Text>
+          {product.brand?.slug ? (
+            <Link href={`/(main)/brands/${product.brand.slug}` as never} asChild>
+              <TouchableOpacity onPress={(e) => e.stopPropagation()} hitSlop={4} style={{ flex: 1 }}>
+                <Text style={styles.storeName} numberOfLines={1}>
+                  {storeOrBrandName}
+                </Text>
+              </TouchableOpacity>
+            </Link>
+          ) : (
+            <Text style={styles.storeName} numberOfLines={1}>
+              {storeOrBrandName}
+            </Text>
+          )}
         </View>
       ) : null}
 

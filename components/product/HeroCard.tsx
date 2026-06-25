@@ -1,7 +1,7 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
@@ -26,6 +26,7 @@ export function HeroCard({ product }: HeroCardProps) {
     product.images?.find((i) => i.is_primary)?.url ?? product.images?.[0]?.url;
   const pct = discountPct(product.mrp, product.price);
   const brandName = product.brand?.name;
+  const brandSlug = product.brand?.slug;
 
   return (
     <TouchableOpacity
@@ -60,7 +61,15 @@ export function HeroCard({ product }: HeroCardProps) {
       <View style={styles.body}>
         <Label style={styles.kicker}>Nº 01 · Featured</Label>
         {brandName ? (
-          <Label style={styles.brand}>{brandName}</Label>
+          brandSlug ? (
+            <Link href={`/(main)/brands/${brandSlug}` as never} asChild>
+              <TouchableOpacity onPress={(e) => e.stopPropagation()} hitSlop={4}>
+                <Label style={styles.brand}>{brandName}</Label>
+              </TouchableOpacity>
+            </Link>
+          ) : (
+            <Label style={styles.brand}>{brandName}</Label>
+          )
         ) : null}
         <Display size="xl" style={styles.name} numberOfLines={2}>
           {product.name}

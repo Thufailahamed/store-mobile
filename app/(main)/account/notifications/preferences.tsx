@@ -24,18 +24,20 @@ import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens"
 import { fontFamilies } from "@/lib/theme/fonts";
 
 type Channel = "email" | "sms" | "push";
-type Category = "orders" | "marketing" | "social" | "security";
+type Category = "orders" | "marketing" | "social" | "security" | "cart_reminders";
 
 const CATEGORIES: {
   key: Category;
   label: string;
   detail: string;
   icon: keyof typeof Ionicons.glyphMap;
+  sms?: boolean;
 }[] = [
-  { key: "orders", label: "Orders", detail: "Confirmations, shipping, delivery, returns", icon: "cube-outline" },
-  { key: "marketing", label: "Marketing", detail: "Drops, promos, sale alerts", icon: "megaphone-outline" },
+  { key: "orders", label: "Orders", detail: "Confirmations, shipping, delivery, returns", icon: "cube-outline", sms: true },
+  { key: "marketing", label: "Marketing", detail: "Drops, promos, sale alerts", icon: "megaphone-outline", sms: true },
   { key: "social", label: "Social", detail: "Reviews, replies, mentions, review requests", icon: "people-outline" },
-  { key: "security", label: "Security", detail: "Sign-ins, password changes, MFA", icon: "shield-checkmark-outline" },
+  { key: "security", label: "Security", detail: "Sign-ins, password changes, MFA", icon: "shield-checkmark-outline", sms: true },
+  { key: "cart_reminders", label: "Cart reminders", detail: "Gentle nudges when items sit in your bag", icon: "cart-outline" },
 ];
 
 const CHANNELS: { key: Channel; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -45,7 +47,8 @@ const CHANNELS: { key: Channel; label: string; icon: keyof typeof Ionicons.glyph
 ];
 
 function channelsFor(category: Category): Channel[] {
-  if (category === "social") return ["email", "push"];
+  const cat = CATEGORIES.find((c) => c.key === category);
+  if (cat && cat.sms === false) return ["email", "push"];
   return ["email", "sms", "push"];
 }
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
@@ -184,9 +184,19 @@ function ProductCell({
         </View>
       </View>
       <View style={styles.cellBody}>
-        <Label style={styles.cellBrand} numberOfLines={1}>
-          {product.brand?.name ?? "House pick"}
-        </Label>
+        {product.brand?.slug ? (
+          <Link href={`/(main)/brands/${product.brand.slug}` as never} asChild>
+            <TouchableOpacity onPress={(e) => e.stopPropagation()} hitSlop={4}>
+              <Label style={styles.cellBrand} numberOfLines={1}>
+                {product.brand.name}
+              </Label>
+            </TouchableOpacity>
+          </Link>
+        ) : (
+          <Label style={styles.cellBrand} numberOfLines={1}>
+            {product.brand?.name ?? "House pick"}
+          </Label>
+        )}
         <Body size="sm" style={styles.cellName} numberOfLines={1}>
           {product.name}
         </Body>

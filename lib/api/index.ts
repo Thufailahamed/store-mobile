@@ -142,10 +142,48 @@ export async function getProducts(opts: {
   return ok({ products: mapProducts(res.data.products as unknown[]) ?? [], total: res.data.count });
 }
 
-export async function getBrands(opts: { limit?: number; search?: string } = {}): Promise<Result<Brand[]>> {
-  const res = await B.getBrandsBackend({ limit: opts.limit ?? 200 });
+export async function getBrands(opts: { limit?: number; search?: string; offset?: number } = {}): Promise<Result<Brand[]>> {
+  const res = await B.getBrandsBackend({
+    limit: opts.limit ?? 200,
+    search: opts.search,
+    offset: opts.offset,
+  });
   if (!res.ok) return fail(res.error);
   return ok(loose<Brand[]>(res.data.brands ?? []));
+}
+
+export async function getBrandBySlug(slug: string): Promise<Result<Brand | null>> {
+  const res = await B.getBrandBySlugBackend(slug);
+  if (!res.ok) return fail(res.error);
+  if (!res.data.brand) return ok(null);
+  return ok(loose<Brand>(mapBrand(res.data.brand as Parameters<typeof mapBrand>[0])));
+}
+
+export async function getBrandById(id: string): Promise<Result<Brand | null>> {
+  const res = await B.getBrandByIdBackend(id);
+  if (!res.ok) return fail(res.error);
+  if (!res.data.brand) return ok(null);
+  return ok(loose<Brand>(mapBrand(res.data.brand as Parameters<typeof mapBrand>[0])));
+}
+
+export async function getAdminBrandById(id: string): Promise<Result<{
+  id: string;
+  owner_id?: string | null;
+  name: string;
+  slug: string;
+  tagline?: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  banner_url?: string | null;
+  status?: string;
+  rating?: number;
+  total_followers?: number;
+  total_products?: number;
+  products?: Array<{ id: string; name: string; status: string; total_sales: number }>;
+} | null>> {
+  const res = await B.getAdminBrandByIdBackend(id);
+  if (!res.ok) return fail(res.error);
+  return ok((res.data.brand ?? null) as never);
 }
 
 export async function getProductBySlug(slug: string): Promise<Result<Product | null>> {
@@ -1089,6 +1127,7 @@ export async function getBrandProducts(brandId: string, opts: {
     limit: opts.limit,
     offset: opts.offset,
     status: opts.status && opts.status !== "all" ? opts.status : undefined,
+    search: opts.search,
   });
   if (!res.ok) return fail(res.error);
   void brandId;
@@ -1120,8 +1159,8 @@ export async function getBrandKPIs(brandId: string): Promise<Result<{
   const res = await B.getBrandKPIsBackend();
   if (!res.ok) return fail(res.error);
   return ok({
-    totalProducts: 0,
-    activeProducts: 0,
+    totalProducts: (res.data as { totalProducts?: number }).totalProducts ?? 0,
+    activeProducts: (res.data as { activeProducts?: number }).activeProducts ?? 0,
     totalOrders: res.data.orders ?? 0,
     totalRevenue: res.data.revenue ?? 0,
   });
@@ -1640,8 +1679,8 @@ export interface GiftCard {
   created_at: string;
 }
 
-export async function getAdminGiftCards(): Promise<Result<GiftCard[]>> {
-  const res = await B.getAdminGiftCardsBackend();
+export async function getAdminGiftCards(qs?: { search?: string; active?: "true" | "false"; limit?: number; offset?: number }): Promise<Result<GiftCard[]>> {
+  const res = await B.getAdminGiftCardsBackend(qs);
   if (!res.ok) return fail(res.error);
   return ok((res.data.cards as GiftCard[]) ?? []);
 }
@@ -1650,6 +1689,77 @@ export async function createGiftCard(g: Partial<GiftCard>): Promise<Result<GiftC
   const res = await B.createGiftCardBackend(g as Record<string, unknown>);
   if (!res.ok) return fail(res.error);
   return ok(res.data.card as GiftCard);
+}
+
+export async function adjustAdminGiftCard(id: string, patch: { delta: number; note?: string }) {
+  const res = await B.adjustAdminGiftCardBackend(id, patch);
+  return res;
+}
+
+export async function voidAdminGiftCard(id: string, body: { reason?: string }) {
+  return B.voidAdminGiftCardBackend(id, body);
+}
+
+export async function getAdminGiftCardTransactions(id: string) {
+  return B.getAdminGiftCardTransactionsBackend(id);
+}
+
+export async function getAdminAbandonedCartsStats() {
+  return B.getAdminAbandonedCartsStatsBackend();
+}
+
+export async function getAdminPriceAlertsStats() {
+  return B.getAdminPriceAlertsStatsBackend();
+}
+
+export async function getMyGiftCards() {
+  return B.getMyGiftCardsBackend();
+}
+
+export async function getMyGiftCardBalance() {
+  return B.getMyGiftCardBalanceBackend();
+}
+
+export async function checkGiftCardByCode(code: string) {
+  return B.checkGiftCardByCodeBackend(code);
+}
+
+export async function validateGiftCardRedemption(input: { code: string; order_currency?: string }) {
+  return B.validateGiftCardRedemptionBackend(input);
+}
+
+export async function purchaseGiftCard(input: Parameters<typeof B.purchaseGiftCardBackend>[0]) {
+  return B.purchaseGiftCardBackend(input);
+}
+
+export async function listPriceAlerts() {
+  return B.listPriceAlertsBackend();
+}
+
+export async function getPriceAlertStatus(productId: string) {
+  return B.getPriceAlertStatusBackend(productId);
+}
+
+export async function subscribePriceAlert(input: { product_id: string; variant_id?: string | null; threshold_price?: number | null }) {
+  return B.subscribePriceAlertBackend(input);
+}
+
+export async function updatePriceAlert(id: string, patch: { threshold_price?: number | null; is_active?: boolean }) {
+  return B.updatePriceAlertBackend(id, patch);
+}
+
+export async function unsubscribePriceAlert(id: string) {
+  return B.unsubscribePriceAlertBackend(id);
+}
+
+// ----- Personalised home feed (0169) ----------------------------------
+
+import type { HomeFeedResponse, HomeFeedSectionKey, HomeFeedProduct } from "@/lib/api/backend";
+
+export type { HomeFeedResponse, HomeFeedSectionKey, HomeFeedProduct };
+
+export async function getHomeFeed(opts: { exclude?: string[] } = {}) {
+  return B.getHomeFeedBackend(opts);
 }
 
 export interface AdminHomepageSection {
@@ -1854,7 +1964,9 @@ export type NotificationPreferenceKey =
   | "social_push"
   | "security_email"
   | "security_sms"
-  | "security_push";
+  | "security_push"
+  | "cart_reminders_email"
+  | "cart_reminders_push";
 
 export type NotificationPrefs = Record<NotificationPreferenceKey, boolean>;
 
@@ -1870,6 +1982,8 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   security_email: true,
   security_sms: true,
   security_push: true,
+  cart_reminders_email: true,
+  cart_reminders_push: false,
 };
 
 export async function getNotificationPrefs(_userId: string): Promise<Result<NotificationPrefs>> {
@@ -1929,6 +2043,27 @@ export async function getFollowedBrands(_userId: string): Promise<Result<Followe
     } as FollowedBrand;
   });
   return ok(follows);
+}
+
+export async function followBrand(brandId: string): Promise<Result<{ following: boolean }>> {
+  const res = await B.followBrandBackend(brandId);
+  if (!res.ok) return fail(res.error);
+  return ok({ following: true });
+}
+
+export async function unfollowBrand(brandId: string): Promise<Result<{ following: boolean }>> {
+  const res = await B.unfollowBrandBackend(brandId);
+  if (!res.ok) return fail(res.error);
+  return ok({ following: false });
+}
+
+export async function isFollowingBrand(brandId: string): Promise<Result<boolean>> {
+  const res = await B.listFollowedBrandsBackend();
+  if (!res.ok) return fail(res.error);
+  const ids = ((res.data.follows as unknown[]) ?? [])
+    .map((row) => (row as { brand_id?: string }).brand_id)
+    .filter((id): id is string => typeof id === "string");
+  return ok(ids.includes(brandId));
 }
 
 // ============================================================================

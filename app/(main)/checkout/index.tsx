@@ -146,6 +146,9 @@ export default function CheckoutScreen() {
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponId, setCouponId] = useState<string | null>(null);
   const [freeShippingCoupon, setFreeShippingCoupon] = useState(false);
+  const [giftCardCode, setGiftCardCode] = useState<string | null>(null);
+  const [giftCardCredit, setGiftCardCredit] = useState(0);
+  const [giftCardCurrency, setGiftCardCurrency] = useState("LKR");
 
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name || "");
   const [phone, setPhone] = useState("");
@@ -561,6 +564,7 @@ export default function CheckoutScreen() {
           address_id: addressId ?? "",
           payment_method: paymentMethod,
           coupon_code: couponInput.trim() || null,
+          gift_card_code: giftCardCode || null,
           currency: "LKR",
         });
         if (!res.ok) return { data: null, error: { message: res.error } };
@@ -927,6 +931,32 @@ export default function CheckoutScreen() {
               )}
             </View>
 
+            <GiftCardBlock
+              appliedCode={giftCardCode}
+              appliedBalance={giftCardCredit}
+              appliedCurrency={giftCardCurrency}
+              onApply={async (code) => {
+                const { validateGiftCardRedemption } = await import("@/lib/api");
+                const res = await validateGiftCardRedemption({ code, order_currency: "LKR" });
+                if (!res.ok) {
+                  toast(res.error.message || "Card invalid", "error");
+                  return;
+                }
+                if (!res.data.valid) {
+                  toast(`Cannot apply: ${res.data.reason ?? "unknown"}`, "error");
+                  return;
+                }
+                setGiftCardCode(code);
+                setGiftCardCredit(Math.min(res.data.current_balance ?? 0, Math.max(0, sub - couponDiscount)));
+                setGiftCardCurrency(res.data.card_currency ?? "LKR");
+                toast("Gift card applied", "success");
+              }}
+              onRemove={() => {
+                setGiftCardCode(null);
+                setGiftCardCredit(0);
+              }}
+            />
+
             <View style={styles.receiptCard}>
               <Label style={styles.receiptLabel}>Price details</Label>
               <View style={styles.receiptRule} />
@@ -1140,6 +1170,79 @@ function TrustBadge({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; lab
     <View style={styles.trustBadge}>
       <Ionicons name={icon} size={12} color={colors.light.mutedForeground} />
       <Label style={styles.trustLabel}>{label}</Label>
+    </View>
+  );
+}
+
+function GiftCardBlock({
+  appliedCode,
+  appliedBalance,
+  appliedCurrency,
+  onApply,
+  onRemove,
+}: {
+  appliedCode: string | null;
+  appliedBalance: number;
+  appliedCurrency: string;
+  onApply: (code: string) => Promise<void> | void;
+  onRemove: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (appliedCode) {
+    return (
+      <View style={styles.couponCard}>
+        <View style={styles.couponCardHead}>
+          <Ionicons name="gift-outline" size={16} color={colors.olive[700]} />
+          <Label style={styles.couponCardTitle}>Gift card</Label>
+        </View>
+        <View style={styles.couponApplied}>
+          <View style={styles.couponAppliedLeft}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.olive[600]} />
+            <View>
+              <Body size="sm" style={{ fontWeight: "600" }}>{appliedCode}</Body>
+              <Body muted size="xs">
+                {formatPrice(appliedBalance, appliedCurrency)} will apply at checkout
+              </Body>
+            </View>
+          </View>
+          <TouchableOpacity onPress={onRemove} hitSlop={8}>
+            <Ionicons name="close-circle" size={20} color={colors.light.mutedForeground} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.couponCard}>
+      <View style={styles.couponCardHead}>
+        <Ionicons name="gift-outline" size={16} color={colors.olive[700]} />
+        <Label style={styles.couponCardTitle}>Gift card</Label>
+      </View>
+      <View style={styles.couponInputRow}>
+        <TextInput
+          style={styles.couponInput}
+          value={code}
+          onChangeText={setCode}
+          placeholder="XXXX-XXXX-XXXX"
+          placeholderTextColor={colors.light.mutedForeground}
+          autoCapitalize="characters"
+          maxLength={40}
+        />
+        <Pressable
+          style={({ pressed }) => [styles.couponApplyBtn, pressed && { opacity: 0.85 }]}
+          onPress={async () => {
+            const trimmed = code.trim();
+            if (trimmed.length < 4) return;
+            setBusy(true);
+            await onApply(trimmed);
+            setBusy(false);
+          }}
+          disabled={busy || code.length < 4}
+        >
+          <Label style={styles.couponApplyText}>{busy ? "…" : "Apply"}</Label>
+        </Pressable>
+      </View>
     </View>
   );
 }

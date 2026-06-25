@@ -1,5 +1,6 @@
 import React from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { Link } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
@@ -31,7 +32,15 @@ export function ProductInfo({
       {product.brand && (
         <View style={styles.brandRow}>
           <View style={styles.brandLine} />
-          <Label style={styles.brandName}>{product.brand.name}</Label>
+          {product.brand.slug ? (
+            <Link href={`/(main)/brands/${product.brand.slug}` as never} asChild>
+              <TouchableOpacity hitSlop={4}>
+                <Label style={styles.brandName}>{product.brand.name}</Label>
+              </TouchableOpacity>
+            </Link>
+          ) : (
+            <Label style={styles.brandName}>{product.brand.name}</Label>
+          )}
         </View>
       )}
 

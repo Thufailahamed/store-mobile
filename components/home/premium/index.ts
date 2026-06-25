@@ -8,3 +8,4 @@ export { FeaturedBrandsRow } from "./FeaturedBrandsRow";
 export { HomeJournalRail } from "./HomeJournalRail";
 export { ForYouRail } from "./ForYouRail";
 export { ForYouProductCard } from "./ForYouProductCard";
+export { PersonalisedRails } from "./PersonalisedRails";

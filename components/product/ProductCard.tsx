@@ -1,6 +1,6 @@
 import { View, TouchableOpacity, StyleSheet, Dimensions, Text } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useCart, useWishlist } from "@/lib/stores";
 import { Label, Price, Body } from "@/components/ui/Typography";
@@ -57,6 +57,27 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
 
   const handlePress = () => {
     router.push(`/(main)/products/${product.slug}`);
+  };
+
+  const brandSlug = product.brand?.slug;
+  const renderBrandLabel = () => {
+    if (!storeOrBrandName) return null;
+    if (brandSlug) {
+      return (
+        <Link href={`/(main)/brands/${brandSlug}` as never} asChild>
+          <TouchableOpacity onPress={(e) => e.stopPropagation()} hitSlop={4}>
+            <Text style={styles.storeName} numberOfLines={1}>
+              {storeOrBrandName}
+            </Text>
+          </TouchableOpacity>
+        </Link>
+      );
+    }
+    return (
+      <Text style={styles.storeName} numberOfLines={1}>
+        {storeOrBrandName}
+      </Text>
+    );
   };
 
   const handleAdd = () => {
@@ -119,11 +140,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
               {product.name || "Untitled Piece"}
             </Body>
             {storeOrBrandName ? (
-              <View style={styles.storeRow}>
-                <Text style={styles.storeName} numberOfLines={1}>
-                  {storeOrBrandName}
-                </Text>
-              </View>
+              <View style={styles.storeRow}>{renderBrandLabel()}</View>
             ) : null}
             {product.short_description ? (
               <Body muted size="xs" numberOfLines={1} style={styles.listDesc}>
@@ -204,11 +221,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
             {product.name || "Untitled Piece"}
           </Body>
           {storeOrBrandName ? (
-            <View style={styles.storeRow}>
-              <Text style={styles.storeName} numberOfLines={1}>
-                {storeOrBrandName}
-              </Text>
-            </View>
+            <View style={styles.storeRow}>{renderBrandLabel()}</View>
           ) : null}
           <View style={styles.priceRow}>
             {discount > 0 ? (
@@ -278,11 +291,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           {product.name || "Untitled Piece"}
         </Body>
         {storeOrBrandName ? (
-          <View style={styles.storeRow}>
-            <Text style={styles.storeName} numberOfLines={1}>
-              {storeOrBrandName}
-            </Text>
-          </View>
+          <View style={styles.storeRow}>{renderBrandLabel()}</View>
         ) : null}
         <View style={styles.priceRow}>
           {discount > 0 ? (

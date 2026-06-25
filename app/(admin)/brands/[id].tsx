@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Button, Badge, Skeleton, EmptyState } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { supabase } from "@/lib/supabase/client";
+import { getAdminBrandById } from "@/lib/api";
 
 export default function BrandDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,13 +14,9 @@ export default function BrandDetail() {
   const q = useQuery({
     queryKey: ["admin-brand", id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("brands")
-        .select("*, products:products(id, name, status, total_sales)")
-        .eq("id", id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+      const r = await getAdminBrandById(String(id));
+      if (!r.ok) throw new Error(r.error);
+      return r.data;
     },
     enabled: !!id,
   });

@@ -6,6 +6,7 @@ import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { supabase } from "@/lib/supabase/client";
 import { formatPrice } from "@/lib/utils";
+import { getAdminAbandonedCartsStats, getAdminPriceAlertsStats } from "@/lib/api";
 
 const RANGES = [
   { key: "7d", label: "7D", days: 7 },
@@ -42,6 +43,21 @@ export default function AdminAnalytics() {
   const aov = orders.length > 0 ? Math.round(totalRevenue / orders.length) : 0;
   const cancelled = orders.filter((o: any) => o.status === "cancelled").length;
   const cancelRate = orders.length > 0 ? (cancelled / orders.length) * 100 : 0;
+
+  const abandonedQ = useQuery({
+    queryKey: ["admin-abandoned-stats"],
+    queryFn: async () => {
+      const r = await getAdminAbandonedCartsStats();
+      return r.ok ? (r.data.stats as any) : null;
+    },
+  });
+  const priceQ = useQuery({
+    queryKey: ["admin-price-alerts-stats"],
+    queryFn: async () => {
+      const r = await getAdminPriceAlertsStats();
+      return r.ok ? (r.data.stats as any) : null;
+    },
+  });
 
   // simple daily series for the bar chart
   const daily = Array.from({ length: days }, (_, i) => {
@@ -107,6 +123,36 @@ export default function AdminAnalytics() {
           <HealthRow label="Revenue per order" value={formatPrice(aov)} progress={Math.min(100, aov / 100)} tone="default" />
         </View>
       </Card>
+
+      <Card style={styles.chartCard}>
+        <Text style={styles.chartTitle}>Live signals</Text>
+        <View style={styles.signalRow}>
+          <View style={styles.signalCell}>
+            <Text style={styles.signalLabel}>Abandoned carts</Text>
+            {abandonedQ.isLoading ? (
+              <Skeleton height={28} />
+            ) : (
+              <Text style={styles.signalValue}>
+                {(abandonedQ.data?.active ?? 0).toLocaleString()}
+              </Text>
+            )}
+            <Text style={styles.signalSub}>active · {(abandonedQ.data?.notified ?? 0).toLocaleString()} notified</Text>
+          </View>
+          <View style={styles.signalCell}>
+            <Text style={styles.signalLabel}>Price alerts</Text>
+            {priceQ.isLoading ? (
+              <Skeleton height={28} />
+            ) : (
+              <Text style={styles.signalValue}>
+                {(priceQ.data?.active ?? 0).toLocaleString()}
+              </Text>
+            )}
+            <Text style={styles.signalSub}>
+              active · {(priceQ.data?.cancelled ?? 0).toLocaleString()} cancelled
+            </Text>
+          </View>
+        </View>
+      </Card>
     </ScrollView>
   );
 }
@@ -146,4 +192,9 @@ const styles = StyleSheet.create({
   healthRow: { flexDirection: "row", justifyContent: "space-between" },
   healthLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.foreground },
   healthValue: { fontFamily: fontFamilies.mono.semibold, fontSize: 12, color: colors.light.foreground },
+  signalRow: { flexDirection: "row", gap: 12, marginTop: 12 },
+  signalCell: { flex: 1, gap: 6, backgroundColor: colors.olive[50], borderRadius: radii.lg, padding: 14 },
+  signalLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.mutedForeground, letterSpacing: 1.2, textTransform: "uppercase" },
+  signalValue: { fontFamily: fontFamilies.display.semibold, fontSize: 24, color: colors.light.foreground, letterSpacing: -0.5 },
+  signalSub: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground },
 });

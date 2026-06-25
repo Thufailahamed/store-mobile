@@ -100,8 +100,8 @@ export async function searchProductsBackend(opts: {
 
 export type Brand = { id: string; name: string; slug: string; logo_url?: string | null; banner_url?: string | null; tagline?: string | null; description?: string | null; is_active?: boolean; status?: string; followers_count?: number };
 
-export async function getBrandsBackend(opts: { limit?: number } = {}): Promise<ApiResult<{ brands: Brand[] }>> {
-  return fetchJson("/api/catalog/brands", { requireAuth: false, query: { limit: opts.limit ?? 60 } });
+export async function getBrandsBackend(opts: { limit?: number; search?: string; offset?: number } = {}): Promise<ApiResult<{ brands: Brand[] }>> {
+  return fetchJson("/api/catalog/brands", { requireAuth: false, query: { limit: opts.limit ?? 60, search: opts.search, offset: opts.offset } });
 }
 
 export async function getBrandByIdBackend(id: string): Promise<ApiResult<{ brand: Brand & { followers?: Array<{ count: number }> } }>> {
@@ -877,7 +877,7 @@ export async function updateBrandBackend(patch: Partial<Brand>): Promise<ApiResu
   return fetchJson("/api/brand/profile", { method: "PATCH", body: patch });
 }
 
-export async function getBrandProductsBackend(opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ products: CatalogProduct[] }>> {
+export async function getBrandProductsBackend(opts: { limit?: number; offset?: number; status?: string; search?: string } = {}): Promise<ApiResult<{ products: CatalogProduct[] }>> {
   return fetchJson("/api/brand/products", { query: { ...opts } });
 }
 
@@ -929,6 +929,10 @@ export async function getAdminProductsBackend(opts: { limit?: number; offset?: n
 
 export async function getAdminBrandsBackend(opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ brands: Brand[]; total: number }>> {
   return fetchJson("/api/admin/brands", { query: { ...opts } });
+}
+
+export async function getAdminBrandByIdBackend(id: string): Promise<ApiResult<{ brand: Brand & { products?: Array<{ id: string; name: string; status: string; total_sales: number }> } }>> {
+  return fetchJson(`/api/admin/brands/${id}`);
 }
 
 export async function approveBrandBackend(id: string, status: "approved" | "rejected"): Promise<ApiResult<{ brand: Brand }>> {
@@ -1042,12 +1046,40 @@ export async function updateCommissionTierBackend(id: string, patch: Record<stri
   return fetchJson(`/api/admin/commissions/${id}`, { method: "PATCH", body: patch });
 }
 
-export async function getAdminGiftCardsBackend(): Promise<ApiResult<{ cards: unknown[] }>> {
-  return fetchJson("/api/admin/gift-cards");
+export async function getAdminGiftCardsBackend(qs?: { search?: string; active?: "true" | "false"; limit?: number; offset?: number }): Promise<ApiResult<{ cards: unknown[]; total: number; limit: number; offset: number }>> {
+  return fetchJson("/api/admin/gift-cards", { query: qs as Record<string, string | number> | undefined });
 }
 
 export async function createGiftCardBackend(g: Record<string, unknown>): Promise<ApiResult<{ card: unknown }>> {
   return fetchJson("/api/admin/gift-cards", { method: "POST", body: g });
+}
+
+export async function adjustAdminGiftCardBackend(id: string, patch: { delta: number; note?: string }): Promise<ApiResult<{ card: unknown }>> {
+  return fetchJson(`/api/admin/gift-cards/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function voidAdminGiftCardBackend(id: string, body: { reason?: string }): Promise<ApiResult<{ card: unknown }>> {
+  return fetchJson(`/api/admin/gift-cards/${id}/void`, { method: "POST", body });
+}
+
+export async function getAdminGiftCardTransactionsBackend(id: string): Promise<ApiResult<{ transactions: unknown[] }>> {
+  return fetchJson(`/api/admin/gift-cards/${id}/transactions`);
+}
+
+export async function getAdminAbandonedCartsBackend(qs?: { since?: string; limit?: number }): Promise<ApiResult<{ waves: unknown[] }>> {
+  return fetchJson("/api/admin/abandoned-carts", { query: qs as Record<string, string | number> | undefined });
+}
+
+export async function getAdminAbandonedCartsStatsBackend(qs?: { since?: string }): Promise<ApiResult<{ since: string; carts_notified: number; total_notified: number; by_wave: Record<number, number>; carts_with_activity: number; total_carts: number }>> {
+  return fetchJson("/api/admin/abandoned-carts/stats", { query: qs as Record<string, string> | undefined });
+}
+
+export async function getAdminPriceAlertsBackend(qs?: { since?: string; limit?: number }): Promise<ApiResult<{ alerts: unknown[] }>> {
+  return fetchJson("/api/admin/price-alerts", { query: qs as Record<string, string | number> | undefined });
+}
+
+export async function getAdminPriceAlertsStatsBackend(qs?: { since?: string }): Promise<ApiResult<{ since: string; active_alerts: number; cancelled_alerts: number; notifications_in_window: number; avg_notification_price: number }>> {
+  return fetchJson("/api/admin/price-alerts/stats", { query: qs as Record<string, string> | undefined });
 }
 
 export async function getAdminHomepageSectionsBackend(): Promise<ApiResult<{ sections: Array<unknown> }>> {
@@ -1190,8 +1222,84 @@ export async function getGiftCardBalanceBackend(code: string): Promise<ApiResult
   return fetchJson("/api/gift-cards/balance", { query: { code } });
 }
 
-export async function purchaseGiftCardBackend(input: { amount: number; recipient_email?: string; message?: string }): Promise<ApiResult<{ card: { code: string; amount: number } }>> {
+export async function getMyGiftCardsBackend(): Promise<ApiResult<{ cards: unknown[] }>> {
+  return fetchJson("/api/gift-cards/mine");
+}
+
+export async function getMyGiftCardBalanceBackend(): Promise<ApiResult<{ cards: unknown[]; totalBalanceByCurrency: Record<string, number> }>> {
+  return fetchJson("/api/gift-cards/balance");
+}
+
+export async function checkGiftCardByCodeBackend(code: string): Promise<ApiResult<{ valid: boolean; card: { code: string; current_balance: number; currency: string; recipient_name: string | null; message: string | null; expires_at: string | null } | null; reason: string | null }>> {
+  return fetchJson("/api/gift-cards/balance-by-code", { query: { code } });
+}
+
+export async function validateGiftCardRedemptionBackend(input: { code: string; order_currency?: string }): Promise<ApiResult<{ valid: boolean; reason?: string; card_currency?: string; current_balance?: number }>> {
+  return fetchJson("/api/gift-cards/redeem/validate", { method: "POST", body: input });
+}
+
+export async function purchaseGiftCardBackend(input: { amount: number; currency?: string; recipient_email?: string; recipient_name?: string; message?: string; scheduled_for?: string; expires_in_days?: number }): Promise<ApiResult<{ card: unknown }>> {
   return fetchJson("/api/gift-cards/purchase", { method: "POST", body: input });
+}
+
+// Price-drop alerts — buyer-side
+export async function listPriceAlertsBackend(): Promise<ApiResult<{ alerts: unknown[] }>> {
+  return fetchJson("/api/users/price-alerts");
+}
+
+export async function getPriceAlertStatusBackend(productId: string, variantId?: string): Promise<ApiResult<{ subscribed: boolean; alert: unknown }>> {
+  void variantId;
+  return fetchJson(`/api/users/price-alerts/${productId}/status`);
+}
+
+export async function subscribePriceAlertBackend(input: { product_id: string; variant_id?: string | null; threshold_price?: number | null }): Promise<ApiResult<{ alert: unknown }>> {
+  return fetchJson("/api/users/price-alerts", { method: "POST", body: input });
+}
+
+export async function updatePriceAlertBackend(id: string, patch: { threshold_price?: number | null; is_active?: boolean }): Promise<ApiResult<{ alert: unknown }>> {
+  return fetchJson(`/api/users/price-alerts/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function unsubscribePriceAlertBackend(id: string): Promise<ApiResult<{ cancelled: boolean }>> {
+  return fetchJson(`/api/users/price-alerts/${id}`, { method: "DELETE" });
+}
+
+// =========================================================================
+// PERSONALISED HOME FEED (0169)
+// =========================================================================
+
+export type HomeFeedSectionKey = "recents" | "top_categories" | "followed_brands" | "trending_for_you";
+
+export type HomeFeedProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  price: number | null;
+  mrp?: number | null;
+  currency?: string | null;
+  rating?: number | null;
+  total_sales?: number | null;
+  image_url?: string | null;
+  category_id?: string | null;
+  brand_id?: string | null;
+  brand_name?: string | null;
+};
+
+export type HomeFeedResponse = {
+  sections: Record<HomeFeedSectionKey, HomeFeedProduct[]>;
+  segment: {
+    categories: string[];
+    gender: string | null;
+    top_categories_weights: Array<{ category_id: string; weight: number }>;
+  };
+  generated_at: string;
+  cross_section_unique?: number;
+  cached?: boolean;
+};
+
+export async function getHomeFeedBackend(opts: { exclude?: string[] } = {}): Promise<ApiResult<HomeFeedResponse>> {
+  const exclude = opts.exclude?.length ? `?exclude=${encodeURIComponent(opts.exclude.join(","))}` : "";
+  return fetchJson(`/api/users/home-feed${exclude}`);
 }
 
 // =========================================================================

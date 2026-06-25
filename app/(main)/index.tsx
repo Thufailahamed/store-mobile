@@ -12,6 +12,7 @@ import {
   FeaturedBrandsRow,
   HomeJournalRail,
   ForYouRail,
+  PersonalisedRails,
 } from "@/components/home/premium";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
@@ -90,6 +91,8 @@ export default function HomeScreen() {
             onSeeAll={() => router.push("/(main)/products?sort=newest")}
           />
         ) : null}
+
+        <PersonalisedRails />
 
         {wishlistRailData.wishlist.length > 0 ? (
           <>

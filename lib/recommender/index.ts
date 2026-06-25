@@ -58,6 +58,7 @@ export {
 export { isProductInStock, inStockVariantCount, minVariantStock } from "./inventory";
 
 export { fetchRecentlyViewed, recordRecentlyViewed } from "./recently-viewed";
+export { fetchColdStartProducts, fetchColdStartSimilar, fetchSimilarToAnchor } from "./cold-start";
 export { getPairsWellWith } from "./cooccurrence";
 export { pullPersonalizedCandidates, POOL_LIMITS } from "./personalized-candidates";
 

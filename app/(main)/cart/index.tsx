@@ -33,6 +33,8 @@ import {
   restoreUnselectedCartItems,
 } from "@/lib/cart-checkout-session";
 import { ProductCard } from "@/components/product/ProductCard";
+import { ProductRail } from "@/components/home/premium";
+import { fetchRecentlyViewed, fetchColdStartProducts } from "@/lib/recommender";
 import { LinearGradient } from "expo-linear-gradient";
 
 export default function CartScreen() {
@@ -469,21 +471,21 @@ export default function CartScreen() {
     return (
       <PaperBackground style={{ flex: 1 }}>
         {/* Custom Header for Empty state */}
-        <View style={[styles.customHeader, { 
-          height: 56 + insets.top, 
+        <View style={[styles.customHeader, {
+          height: 56 + insets.top,
           paddingTop: insets.top,
-          backgroundColor: theme.colors.card, 
-          borderColor: theme.colors.border 
+          backgroundColor: theme.colors.card,
+          borderColor: theme.colors.border
         }]}>
-          <TouchableOpacity 
-            onPress={() => navigateHome(router)} 
+          <TouchableOpacity
+            onPress={() => navigateHome(router)}
             style={[styles.headerLeftBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
           >
             <Ionicons name="close" size={20} color={theme.colors.foreground} />
           </TouchableOpacity>
           <Display size="xl" style={[styles.headerTitle, { color: theme.colors.foreground }]}>My Bag</Display>
-          <TouchableOpacity 
-            onPress={() => router.push("/(main)/wishlist")} 
+          <TouchableOpacity
+            onPress={() => router.push("/(main)/wishlist")}
             style={[styles.headerRightBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
           >
             <Ionicons name="heart-outline" size={20} color={theme.colors.foreground} />
@@ -491,6 +493,7 @@ export default function CartScreen() {
         </View>
         <View style={styles.emptyWrap}>
           <BagEmptyState hasWishlistItems={wishlistCount > 0} />
+          <EmptyCartSuggestions userId={user?.id ?? null} onSeeAll={() => router.push("/(main)/products?sort=newest")} />
         </View>
       </PaperBackground>
     );
@@ -1312,3 +1315,58 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+/**
+ * Empty-cart "you may also like" rail.
+ *
+ * Pulls from the recommender when the user has prior views
+ * (recently-viewed rail); otherwise falls back to a curated cold-start
+ * mix. Surfaces a single horizontal ProductRail below the empty state.
+ */
+function EmptyCartSuggestions({
+  userId,
+  onSeeAll,
+}: {
+  userId: string | null;
+  onSeeAll: () => void;
+}) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Try recently-viewed first — best signal we have for "what were
+      // they looking at before they bounced with an empty bag".
+      const recent = await fetchRecentlyViewed(userId, 10);
+      let picks: Product[] = [];
+      if (recent.ok && recent.data.length >= 3) {
+        picks = recent.data;
+      } else {
+        const cold = await fetchColdStartProducts(10);
+        if (cold.ok) picks = cold.data;
+      }
+      if (!cancelled) {
+        setProducts(picks);
+        setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  if (!loaded || products.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: 8 }}>
+      <ProductRail
+        kicker="Just for you"
+        title="You may also like"
+        products={products}
+        showSaleBadge
+        onSeeAll={onSeeAll}
+      />
+    </View>
+  );
+}
