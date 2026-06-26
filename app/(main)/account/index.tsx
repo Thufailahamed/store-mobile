@@ -66,6 +66,13 @@ const ACCOUNT_LINKS: {
     requiresAuth: true,
   },
   {
+    icon: "shirt-outline",
+    label: "Wardrobe",
+    sub: "Your closet · wears · outfits",
+    route: "/(main)/account/wardrobe",
+    requiresAuth: true,
+  },
+  {
     icon: "star-outline",
     label: "My reviews",
     sub: "Products you've rated",

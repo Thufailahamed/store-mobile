@@ -400,3 +400,220 @@ export interface Notification {
   read_at?: string | null;
   created_at: string;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Virtual wardrobe                                                    */
+/* ------------------------------------------------------------------ */
+
+export type GarmentType =
+  | "top"
+  | "bottom"
+  | "dress"
+  | "footwear"
+  | "bag"
+  | "accessory"
+  | "jewelry"
+  | "watch"
+  | "beauty"
+  | "other";
+
+export type WardrobeItemSource = "order" | "manual";
+export type WardrobeItemStatus = "active" | "archived" | "sold" | "donated";
+export type OutfitSlot =
+  | "top"
+  | "bottom"
+  | "shoes"
+  | "accessory"
+  | "outerwear"
+  | "dress"
+  | "other";
+
+export interface WardrobeHeader {
+  id: string;
+  user_id: string;
+  name: string;
+  is_public: boolean;
+  share_token: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WardrobeItem {
+  id: string;
+  user_id: string;
+  wardrobe_id: string;
+  product_id: string | null;
+  product_variant_id: string | null;
+  order_id: string | null;
+  order_item_id: string | null;
+  store_id: string | null;
+  brand_name: string | null;
+  name: string;
+  image_url: string | null;
+  category_slug: string | null;
+  garment_type: GarmentType;
+  size: string | null;
+  color: string | null;
+  status: WardrobeItemStatus;
+  season: string | null;
+  occasion: string | null;
+  tags: string[];
+  notes: string | null;
+  source: WardrobeItemSource;
+  purchase_price: number | null;
+  currency: string;
+  purchased_at: string | null;
+  wear_count: number;
+  last_worn_at: string | null;
+  cost_per_wear: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WardrobeOutfitItemLink {
+  id: string;
+  outfit_id: string;
+  wardrobe_item_id: string;
+  slot: OutfitSlot;
+  position: number;
+  item?: WardrobeItem | null;
+}
+
+export interface WardrobeOutfit {
+  id: string;
+  wardrobe_id: string;
+  name: string;
+  occasion: string | null;
+  season: string | null;
+  notes: string | null;
+  is_public: boolean;
+  share_token: string | null;
+  scheduled_for?: string | null; // YYYY-MM-DD
+  weather?: string | null;
+  times_logged?: number;
+  created_at: string;
+  updated_at: string;
+  items?: WardrobeOutfitItemLink[];
+}
+
+/* ---- Wardrobe v2 (migration 0182) ---- */
+
+export type OutfitWeather = "sunny" | "rainy" | "cold" | "warm" | "mild" | string;
+
+export interface WardrobeOverlapItem {
+  product_id: string;
+  wardrobe_item_id: string;
+  garment_type: GarmentType | string;
+  wear_count: number;
+  cost_per_wear: number | null;
+  last_worn_at: string | null;
+  purchased_at: string | null;
+}
+
+export interface AutoOutfitPiece {
+  wardrobe_item_id: string;
+  product_id: string | null;
+  garment_type: GarmentType | string;
+  image_url: string | null;
+  name: string;
+  wear_count: number;
+}
+
+export interface AutoOutfit {
+  slot_rule: "dress+shoes" | "top+bottom+shoes";
+  occasion: string | null;
+  season: string | null;
+  pieces: AutoOutfitPiece[];
+}
+
+export interface AutoOutfitResult {
+  generated_at: string;
+  count: number;
+  outfits: AutoOutfit[];
+}
+
+export interface WardrobeInsightsCounts {
+  never_worn: number;
+  underused: number;
+  care_due: number;
+  recent: number;
+}
+
+export interface WardrobeInsights {
+  as_of: string;
+  counts: WardrobeInsightsCounts;
+  never_worn: WardrobeItem[];
+  underused: WardrobeItem[];
+  care_due: WardrobeItem[];
+  recent_wears: WardrobeItem[];
+}
+
+export interface WardrobeStatsTotals {
+  total_items: number;
+  total_wears: number;
+  total_spent: number;
+  avg_cost_per_wear: number | null;
+}
+
+export interface WardrobeStatsByGarment {
+  garment_type: GarmentType;
+  n: number;
+  total_spent: number;
+}
+
+export interface WardrobeStatsTopWorn {
+  id: string;
+  name: string;
+  image_url: string | null;
+  garment_type: GarmentType;
+  wear_count: number;
+}
+
+export interface WardrobeStats {
+  totals: WardrobeStatsTotals;
+  byGarment: WardrobeStatsByGarment[];
+  topWorn: WardrobeStatsTopWorn[];
+}
+
+export interface PublicWardrobeItem {
+  id: string;
+  name: string;
+  image_url: string | null;
+  garment_type: GarmentType;
+  color: string | null;
+  wear_count: number;
+}
+
+export interface PublicWardrobeOutfitLink {
+  id: string;
+  name: string;
+  occasion: string | null;
+  season: string | null;
+  slot: string | null;
+  item: { name: string; wear_count: number } | null;
+}
+
+export interface PublicWardrobePayload {
+  type: "wardrobe";
+  wardrobe: { id: string; name: string; created_at: string };
+  items: PublicWardrobeItem[];
+  outfits: PublicWardrobeOutfitLink[];
+}
+
+export interface PublicOutfitPayload {
+  type: "outfit";
+  outfit: {
+    id: string;
+    name: string;
+    occasion: string | null;
+    season: string | null;
+    created_at: string;
+  };
+  items: Array<{
+    id: string;
+    slot: string | null;
+    item: PublicWardrobeItem | null;
+  }>;
+}
+
+export type PublicWardrobeResponse = PublicWardrobePayload | PublicOutfitPayload;

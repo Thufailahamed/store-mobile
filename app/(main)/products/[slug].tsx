@@ -14,6 +14,7 @@ import { ProductDetails } from "@/components/product/ProductDetails";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ReviewForm } from "@/components/product/ReviewForm";
 import { PriceAlertPill } from "@/components/product/PriceAlertPill";
+import { OverlapWarningBanner } from "@/components/wardrobe/OverlapWarningBanner";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
@@ -342,6 +343,14 @@ export default function ProductDetailScreen() {
 
         {/* Quantity */}
         <View style={styles.qtySection}>
+          {product?.id ? (
+            <View style={{ marginBottom: spacing[3] }}>
+              <OverlapWarningBanner
+                productId={product.id}
+                onOpenWardrobe={() => router.push("/(main)/account/wardrobe" as never)}
+              />
+            </View>
+          ) : null}
           <View style={styles.qtyLabel}>
             <View style={styles.qtyDot} />
             <Display size="sm" style={styles.qtyLabelText}>QUANTITY</Display>
