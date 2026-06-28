@@ -8,10 +8,11 @@ interface EmptyStateProps {
   icon?: keyof typeof Ionicons.glyphMap;
   title: string;
   description?: string;
+  action?: React.ReactNode;
   style?: ViewStyle;
 }
 
-export function EmptyState({ icon = "leaf-outline", title, description, style }: EmptyStateProps) {
+export function EmptyState({ icon = "leaf-outline", title, description, action, style }: EmptyStateProps) {
   return (
     <View style={[styles.wrap, style]}>
       <View style={styles.iconWrap}>
@@ -19,6 +20,7 @@ export function EmptyState({ icon = "leaf-outline", title, description, style }:
       </View>
       <Text style={styles.title}>{title}</Text>
       {description ? <Text style={styles.desc}>{description}</Text> : null}
+      {action ? <View style={styles.action}>{action}</View> : null}
     </View>
   );
 }
@@ -50,4 +52,5 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     textAlign: "center",
   },
+  action: { marginTop: 8 },
 });

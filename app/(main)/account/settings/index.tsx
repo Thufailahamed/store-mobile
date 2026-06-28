@@ -22,6 +22,7 @@ import { Avatar, Button, Chip, useToast } from "@/components/ui";
 import { Body, Display, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
+import { useRouter } from "expo-router";
 import {
   saveNotificationPrefs,
   type NotificationPreferenceKey,
@@ -40,7 +41,14 @@ import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens"
 import { fontFamilies } from "@/lib/theme/fonts";
 import { safeOpenUrl } from "@/lib/utils/safe-open-url";
 import { normalizePhoneE164 } from "@/lib/contact-validation";
-import { checkUniqueBackend } from "@/lib/api/backend";
+import {
+  changePasswordBackend,
+  checkUniqueBackend,
+  deleteAccountBackend,
+  exportUserDataBackend,
+  getSettingsBackend,
+  updateSettingsBackend,
+} from "@/lib/api/backend";
 
 type PrivacyKey =
   | "public_profile"
@@ -121,6 +129,7 @@ export default function SettingsScreen() {
   const { user, signOut, role } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -153,6 +162,7 @@ export default function SettingsScreen() {
   const [phoneStep, setPhoneStep] = useState<1 | 2>(1);
   const [phoneOtp, setPhoneOtp] = useState("");
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -197,12 +207,8 @@ export default function SettingsScreen() {
         const userId = user.id;
         const userEmail = user.email ?? "";
 
-        const [{ data: profile }, { data: prefs }] = await Promise.all([
-          supabase
-            .from("users")
-            .select("email, phone, locale, timezone, currency, metadata")
-            .eq("id", userId)
-            .maybeSingle(),
+        const [settingsRes, prefsRes] = await Promise.all([
+          getSettingsBackend(),
           supabase
             .from("notification_preferences")
             .select("*")
@@ -212,14 +218,25 @@ export default function SettingsScreen() {
 
         if (cancelled) return;
 
+        if (!settingsRes.ok) {
+          throw new Error(settingsRes.error ?? "Could not load settings");
+        }
+        const settings = settingsRes.data?.settings;
+        const privacyFromServer = (settings?.privacy ?? {}) as Record<string, unknown>;
+        const filteredPrivacy: Record<PrivacyKey, boolean> = { ...DEFAULT_PRIVACY };
+        (Object.keys(DEFAULT_PRIVACY) as PrivacyKey[]).forEach((k) => {
+          const v = privacyFromServer[k];
+          if (typeof v === "boolean") filteredPrivacy[k] = v;
+        });
+
         const next: ServerSnapshot = {
-          locale: profile?.locale ?? "en-LK",
-          timezone: profile?.timezone ?? "Asia/Colombo",
-          currency: profile?.currency ?? "LKR",
-          phone: profile?.phone ?? "",
-          email: profile?.email ?? userEmail,
-          privacy: { ...DEFAULT_PRIVACY, ...(profile?.metadata?.privacy ?? {}) },
-          notifications: { ...DEFAULT_NOTIFICATION_PREFS, ...(prefs ?? {}) },
+          locale: settings?.locale ?? "en-LK",
+          timezone: settings?.timezone ?? "Asia/Colombo",
+          currency: settings?.currency ?? "LKR",
+          phone: settings?.phone ?? "",
+          email: settings?.email ?? userEmail,
+          privacy: filteredPrivacy,
+          notifications: { ...DEFAULT_NOTIFICATION_PREFS, ...(prefsRes.data ?? {}) },
         };
 
         setLocale(next.locale);
@@ -282,27 +299,16 @@ export default function SettingsScreen() {
     }
     setSaving(true);
     try {
-      const usersPatch: Record<string, string> = { locale, timezone, currency, phone, email };
-      const { error: settingsError } = await supabase.rpc("update_user_settings", {
-        p_patch: usersPatch,
+      const res = await updateSettingsBackend({
+        locale,
+        timezone,
+        currency,
+        phone,
+        email,
+        privacy,
+        notifications,
       });
-      if (settingsError) throw settingsError;
-
-      // Privacy: try RPC, fall back to metadata merge (matches web fallback).
-      const rpc = await supabase.rpc("update_privacy_prefs", { p_patch: privacy });
-      if (rpc.error) {
-        const { data: row } = await supabase
-          .from("users")
-          .select("metadata")
-          .eq("id", user.id)
-          .maybeSingle();
-        const nextMeta = { ...(row?.metadata ?? {}), privacy };
-        const { error: metaError } = await supabase
-          .from("users")
-          .update({ metadata: nextMeta })
-          .eq("id", user.id);
-        if (metaError) throw metaError;
-      }
+      if (!res.ok) throw new Error(res.error ?? "Could not save settings");
 
       const prefsRes = await saveNotificationPrefs(user.id, notifications);
       if (!prefsRes.ok) throw new Error(prefsRes.error);
@@ -382,12 +388,9 @@ export default function SettingsScreen() {
     setSaving(false);
     if (error) {
       // Fallback: if phone auth is disabled, allow updating settings table directly
-      const usersPatch = { ...snapshot, phone: formatted };
-      const { error: settingsError } = await supabase.rpc("update_user_settings", {
-        p_patch: usersPatch,
-      });
-      if (settingsError) {
-        toast(error.message, "error");
+      const res = await updateSettingsBackend({ phone: formatted });
+      if (!res.ok) {
+        toast(res.error ?? error.message, "error");
         return;
       }
       setPhone(formatted);
@@ -420,14 +423,11 @@ export default function SettingsScreen() {
       }
 
       const formatted = normalizePhoneE164(newPhone);
-      const usersPatch = { ...snapshot, phone: formatted };
-      const { error: settingsError } = await supabase.rpc("update_user_settings", {
-        p_patch: usersPatch,
-      });
-      if (settingsError) {
+      const res = await updateSettingsBackend({ phone: formatted });
+      if (!res.ok) {
         toast("Verified, but could not sync profile", "error");
       }
-      
+
       setPhone(formatted);
       initialSnapshot.current = JSON.stringify({ ...snapshot, phone: formatted });
       toast("Phone number linked successfully", "success");
@@ -441,18 +441,27 @@ export default function SettingsScreen() {
 
   const changePassword = async () => {
     if (!user?.id) return;
+    if (currentPwd.length < 8) {
+      toast("Enter your current password", "error");
+      return;
+    }
     if (newPwd.length < 8) {
       toast("Use at least 8 characters", "error");
       return;
     }
+    if (currentPwd === newPwd) {
+      toast("New password must differ from current password", "error");
+      return;
+    }
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password: newPwd });
+    const res = await changePasswordBackend({ currentPassword: currentPwd, newPassword: newPwd });
     setSaving(false);
-    if (error) {
-      toast(error.message, "error");
+    if (!res.ok) {
+      toast(res.error ?? "Could not update password", "error");
       return;
     }
     toast("Password updated", "success");
+    setCurrentPwd("");
     setNewPwd("");
     setPasswordOpen(false);
   };
@@ -465,31 +474,14 @@ export default function SettingsScreen() {
     }
     setSaving(true);
     try {
-      const res = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL ?? ""}/functions/v1/delete-account`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${
-              (await supabase.auth.getSession()).data.session?.access_token ?? ""
-            }`,
-          },
-          body: JSON.stringify({ user_id: user.id }),
-        }
-      ).catch(() => null);
-      if (res && !res.ok) {
-        const body = await res.text();
-        throw new Error(body || "Account deletion failed");
+      const res = await deleteAccountBackend();
+      if (!res.ok) {
+        throw new Error(res.error ?? "Account deletion failed");
       }
-      toast("Account deletion requested", "success");
+      toast("Account deleted", "success");
       await signOut();
-    } catch {
-      await supabase
-        .from("users")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", user.id);
-      toast("Account marked for deletion. Contact support to confirm.", "success");
+    } catch (error: any) {
+      toast(error?.message ?? "Could not delete account", "error");
       setDeleteOpen(false);
     } finally {
       setSaving(false);
@@ -534,22 +526,11 @@ export default function SettingsScreen() {
       return;
     }
     try {
-      const [profile, prefs, recent] = await Promise.all([
-        supabase.from("users").select("*").eq("id", user.id).maybeSingle(),
-        supabase
-          .from("notification_preferences")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-        AsyncStorage.getItem(`luxe:${user.id}:recently_viewed`),
-      ]);
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        profile: profile.data,
-        notificationPreferences: prefs.data,
-        recentlyViewed: recent ? JSON.parse(recent) : [],
-      };
-      const message = `LUXE data export\n\n${JSON.stringify(payload, null, 2)}`;
+      const res = await exportUserDataBackend();
+      if (!res.ok) {
+        throw new Error(res.error ?? "Export failed");
+      }
+      const message = `LUXE data export\n\n${JSON.stringify(res.data, null, 2)}`;
       if (Platform.OS === "ios" || Platform.OS === "android") {
         await Share.share({ message, title: "LUXE data export" });
       } else {
@@ -782,9 +763,7 @@ export default function SettingsScreen() {
             icon="shield-checkmark-outline"
             label="Two-factor authentication"
             value="Not configured"
-            onPress={() =>
-              toast("Visit the web app to enroll an authenticator device.", "info")
-            }
+            onPress={() => router.push("/(main)/account/security")}
             isLast
           />
         </Section>
@@ -1052,11 +1031,23 @@ export default function SettingsScreen() {
 
       <CenteredModal
         visible={passwordOpen}
-        onClose={() => setPasswordOpen(false)}
+        onClose={() => {
+          setPasswordOpen(false);
+          setCurrentPwd("");
+          setNewPwd("");
+        }}
         kicker="Security"
         title="Change password"
-        copy="Use at least 8 characters. We won't ask for your current password because you're already signed in."
+        copy="Use at least 8 characters. We re-verify your current password to confirm it's really you."
       >
+        <Field
+          label="Current password"
+          icon="lock-closed-outline"
+          value={currentPwd}
+          onChangeText={setCurrentPwd}
+          secureTextEntry
+          autoComplete="password"
+        />
         <Field
           label="New password"
           icon="lock-closed-outline"
@@ -1066,10 +1057,17 @@ export default function SettingsScreen() {
           autoComplete="password-new"
         />
         <View style={styles.modalFooter}>
-          <Button variant="outline" onPress={() => setPasswordOpen(false)}>
+          <Button
+            variant="outline"
+            onPress={() => {
+              setPasswordOpen(false);
+              setCurrentPwd("");
+              setNewPwd("");
+            }}
+          >
             Cancel
           </Button>
-          <Button loading={saving} onPress={changePassword}>
+          <Button loading={saving} onPress={changePassword} disabled={currentPwd.length < 8 || newPwd.length < 8}>
             Update password
           </Button>
         </View>
@@ -1225,7 +1223,7 @@ function Field({
   label: string;
   value: string;
   onChangeText: (v: string) => void;
-  keyboardType?: "email-address" | "phone-pad" | "default";
+  keyboardType?: "email-address" | "phone-pad" | "number-pad" | "default";
   icon?: keyof typeof Ionicons.glyphMap;
   secureTextEntry?: boolean;
   autoComplete?: "password" | "password-new";

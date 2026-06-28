@@ -134,6 +134,8 @@ export interface ProductVariant {
   color?: string;
   color_hex?: string;
   material?: string;
+  pattern?: string;
+  fit?: string;
   mrp?: number;
   price?: number;
   image_url?: string;

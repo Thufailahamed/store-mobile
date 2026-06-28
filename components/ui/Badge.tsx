@@ -4,11 +4,13 @@ import { colors, radii, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { AppText } from "./AppText";
 
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+export type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
 interface BadgeProps {
   variant?: BadgeVariant;
-  children: React.ReactNode;
+  /** Short label. Either `text` or `children` may be provided; `text` wins. */
+  text?: string;
+  children?: React.ReactNode;
   style?: ViewStyle;
 }
 
@@ -35,12 +37,13 @@ const variantStyles: Record<BadgeVariant, { container: ViewStyle; text: any }> =
   },
 };
 
-export function Badge({ variant = "default", children, style }: BadgeProps) {
+export function Badge({ variant = "default", text, children, style }: BadgeProps) {
   const v = variantStyles[variant];
+  const content = text ?? children;
 
   return (
     <View style={[styles.badge, v.container, style]}>
-      <AppText style={[styles.text, v.text]}>{children}</AppText>
+      <AppText style={[styles.text, v.text]}>{content}</AppText>
     </View>
   );
 }

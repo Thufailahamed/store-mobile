@@ -12,7 +12,7 @@ import {
   getAccessToken,
   type ApiResult,
 } from "@/lib/api/backend";
-export type { ApiResult } from "@/lib/api/backend";
+export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } from "@/lib/api/backend";
 import * as B from "@/lib/api/backend";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
@@ -805,6 +805,7 @@ export async function assertSellerCanOperate(storeId: string): Promise<Result<vo
 export async function getSellerProducts(storeId: string, opts: {
   status?: string;
   search?: string;
+  sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "sales_desc" | "name_asc";
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<{ products: Product[]; total: number }>> {
@@ -813,6 +814,7 @@ export async function getSellerProducts(storeId: string, opts: {
     offset: opts.offset,
     status: opts.status && opts.status !== "all" ? opts.status : undefined,
     search: opts.search,
+    sort: opts.sort,
   });
   if (!res.ok) return fail(res.error);
   void storeId;
@@ -847,16 +849,94 @@ export async function getSellerProductById(productId: string): Promise<Result<Pr
   return ok(mapProduct(res.data.product));
 }
 
-export async function deleteSellerProductImage(_imageId: string): Promise<Result<void>> {
-  // Backend has no specific image-delete endpoint yet — the seller image
-  // set is rebuilt on each PATCH product call. Return success and let the
-  // caller re-PATCH the product with the desired image list.
+export async function deleteSellerProductImage(productId: string, imageId: string): Promise<Result<void>> {
+  const res = await B.deleteSellerProductImageBackend(productId, imageId);
+  if (!res.ok) return fail(res.error);
   return ok(undefined);
 }
 
-export async function setSellerProductImagePrimary(_productId: string, _imageId: string): Promise<Result<void>> {
-  // Same as above — re-PATCH with the chosen primary image.
+export async function setSellerProductImagePrimary(productId: string, imageId: string): Promise<Result<void>> {
+  const res = await B.updateSellerProductImageBackend(productId, imageId, { is_primary: true });
+  if (!res.ok) return fail(res.error);
   return ok(undefined);
+}
+
+export async function updateSellerProductImage(
+  productId: string,
+  imageId: string,
+  patch: { alt_text?: string | null; position?: number; media_type?: "image" | "video" | "360" },
+): Promise<Result<void>> {
+  const res = await B.updateSellerProductImageBackend(productId, imageId, patch);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
+export async function reorderSellerProductImages(
+  productId: string,
+  order: Array<{ id: string; position: number }>,
+): Promise<Result<void>> {
+  const res = await B.reorderSellerProductImagesBackend(productId, order);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
+export async function duplicateSellerProduct(productId: string, storeId: string): Promise<Result<{ id: string }>> {
+  const guard = await assertSellerCanOperate(storeId);
+  if (!guard.ok) return guard;
+  const res = await B.duplicateSellerProductBackend(productId);
+  if (!res.ok) return fail(res.error);
+  return ok({ id: (res.data as { id: string }).id });
+}
+
+export async function bulkSetSellerStatus(
+  ids: string[],
+  status: "draft" | "active" | "archived",
+  storeId: string,
+): Promise<Result<{ updated: number }>> {
+  const guard = await assertSellerCanOperate(storeId);
+  if (!guard.ok) return guard;
+  const res = await B.bulkSellerStatusBackend(ids, status);
+  if (!res.ok) return fail(res.error);
+  return ok({ updated: (res.data as { updated: number }).updated });
+}
+
+export async function checkSellerSkuUnique(skus: string[]): Promise<Result<Record<string, boolean>>> {
+  if (skus.length === 0) return ok({});
+  const res = await B.checkSellerSkuBackend(skus);
+  if (!res.ok) return fail(res.error);
+  return ok((res.data as { results: Record<string, boolean> }).results);
+}
+
+export async function bulkCreateSellerProducts(
+  storeId: string,
+  products: B.BulkSellerProductInput[],
+): Promise<Result<B.BulkSellerProductsResponse>> {
+  const guard = await assertSellerCanOperate(storeId);
+  if (!guard.ok) return guard;
+  const res = await B.bulkSellerProductsBackend(products);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
+
+export async function preflightModeration(input: {
+  name: string;
+  description?: string | null;
+  price: number;
+  mrp?: number | null;
+  brand_id?: string | null;
+  category_id?: string | null;
+  image_urls?: string[];
+  variant_count?: number;
+}): Promise<Result<{
+  auto_approved: boolean;
+  score: number;
+  threshold: number;
+  flagged: boolean;
+  reasons: Array<{ rule_id: string; message: string; weight: number; blocking: boolean }>;
+}>> {
+  const res = await B.preflightModerationBackend(input);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
 }
 
 export interface SellerVariantInput {
@@ -864,6 +944,10 @@ export interface SellerVariantInput {
   sku?: string;
   size?: string;
   color?: string;
+  color_hex?: string;
+  material?: string;
+  pattern?: string;
+  fit?: string;
   price?: number;
   mrp?: number;
   stock: number;
@@ -875,16 +959,28 @@ export async function saveSellerVariants(
   productId: string,
   storeId: string,
   variants: SellerVariantInput[],
-  _removedIds: string[] = [],
+  removedIds: string[] = [],
 ): Promise<Result<void>> {
   const guard = await assertSellerCanOperate(storeId);
   if (!guard.ok) return guard;
-  // Translate variant list to backend PATCH product call. Backend doesn't
-  // yet expose a dedicated /api/seller/products/:id/variants endpoint, so
-  // fall back to inline update with the new variant set.
-  const res = await B.updateSellerProductBackend(productId, {
-    variants: variants as unknown as B.CatalogProduct["variants"],
-  } as Partial<B.CatalogProduct>);
+  const res = await B.setSellerProductVariantsBackend(productId, {
+    variants: variants.map((v) => ({
+      id: v.id,
+      sku: v.sku,
+      size: v.size,
+      color: v.color,
+      color_hex: v.color_hex,
+      material: v.material,
+      pattern: v.pattern,
+      fit: v.fit,
+      price: v.price,
+      mrp: v.mrp,
+      stock: v.stock,
+      position: v.position,
+      is_active: v.is_active,
+    })),
+    removedIds,
+  });
   if (!res.ok) return fail(res.error);
   return ok(undefined);
 }
@@ -980,36 +1076,65 @@ export async function getSellerInventory(_storeId: string): Promise<Result<{
   return ok(list);
 }
 
-export async function updateVariantStock(variantId: string, stock: number): Promise<Result<void>> {
-  const res = await B.updateVariantStockBackend(variantId, stock);
+export async function updateVariantStock(productId: string, variantId: string, stock: number): Promise<Result<void>> {
+  const res = await B.updateVariantStockBackend(productId, variantId, stock);
   if (!res.ok) return fail(res.error);
   return ok(undefined);
 }
 
-export async function getSellerKPIs(storeId: string): Promise<Result<{
+const LOW_STOCK_THRESHOLD = 5;
+
+export async function getSellerKPIs(_storeId: string): Promise<Result<{
   totalRevenue: number;
   totalOrders: number;
   totalProducts: number;
   pendingOrders: number;
   lowStockVariants: number;
+  outOfStockVariants: number;
+  totalSkus: number;
   recentOrders: Order[];
 }>> {
-  const [kpis, orders, products] = await Promise.all([
+  const [kpis, orders, products, inventory] = await Promise.all([
     B.getSellerKPIsBackend(),
-    B.getSellerOrdersBackend({ limit: 100 }),
-    B.getSellerProductsBackend({ limit: 100 }),
+    B.getSellerOrdersBackend({ limit: 5 }),
+    B.getSellerProductsBackend({ limit: 1 }),
+    B.getSellerInventoryBackend(),
   ]);
   if (!kpis.ok) return fail(kpis.error);
+
   const recentOrders = orders.ok ? loose<Order[]>(orders.data.orders ?? []).slice(0, 5) : [];
+
+  // totalProducts: prefer backend `total` (unfiltered count), fall back to length.
+  const totalProducts = products.ok
+    ? typeof products.data.total === "number"
+      ? products.data.total
+      : products.data.products?.length ?? 0
+    : 0;
+
+  // Inventory health — variants scoped to this seller via /api/seller/inventory.
+  const inventoryRows = inventory.ok ? inventory.data.inventory ?? [] : [];
+  let totalSkus = 0;
+  let lowStockVariants = 0;
+  let outOfStockVariants = 0;
+  for (const v of inventoryRows) {
+    const qty = v.inventory?.quantity ?? 0;
+    const reserved = v.inventory?.reserved ?? 0;
+    const available = qty - reserved;
+    totalSkus += 1;
+    if (available <= 0) outOfStockVariants += 1;
+    else if (available <= LOW_STOCK_THRESHOLD) lowStockVariants += 1;
+  }
+
   return ok({
     totalRevenue: kpis.data.revenue ?? 0,
     totalOrders: kpis.data.orders ?? 0,
-    totalProducts: products.ok ? (products.data.products?.length ?? 0) : 0,
+    totalProducts,
     pendingOrders: kpis.data.pending ?? 0,
-    lowStockVariants: 0,
+    lowStockVariants,
+    outOfStockVariants,
+    totalSkus,
     recentOrders,
   });
-  void storeId;
 }
 
 // ============================================================================
@@ -1165,6 +1290,161 @@ export async function getBrandKPIs(brandId: string): Promise<Result<{
     totalRevenue: res.data.revenue ?? 0,
   });
   void brandId;
+}
+
+// ----- Brand portal reads -----
+
+export async function getBrandAnalytics(): Promise<Result<B.BrandAnalytics>> {
+  return fromB(await B.getBrandAnalyticsBackend());
+}
+export async function getBrandInventory(): Promise<Result<B.BrandInventoryRow[]>> {
+  const r = await B.getBrandInventoryBackend();
+  return r.ok ? ok(r.data.inventory ?? []) : fail(r.error);
+}
+export async function getBrandReturns(): Promise<Result<B.BrandReturn[]>> {
+  const r = await B.getBrandReturnsBackend();
+  return r.ok ? ok(r.data.returns ?? []) : fail(r.error);
+}
+export async function getBrandReviews(): Promise<Result<B.BrandReview[]>> {
+  const r = await B.getBrandReviewsBackend();
+  return r.ok ? ok(r.data.reviews ?? []) : fail(r.error);
+}
+export async function getBrandCoupons(): Promise<Result<B.BrandCoupon[]>> {
+  const r = await B.getBrandCouponsBackend();
+  return r.ok ? ok(r.data.coupons ?? []) : fail(r.error);
+}
+export async function getBrandFollowers(): Promise<Result<B.BrandFollower[]>> {
+  const r = await B.getBrandFollowersBackend();
+  return r.ok ? ok(r.data.followers ?? []) : fail(r.error);
+}
+export async function getBrandInfluencers(): Promise<Result<B.BrandInfluencer[]>> {
+  const r = await B.getBrandInfluencersBackend();
+  return r.ok ? ok(r.data.collaborations ?? []) : fail(r.error);
+}
+export async function getBrandCollections(): Promise<Result<B.BrandCollection[]>> {
+  const r = await B.getBrandCollectionsBackend();
+  return r.ok ? ok(r.data.collections ?? []) : fail(r.error);
+}
+export async function getBrandCampaigns(): Promise<Result<B.BrandCampaign[]>> {
+  const r = await B.getBrandCampaignsBackend();
+  return r.ok ? ok(r.data.campaigns ?? []) : fail(r.error);
+}
+export async function getBrandPayouts(): Promise<Result<B.BrandPayout[]>> {
+  const r = await B.getBrandPayoutsBackend();
+  return r.ok ? ok(r.data.payouts ?? []) : fail(r.error);
+}
+export async function getBrandPayoutsBalance(): Promise<Result<B.BrandPayoutsBalance>> {
+  return fromB(await B.getBrandPayoutsBalanceBackend());
+}
+export async function getBrandNotifications(): Promise<Result<B.BrandNotification[]>> {
+  const r = await B.getBrandNotificationsBackend();
+  return r.ok ? ok(r.data.notifications ?? []) : fail(r.error);
+}
+export async function getBrandTeam(): Promise<Result<B.BrandTeamMember[]>> {
+  const r = await B.getBrandTeamBackend();
+  return r.ok ? ok(r.data.members ?? []) : fail(r.error);
+}
+export async function getBrandTeamInvites(): Promise<Result<B.BrandTeamInvite[]>> {
+  const r = await B.getBrandTeamInvitesBackend();
+  return r.ok ? ok(r.data.invites ?? []) : fail(r.error);
+}
+export async function getBrandSettings(): Promise<Result<B.BrandSettings>> {
+  const r = await B.getBrandSettingsBackend();
+  return r.ok ? ok(loose<B.BrandSettings>(r.data.settings ?? {})) : fail(r.error);
+}
+export async function getBrandBranding(): Promise<Result<B.BrandBranding>> {
+  const r = await B.getBrandBrandingBackend();
+  return r.ok ? ok(loose<B.BrandBranding>(r.data.branding ?? {})) : fail(r.error);
+}
+export async function getBrandOrderById(id: string): Promise<Result<Order>> {
+  const r = await B.getBrandOrderByIdBackend(id);
+  return r.ok ? ok(loose<Order>(r.data.order)) : fail(r.error);
+}
+
+// ----- Brand portal mutations -----
+
+export async function updateBrandBranding(patch: Partial<B.BrandBranding>): Promise<Result<B.BrandBranding>> {
+  const r = await B.updateBrandBrandingBackend(patch);
+  return r.ok ? ok(loose<B.BrandBranding>(r.data.branding ?? {})) : fail(r.error);
+}
+export async function updateBrandSettings(patch: Partial<B.BrandSettings>): Promise<Result<B.BrandSettings>> {
+  const r = await B.updateBrandSettingsBackend(patch);
+  return r.ok ? ok(loose<B.BrandSettings>(r.data.settings ?? {})) : fail(r.error);
+}
+
+export async function createBrandCampaign(input: Parameters<typeof B.createBrandCampaignBackend>[0]): Promise<Result<B.BrandCampaign>> {
+  const r = await B.createBrandCampaignBackend(input);
+  return r.ok ? ok(loose<B.BrandCampaign>(r.data.campaign)) : fail(r.error);
+}
+export async function updateBrandCampaign(id: string, patch: Parameters<typeof B.updateBrandCampaignBackend>[1]): Promise<Result<B.BrandCampaign>> {
+  const r = await B.updateBrandCampaignBackend(id, patch);
+  return r.ok ? ok(loose<B.BrandCampaign>(r.data.campaign)) : fail(r.error);
+}
+export async function deleteBrandCampaign(id: string): Promise<Result<{ deleted: boolean; id: string }>> {
+  return fromB(await B.deleteBrandCampaignBackend(id));
+}
+
+export async function createBrandCollection(input: Parameters<typeof B.createBrandCollectionBackend>[0]): Promise<Result<B.BrandCollection>> {
+  const r = await B.createBrandCollectionBackend(input);
+  return r.ok ? ok(loose<B.BrandCollection>(r.data.collection)) : fail(r.error);
+}
+export async function updateBrandCollection(id: string, patch: Parameters<typeof B.updateBrandCollectionBackend>[1]): Promise<Result<B.BrandCollection>> {
+  const r = await B.updateBrandCollectionBackend(id, patch);
+  return r.ok ? ok(loose<B.BrandCollection>(r.data.collection)) : fail(r.error);
+}
+export async function deleteBrandCollection(id: string): Promise<Result<{ deleted: boolean; id: string }>> {
+  return fromB(await B.deleteBrandCollectionBackend(id));
+}
+
+export async function createBrandCoupon(input: Parameters<typeof B.createBrandCouponBackend>[0]): Promise<Result<B.BrandCoupon>> {
+  const r = await B.createBrandCouponBackend(input);
+  return r.ok ? ok(loose<B.BrandCoupon>(r.data.coupon)) : fail(r.error);
+}
+export async function updateBrandCoupon(id: string, patch: Parameters<typeof B.updateBrandCouponBackend>[1]): Promise<Result<B.BrandCoupon>> {
+  const r = await B.updateBrandCouponBackend(id, patch);
+  return r.ok ? ok(loose<B.BrandCoupon>(r.data.coupon)) : fail(r.error);
+}
+export async function deleteBrandCoupon(id: string): Promise<Result<{ deleted: boolean; id: string }>> {
+  return fromB(await B.deleteBrandCouponBackend(id));
+}
+
+export async function deleteBrandProduct(id: string): Promise<Result<{ deleted: boolean; id: string }>> {
+  return fromB(await B.deleteBrandProductBackend(id));
+}
+
+export async function markBrandNotifications(input: { ids?: string[]; mark_all?: boolean }): Promise<Result<{ marked: number }>> {
+  return fromB(await B.markBrandNotificationsBackend(input));
+}
+
+export async function inviteBrandTeamMember(input: { email: string; role: "manager" | "staff" | "viewer" }): Promise<Result<{ id: string; email: string; role: string; token: string }>> {
+  const r = await B.inviteBrandTeamMemberBackend(input);
+  return r.ok ? ok(r.data.invite) : fail(r.error);
+}
+export async function cancelBrandInvite(inviteId: string): Promise<Result<{ cancelled: boolean; id: string }>> {
+  return fromB(await B.cancelBrandInviteBackend(inviteId));
+}
+export async function resendBrandInvite(inviteId: string): Promise<Result<{ invite: B.BrandTeamInvite; resent: boolean }>> {
+  return fromB(await B.resendBrandInviteBackend(inviteId));
+}
+export async function removeBrandMember(memberId: string): Promise<Result<{ removed: boolean; id: string }>> {
+  return fromB(await B.removeBrandMemberBackend(memberId));
+}
+export async function updateBrandMember(memberId: string, patch: { role?: "manager" | "staff" | "viewer"; status?: "active" | "suspended" }): Promise<Result<B.BrandTeamMember>> {
+  const r = await B.updateBrandMemberBackend(memberId, patch);
+  return r.ok ? ok(loose<B.BrandTeamMember>(r.data.member)) : fail(r.error);
+}
+
+// ----- Public brand flows -----
+
+export async function checkBrandSlug(slug: string): Promise<Result<{ available: boolean }>> {
+  return fromB(await B.checkBrandSlugBackend(slug));
+}
+export async function submitBrandApplication(input: Parameters<typeof B.submitBrandApplicationBackend>[0]): Promise<Result<Brand>> {
+  const r = await B.submitBrandApplicationBackend(input);
+  return r.ok ? ok(loose<Brand>(r.data.brand)) : fail(r.error);
+}
+export async function acceptBrandInvite(token: string): Promise<Result<{ accepted: boolean; brand_id: string }>> {
+  return fromB(await B.acceptBrandInviteBackend(token));
 }
 
 // ============================================================================

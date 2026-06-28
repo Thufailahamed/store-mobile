@@ -16,12 +16,12 @@ import { CartItemCard } from "@/components/cart/CartItemCard";
 import { getVariantStock } from "@/components/cart/variant-utils";
 import { BagEmptyState } from "@/components/cart/BagEmptyState";
 import { SavedForLater } from "@/components/cart/SavedForLater";
-import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
 import type { Product } from "@/lib/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { getAddresses, getProducts } from "@/lib/api";
+import { getProductsByIdsBackend } from "@/lib/api/backend";
 import { getCatalogVisibleStoreIds } from "@/lib/catalog-visibility";
 import { useCartRealtime } from "@/lib/hooks/useCartRealtime";
 import {
@@ -114,20 +114,16 @@ export default function CartScreen() {
     // productDetails is part of the dep so the store name refreshes when products hydrate
   }, [cartItems, productDetails]);
 
-  // Load detailed product rows from supabase for MRP & Brand name
+  // Load detailed product rows via the backend so prices/stock match the
+  // public catalogue and RLS doesn't leak rows the buyer shouldn't see.
   useEffect(() => {
     if (cartProductIds.length === 0) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)"
-        )
-        .in("id", cartProductIds);
-      if (cancelled || error || !data) return;
+      const res = await getProductsByIdsBackend(cartProductIds);
+      if (cancelled || !res.ok || !res.data) return;
       const byId: Record<string, Product> = {};
-      mapProducts(data as Product[]).forEach((p) => {
+      mapProducts(res.data.products).forEach((p) => {
         byId[p.id] = p;
       });
       if (!cancelled) {
@@ -440,15 +436,10 @@ export default function CartScreen() {
     if (savedProductIds.length === 0) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)"
-        )
-        .in("id", savedProductIds);
-      if (cancelled || error || !data) return;
+      const res = await getProductsByIdsBackend(savedProductIds);
+      if (cancelled || !res.ok || !res.data) return;
       const byId: Record<string, Product> = {};
-      mapProducts(data as Product[]).forEach((p) => {
+      mapProducts(res.data.products).forEach((p) => {
         byId[p.id] = p;
       });
       setSavedForLater((prev) => {

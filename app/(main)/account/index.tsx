@@ -17,19 +17,39 @@ import { PaperBackground } from "@/components/layout";
 import { Avatar } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
-import { supabase } from "@/lib/supabase/client";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { getFollowedStores, getOrders, type FollowedStore } from "@/lib/api";
 import {
   getRecentlyViewedIds,
-  getStoredPayments,
   type PaymentCard,
 } from "@/lib/account-local";
+import { listPaymentMethodsBackend, getProfileBackend, getProductsByIdsBackend, type SavedCard } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import type { Order, Product } from "@/lib/types";
 import { mapProducts } from "@/lib/api/product-mapper";
+
+function savedCardToPaymentCard(c: SavedCard): PaymentCard {
+  const mm = String(c.exp_month).padStart(2, "0");
+  const yy = String(c.exp_year).slice(-2);
+  let added = "Recently";
+  try {
+    added = new Date(c.created_at).toLocaleString("en-US", { month: "short", year: "numeric" });
+  } catch {
+    /* keep default */
+  }
+  return {
+    id: c.id,
+    brand: c.brand,
+    last4: c.last4,
+    exp: `${mm}/${yy}`,
+    holder: c.holder,
+    is_default: c.is_default,
+    added,
+    charges: 0,
+  };
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const H_PAD = spacing[5];
@@ -134,27 +154,26 @@ export default function AccountScreen() {
       let cancelled = false;
 
       async function load() {
-        const [viewedIds, cards] = await Promise.all([
+        const [viewedIds, cardsRes] = await Promise.all([
           getRecentlyViewedIds(user?.id),
-          getStoredPayments(user?.id),
+          user?.id ? listPaymentMethodsBackend() : Promise.resolve(null),
         ]);
         if (cancelled) return;
-        setPayments(cards);
+        setPayments(cardsRes?.ok && cardsRes.data?.cards ? cardsRes.data.cards.map(savedCardToPaymentCard) : []);
 
         if (viewedIds.length > 0) {
-          const { data: viewedProducts } = await supabase
-            .from("products")
-            .select(
-              "id, name, slug, price, currency, images:product_images(url, is_primary, position)",
-            )
-            .in("id", viewedIds);
+          const res = await getProductsByIdsBackend(viewedIds);
           if (cancelled) return;
-          const byId = new Map(
-            mapProducts((viewedProducts as Product[]) ?? []).map((p) => [p.id, p]),
-          );
-          setRecentlyViewed(
-            viewedIds.map((id) => byId.get(id)).filter((p): p is Product => !!p),
-          );
+          if (res.ok && res.data) {
+            const byId = new Map(
+              mapProducts(res.data.products ?? []).map((p) => [p.id, p]),
+            );
+            setRecentlyViewed(
+              viewedIds.map((id) => byId.get(id)).filter((p): p is Product => !!p),
+            );
+          } else {
+            setRecentlyViewed([]);
+          }
         } else {
           setRecentlyViewed([]);
         }
@@ -168,11 +187,7 @@ export default function AccountScreen() {
         const [storesRes, ordersRes, profileRes] = await Promise.all([
           getFollowedStores(user.id),
           getOrders(user.id, 8),
-          supabase
-            .from("users")
-            .select("full_name, avatar_url")
-            .eq("id", user.id)
-            .maybeSingle(),
+          getProfileBackend(),
         ]);
 
         if (cancelled) return;
@@ -181,7 +196,7 @@ export default function AccountScreen() {
         if (ordersRes.ok) setOrderThumbs(buildOrderThumbs(ordersRes.data));
         else setOrderThumbs([]);
 
-        const profile = profileRes.data;
+        const profile = profileRes.ok ? profileRes.data?.user : null;
         if (profile?.full_name) setProfileName(profile.full_name);
         const nextAvatar =
           profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null;

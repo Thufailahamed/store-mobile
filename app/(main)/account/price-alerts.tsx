@@ -48,7 +48,7 @@ export default function PriceAlertsScreen() {
       setEditingId(null);
       qc.invalidateQueries({ queryKey: ["price-alerts"] });
     } else {
-      toast(r.error.message, "error");
+      toast(r.error, "error");
     }
   };
 
@@ -58,7 +58,7 @@ export default function PriceAlertsScreen() {
       toast("Cancelled", "success");
       qc.invalidateQueries({ queryKey: ["price-alerts"] });
     } else {
-      toast(r.error.message, "error");
+      toast(r.error, "error");
     }
   };
 

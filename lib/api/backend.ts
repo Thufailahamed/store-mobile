@@ -530,6 +530,7 @@ export async function placeOrderGroupBackend(input: {
   address_id: string;
   payment_method: string;
   coupon_code?: string | null;
+  gift_card_code?: string | null;
   currency?: string;
 }): Promise<ApiResult<{ orders?: Order[]; results?: Order[]; group_id?: string }>> {
   return fetchJson("/api/orders/group", {
@@ -540,6 +541,7 @@ export async function placeOrderGroupBackend(input: {
       payment_method: input.payment_method,
       currency: input.currency ?? "LKR",
       ...(input.coupon_code ? { coupon_code: input.coupon_code } : {}),
+      ...(input.gift_card_code ? { gift_card_code: input.gift_card_code } : {}),
     },
     headers: { "Idempotency-Key": `place-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
   });
@@ -795,6 +797,25 @@ export async function updateSellerProductBackend(id: string, patch: Partial<Cata
   return fetchJson(`/api/seller/products/${id}`, { method: "PATCH", body: patch });
 }
 
+export type SellerVariantInputLite = {
+  id?: string;
+  sku?: string;
+  size?: string;
+  color?: string;
+  price?: number;
+  mrp?: number;
+  stock: number;
+  position: number;
+  is_active?: boolean;
+};
+
+export async function setSellerProductVariantsBackend(
+  productId: string,
+  input: { variants: SellerVariantInputLite[]; removedIds?: string[] }
+): Promise<ApiResult<{ variants: Array<Record<string, unknown>> }>> {
+  return fetchJson(`/api/seller/products/${productId}/variants`, { method: "PUT", body: input });
+}
+
 export async function deleteSellerProductBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
   return fetchJson(`/api/seller/products/${id}`, { method: "DELETE" });
 }
@@ -807,12 +828,105 @@ export async function transitionOrderBackend(orderId: string, toStatus: string, 
   return fetchJson(`/api/orders/${orderId}/transition`, { method: "POST", body: { status: toStatus, note } });
 }
 
-export async function getSellerInventoryBackend(): Promise<ApiResult<{ inventory: Array<{ variant_id: string; sku: string; size?: string; color?: string; price: number; product: { id: string; name: string; status: string }; inventory: { quantity: number; reserved: number } }> }>> {
+export async function getSellerInventoryBackend(): Promise<ApiResult<{ inventory: Array<{ id: string; sku: string; size?: string; color?: string; price: number; product: { id: string; name: string; status: string }; inventory: { quantity: number; reserved: number } }> }>> {
   return fetchJson("/api/seller/inventory");
 }
 
-export async function updateVariantStockBackend(variantId: string, quantity: number): Promise<ApiResult<{ inventory: { variant_id: string; quantity: number } }>> {
-  return fetchJson(`/api/seller/products/_/inventory`, { method: "PATCH", body: { variant_id: variantId, quantity } });
+export async function updateVariantStockBackend(
+  productId: string,
+  variantId: string,
+  quantity: number,
+): Promise<ApiResult<{ inventory: { variant_id: string; quantity: number } }>> {
+  return fetchJson(`/api/seller/products/${productId}/inventory`, {
+    method: "PATCH",
+    body: { variant_id: variantId, quantity },
+  });
+}
+
+export async function deleteSellerProductImageBackend(
+  productId: string,
+  imageId: string,
+): Promise<ApiResult<{ deleted: boolean; id: string }>> {
+  return fetchJson(`/api/seller/products/${productId}/images/${imageId}`, { method: "DELETE" });
+}
+
+export async function updateSellerProductImageBackend(
+  productId: string,
+  imageId: string,
+  patch: { is_primary?: boolean; alt_text?: string | null; position?: number; media_type?: "image" | "video" | "360" },
+): Promise<ApiResult<{ image: Record<string, unknown> }>> {
+  return fetchJson(`/api/seller/products/${productId}/images/${imageId}`, { method: "PATCH", body: patch });
+}
+
+export async function reorderSellerProductImagesBackend(
+  productId: string,
+  order: Array<{ id: string; position: number }>,
+): Promise<ApiResult<{ updated: number }>> {
+  return fetchJson(`/api/seller/products/${productId}/images/reorder`, { method: "PATCH", body: { order } });
+}
+
+export async function duplicateSellerProductBackend(productId: string): Promise<ApiResult<{ id: string }>> {
+  return fetchJson(`/api/seller/products/${productId}/duplicate`, { method: "POST" });
+}
+
+export async function bulkSellerStatusBackend(
+  ids: string[],
+  status: "draft" | "active" | "archived",
+): Promise<ApiResult<{ updated: number }>> {
+  return fetchJson("/api/seller/products/bulk-status", { method: "POST", body: { product_ids: ids, status } });
+}
+
+export type BulkSellerProductInput = {
+  name: string;
+  price: number;
+  mrp?: number;
+  sku?: string;
+  description?: string;
+  short_description?: string;
+  material?: string;
+  category_id?: string;
+  brand_id?: string;
+  gender?: "men" | "women" | "kids" | "unisex";
+  is_featured?: boolean;
+  status?: "draft" | "active" | "archived";
+  tags?: string[];
+  images?: Array<{ url: string; is_primary?: boolean }>;
+  variants?: Array<{ sku?: string; size?: string; color?: string; price: number; mrp?: number; stock: number }>;
+};
+
+export type BulkSellerProductsResponse = {
+  results: Array<{ ok: boolean; id?: string; error?: string }>;
+  created: number;
+  failed: number;
+};
+
+export async function bulkSellerProductsBackend(
+  products: BulkSellerProductInput[],
+): Promise<ApiResult<BulkSellerProductsResponse>> {
+  return fetchJson("/api/seller/products/bulk", { method: "POST", body: { products } });
+}
+
+export async function checkSellerSkuBackend(skus: string[]): Promise<ApiResult<{ results: Record<string, boolean> }>> {
+  return fetchJson("/api/seller/products/sku-check", { method: "POST", body: { skus } });
+}
+
+export async function preflightModerationBackend(input: {
+  name: string;
+  description?: string | null;
+  price: number;
+  mrp?: number | null;
+  brand_id?: string | null;
+  category_id?: string | null;
+  image_urls?: string[];
+  variant_count?: number;
+}): Promise<ApiResult<{
+  auto_approved: boolean;
+  score: number;
+  threshold: number;
+  flagged: boolean;
+  reasons: Array<{ rule_id: string; message: string; weight: number; blocking: boolean }>;
+}>> {
+  return fetchJson("/api/seller/products/preflight-moderation", { method: "POST", body: input });
 }
 
 export async function getSellerReturnsBackend(): Promise<ApiResult<{ returns: Array<ReturnRequest & { order?: Order; items?: unknown[] }> }>> {
@@ -889,6 +1003,210 @@ export type BrandKPIs = { revenue: number; orders: number; aov?: number; topProd
 
 export async function getBrandKPIsBackend(): Promise<ApiResult<BrandKPIs>> {
   return fetchJson("/api/brand/analytics/summary");
+}
+
+// ----- Brand reads -----
+
+export type BrandAnalytics = { revenue: number; orders: number };
+export async function getBrandAnalyticsBackend(): Promise<ApiResult<BrandAnalytics>> {
+  return fetchJson("/api/brand/analytics");
+}
+
+export type BrandInventoryRow = {
+  id: string;
+  sku?: string;
+  size?: string;
+  color?: string;
+  price: number;
+  product?: { id: string; name: string; status: string };
+  inventory?: { quantity: number; reserved: number } | null;
+};
+export async function getBrandInventoryBackend(): Promise<ApiResult<{ inventory: BrandInventoryRow[] }>> {
+  return fetchJson("/api/brand/inventory");
+}
+
+export type BrandReturn = {
+  id: string;
+  status: string;
+  reason?: string;
+  created_at: string;
+  order?: { order_number?: string };
+};
+export async function getBrandReturnsBackend(): Promise<ApiResult<{ returns: BrandReturn[] }>> {
+  return fetchJson("/api/brand/returns");
+}
+
+export type BrandReview = {
+  id: string;
+  rating: number;
+  comment?: string;
+  created_at: string;
+  product?: { name: string };
+};
+export async function getBrandReviewsBackend(): Promise<ApiResult<{ reviews: BrandReview[] }>> {
+  return fetchJson("/api/brand/reviews");
+}
+
+export type BrandCoupon = { id: string; code: string; discount_type: string; discount_value: number; is_active: boolean; expires_at?: string; min_order?: number };
+export async function getBrandCouponsBackend(): Promise<ApiResult<{ coupons: BrandCoupon[] }>> {
+  return fetchJson("/api/brand/coupons");
+}
+
+export type BrandFollower = { id: string; user_id: string; created_at: string; user?: { email?: string; full_name?: string } };
+export async function getBrandFollowersBackend(): Promise<ApiResult<{ followers: BrandFollower[] }>> {
+  return fetchJson("/api/brand/followers");
+}
+
+export type BrandInfluencer = { id: string; status: string; followers_count?: number; sales?: number; rating?: number; commission?: number; created_at: string; influencer?: { name?: string; handle?: string } };
+export async function getBrandInfluencersBackend(): Promise<ApiResult<{ collaborations: BrandInfluencer[] }>> {
+  return fetchJson("/api/brand/influencers");
+}
+
+export type BrandCollection = { id: string; name: string; description?: string; cover_url?: string; is_featured?: boolean; product_ids?: string[]; created_at?: string };
+export async function getBrandCollectionsBackend(): Promise<ApiResult<{ collections: BrandCollection[] }>> {
+  return fetchJson("/api/brand/collections");
+}
+
+export type BrandCampaign = { id: string; name: string; description?: string; type: string; status: string; budget?: number; spent?: number; starts_at?: string; ends_at?: string; created_at: string };
+export async function getBrandCampaignsBackend(): Promise<ApiResult<{ campaigns: BrandCampaign[] }>> {
+  return fetchJson("/api/brand/campaigns");
+}
+
+export type BrandPayout = { id: string; amount: number; currency: string; status: string; created_at: string; paid_at?: string };
+export async function getBrandPayoutsBackend(): Promise<ApiResult<{ payouts: BrandPayout[] }>> {
+  return fetchJson("/api/brand/payouts");
+}
+
+export type BrandPayoutsBalance = { lifetime_gross: number; lifetime_commission: number; lifetime_net: number; pending: number; commission_rate: number };
+export async function getBrandPayoutsBalanceBackend(): Promise<ApiResult<BrandPayoutsBalance>> {
+  return fetchJson("/api/brand/payouts/balance");
+}
+
+export type BrandNotification = { id: string; type: string; title?: string; body?: string; created_at: string; read_at?: string };
+export async function getBrandNotificationsBackend(): Promise<ApiResult<{ notifications: BrandNotification[] }>> {
+  return fetchJson("/api/brand/notifications");
+}
+
+export type BrandTeamMember = { id: string; user_id: string; role: string; status?: string; created_at: string; user?: { email?: string; full_name?: string } };
+export async function getBrandTeamBackend(): Promise<ApiResult<{ members: BrandTeamMember[] }>> {
+  return fetchJson("/api/brand/team");
+}
+
+export type BrandTeamInvite = { id: string; email: string; role: string; created_at: string; expires_at: string; accepted_at?: string };
+export async function getBrandTeamInvitesBackend(): Promise<ApiResult<{ invites: BrandTeamInvite[] }>> {
+  return fetchJson("/api/brand/team/invites");
+}
+
+export type BrandSettings = {
+  is_published?: boolean;
+  default_currency?: string;
+  social_links?: Record<string, string>;
+  policies?: string;
+  notify_new_order?: boolean;
+  notify_low_stock?: boolean;
+  notify_review_posted?: boolean;
+  notify_weekly_digest?: boolean;
+  notify_campaign?: boolean;
+};
+export async function getBrandSettingsBackend(): Promise<ApiResult<{ settings: BrandSettings }>> {
+  return fetchJson("/api/brand/settings");
+}
+
+export type BrandBranding = { primary_color?: string; accent_color?: string; font?: string; about?: string; logo_url?: string; banner_url?: string; story?: string; social_links?: Record<string, string> };
+export async function getBrandBrandingBackend(): Promise<ApiResult<{ branding: BrandBranding }>> {
+  return fetchJson("/api/brand/branding");
+}
+
+export async function getBrandOrderByIdBackend(id: string): Promise<ApiResult<{ order: Order & { items?: Array<{ id: string; product_id: string; quantity: number; price: number }> } }>> {
+  return fetchJson(`/api/brand/orders/${id}`);
+}
+
+// ----- Brand mutations -----
+
+export async function updateBrandBrandingBackend(patch: Partial<BrandBranding>): Promise<ApiResult<{ branding: BrandBranding }>> {
+  return fetchJson("/api/brand/branding", { method: "PATCH", body: patch });
+}
+
+export async function updateBrandSettingsBackend(patch: Partial<BrandSettings>): Promise<ApiResult<{ settings: BrandSettings }>> {
+  return fetchJson("/api/brand/settings", { method: "PATCH", body: patch });
+}
+
+export async function createBrandCampaignBackend(input: { name: string; description?: string; type: string; budget?: number; status?: string; starts_at?: string; ends_at?: string }): Promise<ApiResult<{ campaign: BrandCampaign }>> {
+  return fetchJson("/api/brand/campaigns", { method: "POST", body: input });
+}
+
+export async function updateBrandCampaignBackend(id: string, patch: Partial<{ name: string; description?: string; type: string; status: string; budget?: number; spent?: number; starts_at?: string; ends_at?: string }>): Promise<ApiResult<{ campaign: BrandCampaign }>> {
+  return fetchJson(`/api/brand/campaigns/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function deleteBrandCampaignBackend(id: string): Promise<ApiResult<{ deleted: boolean; id: string }>> {
+  return fetchJson(`/api/brand/campaigns/${id}`, { method: "DELETE" });
+}
+
+export async function createBrandCollectionBackend(input: { name: string; description?: string; cover_url?: string; is_featured?: boolean; product_ids?: string[] }): Promise<ApiResult<{ collection: BrandCollection }>> {
+  return fetchJson("/api/brand/collections", { method: "POST", body: input });
+}
+
+export async function updateBrandCollectionBackend(id: string, patch: Partial<{ name: string; description?: string; cover_url?: string; is_featured?: boolean; product_ids?: string[] }>): Promise<ApiResult<{ collection: BrandCollection }>> {
+  return fetchJson(`/api/brand/collections/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function deleteBrandCollectionBackend(id: string): Promise<ApiResult<{ deleted: boolean; id: string }>> {
+  return fetchJson(`/api/brand/collections/${id}`, { method: "DELETE" });
+}
+
+export async function createBrandCouponBackend(input: { code: string; discount_type: "percent" | "fixed" | "free_shipping"; discount_value: number; min_order?: number; expires_at?: string; is_active?: boolean }): Promise<ApiResult<{ coupon: BrandCoupon }>> {
+  return fetchJson("/api/brand/coupons", { method: "POST", body: input });
+}
+
+export async function updateBrandCouponBackend(id: string, patch: Partial<{ is_active: boolean; discount_value: number; expires_at?: string; min_order?: number }>): Promise<ApiResult<{ coupon: BrandCoupon }>> {
+  return fetchJson(`/api/brand/coupons/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function deleteBrandCouponBackend(id: string): Promise<ApiResult<{ deleted: boolean; id: string }>> {
+  return fetchJson(`/api/brand/coupons/${id}`, { method: "DELETE" });
+}
+
+export async function deleteBrandProductBackend(id: string): Promise<ApiResult<{ deleted: boolean; id: string }>> {
+  return fetchJson(`/api/brand/products/${id}`, { method: "DELETE" });
+}
+
+export async function markBrandNotificationsBackend(input: { ids?: string[]; mark_all?: boolean }): Promise<ApiResult<{ marked: number }>> {
+  return fetchJson("/api/brand/notifications", { method: "PATCH", body: input });
+}
+
+export async function inviteBrandTeamMemberBackend(input: { email: string; role: "manager" | "staff" | "viewer" }): Promise<ApiResult<{ invite: { id: string; email: string; role: string; token: string } }>> {
+  return fetchJson("/api/brand/team/invites", { method: "POST", body: input });
+}
+
+export async function cancelBrandInviteBackend(inviteId: string): Promise<ApiResult<{ cancelled: boolean; id: string }>> {
+  return fetchJson(`/api/brand/team/invites/${inviteId}`, { method: "DELETE" });
+}
+
+export async function resendBrandInviteBackend(inviteId: string): Promise<ApiResult<{ invite: BrandTeamInvite; resent: boolean }>> {
+  return fetchJson(`/api/brand/team/invites/${inviteId}/resend`, { method: "POST" });
+}
+
+export async function removeBrandMemberBackend(memberId: string): Promise<ApiResult<{ removed: boolean; id: string }>> {
+  return fetchJson(`/api/brand/team/members/${memberId}`, { method: "DELETE" });
+}
+
+export async function updateBrandMemberBackend(memberId: string, patch: { role?: "manager" | "staff" | "viewer"; status?: "active" | "suspended" }): Promise<ApiResult<{ member: BrandTeamMember }>> {
+  return fetchJson(`/api/brand/team/members/${memberId}`, { method: "PATCH", body: patch });
+}
+
+// ----- Public brand flows -----
+
+export async function checkBrandSlugBackend(slug: string): Promise<ApiResult<{ available: boolean }>> {
+  return fetchJson("/api/catalog/brands/check-slug", { requireAuth: false, query: { slug } });
+}
+
+export async function submitBrandApplicationBackend(input: { name: string; slug: string; tagline?: string; description?: string; country?: string; year_founded?: number; website?: string }): Promise<ApiResult<{ brand: Brand }>> {
+  return fetchJson("/api/catalog/brands/onboard", { method: "POST", body: input });
+}
+
+export async function acceptBrandInviteBackend(token: string): Promise<ApiResult<{ accepted: boolean; brand_id: string }>> {
+  return fetchJson("/api/brand/team/accept", { requireAuth: false, method: "POST", body: { token } });
 }
 
 // =========================================================================
@@ -1325,4 +1643,158 @@ export async function checkUniqueBackend(
     requireAuth: opts?.requireAuth ?? false,
     body,
   });
+}
+
+// =========================================================================
+// PAYMENT METHODS — saved cards on file (migration 0183)
+// =========================================================================
+
+export type SavedCardBrand = "visa" | "mastercard" | "amex";
+
+export type SavedCard = {
+  id: string;
+  user_id: string;
+  brand: SavedCardBrand;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  holder: string;
+  is_default: boolean;
+  gateway: string;
+  gateway_pm_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listPaymentMethodsBackend(): Promise<ApiResult<{ cards: SavedCard[] }>> {
+  return fetchJson("/api/users/payment-methods");
+}
+
+export async function createPaymentMethodBackend(body: {
+  brand: SavedCardBrand;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  holder: string;
+  is_default?: boolean;
+}): Promise<ApiResult<{ card: SavedCard }>> {
+  return fetchJson("/api/users/payment-methods", { method: "POST", body });
+}
+
+export async function updatePaymentMethodBackend(
+  id: string,
+  patch: { holder?: string; exp_month?: number; exp_year?: number; is_default?: boolean },
+): Promise<ApiResult<{ card: SavedCard }>> {
+  return fetchJson(`/api/users/payment-methods/${encodeURIComponent(id)}`, { method: "PATCH", body: patch });
+}
+
+export async function deletePaymentMethodBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
+  return fetchJson(`/api/users/payment-methods/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function setDefaultPaymentMethodBackend(id: string): Promise<ApiResult<{ card: SavedCard }>> {
+  return fetchJson(`/api/users/payment-methods/${encodeURIComponent(id)}/default`, { method: "POST", body: {} });
+}
+
+// =========================================================================
+// SECURITY — sessions, password, signout-all
+// =========================================================================
+
+export type SecuritySession = {
+  id: string;
+  os: string;
+  browser: string;
+  device: "laptop" | "phone" | "tablet";
+  ip: string | null;
+  location: string | null;
+  current: boolean;
+  last_active: string;
+};
+
+export async function getSessionsBackend(): Promise<ApiResult<{ sessions: SecuritySession[] }>> {
+  return fetchJson("/api/users/security/sessions");
+}
+
+export async function revokeSessionBackend(id: string): Promise<ApiResult<{ revoked: boolean; user_id: string }>> {
+  return fetchJson(`/api/users/security/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function signOutAllBackend(): Promise<ApiResult<{ signed_out_all: boolean; user_id: string }>> {
+  return fetchJson("/api/users/security/signout-all", { method: "POST", body: {} });
+}
+
+export async function changePasswordBackend(body: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<ApiResult<{ changed: boolean }>> {
+  return fetchJson("/api/users/security/change-password", { method: "POST", body });
+}
+
+// =========================================================================
+// DATA EXPORT — caller-facing JSON dump
+// =========================================================================
+
+export type DataExportPayload = {
+  version: number;
+  exported_at: string;
+  profile: Record<string, unknown> & { auth_email?: string | null; auth_phone?: string | null };
+  addresses: unknown[];
+  orders: unknown[];
+  wishlist: unknown[];
+  notifications: unknown[];
+  notification_preferences: Record<string, unknown>;
+  follows: { stores: unknown[]; brands: unknown[] };
+  loyalty: { transactions: unknown[] };
+  warnings: string[];
+};
+
+export async function exportUserDataBackend(): Promise<ApiResult<DataExportPayload>> {
+  return fetchJson("/api/users/export");
+}
+
+// =========================================================================
+// SETTINGS — locale, timezone, phone, privacy, notifications
+// =========================================================================
+
+export type UserSettings = {
+  settings: {
+    email?: string | null;
+    phone?: string | null;
+    locale?: string | null;
+    timezone?: string | null;
+    currency?: string | null;
+    privacy?: Record<string, unknown>;
+    notifications?: Record<string, unknown>;
+  };
+};
+
+export async function getSettingsBackend(): Promise<ApiResult<UserSettings>> {
+  return fetchJson("/api/users/settings");
+}
+
+export async function updateSettingsBackend(patch: {
+  locale?: string;
+  timezone?: string;
+  phone?: string;
+  email?: string;
+  currency?: string;
+  privacy?: Record<string, unknown>;
+  notifications?: Record<string, boolean>;
+}): Promise<ApiResult<{ updated: boolean }>> {
+  return fetchJson("/api/users/settings", { method: "PATCH", body: patch });
+}
+
+export async function deleteAccountBackend(): Promise<ApiResult<{ deleted: boolean }>> {
+  return fetchJson("/api/account/delete", { method: "POST", body: {} });
+}
+
+export type ReferralStats = {
+  code: string;
+  totalReferrals: number;
+  pendingRewards: number;
+  shareUrl: string;
+};
+
+export async function getReferralStatsBackend(): Promise<ApiResult<ReferralStats>> {
+  return fetchJson("/api/users/referral");
 }

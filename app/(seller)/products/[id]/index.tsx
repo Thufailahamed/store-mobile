@@ -20,8 +20,11 @@ import {
   deleteSellerProduct,
   deleteSellerProductImage,
   setSellerProductImagePrimary,
+  reorderSellerProductImages,
   saveSellerVariants,
   getAllCategories,
+  getBrands,
+  preflightModeration,
   type SellerVariantInput,
 } from "@/lib/api";
 import { uploadProductImage } from "@/lib/upload";
@@ -40,7 +43,7 @@ import {
   type ModerationResult,
 } from "@/components/seller/ModerationResultBanner";
 import { colors, typography, radii } from "@/lib/theme/tokens";
-import type { Product, ProductImage, Category } from "@/lib/types";
+import type { Product, ProductImage, ProductVariant, Category, Brand } from "@/lib/types";
 
 export default function SellerProductEdit() {
   const router = useRouter();
@@ -58,6 +61,12 @@ export default function SellerProductEdit() {
   const [description, setDescription] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [material, setMaterial] = useState("");
+  const [pattern, setPattern] = useState("");
+  const [fit, setFit] = useState("");
+  const [sleeve, setSleeve] = useState("");
+  const [occasion, setOccasion] = useState("");
+  const [season, setSeason] = useState("");
+  const [careInstructions, setCareInstructions] = useState("");
   const [mrp, setMrp] = useState("");
   const [price, setPrice] = useState("");
   const [discountPct, setDiscountPct] = useState("0");
@@ -65,11 +74,22 @@ export default function SellerProductEdit() {
   const [gender, setGender] = useState<string>("unisex");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brandId, setBrandId] = useState<string | null>(null);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [status, setStatus] = useState<string>("draft");
   const [initialStatus, setInitialStatus] = useState<string>("draft");
   const [tags, setTags] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [isFeatured, setIsFeatured] = useState(false);
+
+  const [preflight, setPreflight] = useState<{
+    auto_approved: boolean;
+    flagged: boolean;
+    score: number;
+    threshold: number;
+    reasons: { rule_id: string; message: string; blocking: boolean }[];
+  } | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
 
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [pendingImages, setPendingImages] = useState<PendingProductImage[]>([]);
@@ -93,6 +113,9 @@ export default function SellerProductEdit() {
         setCategories(categoriesRes.data);
       }
 
+      const brandsRes = await getBrands({ limit: 100 });
+      if (brandsRes.ok) setBrands(brandsRes.data);
+
       if (!isNew && id) {
         const productRes = await getSellerProductById(id);
         if (productRes.ok && productRes.data) {
@@ -102,12 +125,19 @@ export default function SellerProductEdit() {
           setDescription(p.description ?? "");
           setShortDescription(p.short_description ?? "");
           setMaterial(p.material ?? "");
+          setPattern((p as Product).pattern ?? "");
+          setFit((p as Product).fit ?? "");
+          setSleeve((p as Product).sleeve ?? "");
+          setOccasion((p as Product).occasion ?? "");
+          setSeason((p as Product).season ?? "");
+          setCareInstructions((p as Product).care_instructions ?? "");
           setMrp(String(p.mrp));
           setPrice(String(p.price));
           setDiscountPct(String(p.discount_pct));
           setTaxRate(String(p.tax_rate ?? 0));
           setGender(p.gender ?? "unisex");
           setCategoryId(p.category_id ?? null);
+          setBrandId((p as Product).brand_id ?? null);
           setStatus(p.status);
           setInitialStatus(p.status);
           setTags(p.tags?.join(", ") ?? "");
@@ -123,6 +153,10 @@ export default function SellerProductEdit() {
                   sku: v.sku ?? "",
                   size: v.size ?? "",
                   color: v.color ?? "",
+                  colorHex: (v as ProductVariant).color_hex ?? "",
+                  material: (v as ProductVariant).material ?? "",
+                  pattern: (v as ProductVariant).pattern ?? "",
+                  fit: (v as ProductVariant).fit ?? "",
                   price: v.price != null ? String(v.price) : "",
                   stock: String(v.stock ?? 0),
                 }))
@@ -182,14 +216,32 @@ export default function SellerProductEdit() {
     );
   };
 
+  const handleMoveExisting = (imageId: string, direction: "left" | "right") => {
+    const visible = existingImages.filter((img) => !removedImageIds.includes(img.id));
+    const idx = visible.findIndex((img) => img.id === imageId);
+    if (idx < 0) return;
+    const target = direction === "left" ? idx - 1 : idx + 1;
+    if (target < 0 || target >= visible.length) return;
+    const reordered = [...visible];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(target, 0, moved);
+    setExistingImages((prev) => {
+      const removed = prev.filter((img) => removedImageIds.includes(img.id));
+      return [...reordered, ...removed];
+    });
+  };
+
   const buildVariantInputs = (): SellerVariantInput[] => {
     const baseMrp = Number(mrp) || Number(price) || 0;
-    const basePrice = Number(price) || 0;
     return variants.map((variant, index) => ({
       id: variant.id,
       sku: variant.sku.trim() || undefined,
       size: variant.size.trim() || undefined,
       color: variant.color.trim() || undefined,
+      color_hex: variant.colorHex.trim() || undefined,
+      material: variant.material.trim() || undefined,
+      pattern: variant.pattern.trim() || undefined,
+      fit: variant.fit.trim() || undefined,
       price: variant.price.trim() ? Number(variant.price) : undefined,
       mrp: baseMrp,
       stock: Math.max(0, Number(variant.stock) || 0),
@@ -202,8 +254,15 @@ export default function SellerProductEdit() {
     if (!storeId) throw new Error("Store not found");
 
     for (const imageId of removedImageIds) {
-      const res = await deleteSellerProductImage(imageId);
+      const res = await deleteSellerProductImage(productId, imageId);
       if (!res.ok) throw new Error(res.error);
+    }
+
+    // Sync reorder of remaining existing images
+    if (visibleExistingImages.length > 1) {
+      const order = visibleExistingImages.map((img, i) => ({ id: img.id, position: i }));
+      const reorderRes = await reorderSellerProductImages(productId, order);
+      if (!reorderRes.ok) throw new Error(reorderRes.error);
     }
 
     if (pendingImages.length === 0) return;
@@ -280,12 +339,19 @@ export default function SellerProductEdit() {
         description: description.trim() || undefined,
         short_description: shortDescription.trim() || undefined,
         material: material.trim() || undefined,
+        pattern: pattern.trim() || undefined,
+        fit: fit.trim() || undefined,
+        sleeve: sleeve.trim() || undefined,
+        occasion: occasion.trim() || undefined,
+        season: season.trim() || undefined,
+        care_instructions: careInstructions.trim() || undefined,
         mrp: Number(mrp) || Number(price),
         price: Number(price),
         discount_pct: Number(discountPct) || 0,
         tax_rate: Number(taxRate) || 0,
         gender: gender as Product["gender"],
         category_id: categoryId ?? undefined,
+        brand_id: brandId ?? undefined,
         status: status as Product["status"],
         is_active: isActive,
         is_featured: isFeatured,
@@ -357,8 +423,32 @@ export default function SellerProductEdit() {
   };
 
   const genders = ["men", "women", "kids", "unisex"];
-  const statuses = ["draft", "pending"];
+  const statuses = ["draft", "active", "archived"];
   const isLive = initialStatus === "active";
+
+  // Live moderation preflight (debounced)
+  useEffect(() => {
+    if (!name.trim() || !price || Number.isNaN(Number(price))) {
+      setPreflight(null);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setPreflightBusy(true);
+      const res = await preflightModeration({
+        name: name.trim(),
+        description: description.trim() || null,
+        price: Number(price),
+        mrp: Number(mrp) || undefined,
+        brand_id: brandId,
+        category_id: categoryId,
+        image_urls: existingImages.filter((i) => !removedImageIds.includes(i.id)).map((i) => i.url),
+        variant_count: variants.length,
+      });
+      setPreflightBusy(false);
+      if (res.ok) setPreflight(res.data);
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [name, description, price, mrp, brandId, categoryId, existingImages, removedImageIds, variants.length]);
 
   const handleDeleteProduct = () => {
     if (isNew || !id) return;
@@ -413,6 +503,7 @@ export default function SellerProductEdit() {
           onRemovePending={handleRemovePending}
           onSetPrimaryExisting={handleSetPrimaryExisting}
           onSetPrimaryPending={handleSetPrimaryPending}
+          onMoveExisting={!isNew ? handleMoveExisting : undefined}
         />
 
         <View style={styles.field}>
@@ -551,6 +642,103 @@ export default function SellerProductEdit() {
           />
         </View>
 
+        <View style={styles.row}>
+          <View style={[styles.field, { flex: 1 }]}>
+            <Text style={styles.label}>Pattern</Text>
+            <TextInput
+              style={styles.input}
+              value={pattern}
+              onChangeText={setPattern}
+              placeholder="Solid, striped…"
+              placeholderTextColor={colors.light.mutedForeground}
+            />
+          </View>
+          <View style={{ width: 10 }} />
+          <View style={[styles.field, { flex: 1 }]}>
+            <Text style={styles.label}>Fit</Text>
+            <TextInput
+              style={styles.input}
+              value={fit}
+              onChangeText={setFit}
+              placeholder="Slim, regular…"
+              placeholderTextColor={colors.light.mutedForeground}
+            />
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <View style={[styles.field, { flex: 1 }]}>
+            <Text style={styles.label}>Sleeve</Text>
+            <TextInput
+              style={styles.input}
+              value={sleeve}
+              onChangeText={setSleeve}
+              placeholder="Short, long…"
+              placeholderTextColor={colors.light.mutedForeground}
+            />
+          </View>
+          <View style={{ width: 10 }} />
+          <View style={[styles.field, { flex: 1 }]}>
+            <Text style={styles.label}>Season</Text>
+            <TextInput
+              style={styles.input}
+              value={season}
+              onChangeText={setSeason}
+              placeholder="Summer, all…"
+              placeholderTextColor={colors.light.mutedForeground}
+            />
+          </View>
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Occasion</Text>
+          <TextInput
+            style={styles.input}
+            value={occasion}
+            onChangeText={setOccasion}
+            placeholder="Casual, formal…"
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Care instructions</Text>
+          <TextInput
+            style={[styles.input, styles.textArea, { minHeight: 70 }]}
+            value={careInstructions}
+            onChangeText={setCareInstructions}
+            placeholder="Machine wash cold, tumble dry low…"
+            multiline
+            numberOfLines={3}
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Brand</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+            <TouchableOpacity
+              style={[styles.chip, !brandId && styles.chipActive]}
+              onPress={() => setBrandId(null)}
+            >
+              <Text style={[styles.chipText, !brandId && styles.chipTextActive]}>None</Text>
+            </TouchableOpacity>
+            {brands.map((brand) => (
+              <TouchableOpacity
+                key={brand.id}
+                style={[styles.chip, brandId === brand.id && styles.chipActive]}
+                onPress={() => setBrandId(brand.id)}
+              >
+                <Text
+                  style={[styles.chipText, brandId === brand.id && styles.chipTextActive]}
+                >
+                  {brand.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
         <View style={styles.field}>
           <Text style={styles.label}>Category</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
@@ -600,11 +788,11 @@ export default function SellerProductEdit() {
           <Text style={styles.label}>Listing status</Text>
           {isLive ? (
             <Text style={styles.liveStatusNote}>
-              This product is live. Updates stay published; major changes may require re-approval.
+              This product is live. Switching to Active resubmits to moderation. Archived hides from shoppers.
             </Text>
           ) : (
             <Text style={styles.liveStatusNote}>
-              Choose draft to keep private or pending to submit for admin review.
+              Choose Active to submit for review (auto-approves when score is high enough). Archived hides the product.
             </Text>
           )}
           <View style={styles.chipRow}>
@@ -619,7 +807,7 @@ export default function SellerProductEdit() {
                 </Text>
               </TouchableOpacity>
             ))}
-            {isLive ? (
+            {isLive && status !== "active" ? (
               <View style={[styles.chip, styles.chipLive]}>
                 <Text style={[styles.chipText, styles.chipTextActive]}>Active</Text>
               </View>
@@ -636,6 +824,39 @@ export default function SellerProductEdit() {
             placeholder="e.g. cotton, casual, summer"
             placeholderTextColor={colors.light.mutedForeground}
           />
+        </View>
+
+        {/* Live moderation preflight */}
+        <View style={[styles.preflightCard, preflight ? (
+          preflight.flagged ? styles.preflightFlagged : preflight.auto_approved ? styles.preflightApproved : styles.preflightPending
+        ) : styles.preflightIdle]}>
+          <View style={styles.preflightHeader}>
+            <Text style={styles.preflightTitle}>
+              {preflightBusy ? "Scoring…" :
+                preflight
+                  ? preflight.auto_approved ? "Auto-approval likely"
+                    : preflight.flagged ? "Will be flagged"
+                    : "Pending review"
+                  : "Moderation preflight"}
+            </Text>
+            {preflight ? (
+              <Text style={styles.preflightScore}>
+                {preflight.score}/{preflight.threshold}
+              </Text>
+            ) : null}
+          </View>
+          {preflight && preflight.reasons.length > 0 ? (
+            <View style={{ marginTop: 6 }}>
+              {preflight.reasons.slice(0, 3).map((r, i) => (
+                <Text key={i} style={styles.preflightReason}>
+                  • {r.message}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+          <Text style={styles.preflightHint}>
+            Updates as you type. Final check runs on save.
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -790,5 +1011,39 @@ const styles = StyleSheet.create({
     color: "#dc2626",
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  preflightCard: {
+    marginTop: 8,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+  },
+  preflightIdle: { backgroundColor: colors.light.muted, borderColor: colors.light.border },
+  preflightApproved: { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" },
+  preflightPending: { backgroundColor: "#fffbeb", borderColor: "#fde68a" },
+  preflightFlagged: { backgroundColor: "#fff1f2", borderColor: "#fecdd3" },
+  preflightHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  preflightTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+  },
+  preflightScore: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    fontFamily: "monospace",
+  },
+  preflightReason: {
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+  },
+  preflightHint: {
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    fontStyle: "italic",
   },
 });

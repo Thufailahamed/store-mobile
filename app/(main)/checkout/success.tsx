@@ -15,8 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground } from "@/components/layout";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { useAuth } from "@/lib/supabase/auth";
-import { supabase } from "@/lib/supabase/client";
 import { getOrderById } from "@/lib/api";
+import { getProductsBackend, getReferralStatsBackend } from "@/lib/api/backend";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { trackEvent, snapshotProduct } from "@/lib/recommender";
 import { Button, Avatar, useToast } from "@/components/ui";
@@ -111,48 +111,23 @@ export default function OrderSuccessScreen() {
     };
   }, [siblingOrderIds.join(",")]);
 
-  // Fetch Referral Code
+  // Fetch Referral Code — backend owns the source of truth (no fabricated
+  // "LUXE${id.slice}" strings that collide in analytics / share intent).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
     const loadReferral = async () => {
-      try {
-        const { data: refData } = await supabase
-          .from("referral_codes")
-          .select("code")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (cancelled) return;
-        if (refData?.code) {
-          setReferralCode(refData.code);
-          return;
-        }
-
-        const { data: userData } = await supabase
-          .from("users")
-          .select("referral_code")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (cancelled) return;
-        if (userData?.referral_code) {
-          setReferralCode(userData.referral_code);
-          return;
-        }
-
-        const fallback = `LUXE${user.id.slice(0, 6).toUpperCase()}`;
-        setReferralCode(fallback);
-      } catch {
-        if (!cancelled) {
-          const fallback = `LUXE${user.id.slice(0, 6).toUpperCase()}`;
-          setReferralCode(fallback);
-        }
+      const res = await getReferralStatsBackend();
+      if (cancelled) return;
+      if (res.ok && res.data) {
+        setReferralCode(res.data.code);
       }
     };
-    loadReferral();
+    void loadReferral();
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user?.id]);
 
   // Fetch Recommendations dynamically
   const fetchRecommendations = async (orderItems: OrderItem[]) => {
@@ -170,41 +145,38 @@ export default function OrderSuccessScreen() {
         }
       }
 
-      const categoryIds = orderItems
-        .map((item) => item.product?.category_id)
-        .filter(Boolean) as string[];
-
-      let query = supabase
-        .from("products")
-        .select(
-          "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)"
-        )
-        .eq("status", "active")
-        .limit(6);
-
-      if (categoryIds.length > 0) {
-        query = query.in("category_id", categoryIds);
-      }
-
-      const { data } = await query;
-      const orderProductIds = orderItems.map((item) => item.product_id);
-
-      let filtered = mapProducts((data as Product[]) || []).filter(
-        (p) => !orderProductIds.includes(p.id)
+      const categoryIds = Array.from(
+        new Set(
+          orderItems
+            .map((item) => item.product?.category_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
       );
 
+      // Try the first matching category first, then fall back to featured
+      // picks. Backend already filters to status='active' + is_active=true
+      // and returns the same shape that mapProducts consumes.
+      let filtered: Product[] = [];
+      for (const categoryId of categoryIds) {
+        const res = await getProductsBackend({ category: categoryId, limit: 12 });
+        if (res.ok && res.data) {
+          filtered = mapProducts(res.data.products).slice(0, 6);
+          if (filtered.length > 0) break;
+        }
+      }
+
+      const orderProductIds = orderItems.map((item) => item.product_id);
+      filtered = filtered.filter((p) => !orderProductIds.includes(p.id));
+
       if (filtered.length === 0) {
-        const { data: featured } = await supabase
-          .from("products")
-          .select(
-            "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*)"
-          )
-          .eq("status", "active")
-          .eq("is_featured", true)
-          .limit(6);
-        filtered = mapProducts((featured as Product[]) || []).filter(
-          (p) => !orderProductIds.includes(p.id)
-        );
+        // Featured fallback — sort by popularity to surface what other
+        // buyers love.
+        const res = await getProductsBackend({ sort: "popularity", limit: 12 });
+        if (res.ok && res.data) {
+          filtered = mapProducts(res.data.products)
+            .filter((p) => !orderProductIds.includes(p.id))
+            .slice(0, 6);
+        }
       }
       setRecommendations(filtered);
     } catch {

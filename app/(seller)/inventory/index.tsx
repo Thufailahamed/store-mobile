@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,9 +9,17 @@ import {
   Image,
   RefreshControl,
   Alert,
+  Share,
 } from "react-native";
+import { Ionicons } from "@/components/ui/Icon";
+import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerInventory, updateVariantStock } from "@/lib/api";
+import {
+  getSellerStore,
+  getSellerInventory,
+  updateVariantStock,
+  type Result,
+} from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Product, ProductVariant } from "@/lib/types";
 
@@ -32,10 +40,41 @@ interface InventoryRow {
 }
 
 function formatPrice(n: number) {
-  return `Rs. ${n.toLocaleString("en-LK")}`;
+  try {
+    return `Rs. ${Number(n ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  } catch {
+    return `Rs. ${n}`;
+  }
+}
+
+function toCSV(rows: InventoryRow[]): string {
+  const header = ["SKU", "Product", "Size", "Color", "On hand", "Reserved", "Available", "Price", "Value"];
+  const escape = (s: string | number | undefined) => {
+    if (s == null) return "";
+    const str = String(s);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    lines.push(
+      [
+        escape(r.sku),
+        escape(r.productName),
+        escape(r.size),
+        escape(r.color),
+        r.onHand,
+        r.reserved,
+        r.available,
+        r.price,
+        r.onHand * r.price,
+      ].join(","),
+    );
+  }
+  return lines.join("\n");
 }
 
 export default function SellerInventory() {
+  const router = useRouter();
   const { user } = useAuth();
   const [storeId, setStoreId] = useState<string | null>(null);
   const [rows, setRows] = useState<InventoryRow[]>([]);
@@ -46,6 +85,12 @@ export default function SellerInventory() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draftStock, setDraftStock] = useState("0");
   const [saving, setSaving] = useState(false);
+
+  // Bulk edit mode
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStock, setBulkStock] = useState("0");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -101,22 +146,52 @@ export default function SellerInventory() {
     fetchData();
   }, [fetchData]);
 
-  const filtered = rows.filter((r) => {
-    const matchSearch = !search ||
-      r.productName.toLowerCase().includes(search.toLowerCase()) ||
-      r.sku.toLowerCase().includes(search.toLowerCase());
-    if (filter === "low") return matchSearch && r.available > 0 && r.available < LOW_STOCK_THRESHOLD;
-    if (filter === "out") return matchSearch && r.available === 0;
-    if (filter === "healthy") return matchSearch && r.available >= LOW_STOCK_THRESHOLD;
-    return matchSearch;
-  });
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return rows.filter((r) => {
+      const matchSearch = !q ||
+        r.productName.toLowerCase().includes(q) ||
+        r.sku.toLowerCase().includes(q) ||
+        (r.size ?? "").toLowerCase().includes(q) ||
+        (r.color ?? "").toLowerCase().includes(q);
+      if (filter === "low") return matchSearch && r.available > 0 && r.available < LOW_STOCK_THRESHOLD;
+      if (filter === "out") return matchSearch && r.available === 0;
+      if (filter === "healthy") return matchSearch && r.available >= LOW_STOCK_THRESHOLD;
+      return matchSearch;
+    });
+  }, [rows, search, filter]);
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: rows.length,
     healthy: rows.filter((r) => r.available >= LOW_STOCK_THRESHOLD).length,
     low: rows.filter((r) => r.available > 0 && r.available < LOW_STOCK_THRESHOLD).length,
     out: rows.filter((r) => r.available === 0).length,
-  };
+  }), [rows]);
+
+  const totalValue = useMemo(
+    () => filtered.reduce((sum, r) => sum + r.onHand * r.price, 0),
+    [filtered],
+  );
+
+  // Top 5 at-risk variants by available stock, asc. Drives the "Lowest stock" panel.
+  const lowestRows = useMemo(
+    () =>
+      rows
+        .filter((r) => r.available < LOW_STOCK_THRESHOLD)
+        .slice()
+        .sort((a, b) => a.available - b.available)
+        .slice(0, 5),
+    [rows],
+  );
+
+  // Cash value of the at-risk stock — Rs. X on hand across the low subset.
+  const lowStockValue = useMemo(
+    () =>
+      rows
+        .filter((r) => r.available > 0 && r.available < LOW_STOCK_THRESHOLD)
+        .reduce((s, r) => s + r.available * r.price, 0),
+    [rows],
+  );
 
   const handleSaveStock = async (row: InventoryRow) => {
     const newStock = Math.max(0, Number(draftStock) || 0);
@@ -137,7 +212,7 @@ export default function SellerInventory() {
 
   const saveStock = async (row: InventoryRow, newStock: number) => {
     setSaving(true);
-    const res = await updateVariantStock(row.variantId, newStock);
+    const res = await updateVariantStock(row.productId, row.variantId, newStock);
     setSaving(false);
     if (res.ok) {
       setRows((prev) =>
@@ -157,13 +232,89 @@ export default function SellerInventory() {
     }
   };
 
+  const exitSelect = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkApply = async () => {
+    if (selectedIds.size === 0) return;
+    const newStock = Math.max(0, Number(bulkStock) || 0);
+    const ids = Array.from(selectedIds);
+    setBulkBusy(true);
+    const targets = rows.filter((r) => selectedIds.has(r.variantId));
+    const results = await Promise.allSettled(
+      targets.map((r) => updateVariantStock(r.productId, r.variantId, newStock) as Promise<Result<void>>),
+    );
+    setBulkBusy(false);
+    const failed = results.filter(
+      (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok),
+    );
+    if (failed.length === 0) {
+      Alert.alert("Done", `${ids.length} variant(s) updated to ${newStock}.`);
+      setRows((prev) =>
+        prev.map((r) =>
+          selectedIds.has(r.variantId)
+            ? { ...r, onHand: newStock, available: Math.max(0, newStock - r.reserved) }
+            : r
+        )
+      );
+      exitSelect();
+    } else {
+      Alert.alert(
+        "Partial",
+        `${ids.length - failed.length} updated, ${failed.length} failed.`,
+        [{ text: "OK", onPress: () => onRefresh() }],
+      );
+    }
+  };
+
+  const exportCSV = async () => {
+    if (filtered.length === 0) {
+      Alert.alert("Nothing to export", "No rows match the current filters.");
+      return;
+    }
+    const csv = toCSV(filtered);
+    try {
+      await Share.share({
+        message: csv,
+        title: `inventory-${new Date().toISOString().slice(0, 10)}.csv`,
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Could not share");
+    }
+  };
+
   const renderRow = ({ item }: { item: InventoryRow }) => {
     const isEditing = editing === item.variantId;
     const stockStatus =
       item.available === 0 ? "out" : item.available < LOW_STOCK_THRESHOLD ? "low" : "healthy";
+    const selected = selectedIds.has(item.variantId);
 
     return (
-      <View style={[styles.tableRow, stockStatus === "out" && styles.rowOut, stockStatus === "low" && styles.rowLow]}>
+      <View style={[styles.tableRow, selected && styles.rowSelected, stockStatus === "out" && styles.rowOut, stockStatus === "low" && styles.rowLow]}>
+        {selectMode && (
+          <TouchableOpacity
+            style={styles.checkbox}
+            onPress={() => toggleSelect(item.variantId)}
+            hitSlop={6}
+          >
+            <Ionicons
+              name={selected ? "checkbox" : "square-outline"}
+              size={20}
+              color={selected ? colors.light.primary : colors.light.mutedForeground}
+            />
+          </TouchableOpacity>
+        )}
         <View style={styles.tableCellImage}>
           {item.image ? (
             <Image source={{ uri: item.image }} style={styles.cellImage} />
@@ -179,6 +330,10 @@ export default function SellerInventory() {
           <Text style={styles.cellVariant}>
             {[item.size, item.color].filter(Boolean).join(" · ") || "—"}
           </Text>
+        </View>
+        <View style={styles.tableCellPrice}>
+          <Text style={styles.cellPrice}>{formatPrice(item.price)}</Text>
+          <Text style={styles.cellValue}>{formatPrice(item.onHand * item.price)}</Text>
         </View>
         <View style={styles.tableCellStock}>
           {isEditing ? (
@@ -229,13 +384,16 @@ export default function SellerInventory() {
             </View>
           )}
         </View>
-        <View style={styles.tableCellAction}>
-          {!isEditing && (
-            <TouchableOpacity onPress={() => { setEditing(item.variantId); setDraftStock(String(item.onHand)); }}>
+        {!selectMode && (
+          <View style={styles.tableCellAction}>
+            <TouchableOpacity
+              onPress={() => { setEditing(item.variantId); setDraftStock(String(item.onHand)); }}
+              hitSlop={6}
+            >
               <Text style={styles.editBtn}>Edit</Text>
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     );
   };
@@ -244,8 +402,38 @@ export default function SellerInventory() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Inventory</Text>
-        <Text style={styles.count}>{rows.length} variants</Text>
+        <View>
+          <Text style={styles.title}>Inventory</Text>
+          <Text style={styles.count}>
+            {filtered.length} of {rows.length} variants · {formatPrice(totalValue)} value
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          {selectMode ? (
+            <TouchableOpacity style={styles.cancelBtn} onPress={exitSelect}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.headerBtn}
+                onPress={() => setSelectMode(true)}
+                disabled={filtered.length === 0}
+              >
+                <Ionicons name="checkmark-circle-outline" size={16} color={colors.light.foreground} />
+                <Text style={styles.headerBtnText}>Select</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerBtn}
+                onPress={exportCSV}
+                disabled={filtered.length === 0}
+              >
+                <Ionicons name="share-outline" size={16} color={colors.light.foreground} />
+                <Text style={styles.headerBtnText}>CSV</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
       {/* KPI Cards */}
@@ -268,15 +456,111 @@ export default function SellerInventory() {
         </View>
       </View>
 
+      {/* Low-stock alert banner — only shown when at least one variant is at risk. */}
+      {stats.low > 0 ? (
+        <View style={styles.lowStockBanner}>
+          <View style={styles.lowStockIcon}>
+            <Ionicons name="alert-circle" size={18} color="#b45309" />
+          </View>
+          <View style={styles.lowStockText}>
+            <Text style={styles.lowStockTitle}>
+              {stats.low} variant{stats.low === 1 ? "" : "s"} running low
+            </Text>
+            <Text style={styles.lowStockSub}>
+              Below the {LOW_STOCK_THRESHOLD}-unit threshold · {formatPrice(lowStockValue)} of stock on hand
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.lowStockCta}
+            onPress={() => setFilter("low")}
+            hitSlop={6}
+          >
+            <Text style={styles.lowStockCtaText}>Review</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* Lowest-stock visual map — top 5 at-risk variants sorted by available stock asc. */}
+      {lowestRows.length > 0 ? (
+        <View style={styles.lowStockPanel}>
+          <View style={styles.lowStockPanelHeader}>
+            <View style={styles.lowStockPanelTitleRow}>
+              <Ionicons name="trending-down" size={14} color="#b45309" />
+              <Text style={styles.lowStockPanelTitle}>At risk · Lowest stock first</Text>
+            </View>
+            <Text style={styles.lowStockPanelHint}>Tap to restock</Text>
+          </View>
+          {lowestRows.map((r) => {
+            const pct = Math.max(2, Math.min(100, Math.round((r.available / LOW_STOCK_THRESHOLD) * 100)));
+            // Red < 30%, amber < 70%, green otherwise.
+            const tone =
+              r.available === 0
+                ? { bar: "#dc2626", label: "Out" }
+                : r.available < 2
+                  ? { bar: "#dc2626", label: "Critical" }
+                  : r.available < 4
+                    ? { bar: "#f59e0b", label: "Low" }
+                    : { bar: "#10b981", label: "Close" };
+            return (
+              <TouchableOpacity
+                key={r.variantId}
+                style={styles.lowStockRow}
+                onPress={() => {
+                  // Jump straight into stock-edit mode for this variant.
+                  setEditing(r.variantId);
+                  setDraftStock(String(r.onHand));
+                }}
+                activeOpacity={0.8}
+              >
+                {r.image ? (
+                  <Image source={{ uri: r.image }} style={styles.lowStockImage} />
+                ) : (
+                  <View style={[styles.lowStockImage, styles.cellImagePlaceholder]}>
+                    <Text style={{ fontSize: 16 }}>📦</Text>
+                  </View>
+                )}
+                <View style={styles.lowStockInfo}>
+                  <Text style={styles.lowStockName} numberOfLines={1}>{r.productName}</Text>
+                  <View style={styles.lowStockVariantRow}>
+                    <Text style={styles.lowStockVariant} numberOfLines={1}>
+                      {[r.size, r.color].filter(Boolean).join(" · ") || "—"}
+                    </Text>
+                    <View style={[styles.lowStockTonePill, { backgroundColor: tone.bar + "20" }]}>
+                      <View style={[styles.lowStockToneDot, { backgroundColor: tone.bar }]} />
+                      <Text style={[styles.lowStockToneText, { color: tone.bar }]}>{tone.label}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.lowStockBarTrack}>
+                    <View style={[styles.lowStockBarFill, { width: `${pct}%`, backgroundColor: tone.bar }]} />
+                  </View>
+                </View>
+                <View style={styles.lowStockNumbers}>
+                  <Text style={styles.lowStockCount}>{r.available}</Text>
+                  <Text style={styles.lowStockCountSub}>avail</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+
       {/* Search + Filter */}
       <View style={styles.filterRow}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search SKU or product..."
-          value={search}
-          onChangeText={setSearch}
-          placeholderTextColor={colors.light.mutedForeground}
-        />
+        <View style={styles.searchInputWrap}>
+          <Ionicons name="search" size={16} color={colors.light.mutedForeground} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search SKU, product, size, color..."
+            value={search}
+            onChangeText={setSearch}
+            placeholderTextColor={colors.light.mutedForeground}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")} hitSlop={6}>
+              <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       <View style={styles.filterTabs}>
         {(["all", "healthy", "low", "out"] as const).map((f) => (
@@ -294,11 +578,26 @@ export default function SellerInventory() {
 
       {/* Table Header */}
       <View style={styles.tableHeader}>
+        {selectMode && (
+          <View style={{ width: 36, alignItems: "center" }}>
+            <TouchableOpacity onPress={() => {
+              const allVisible = filtered.every((r) => selectedIds.has(r.variantId));
+              setSelectedIds(allVisible ? new Set() : new Set(filtered.map((r) => r.variantId)));
+            }} hitSlop={6}>
+              <Ionicons
+                name={filtered.every((r) => selectedIds.has(r.variantId)) && filtered.length > 0 ? "checkbox" : "square-outline"}
+                size={18}
+                color={colors.light.mutedForeground}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
         <Text style={[styles.tableHeaderText, { width: 44 }]}> </Text>
         <Text style={[styles.tableHeaderText, { flex: 1 }]}>Product</Text>
-        <Text style={[styles.tableHeaderText, { width: 72 }]}>Stock</Text>
-        <Text style={[styles.tableHeaderText, { width: 50 }]}>Status</Text>
-        <Text style={[styles.tableHeaderText, { width: 44 }]}> </Text>
+        <Text style={[styles.tableHeaderText, { width: 70, textAlign: "right" }]}>Price / Val</Text>
+        <Text style={[styles.tableHeaderText, { width: 72, textAlign: "right" }]}>Stock</Text>
+        <Text style={[styles.tableHeaderText, { width: 44, textAlign: "center" }]}>Stat</Text>
+        {!selectMode && <Text style={[styles.tableHeaderText, { width: 38 }]}> </Text>}
       </View>
 
       {/* Table */}
@@ -307,14 +606,43 @@ export default function SellerInventory() {
         keyExtractor={(item) => item.variantId}
         renderItem={renderRow}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, selectMode && { paddingBottom: 96 }]}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyTitle}>No variants found</Text>
-          </View>
+          !loading ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>📋</Text>
+              <Text style={styles.emptyTitle}>No variants found</Text>
+            </View>
+          ) : null
         }
       />
+
+      {/* Bulk action bar */}
+      {selectMode && (
+        <View style={styles.bulkBar}>
+          <View style={styles.bulkInfo}>
+            <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
+          </View>
+          <View style={styles.bulkControls}>
+            <Text style={styles.bulkLabel}>Set stock</Text>
+            <TextInput
+              style={styles.bulkInput}
+              value={bulkStock}
+              onChangeText={setBulkStock}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+            />
+            <TouchableOpacity
+              style={[styles.bulkApplyBtn, bulkBusy && styles.bulkApplyBtnBusy]}
+              onPress={bulkApply}
+              disabled={bulkBusy || selectedIds.size === 0}
+            >
+              <Text style={styles.bulkApplyText}>{bulkBusy ? "…" : "Apply"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -329,12 +657,42 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 8,
   },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   title: {
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.bold as any,
     color: colors.light.foreground,
   },
-  count: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
+  count: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+  },
+  headerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.muted,
+  },
+  headerBtnText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium as any,
+    color: colors.light.foreground,
+  },
+  cancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.muted,
+  },
+  cancelBtnText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.foreground,
+    fontWeight: typography.fontWeights.medium as any,
+  },
 
   kpiRow: {
     flexDirection: "row",
@@ -360,12 +718,19 @@ const styles = StyleSheet.create({
   },
 
   filterRow: { paddingHorizontal: 16, marginBottom: 8 },
-  searchInput: {
+  searchInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.light.card,
     borderWidth: 1,
     borderColor: colors.light.border,
     borderRadius: radii.lg,
-    padding: 12,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
     fontSize: typography.fontSizes.sm,
     color: colors.light.foreground,
   },
@@ -400,6 +765,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: colors.light.muted,
+    gap: 4,
   },
   tableHeaderText: {
     fontSize: 10,
@@ -418,8 +784,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
   },
+  rowSelected: { backgroundColor: "#f0f9ff" },
   rowOut: { backgroundColor: "#fef2f2" },
   rowLow: { backgroundColor: "#fffbeb" },
+
+  checkbox: {
+    width: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+  },
 
   tableCellImage: { width: 44, marginRight: 8 },
   cellImage: { width: 36, height: 36, borderRadius: radii.md },
@@ -444,6 +818,17 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     textTransform: "capitalize",
   },
+  tableCellPrice: { width: 70, alignItems: "flex-end", marginRight: 4 },
+  cellPrice: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.foreground,
+    fontWeight: typography.fontWeights.medium as any,
+  },
+  cellValue: {
+    fontSize: 9,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
+  },
   tableCellStock: { width: 72, alignItems: "flex-end" },
   stockStack: { alignItems: "flex-end" },
   cellStock: {
@@ -466,7 +851,7 @@ const styles = StyleSheet.create({
 
   editRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   editInput: {
-    width: 44,
+    width: 40,
     height: 28,
     borderWidth: 1,
     borderColor: colors.light.primary,
@@ -485,17 +870,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveBtnText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-  cancelBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.light.muted,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cancelBtnText: { color: colors.light.mutedForeground, fontSize: 12 },
 
-  tableCellStatus: { width: 50, alignItems: "center" },
+  tableCellStatus: { width: 44, alignItems: "center" },
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -509,7 +885,7 @@ const styles = StyleSheet.create({
   badgeTextLow: { color: "#854d0e" },
   badgeTextHealthy: { color: "#166534" },
 
-  tableCellAction: { width: 44, alignItems: "flex-end" },
+  tableCellAction: { width: 38, alignItems: "flex-end" },
   editBtn: {
     fontSize: typography.fontSizes.xs,
     color: colors.light.primary,
@@ -522,5 +898,206 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
     marginTop: 12,
+  },
+
+  bulkBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 12,
+    paddingHorizontal: 16,
+    backgroundColor: colors.light.foreground,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+  },
+  bulkInfo: { flex: 1 },
+  bulkCount: {
+    color: colors.light.background,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+  bulkControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bulkLabel: {
+    color: colors.light.background,
+    fontSize: typography.fontSizes.xs,
+  },
+  bulkInput: {
+    width: 56,
+    height: 32,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.light.background,
+    color: colors.light.background,
+    paddingHorizontal: 8,
+    fontSize: typography.fontSizes.sm,
+  },
+  bulkApplyBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.md,
+    backgroundColor: "#10b981",
+  },
+  bulkApplyBtnBusy: { opacity: 0.5 },
+  bulkApplyText: {
+    color: "#fff",
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  /* Low-stock alert banner */
+  lowStockBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: radii.lg,
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  lowStockIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#fffbeb",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lowStockText: { flex: 1 },
+  lowStockTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: "#92400e",
+  },
+  lowStockSub: {
+    fontSize: 11,
+    color: "#b45309",
+    marginTop: 1,
+  },
+  lowStockCta: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: "#92400e",
+  },
+  lowStockCtaText: {
+    color: "#fffbeb",
+    fontSize: 10,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  /* Lowest-stock visual map */
+  lowStockPanel: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: radii.lg,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    gap: 10,
+  },
+  lowStockPanelHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  lowStockPanelTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  lowStockPanelTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+  },
+  lowStockPanelHint: {
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    fontStyle: "italic",
+  },
+  lowStockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.light.border,
+  },
+  lowStockImage: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+  },
+  lowStockInfo: { flex: 1, gap: 4 },
+  lowStockName: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+  },
+  lowStockVariantRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  lowStockVariant: {
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    textTransform: "capitalize",
+    flex: 1,
+  },
+  lowStockTonePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+  },
+  lowStockToneDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  lowStockToneText: {
+    fontSize: 9,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+  lowStockBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.light.muted,
+    overflow: "hidden",
+  },
+  lowStockBarFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  lowStockNumbers: {
+    alignItems: "flex-end",
+    minWidth: 44,
+  },
+  lowStockCount: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold as any,
+    color: colors.light.foreground,
+  },
+  lowStockCountSub: {
+    fontSize: 9,
+    color: colors.light.mutedForeground,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 });

@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { getFollowedStores as getFollowedStoresFromDb } from "@/lib/api";
 import { getLocallyFollowedStoreIds } from "@/lib/api/stores";
 import { mapStore } from "@/lib/api/product-mapper";
-import { supabase } from "@/lib/supabase/client";
+import { getStoresBackend } from "@/lib/api/backend";
 import { colors, spacing } from "@/lib/theme/tokens";
 import type { Store } from "@/lib/types";
 
@@ -42,14 +42,14 @@ export default function FollowingScreen() {
       return;
     }
 
-    const { data, error } = await supabase.from("stores").select("*").in("id", localIds);
-    if (error || !data) {
+    const res = await getStoresBackend({ limit: 100 });
+    if (!res.ok || !res.data) {
       setStores([]);
       return;
     }
 
     const byId = new Map(
-      (data as Store[]).map((s) => [s.id, mapStore(s) as Store])
+      (res.data.stores as Store[]).map((s) => [s.id, mapStore(s) as Store])
     );
     setStores(localIds.map((id) => byId.get(id)).filter((s): s is Store => !!s));
   }, [user?.id]);

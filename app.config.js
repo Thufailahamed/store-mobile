@@ -43,6 +43,7 @@ module.exports = ({ config }) => {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "GOOGLE_MAPS_API_KEY_PLACEHOLDER";
   const storeApiUrl =
     process.env.EXPO_PUBLIC_STORE_API_URL || "https://store-backend.thufailahamed627.workers.dev";
+  const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN ?? "";
 
   const plugins = (config.plugins ?? []).map((plugin) => {
     if (plugin === "expo-font") return ["expo-font", { fonts: APP_FONTS }];
@@ -52,6 +53,15 @@ module.exports = ({ config }) => {
     return plugin;
   });
 
+  // Wire @sentry/react-native build-time plugin only when a DSN is set,
+  // so dev builds (no DSN) skip the native module and stay small.
+  if (sentryDsn && !plugins.some((p) => Array.isArray(p) && p[0] === "@sentry/react-native")) {
+    plugins.push([
+      "@sentry/react-native",
+      { url: sentryDsn, organization: "luxe", project: "luxe-mobile" },
+    ]);
+  }
+
   return {
     ...config,
     plugins,
@@ -60,6 +70,7 @@ module.exports = ({ config }) => {
       storeApiUrl,
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
       googleMapsApiKey: googleMapsApiKey,
+      sentryDsn,
     },
     // Hermes is the JS engine on SDK 52 by default for both iOS and
     // Android — makes `expo start` boots ~30% faster and shrinks the

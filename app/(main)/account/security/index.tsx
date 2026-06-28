@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
+  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
@@ -16,6 +19,14 @@ import { Badge, Button, useToast } from "@/components/ui";
 import { Body, Display, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
+import {
+  changePasswordBackend,
+  getSessionsBackend,
+  getSettingsBackend,
+  signOutAllBackend,
+  updateSettingsBackend,
+  type SecuritySession,
+} from "@/lib/api/backend";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -23,7 +34,6 @@ interface DeviceInfo {
   os: string;
   osVersion: string;
   model: string;
-  appVersion: string;
 }
 
 function readDeviceInfo(): DeviceInfo {
@@ -31,7 +41,6 @@ function readDeviceInfo(): DeviceInfo {
     os: Platform.OS === "ios" ? "iOS" : Platform.OS === "android" ? "Android" : "Web",
     osVersion: String(Platform.Version ?? "—"),
     model: (Platform as any).select?.({})?.toString?.() ?? "Mobile",
-    appVersion: "1.0.0",
   };
 }
 
@@ -53,6 +62,23 @@ function strengthOf(pwd: string): { score: 0 | 1 | 2 | 3 | 4; label: string; col
   return { score: score as 0 | 1 | 2 | 3 | 4, label: labels[score] ?? "Empty", color: palette[score] ?? colors.light.border };
 }
 
+function timeAgo(iso: string): string {
+  if (!iso) return "Just now";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "Just now";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "Active now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+const DEVICE_ICON: Record<"laptop" | "phone" | "tablet", keyof typeof Ionicons.glyphMap> = {
+  laptop: "laptop-outline",
+  phone: "phone-portrait-outline",
+  tablet: "tablet-portrait-outline",
+};
+
 export default function SecurityScreen() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
@@ -64,127 +90,228 @@ export default function SecurityScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [device] = useState<DeviceInfo>(readDeviceInfo());
+  const [sessions, setSessions] = useState<SecuritySession[]>([]);
+
+  // 2FA enrollment modal state
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollBusy, setEnrollBusy] = useState(false);
+  const [enrollQrSvg, setEnrollQrSvg] = useState("");
+  const [enrollSecret, setEnrollSecret] = useState("");
+  const [enrollFactorId, setEnrollFactorId] = useState<string | null>(null);
+  const [enrollCode, setEnrollCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
+  const loadSessions = async () => {
+    if (!user?.id) {
+      setSessions([]);
+      return;
+    }
+    const res = await getSessionsBackend();
+    if (!res.ok) {
+      toast(res.error ?? "Couldn't load sessions", "error");
+      return;
+    }
+    setSessions(res.data?.sessions ?? []);
+  };
+
+  const loadMfa = async () => {
+    try {
+      const { data } = await supabase.auth.mfa.listFactors();
+      const verified = data?.totp?.find((f) => f.status === "verified");
+      setMfaEnabled(Boolean(verified));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadSettings = async () => {
+    if (!user?.id) return;
+    const res = await getSettingsBackend();
+    if (res.ok && res.data?.settings) {
+      const meta = (res.data.settings.privacy ?? {}) as Record<string, unknown>;
+      const savedEmail = typeof meta.recovery_email === "string" ? meta.recovery_email : "";
+      setRecoveryEmail(savedEmail);
+      setRecoveryEmailSaved(savedEmail);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) return;
-    const userId = user.id;
     let cancelled = false;
-    supabase
-      .from("users")
-      .select("mfa_enabled, metadata")
-      .eq("id", userId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (!error && data) {
-          setMfaEnabled(Boolean(data.mfa_enabled));
-          const savedEmail = (data as any).metadata?.recovery_email ?? "";
-          setRecoveryEmail(savedEmail);
-          setRecoveryEmailSaved(savedEmail);
-        }
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    (async () => {
+      await Promise.all([loadSessions(), loadMfa(), loadSettings()]);
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const toggleMfa = async (checked: boolean) => {
-    if (!user?.id) return;
-    setMfaEnabled(checked);
-    const { error } = await supabase.from("users").update({ mfa_enabled: checked }).eq("id", user.id);
-    if (error) {
-      setMfaEnabled(!checked);
-      toast(error.message, "error");
-    } else {
-      toast(checked ? "Two-factor authentication enabled" : "Two-factor authentication disabled", "success");
+  const startEnroll = async () => {
+    setEnrollBusy(true);
+    setEnrollCode("");
+    setEnrollQrSvg("");
+    setEnrollSecret("");
+    setEnrollFactorId(null);
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "Authenticator app",
+      });
+      if (error || !data) throw error ?? new Error("Enrollment failed");
+      setEnrollQrSvg(data.totp?.qr_code ?? "");
+      setEnrollSecret(data.totp?.secret ?? "");
+      setEnrollFactorId(data.id);
+      setEnrollOpen(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not start enrollment";
+      toast(msg, "error");
+    } finally {
+      setEnrollBusy(false);
+    }
+  };
+
+  const verifyEnrollment = async () => {
+    if (!enrollFactorId) return;
+    if (!/^\d{6}$/.test(enrollCode.trim())) {
+      toast("Code must be 6 digits", "error");
+      return;
+    }
+    setVerifying(true);
+    try {
+      const challenge = await supabase.auth.mfa.challenge({ factorId: enrollFactorId });
+      if (challenge.error || !challenge.data) throw challenge.error ?? new Error("Challenge failed");
+      const verify = await supabase.auth.mfa.verify({
+        factorId: enrollFactorId,
+        challengeId: challenge.data.id,
+        code: enrollCode.trim(),
+      });
+      if (verify.error) throw verify.error;
+      toast("Two-factor authentication enabled", "success");
+      setMfaEnabled(true);
+      setEnrollOpen(false);
+      setEnrollCode("");
+      setEnrollFactorId(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      toast(msg, "error");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const disableMfa = async () => {
+    try {
+      const { data } = await supabase.auth.mfa.listFactors();
+      const verified = data?.totp?.find((f) => f.status === "verified");
+      if (!verified) {
+        setMfaEnabled(false);
+        return;
+      }
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: verified.id });
+      if (error) throw error;
+      setMfaEnabled(false);
+      toast("Two-factor disabled", "success");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't disable 2FA";
+      toast(msg, "error");
     }
   };
 
   const changePassword = async () => {
-    if (!newPassword.trim()) {
-      toast("Enter a new password", "error");
+    if (currentPassword.length < 8) {
+      toast("Enter your current password", "error");
       return;
     }
     if (newPassword.length < 8) {
       toast("Password must be at least 8 characters", "error");
       return;
     }
+    if (currentPassword === newPassword) {
+      toast("New password must differ from current password", "error");
+      return;
+    }
 
     setSaving(true);
-    try {
-      const payload: { password: string } = { password: newPassword };
-      const { error } = await supabase.auth.updateUser(payload as any);
-      if (error) throw error;
-      setCurrentPassword("");
-      setNewPassword("");
-      toast("Password updated", "success");
-    } catch (error: any) {
-      toast(error?.message ?? "Could not update password", "error");
-    } finally {
-      setSaving(false);
+    const res = await changePasswordBackend({ currentPassword, newPassword });
+    setSaving(false);
+    if (!res.ok) {
+      toast(res.error ?? "Could not update password", "error");
+      return;
     }
+    toast("Password updated", "success");
+    setCurrentPassword("");
+    setNewPassword("");
   };
 
   const saveRecoveryEmail = async () => {
-    if (!user?.id) return;
     if (recoveryEmail && !/^[^@]+@[^@]+\.[^@]+$/.test(recoveryEmail)) {
       toast("Enter a valid email", "error");
       return;
     }
     setSaving(true);
-    const { error } = await supabase.rpc("update_privacy_prefs", {
-      p_patch: { recovery_email: recoveryEmail },
-    });
+    const res = await updateSettingsBackend({ privacy: { recovery_email: recoveryEmail || null } });
     setSaving(false);
-    if (error) {
-      toast(error.message, "error");
+    if (!res.ok) {
+      toast(res.error ?? "Could not save recovery email", "error");
       return;
     }
     setRecoveryEmailSaved(recoveryEmail);
     toast("Recovery email saved", "success");
   };
 
+  const signOutEverywhere = async () => {
+    setSaving(true);
+    const res = await signOutAllBackend();
+    setSaving(false);
+    if (!res.ok) {
+      toast(res.error ?? "Could not sign out everywhere", "error");
+      return;
+    }
+    try {
+      await supabase.auth.signOut({ scope: "global" } as any);
+    } catch {
+      /* ignore */
+    }
+    await signOut();
+    toast("Signed out of every device", "success");
+  };
+
   const signOutAll = () => {
-    Alert.alert("Sign out everywhere", "End every active session on all devices, including this one.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign out all",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await supabase.auth.signOut({ scope: "global" } as any);
-            toast("Signed out of every device", "success");
-            await signOut();
-          } catch (error: any) {
-            toast(error?.message ?? "Could not sign out", "error");
-          }
-        },
-      },
-    ]);
+    Alert.alert(
+      "Sign out everywhere",
+      "End every active session on all devices, including this one.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign out all", style: "destructive", onPress: () => void signOutEverywhere() },
+      ],
+    );
   };
 
   const score = mfaEnabled ? 95 : 60;
   const pwdStrength = strengthOf(newPassword);
 
-  const sessions = useMemo(() => {
-    const list: {
-      id: string;
-      label: string;
-      meta: string;
-      current: boolean;
-      icon: keyof typeof Ionicons.glyphMap;
-    }[] = [
-      {
-        id: "this",
-        label: `${device.os} · LUXE Mobile`,
-        meta: `${device.osVersion} · This device · Active now`,
-        current: true,
-        icon: "phone-portrait-outline",
-      },
-    ];
-    return list;
-  }, [device]);
+  const sessionRows = useMemo(() => {
+    if (sessions.length === 0) {
+      return [
+        {
+          id: "this",
+          label: `${device.os} · LUXE Mobile`,
+          meta: `${device.osVersion} · This device · Active now`,
+          current: true,
+          icon: "phone-portrait-outline" as const,
+          active: "Active now",
+        },
+      ];
+    }
+    return sessions.map((s) => ({
+      id: s.id,
+      label: `${s.os} · ${s.browser}`,
+      meta: `${s.location ?? "Unknown location"}${s.ip ? ` · ${s.ip}` : ""}`,
+      current: s.current,
+      icon: DEVICE_ICON[s.device] ?? ("phone-portrait-outline" as const),
+      active: timeAgo(s.last_active),
+    }));
+  }, [sessions, device]);
 
   if (loading) {
     return (
@@ -281,12 +408,11 @@ export default function SecurityScreen() {
           <Body muted>Codes generated by your authenticator app on every sign-in. Keep 2FA enabled for the strongest account protection.</Body>
           <View style={styles.toggleRow}>
             <Body style={styles.toggleLabel}>Authenticator app</Body>
-            <Switch
-              value={mfaEnabled}
-              onValueChange={toggleMfa}
-              trackColor={{ false: colors.light.border, true: colors.light.primary }}
-              thumbColor={colors.paper.cream}
-            />
+            {mfaEnabled ? (
+              <Button variant="outline" size="sm" onPress={disableMfa}>Disable</Button>
+            ) : (
+              <Button size="sm" onPress={startEnroll} loading={enrollBusy}>Enable</Button>
+            )}
           </View>
         </View>
 
@@ -303,7 +429,7 @@ export default function SecurityScreen() {
             )}
           </View>
           <Field label="Email" value={recoveryEmail} onChangeText={setRecoveryEmail} keyboardType="email-address" icon="mail-outline" />
-          <Button variant="outline" onPress={saveRecoveryEmail}>Save recovery email</Button>
+          <Button variant="outline" onPress={saveRecoveryEmail} loading={saving}>Save recovery email</Button>
         </View>
 
         <View style={styles.card}>
@@ -313,10 +439,10 @@ export default function SecurityScreen() {
               <Body muted size="xs">Where your account is signed in.</Body>
             </View>
             <Badge style={{ backgroundColor: colors.olive[100] }}>
-              <Label style={{ color: colors.olive[700], fontSize: 9 }}>{sessions.length}</Label>
+              <Label style={{ color: colors.olive[700], fontSize: 9 }}>{sessionRows.length}</Label>
             </Badge>
           </View>
-          {sessions.map((s) => (
+          {sessionRows.map((s) => (
             <View key={s.id} style={styles.sessionRow}>
               <View style={styles.deviceIcon}>
                 <Ionicons name={s.icon} size={20} color={colors.light.primary} />
@@ -325,14 +451,18 @@ export default function SecurityScreen() {
                 <Body style={styles.sessionTitle}>{s.label}</Body>
                 <Body muted size="xs">{s.meta}</Body>
               </View>
-              {s.current && (
-                <Badge style={{ backgroundColor: colors.olive[100] }}>
-                  <Label style={{ color: colors.olive[700], fontSize: 9 }}>THIS DEVICE</Label>
-                </Badge>
-              )}
+              <View style={{ alignItems: "flex-end" }}>
+                {s.current ? (
+                  <Badge style={{ backgroundColor: colors.olive[100] }}>
+                    <Label style={{ color: colors.olive[700], fontSize: 9 }}>THIS DEVICE</Label>
+                  </Badge>
+                ) : (
+                  <Body muted size="xs">{s.active}</Body>
+                )}
+              </View>
             </View>
           ))}
-          <Button variant="destructive" onPress={signOutAll}>
+          <Button variant="destructive" onPress={signOutAll} loading={saving}>
             Sign out of all sessions
           </Button>
         </View>
@@ -343,6 +473,62 @@ export default function SecurityScreen() {
           <Body style={styles.tipText}>Enable 2FA and rotate your password every few months for stronger protection. Set a recovery email so you are never locked out.</Body>
         </View>
       </ScrollView>
+
+      {/* Enroll 2FA modal */}
+      <Modal visible={enrollOpen} transparent animationType="slide" onRequestClose={() => setEnrollOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Display size="lg">Set up 2FA</Display>
+              <TouchableOpacity onPress={() => setEnrollOpen(false)}>
+                <Ionicons name="close" size={22} color={colors.light.foreground} />
+              </TouchableOpacity>
+            </View>
+            <Body muted size="xs">
+              Scan the QR code with your authenticator app, then enter the 6-digit code.
+            </Body>
+
+            <View style={styles.qrWrap}>
+              {enrollQrSvg ? (
+                <WebView
+                  originWhitelist={["*"]}
+                  source={{ html: enrollQrSvg }}
+                  style={styles.qrBox}
+                  scrollEnabled={false}
+                />
+              ) : (
+                <ActivityIndicator />
+              )}
+            </View>
+            {enrollSecret ? (
+              <View style={styles.secretBox}>
+                <Label style={{ color: colors.light.mutedForeground }}>SECRET</Label>
+                <Text style={styles.secretText} selectable>{enrollSecret}</Text>
+              </View>
+            ) : null}
+
+            <View style={{ marginTop: spacing[3] }}>
+              <Label style={styles.fieldLabel}>6-digit code</Label>
+              <TextInput
+                style={[styles.input, { letterSpacing: 6, textAlign: "center" }]}
+                keyboardType="number-pad"
+                maxLength={6}
+                value={enrollCode}
+                onChangeText={(v) => setEnrollCode(v.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                placeholderTextColor={colors.light.mutedForeground}
+              />
+            </View>
+
+            <View style={styles.modalFooter}>
+              <Button variant="ghost" onPress={() => setEnrollOpen(false)}>Cancel</Button>
+              <Button onPress={verifyEnrollment} loading={verifying} disabled={enrollCode.length !== 6}>
+                Verify & enable
+              </Button>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -498,6 +684,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.light.border,
     marginTop: spacing[2],
+    gap: spacing[3],
   },
   toggleLabel: { fontWeight: typography.fontWeights.semibold },
   sessionRow: {
@@ -527,4 +714,51 @@ const styles = StyleSheet.create({
   },
   tipTitle: { color: colors.paper.cream },
   tipText: { color: "rgba(245, 244, 239, 0.75)" },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: colors.light.background,
+    borderTopLeftRadius: radii["2xl"],
+    borderTopRightRadius: radii["2xl"],
+    padding: spacing[5],
+    paddingBottom: spacing[8],
+    gap: spacing[3],
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  qrWrap: {
+    alignItems: "center",
+    paddingVertical: spacing[3],
+  },
+  qrBox: {
+    width: 160,
+    height: 160,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii.lg,
+    padding: 8,
+  },
+  secretBox: {
+    backgroundColor: colors.olive[50],
+    padding: spacing[3],
+    borderRadius: radii.lg,
+    gap: spacing[1],
+  },
+  secretText: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 12,
+    color: colors.light.foreground,
+  },
+  modalFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: spacing[3],
+    marginTop: spacing[3],
+  },
 });

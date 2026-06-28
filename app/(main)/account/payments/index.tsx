@@ -15,11 +15,15 @@ import { Body, Display, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast } from "@/components/ui";
 import {
-  getStoredPayments,
-  setStoredPayments,
   type PaymentBrand,
   type PaymentCard,
 } from "@/lib/account-local";
+import {
+  listPaymentMethodsBackend,
+  setDefaultPaymentMethodBackend,
+  deletePaymentMethodBackend,
+  type SavedCard,
+} from "@/lib/api/backend";
 import { colors, radii, spacing, shadows, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -29,6 +33,27 @@ const BRAND_META: Record<PaymentBrand, { label: string; color: string; logo: str
   amex: { label: "Amex", color: "#016fd0", logo: "AMEX" },
 };
 
+function savedCardToPaymentCard(c: SavedCard): PaymentCard {
+  const mm = String(c.exp_month).padStart(2, "0");
+  const yy = String(c.exp_year).slice(-2);
+  let added = "Recently";
+  try {
+    added = new Date(c.created_at).toLocaleString("en-US", { month: "short", year: "numeric" });
+  } catch {
+    /* keep default */
+  }
+  return {
+    id: c.id,
+    brand: c.brand,
+    last4: c.last4,
+    exp: `${mm}/${yy}`,
+    holder: c.holder,
+    is_default: c.is_default,
+    added,
+    charges: 0,
+  };
+}
+
 export default function PaymentsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -36,33 +61,51 @@ export default function PaymentsScreen() {
   const [payments, setPayments] = useState<PaymentCard[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const reload = async () => {
+    if (!user?.id) {
+      setPayments([]);
+      return;
+    }
+    const res = await listPaymentMethodsBackend();
+    if (!res.ok) {
+      toast(res.error ?? "Couldn't load cards", "error");
+      setPayments([]);
+      return;
+    }
+    setPayments((res.data?.cards ?? []).map(savedCardToPaymentCard));
+  };
+
   useEffect(() => {
     let cancelled = false;
-    getStoredPayments(user?.id).then((items) => {
-      if (!cancelled) setPayments(items);
-      setLoading(false);
-    });
+    (async () => {
+      await reload();
+      if (!cancelled) setLoading(false);
+    })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const save = (next: PaymentCard[]) => {
-    setPayments(next);
-    setStoredPayments(user?.id, next);
-  };
-
-  const defaultCard = payments.find((p) => p.is_default);
-
-  const makeDefault = (id: string) => {
-    save(payments.map((p) => ({ ...p, is_default: p.id === id })));
+  const makeDefault = async (id: string) => {
+    if (!user?.id) return;
+    const res = await setDefaultPaymentMethodBackend(id);
+    if (!res.ok) {
+      toast(res.error ?? "Couldn't update default", "error");
+      return;
+    }
+    await reload();
     toast("Default card updated", "success");
   };
 
-  const removeCard = (id: string) => {
-    const next = payments.filter((p) => p.id !== id);
-    if (next.length > 0 && !next.some((p) => p.is_default)) next[0].is_default = true;
-    save(next);
+  const removeCard = async (id: string) => {
+    if (!user?.id) return;
+    const res = await deletePaymentMethodBackend(id);
+    if (!res.ok) {
+      toast(res.error ?? "Couldn't remove card", "error");
+      return;
+    }
+    await reload();
     toast("Card removed", "success");
   };
 

@@ -31,6 +31,7 @@ type Props = {
   onRemovePending: (key: string) => void;
   onSetPrimaryExisting: (imageId: string) => void;
   onSetPrimaryPending: (key: string) => void;
+  onMoveExisting?: (imageId: string, direction: "left" | "right") => void;
 };
 
 export function ProductMediaSection({
@@ -42,6 +43,7 @@ export function ProductMediaSection({
   onRemovePending,
   onSetPrimaryExisting,
   onSetPrimaryPending,
+  onMoveExisting,
 }: Props) {
   const handleAdd = async () => {
     const result = await pickImage({ allowsEditing: false, quality: 0.85 });
@@ -88,7 +90,7 @@ export function ProductMediaSection({
           )}
         </TouchableOpacity>
 
-        {existing.map((img) => (
+        {existing.map((img, idx) => (
           <View key={img.id} style={styles.tile}>
             <Image source={{ uri: img.url }} style={styles.image} contentFit="cover" />
             {img.is_primary ? (
@@ -109,6 +111,26 @@ export function ProductMediaSection({
             >
               <Ionicons name="close" size={14} color="#fff" />
             </TouchableOpacity>
+            {onMoveExisting && existing.length > 1 ? (
+              <View style={styles.reorderCol}>
+                <TouchableOpacity
+                  style={[styles.reorderBtn, idx === 0 && styles.reorderBtnDisabled]}
+                  disabled={idx === 0}
+                  onPress={() => onMoveExisting(img.id, "left")}
+                  hitSlop={6}
+                >
+                  <Ionicons name="chevron-back" size={14} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.reorderBtn, idx === existing.length - 1 && styles.reorderBtnDisabled]}
+                  disabled={idx === existing.length - 1}
+                  onPress={() => onMoveExisting(img.id, "right")}
+                  hitSlop={6}
+                >
+                  <Ionicons name="chevron-forward" size={14} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         ))}
 
@@ -219,4 +241,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  reorderCol: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    gap: 4,
+  },
+  reorderBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reorderBtnDisabled: { opacity: 0.3 },
 });

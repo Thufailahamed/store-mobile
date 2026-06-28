@@ -53,11 +53,11 @@ export default function AccountGiftCards() {
       <View style={{ padding: 20, paddingBottom: 8 }}>
         <ScreenHeader title="Gift cards" />
         <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-          <Pressable style={[styles.pill]} onPress={() => router.push("/(main)/gift-cards")}>
+          <Pressable style={[styles.pill]} onPress={() => router.push("/(main)/gift-cards" as never)}>
             <Ionicons name="add" size={14} color="#fff" />
             <Label style={{ color: "#fff", marginLeft: 4 }}>Buy</Label>
           </Pressable>
-          <Pressable style={[styles.pill, { backgroundColor: colors.olive[100] }]} onPress={() => router.push("/(main)/gift-cards/redeem")}>
+          <Pressable style={[styles.pill, { backgroundColor: colors.olive[100] }]} onPress={() => router.push("/(main)/gift-cards/redeem" as never)}>
             <Ionicons name="gift-outline" size={14} color={colors.olive[700]} />
             <Label style={{ color: colors.olive[700], marginLeft: 4 }}>Redeem</Label>
           </Pressable>

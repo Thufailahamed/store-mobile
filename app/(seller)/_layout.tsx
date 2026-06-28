@@ -203,6 +203,7 @@ export default function SellerLayout() {
       <Tabs.Screen name="reviews/index" options={{ href: null }} />
       <Tabs.Screen name="coupons/index" options={{ href: null }} />
       <Tabs.Screen name="notifications/index" options={{ href: null }} />
+      <Tabs.Screen name="bulk-upload/index" options={{ href: null }} />
     </Tabs>
   );
 }

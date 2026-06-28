@@ -939,7 +939,7 @@ export default function CheckoutScreen() {
                 const { validateGiftCardRedemption } = await import("@/lib/api");
                 const res = await validateGiftCardRedemption({ code, order_currency: "LKR" });
                 if (!res.ok) {
-                  toast(res.error.message || "Card invalid", "error");
+                  toast(res.error || "Card invalid", "error");
                   return;
                 }
                 if (!res.data.valid) {

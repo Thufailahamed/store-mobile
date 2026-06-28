@@ -48,14 +48,15 @@ export default function AdminAnalytics() {
     queryKey: ["admin-abandoned-stats"],
     queryFn: async () => {
       const r = await getAdminAbandonedCartsStats();
-      return r.ok ? (r.data.stats as any) : null;
+      // Backend returns the stats object directly (no `.stats` wrapper).
+      return r.ok ? (r.data as any) : null;
     },
   });
   const priceQ = useQuery({
     queryKey: ["admin-price-alerts-stats"],
     queryFn: async () => {
       const r = await getAdminPriceAlertsStats();
-      return r.ok ? (r.data.stats as any) : null;
+      return r.ok ? (r.data as any) : null;
     },
   });
 

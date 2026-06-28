@@ -1,5 +1,8 @@
 import "react-native-gesture-handler";
 import "@/lib/theme/setup-android-text";
+import { initMobileSentry } from "@/lib/sentry";
+// Activate Sentry before any other module runs. No-op when DSN unset.
+initMobileSentry();
 import React, { useEffect, useRef, useState } from "react";
 import { Appearance } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";

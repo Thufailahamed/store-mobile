@@ -11,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
@@ -29,6 +29,8 @@ interface KPIData {
   totalProducts: number;
   pendingOrders: number;
   lowStockVariants: number;
+  outOfStockVariants: number;
+  totalSkus: number;
   recentOrders: Order[];
 }
 
@@ -115,6 +117,17 @@ export default function SellerDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Refetch on tab focus so KPIs stay in sync after edits on other screens
+  useFocusEffect(
+    useCallback(() => {
+      if (store) {
+        setRefreshing(true);
+        fetchData();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [store?.id]),
+  );
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchData();
@@ -137,7 +150,14 @@ export default function SellerDashboard() {
       setLoading(true);
       fetchData();
     } else {
-      Alert.alert("Could not create store", res.error);
+      Alert.alert(
+        "Could not create store",
+        `${res.error}\n\nCheck the name is unique, the slug contains only letters, numbers, and dashes, then try again.`,
+        [
+          { text: "Retry", onPress: () => handleCreateStore() },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
     }
   };
 
@@ -148,22 +168,21 @@ export default function SellerDashboard() {
     return "Good evening";
   })();
 
-  const today = new Date().toLocaleDateString("en-LK", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  let today: string;
+  try {
+    today = new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+  } catch {
+    today = new Date().toDateString();
+  }
 
-  // Inventory stats
-  const totalSkus = products.reduce((s, p) => s + (p.variants?.length ?? 0), 0);
-  const lowStockCount = products.reduce(
-    (s, p) => s + (p.variants ?? []).filter((v) => (v.stock ?? 0) > 0 && (v.stock ?? 0) < 5).length,
-    0
-  );
-  const outOfStockCount = products.reduce(
-    (s, p) => s + (p.variants ?? []).filter((v) => (v.stock ?? 0) === 0).length,
-    0
-  );
+  // Inventory stats — sourced from KPI (server-side via /api/seller/inventory).
+  const totalSkus = kpis?.totalSkus ?? 0;
+  const lowStockCount = kpis?.lowStockVariants ?? 0;
+  const outOfStockCount = kpis?.outOfStockVariants ?? 0;
   const healthyCount = Math.max(0, totalSkus - lowStockCount - outOfStockCount);
 
   // Top products by sales

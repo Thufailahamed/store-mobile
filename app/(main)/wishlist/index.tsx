@@ -8,8 +8,8 @@ import { spacing, radii } from "@/lib/theme/tokens";
 import { useWishlist, useCart } from "@/lib/stores";
 import type { CartStore } from "@/lib/stores/cart-store";
 import { useToast } from "@/components/ui";
-import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "@/lib/api/product-mapper";
+import { getProductsByIdsBackend } from "@/lib/api/backend";
 import { formatPrice, discountPct } from "@/lib/utils";
 import { WishlistItemCard } from "@/components/wishlist/WishlistItemCard";
 import {
@@ -101,18 +101,13 @@ export default function WishlistScreen() {
     (async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("products")
-          .select(
-            "*, images:product_images(*), variants:product_variants(*, inventory(*)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)"
-          )
-          .in("id", productIds);
+        const res = await getProductsByIdsBackend(productIds);
         if (cancelled) return;
-        if (error) {
-          console.error("[wishlist] fetch error:", error);
+        if (!res.ok) {
+          console.error("[wishlist] fetch error:", res.error);
           setProducts([]);
         } else {
-          setProducts(mapProducts((data as Product[]) || []));
+          setProducts(mapProducts(res.data?.products ?? []));
         }
       } catch (err) {
         if (!cancelled) console.error("[wishlist] fetch exception:", err);

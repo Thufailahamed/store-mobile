@@ -159,14 +159,6 @@ export async function writeJson(key: string, value: unknown) {
   await AsyncStorage.setItem(key, JSON.stringify(value));
 }
 
-export async function getStoredPayments(userId?: string | null): Promise<PaymentCard[]> {
-  return readJson<PaymentCard[]>(accountStorageKey(userId, "payments"), []);
-}
-
-export async function setStoredPayments(userId: string | null | undefined, payments: PaymentCard[]) {
-  await writeJson(accountStorageKey(userId, "payments"), payments);
-}
-
 export async function getStoredReviews(userId?: string | null): Promise<MobileReview[]> {
   return readJson<MobileReview[]>(accountStorageKey(userId, "reviews"), []);
 }

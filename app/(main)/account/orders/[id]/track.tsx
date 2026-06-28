@@ -370,6 +370,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.light.primary,
   },
+  riderCall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[100],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
   callLabel: {
     color: colors.light.primary,
     fontFamily: fontFamilies.mono.semibold,

@@ -20,13 +20,14 @@ import {
   detectPaymentBrand,
   formatCardNumberDisplay,
   formatCardNumberInput,
-  getStoredPayments,
   isValidCardNumber,
   PAYMENT_BRAND_META,
-  setStoredPayments,
   cvvMaxLength,
-  type PaymentCard,
 } from "@/lib/account-local";
+import {
+  createPaymentMethodBackend,
+  listPaymentMethodsBackend,
+} from "@/lib/api/backend";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -52,6 +53,10 @@ export default function AddPaymentMethodScreen() {
   const cvvLimit = cvvMaxLength(detectedBrand);
 
   const saveCard = async () => {
+    if (!user?.id) {
+      toast("Sign in to add a card", "error");
+      return;
+    }
     const clean = form.number.replace(/\s+/g, "");
     const brand = detectPaymentBrand(clean);
     if (!brand || !isValidCardNumber(clean, brand)) {
@@ -62,7 +67,8 @@ export default function AddPaymentMethodScreen() {
       toast("Cardholder name required", "error");
       return;
     }
-    if (!/^\d{2}\/\d{2}$/.test(form.exp)) {
+    const expMatch = /^(\d{2})\/(\d{2})$/.exec(form.exp);
+    if (!expMatch) {
       toast("Use MM/YY expiry", "error");
       return;
     }
@@ -71,29 +77,33 @@ export default function AddPaymentMethodScreen() {
       return;
     }
 
-    const existing = await getStoredPayments(user?.id);
-    const next: PaymentCard = {
-      id: `card-${Date.now()}`,
-      brand,
-      last4: clean.slice(-4),
-      exp: form.exp,
-      holder: form.holder.trim(),
-      is_default: setDefault || existing.length === 0,
-      added: new Date().toLocaleString("en-US", { month: "short", year: "numeric" }),
-      charges: 0,
-    };
+    // CVV is validated client-side but never sent — backend only stores
+    // brand/last4/exp/holder/token. We don't keep the CVV anywhere.
+    void form.cvv;
+    const exp_month = Number(expMatch[1]);
+    const exp_year = 2000 + Number(expMatch[2]);
 
-    const updated = setDefault
-      ? [...existing.map((c) => ({ ...c, is_default: false })), next]
-      : [...existing, next];
+    // Backend picks is_default automatically if it's the user's first card.
+    const existingRes = await listPaymentMethodsBackend();
+    const existingCount = existingRes.ok ? (existingRes.data?.cards?.length ?? 0) : 0;
 
     setSaving(true);
-    setTimeout(async () => {
-      await setStoredPayments(user?.id, updated);
-      setSaving(false);
-      toast("Card saved successfully", "success");
-      router.back();
-    }, 450);
+    const res = await createPaymentMethodBackend({
+      brand,
+      last4: clean.slice(-4),
+      exp_month,
+      exp_year,
+      holder: form.holder.trim(),
+      is_default: setDefault || existingCount === 0,
+    });
+    setSaving(false);
+
+    if (!res.ok) {
+      toast(res.error ?? "Couldn't save card", "error");
+      return;
+    }
+    toast("Card saved successfully", "success");
+    router.back();
   };
 
   return (

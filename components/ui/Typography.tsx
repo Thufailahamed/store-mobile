@@ -22,11 +22,13 @@ export function Label({ style, ...props }: TextProps) {
 export function Body({
   size = "base",
   muted = false,
+  italic = false,
   style,
   ...props
-}: TextProps & { size?: Size; muted?: boolean }) {
+}: TextProps & { size?: Size; muted?: boolean; italic?: boolean }) {
   const base = muted ? textStyles.muted(size) : textStyles.body(size);
-  return <AppText style={[base, style]} {...props} />;
+  const italicStyle = italic ? { fontStyle: "italic" as const } : null;
+  return <AppText style={[base, italicStyle, style]} {...props} />;
 }
 
 export function Price({ size = "lg", style, ...props }: TextProps & { size?: Size }) {

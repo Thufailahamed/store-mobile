@@ -9,6 +9,10 @@ export interface VariantDraft {
   sku: string;
   size: string;
   color: string;
+  colorHex: string;
+  material: string;
+  pattern: string;
+  fit: string;
   price: string;
   stock: string;
 }
@@ -30,6 +34,10 @@ export function createEmptyVariant(key?: string): VariantDraft {
     sku: "",
     size: "One Size",
     color: "",
+    colorHex: "",
+    material: "",
+    pattern: "",
+    fit: "",
     price: "",
     stock: "0",
   };
@@ -87,11 +95,65 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
             <View style={{ width: 10 }} />
             <View style={[styles.field, { flex: 1 }]}>
               <Text style={styles.label}>Color</Text>
+              <View style={styles.colorRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={variant.color}
+                  onChangeText={(color) => updateVariant(variant.key, { color })}
+                  placeholder="Black, Navy…"
+                  placeholderTextColor={colors.light.mutedForeground}
+                />
+                {variant.colorHex ? (
+                  <View style={[styles.colorSwatch, { backgroundColor: variant.colorHex }]} />
+                ) : null}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Color hex</Text>
               <TextInput
                 style={styles.input}
-                value={variant.color}
-                onChangeText={(color) => updateVariant(variant.key, { color })}
-                placeholder="Black, Navy…"
+                value={variant.colorHex}
+                onChangeText={(colorHex) => updateVariant(variant.key, { colorHex })}
+                placeholder="#000000"
+                placeholderTextColor={colors.light.mutedForeground}
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={{ width: 10 }} />
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Material</Text>
+              <TextInput
+                style={styles.input}
+                value={variant.material}
+                onChangeText={(material) => updateVariant(variant.key, { material })}
+                placeholder="Cotton…"
+                placeholderTextColor={colors.light.mutedForeground}
+              />
+            </View>
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Pattern</Text>
+              <TextInput
+                style={styles.input}
+                value={variant.pattern}
+                onChangeText={(pattern) => updateVariant(variant.key, { pattern })}
+                placeholder="Solid…"
+                placeholderTextColor={colors.light.mutedForeground}
+              />
+            </View>
+            <View style={{ width: 10 }} />
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Fit</Text>
+              <TextInput
+                style={styles.input}
+                value={variant.fit}
+                onChangeText={(fit) => updateVariant(variant.key, { fit })}
+                placeholder="Slim…"
                 placeholderTextColor={colors.light.mutedForeground}
               />
             </View>
@@ -209,5 +271,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: typography.fontSizes.sm,
     color: colors.light.foreground,
+  },
+  colorRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  colorSwatch: {
+    width: 22,
+    height: 22,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
 });

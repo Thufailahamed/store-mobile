@@ -230,7 +230,7 @@ function AdjustForm({ card, onDone }: { card: any; onDone: () => void }) {
     const r = await adjustAdminGiftCard(card.id, { delta: n, note: note || undefined });
     setBusy(false);
     if (r.ok) { Alert.alert("Adjusted"); onDone(); }
-    else Alert.alert("Failed", r.error.message);
+    else Alert.alert("Failed", r.error);
   };
   return (
     <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
@@ -250,7 +250,7 @@ function VoidForm({ card, onDone }: { card: any; onDone: () => void }) {
     const r = await voidAdminGiftCard(card.id, { reason: reason || undefined });
     setBusy(false);
     if (r.ok) { Alert.alert("Voided"); onDone(); }
-    else Alert.alert("Failed", r.error.message);
+    else Alert.alert("Failed", r.error);
   };
   return (
     <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
