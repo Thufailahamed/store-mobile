@@ -123,6 +123,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setLoading(false);
+
+      // M-09 AUDIT: On TOKEN_REFRESHED, force a re-derive of the role from
+      // the server-side public.users row. Without this, a demoted/promoted
+      // user keeps stale access until app restart.
+      if (event === "TOKEN_REFRESHED" && nextSession?.user) {
+        roleUserIdRef.current = null; // clear cache so applyRole doesn't skip
+      }
+
       void applyRole(nextSession?.user ?? null);
       // PASSWORD_RECOVERY fires when the user clicks the link in the
       // "reset password" email. Supabase has issued a short-lived
