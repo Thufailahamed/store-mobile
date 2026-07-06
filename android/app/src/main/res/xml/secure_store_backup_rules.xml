@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  M-11 AUDIT: Backup exclusion rules for Android auto-backup.
+  Excludes AsyncStorage data (which may contain session-adjacent state)
+  from Android's cloud backup to prevent unintended data leakage.
+  Supabase session tokens are stored in expo-secure-store (KeyStore/Keychain)
+  and are NOT backed up by the OS regardless of these rules.
+-->
+<full-backup-content>
+  <!-- React Native / Expo AsyncStorage -->
+  <exclude domain="database" path="RKStorage" />
+  <exclude domain="sharedpref" path="RCTAsyncLocalStorage_V1" />
+  <exclude domain="sharedpref" path="app_react-native-encrypted-storage.xml" />
+  <!-- Expo SecureStore is KeyStore-backed and excluded automatically,
+       but list explicitly to be safe. -->
+  <exclude domain="sharedpref" path="expo.modules.securestore.xml" />
+</full-backup-content>
