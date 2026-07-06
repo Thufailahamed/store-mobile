@@ -115,7 +115,8 @@ async function readUriAsArrayBuffer(uri: string): Promise<ArrayBuffer> {
 function getStoreApiHost(): string {
   const fromEnv = process.env.EXPO_PUBLIC_STORE_API_URL?.replace(/\/$/, "");
   const fromExtra = Constants.expoConfig?.extra?.storeApiUrl as string | undefined;
-  return fromEnv || fromExtra?.replace(/\/$/, "") || "https://store-three-xi-58.vercel.app";
+  // H-01 AUDIT: No fallback — return empty string so callers fail closed.
+  return fromEnv || fromExtra?.replace(/\/$/, "") || "";
 }
 
 async function uploadImageToBucket(
@@ -445,7 +446,9 @@ export async function uploadDeliverySignature(
       return { url: "", error: "Authentication session not found" };
     }
 
-    const filename = `signature-${orderId}-${Date.now()}.png`;
+    // M-13 AUDIT: Include per-user path prefix so signatures are scoped to the
+    // rider's own bucket path (matching uploadDeliveryProof/uploadDeliveryFailureEvidence).
+    const filename = `${userId}/signature-${orderId}-${Date.now()}.png`;
 
     const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
       method: "POST",
@@ -513,7 +516,10 @@ export async function uploadComplianceDocument(
       return { url: "", error: "Authentication session not found" };
     }
 
-    const filename = options?.fileName ?? `${docType}-${Date.now()}.${ext}`;
+    // H-03 AUDIT: Never forward the user-supplied picker filename into the
+    // storage key — on Android, DocumentPicker can return arbitrary path-like
+    // segments. Generate a UUID-based key so the object key is always safe.
+    const safeKey = `${storeId}/${docType}-${crypto.randomUUID()}.${ext}`;
 
     const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
       method: "POST",
@@ -523,7 +529,7 @@ export async function uploadComplianceDocument(
       },
       body: JSON.stringify({
         bucket: "store-compliance",
-        filename,
+        filename: safeKey,
         contentType,
       }),
     });

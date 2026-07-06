@@ -14,6 +14,21 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
+/**
+ * SECURITY NOTE — C-01 (Critical):
+ * The gift-card purchase flow sends a client-supplied `amount` directly to
+ * POST /api/gift-cards/purchase. The mobile client has no payment-step of
+ * its own for this flow (no PayHere session, no polling).
+ *
+ * The Cloudflare Workers backend MUST gate balance creation behind a real
+ * captured payment before crediting any balance. If it does not, an attacker
+ * can call the endpoint directly with an arbitrary amount and receive usable
+ * store credit for free.
+ *
+ * Verify: workers/src/.../gift-cards/purchase.ts checks payment status
+ * before calling INSERT INTO gift_cards.
+ */
+
 const AMOUNTS = [2500, 5000, 10000, 20000, 50000, 100000];
 
 export default function GiftCardsScreen() {
@@ -42,6 +57,7 @@ export default function GiftCardsScreen() {
       scheduled_for = new Date(Date.now() + hours * 3_600_000).toISOString();
     }
     setPurchasing(true);
+    // C-01 AUDIT: backend MUST verify captured payment before crediting balance.
     const res = await purchaseGiftCard({
       amount,
       currency: "LKR",
@@ -95,6 +111,14 @@ export default function GiftCardsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.light.background }}>
       <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
         <ScreenHeader title="Gift cards" />
+
+        {/* C-01: Visible notice that payment is required — backend enforcement is mandatory. */}
+        <View style={styles.warningBanner}>
+          <Ionicons name="information-circle-outline" size={18} color="#92400e" />
+          <Text style={styles.warningText}>
+            Gift card balance is only created after payment is confirmed by our payment provider. Your card will be dispatched once the transaction is verified.
+          </Text>
+        </View>
 
         <Card style={{ padding: 16 }}>
           <Label>Amount</Label>
@@ -203,4 +227,21 @@ const styles = StyleSheet.create({
   toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff" },
   toggleKnobOn: { transform: [{ translateX: 18 }], backgroundColor: colors.olive[700] },
   successCard: { padding: 24, gap: 8, alignItems: "center", ...shadows.soft },
+  warningBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    borderRadius: radii.md,
+    padding: 12,
+  },
+  warningText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#92400e",
+  },
 });

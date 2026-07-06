@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  M-11 AUDIT: Data extraction rules for Android 12+ cloud backup API.
+  Mirrors backup_rules.xml but uses the new <data-extraction-rules> schema
+  required for targetSdkVersion >= 31.
+-->
+<data-extraction-rules>
+  <cloud-backup>
+    <!-- AsyncStorage databases / shared prefs -->
+    <exclude domain="database" path="RKStorage" />
+    <exclude domain="sharedpref" path="RCTAsyncLocalStorage_V1" />
+    <exclude domain="sharedpref" path="app_react-native-encrypted-storage.xml" />
+    <exclude domain="sharedpref" path="expo.modules.securestore.xml" />
+  </cloud-backup>
+  <device-transfer>
+    <!-- Same exclusions apply for device-to-device transfer. -->
+    <exclude domain="database" path="RKStorage" />
+    <exclude domain="sharedpref" path="RCTAsyncLocalStorage_V1" />
+    <exclude domain="sharedpref" path="app_react-native-encrypted-storage.xml" />
+    <exclude domain="sharedpref" path="expo.modules.securestore.xml" />
+  </device-transfer>
+</data-extraction-rules>

@@ -23,6 +23,17 @@ export default function DeliveryLayout() {
   const router = useRouter();
   const [memberActive, setMemberActive] = useState<boolean | null>(null);
 
+  // H-05 AUDIT: Role guard — only rider/admin may access this layout.
+  // (delivery-company) members are redirected to their own layout below.
+  // All other roles (customer, seller, brand, etc.) are sent to /(main).
+  useEffect(() => {
+    if (loading || roleLoading) return;
+    if (role === "delivery_company") return; // handled by resolveDeliveryHomeRoute below
+    if (role !== "rider" && role !== "admin") {
+      router.replace("/(main)");
+    }
+  }, [role, roleLoading, loading, router]);
+
   useEffect(() => {
     if (loading || roleLoading || !user?.id) return;
     if (role !== "delivery_company") return;
@@ -32,6 +43,21 @@ export default function DeliveryLayout() {
       }
     });
   }, [user?.id, role, roleLoading, loading, router]);
+
+  // Show spinner while auth/role is still resolving (prevents flash of dashboard
+  // for non-rider roles before the redirect fires).
+  if (loading || roleLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // Render nothing while redirect is in flight for non-rider roles.
+  if (role !== "rider" && role !== "admin" && role !== "delivery_company") {
+    return null;
+  }
 
   // Initial fetch + realtime refresh of the rider's membership status.
   // When the company deactivates the driver, the realtime channel added
@@ -55,14 +81,6 @@ export default function DeliveryLayout() {
   }, [refreshMember]);
 
   useRiderRealtime(user?.id, refreshMember);
-
-  if (role === "delivery_company" && (loading || roleLoading)) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
 
   if (memberActive === false) {
     return (

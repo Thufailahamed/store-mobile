@@ -10,6 +10,7 @@
 import {
   fetchJson,
   getAccessToken,
+  getStoreApiUrl,
   type ApiResult,
 } from "@/lib/api/backend";
 export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } from "@/lib/api/backend";
@@ -2624,16 +2625,31 @@ export async function uploadScanImage(
   _source: "library" | "camera",
 ): Promise<Result<{ path: string; url: string }>> {
   try {
+    // H-01 AUDIT: Use getStoreApiUrl() — no fallback host.
+    const host = getStoreApiUrl().replace(/\/$/, "");
+    if (!host) return fail("EXPO_PUBLIC_STORE_API_URL is not configured");
+
     const { data: userRes } = await supabase.auth.getUser();
     if (!userRes?.user) return fail("Not authenticated");
     const { data: sessionRes } = await supabase.auth.getSession();
     const token = sessionRes?.session?.access_token;
     if (!token) return fail("Not authenticated");
-    const ext = (uri.split(".").pop() ?? "jpg").toLowerCase().split("?")[0] || "jpg";
+
+    // M-15 AUDIT: Extension allow-list + 8 MB size cap.
+    const SCAN_ALLOWED_EXTS = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif"]);
+    const rawExt = (uri.split(".").pop() ?? "jpg").toLowerCase().split("?")[0] || "jpg";
+    const ext = rawExt === "jpeg" ? "jpg" : rawExt === "heif" ? "heic" : rawExt;
+    if (!SCAN_ALLOWED_EXTS.has(ext)) return fail(`Unsupported image type ".${ext}"`);
+
     const filename = `${Date.now()}.${ext}`;
-    const contentType = `image/${ext}`;
+    const contentType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "heic" ? "image/heic" : "image/jpeg";
+
     const blob = await fetch(uri).then((r) => r.blob());
-    const host = (process.env.EXPO_PUBLIC_STORE_API_URL ?? "https://store-three-xi-58.vercel.app").replace(/\/$/, "");
+    const MAX_SCAN_BYTES = 8 * 1024 * 1024;
+    if (blob.size > MAX_SCAN_BYTES) {
+      return fail(`Image too large (${Math.round(blob.size / 1024 / 1024)} MB; max 8 MB)`);
+    }
+
     const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

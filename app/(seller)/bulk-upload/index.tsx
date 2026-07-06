@@ -284,7 +284,10 @@ export default function SellerBulkUpload() {
         images: r.raw.image_url ? [{ url: r.raw.image_url, is_primary: true }] : [],
         variants: [{ size: "M", mrp, price, stock }],
         is_featured: r.raw.is_featured === "true",
-        status: "active",
+        // M-03 AUDIT: Sellers cannot self-publish via bulk upload.
+        // BulkSellerProductInput only accepts "draft"|"active"|"archived";
+        // "draft" is the correct safe default — products require admin review.
+        status: "draft" as const,
       };
     });
 

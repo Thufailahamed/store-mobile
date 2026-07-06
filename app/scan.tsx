@@ -82,6 +82,13 @@ export default function ScanScreen() {
 
   const viewResult = useCallback(() => {
     if (!result?.slug) return;
+    // L-05 AUDIT: Validate slug before building navigation path. Only allow
+    // alphanumeric characters and hyphens (max 120 chars) to prevent path injection.
+    const SAFE_SLUG = /^[a-z0-9-]{1,120}$/i;
+    if (!SAFE_SLUG.test(result.slug)) {
+      console.warn("[scan] rejected unsafe slug:", result.slug);
+      return;
+    }
     if (result.kind === "product") {
       router.replace(`/(main)/products/${result.slug}`);
     } else if (result.kind === "store") {

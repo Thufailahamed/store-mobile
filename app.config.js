@@ -42,7 +42,10 @@ module.exports = ({ config }) => {
   const googleMapsApiKey =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "GOOGLE_MAPS_API_KEY_PLACEHOLDER";
   const storeApiUrl =
-    process.env.EXPO_PUBLIC_STORE_API_URL || "https://store-backend.thufailahamed627.workers.dev";
+    process.env.EXPO_PUBLIC_STORE_API_URL || "";
+  // H-01 AUDIT: No fallback host — if EXPO_PUBLIC_STORE_API_URL is unset,
+  // all API/upload calls fail closed ("EXPO_PUBLIC_STORE_API_URL is not
+  // configured"). Never add a personal subdomain fallback here.
   const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN ?? "";
 
   const plugins = (config.plugins ?? []).map((plugin) => {

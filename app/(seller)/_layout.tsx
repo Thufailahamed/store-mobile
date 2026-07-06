@@ -83,7 +83,7 @@ export default function SellerLayout() {
   const locked = !access.canAccessSellerTools;
 
   if (locked && !isSettingsRoute) {
-    if (access.isPendingReview || !access.hasStore) {
+    if (access.isPendingReview) {
       return (
         <View style={styles.blockedContainer}>
           <View style={styles.reviewBadge}>
