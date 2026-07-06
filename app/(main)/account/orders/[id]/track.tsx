@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  Linking,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -18,6 +17,7 @@ import { getShipmentByOrder, type CourierShipment } from "@/lib/api/courier-api"
 import { useTrackEvent } from "@/lib/recommender";
 import { formatPrice } from "@/lib/utils";
 import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
+import { safeOpenUrl } from "@/lib/utils/safe-open-url";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { OrderStatus } from "@/lib/types";
@@ -174,7 +174,8 @@ export default function OrderTrackScreen() {
             {courier.external_tracking_url ? (
               <TouchableOpacity
                 style={styles.riderCall}
-                onPress={() => Linking.openURL(courier.external_tracking_url!)}
+                // M-16 AUDIT: Route through safeOpenUrl instead of raw Linking.openURL.
+                onPress={() => safeOpenUrl(courier.external_tracking_url)}
               >
                 <Ionicons name="open-outline" size={18} color={colors.olive[700]} />
               </TouchableOpacity>
@@ -197,7 +198,7 @@ export default function OrderTrackScreen() {
             </View>
             {rider.phone ? (
               <TouchableOpacity
-                onPress={() => Linking.openURL(`tel:${rider.phone}`)}
+                onPress={() => safeOpenUrl(`tel:${rider.phone}`)}
                 style={styles.callBtn}
                 activeOpacity={0.85}
               >
