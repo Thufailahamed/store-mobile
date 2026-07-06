@@ -28,6 +28,7 @@ import {
   type SellerVariantInput,
 } from "@/lib/api";
 import { uploadProductImage } from "@/lib/upload";
+import { coerceSellerProductStatus } from "@/lib/seller-product-status";
 import { validateStoreSkus } from "@/lib/product-sku";
 import {
   ProductMediaSection,
@@ -352,7 +353,12 @@ export default function SellerProductEdit() {
         gender: gender as Product["gender"],
         category_id: categoryId ?? undefined,
         brand_id: brandId ?? undefined,
-        status: status as Product["status"],
+        // M-03 AUDIT: Sellers cannot self-publish. coerceSellerProductStatus
+        // downgrades "active" → "pending" unless the product is already live.
+        status: coerceSellerProductStatus(
+          status as Product["status"],
+          initialStatus as Product["status"],
+        ),
         is_active: isActive,
         is_featured: isFeatured,
         tags: tags
