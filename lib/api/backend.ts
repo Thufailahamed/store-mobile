@@ -56,7 +56,8 @@ export async function getProductByIdBackend(id: string): Promise<ApiResult<{ pro
 }
 
 export async function getProductBySlugBackend(slug: string): Promise<ApiResult<{ product: CatalogProduct }>> {
-  return fetchJson(`/api/catalog/products/slug/${slug}`, { requireAuth: false });
+  // L-03 AUDIT: encodeURIComponent prevents path traversal via slug.
+  return fetchJson(`/api/catalog/products/slug/${encodeURIComponent(slug)}`, { requireAuth: false });
 }
 
 export async function getProductsByIdsBackend(ids: string[], includeInactive?: boolean): Promise<ApiResult<{ products: CatalogProduct[] }>> {
@@ -109,7 +110,8 @@ export async function getBrandByIdBackend(id: string): Promise<ApiResult<{ brand
 }
 
 export async function getBrandBySlugBackend(slug: string): Promise<ApiResult<{ brand: Brand & { followers?: Array<{ count: number }> } }>> {
-  return fetchJson(`/api/catalog/brands/by-slug/${slug}`, { requireAuth: false });
+  // L-03 AUDIT: encodeURIComponent prevents path traversal via slug.
+  return fetchJson(`/api/catalog/brands/by-slug/${encodeURIComponent(slug)}`, { requireAuth: false });
 }
 
 export type Store = { id: string; name: string; slug: string; logo_url?: string | null; banner_url?: string | null; description?: string | null; is_active?: boolean; status?: string; followers_count?: number; total_followers?: number };
@@ -123,7 +125,8 @@ export async function getStoreByIdBackend(id: string): Promise<ApiResult<{ store
 }
 
 export async function getStoreBySlugBackend(slug: string): Promise<ApiResult<{ store: Store }>> {
-  return fetchJson(`/api/catalog/stores/by-slug/${slug}`, { requireAuth: false });
+  // L-03 AUDIT: encodeURIComponent prevents path traversal via slug.
+  return fetchJson(`/api/catalog/stores/by-slug/${encodeURIComponent(slug)}`, { requireAuth: false });
 }
 
 export type Category = { id: string; name: string; slug: string; parent_id?: string | null; image_url?: string | null; is_active?: boolean; position?: number };
@@ -1425,7 +1428,8 @@ export async function getAdminPlatformSettingsBackend(): Promise<ApiResult<{ set
 }
 
 export async function setAdminPlatformSettingBackend(key: string, value: unknown): Promise<ApiResult<{ key: string; value: unknown }>> {
-  return fetchJson(`/api/admin/settings/${key}`, { method: "PUT", body: { value } });
+  // L-03 AUDIT: encodeURIComponent prevents path traversal via settings key.
+  return fetchJson(`/api/admin/settings/${encodeURIComponent(key)}`, { method: "PUT", body: { value } });
 }
 
 export async function getAdminOverviewStatsBackend(): Promise<ApiResult<Record<string, unknown>>> {
