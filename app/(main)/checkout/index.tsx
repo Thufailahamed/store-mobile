@@ -299,19 +299,25 @@ export default function CheckoutScreen() {
       toast("Enter a coupon code first", "error");
       return;
     }
-    const res = await api.validateCoupon(trimmed, user.id, sub);
+    const validationLines = cartItems.map((item) => ({
+      product_id: item.productId,
+      store_id: item.storeId,
+      quantity: item.quantity,
+      unit_price: item.price,
+    }));
+    const res = await api.validateCoupon(trimmed, user.id, sub, validationLines);
     if (!res.ok) {
       toast(res.error, "error");
       return;
     }
-    if (res.data.message !== "OK" && res.data.message !== "OK_FREE_SHIPPING") {
+    if (res.data.message !== "Coupon applied" && res.data.message !== "Free shipping") {
       toast(res.data.message || "Coupon cannot be applied", "error");
       return;
     }
     setCoupon(trimmed.toUpperCase());
     setCouponId(res.data.couponId);
-    setCouponDiscount(res.data.message === "OK_FREE_SHIPPING" ? 0 : res.data.discount);
-    setFreeShippingCoupon(res.data.message === "OK_FREE_SHIPPING");
+    setCouponDiscount(res.data.message === "Free shipping" ? 0 : res.data.discount);
+    setFreeShippingCoupon(res.data.message === "Free shipping");
     toast("Coupon applied", "success");
   };
 
@@ -323,17 +329,23 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (!user || !couponId || !couponCode) return;
     let cancelled = false;
-    api.validateCoupon(couponCode, user.id, sub).then((res) => {
+    const validationLines = cartItems.map((item) => ({
+      product_id: item.productId,
+      store_id: item.storeId,
+      quantity: item.quantity,
+      unit_price: item.price,
+    }));
+    api.validateCoupon(couponCode, user.id, sub, validationLines).then((res) => {
       if (cancelled) return;
       if (!res.ok) {
         clearCoupon();
         toast(`Coupon no longer valid: ${res.error}`, "error");
         return;
       }
-      if (res.data.message === "OK_FREE_SHIPPING") {
+      if (res.data.message === "Free shipping") {
         setCouponDiscount(0);
         setFreeShippingCoupon(true);
-      } else if (res.data.message === "OK") {
+      } else if (res.data.message === "Coupon applied") {
         setCouponDiscount(res.data.discount);
         setFreeShippingCoupon(false);
       } else {
@@ -555,9 +567,9 @@ export default function CheckoutScreen() {
           cart_groups: ordersPayload.map((row) => ({
             store_id: row.store_id,
             items: row.items
-              .filter((i) => i.variant_id != null)
               .map((i) => ({
-                variant_id: i.variant_id as string,
+                product_id: i.product_id,
+                variant_id: i.variant_id ?? null,
                 quantity: i.quantity,
               })),
           })),
@@ -566,6 +578,8 @@ export default function CheckoutScreen() {
           coupon_code: couponInput.trim() || null,
           gift_card_code: giftCardCode || null,
           currency: "LKR",
+          shipping_method: shippingKey,
+          points_redeemed: freshPointsToUse,
         });
         if (!res.ok) return { data: null, error: { message: res.error } };
         return { data: res.data, error: null };
@@ -601,6 +615,9 @@ export default function CheckoutScreen() {
         return;
       }
 
+      if (freshPointsToUse > 0) {
+        await loyalty.redeem(freshPointsToUse, firstOrderId);
+      }
       await loyalty.reload();
       toast("Order placed", "success");
       const orderIds = placed.map((o) => o.id).join(",");
