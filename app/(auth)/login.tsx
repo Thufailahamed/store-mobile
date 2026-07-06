@@ -92,35 +92,6 @@ export default function LoginScreen() {
       return;
     }
 
-    // Suspension gate — same as web: if the user is a store owner and
-    // their store isn't operational, sign them back out and surface a
-    // clear reason. Customer / admin / brand_owner / delivery roles
-    // pass through unchanged.
-    const authedUser = data?.user;
-    if (authedUser) {
-      const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", authedUser.id)
-        .maybeSingle();
-      const role = (profile as { role?: string } | null)?.role ?? "customer";
-      if (role === "store_owner") {
-        const { data: store } = await supabase
-          .from("stores")
-          .select("status")
-          .eq("owner_id", authedUser.id)
-          .maybeSingle();
-        if (store && !isOperationalStoreStatus(store.status as string | null)) {
-          await supabase.auth.signOut();
-          Alert.alert(
-            "Store not active",
-            `Your store is currently ${String(store.status ?? "suspended")}. Contact support to reactivate.`,
-          );
-          return;
-        }
-      }
-    }
-
     toast("Welcome back!", "success");
   };
 
