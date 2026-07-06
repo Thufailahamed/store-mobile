@@ -119,6 +119,10 @@ export async function getPayHereSession(
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
+    // L-04 AUDIT: Fail closed — payment session requires an authenticated session.
+    if (!token) {
+      return { ok: false, error: "Payment requires an authenticated session" };
+    }
     const body: Record<string, string> = opts.groupId
       ? { group_id: opts.groupId, order_id: orderIdOrFirstSubOrder }
       : { order_id: orderIdOrFirstSubOrder };
@@ -126,7 +130,7 @@ export async function getPayHereSession(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     });
