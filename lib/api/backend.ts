@@ -529,12 +529,14 @@ export async function getOrderByIdBackend(id: string): Promise<ApiResult<{ order
 }
 
 export async function placeOrderGroupBackend(input: {
-  cart_groups: Array<{ store_id: string; items: Array<{ variant_id: string; quantity: number }> }>;
+  cart_groups: Array<{ store_id: string; items: Array<{ product_id?: string; variant_id?: string | null; quantity: number }> }>;
   address_id: string;
   payment_method: string;
   coupon_code?: string | null;
   gift_card_code?: string | null;
   currency?: string;
+  shipping_method?: string;
+  points_redeemed?: number;
 }): Promise<ApiResult<{ orders?: Order[]; results?: Order[]; group_id?: string }>> {
   return fetchJson("/api/orders/group", {
     method: "POST",
@@ -545,6 +547,8 @@ export async function placeOrderGroupBackend(input: {
       currency: input.currency ?? "LKR",
       ...(input.coupon_code ? { coupon_code: input.coupon_code } : {}),
       ...(input.gift_card_code ? { gift_card_code: input.gift_card_code } : {}),
+      ...(input.shipping_method ? { shipping_method: input.shipping_method } : {}),
+      ...(input.points_redeemed ? { points_redeemed: input.points_redeemed } : {}),
     },
     headers: { "Idempotency-Key": `place-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
   });
