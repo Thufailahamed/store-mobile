@@ -1,8 +1,9 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
-/** Serves /public/images/* referenced by product_images.url in the database. */
-const DEFAULT_STORE_API_URL = "https://store-three-xi-58.vercel.app";
+// H-01 AUDIT: No hardcoded fallback host. If EXPO_PUBLIC_STORE_API_URL is
+// unset, image paths that need a host resolution return "" (empty string)
+// instead of silently routing through a personal Vercel subdomain.
 
 function normalizeHost(host: string): string {
   let h = host.replace(/\/$/, "");
@@ -15,8 +16,8 @@ function normalizeHost(host: string): string {
 function getStoreApiHost(): string {
   const fromEnv = process.env.EXPO_PUBLIC_STORE_API_URL?.replace(/\/$/, "");
   const fromExtra = Constants.expoConfig?.extra?.storeApiUrl as string | undefined;
-  const host = fromEnv || fromExtra?.replace(/\/$/, "") || DEFAULT_STORE_API_URL;
-  return normalizeHost(host);
+  const host = fromEnv || fromExtra?.replace(/\/$/, "") || "";
+  return host ? normalizeHost(host) : "";
 }
 
 /** Turn database image paths into absolute URLs the app can load. */
