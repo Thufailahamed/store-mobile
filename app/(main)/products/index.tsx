@@ -9,8 +9,10 @@ import {
   Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { AppHeader, PaperBackground } from "@/components/layout";
+import { PaperBackground, AppHeader, ScreenHeader } from "@/components/layout";
+import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { FilterSheet } from "@/components/search/FilterSheet";
 import { QuickRefine } from "@/components/search/QuickRefine";
 import { ProductCard } from "@/components/product/ProductCard";
@@ -44,6 +46,7 @@ const SORTS_FOR_BAR: SortOption[] = SORTS;
 
 export default function ProductsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     category?: string;
     brand?: string;
@@ -214,7 +217,7 @@ export default function ProductsScreen() {
         renderItem={view === "list" ? renderListItem : renderGridItem}
         numColumns={view === "list" ? 1 : 2}
         columnWrapperStyle={view === "list" ? undefined : styles.gridRow}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }]}
         showsVerticalScrollIndicator={false}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}

@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
+import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import {
   CategoryScroller,
   PromoCarousel,
@@ -73,7 +74,7 @@ export default function HomeScreen() {
         }
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: insets.bottom + 24 },
+          { paddingBottom: expandableTabBarInset(insets.bottom) + 24 },
         ]}
       >
         <CategoryScroller categories={catalogData?.categories ?? []} />

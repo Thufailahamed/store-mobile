@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import { PaperBackground } from "@/components/layout";
+import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { Avatar } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
@@ -241,7 +242,7 @@ export default function AccountScreen() {
           styles.scroll,
           {
             paddingTop: Math.max(insets.top, spacing[4]) + spacing[2],
-            paddingBottom: 110,
+            paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4],
           },
         ]}
       >

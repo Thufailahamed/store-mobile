@@ -20,6 +20,8 @@ import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
 import { SearchDiscover } from "@/components/search/SearchDiscover";
 import { SearchSuggestions } from "@/components/search/SearchSuggestions";
 import { Display, Label, Body } from "@/components/ui/Typography";
+import { AppHeader, PaperBackground } from "@/components/layout";
+import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { Button } from "@/components/ui";
 import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
@@ -615,7 +617,7 @@ export default function SearchScreen() {
             {/* Scrollable results list */}
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: spacing[24] }}
+              contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
             >
               {/* Active filter chips */}
               {activeFilterCount > 0 && (

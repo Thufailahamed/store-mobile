@@ -280,68 +280,6 @@ export function AddressFormSheet({
             </Pressable>
           </View>
 
-          <View style={styles.mapSection}>
-            <View style={styles.typeBlock}>
-              <Label style={styles.sectionLabel}>Type</Label>
-              <View style={styles.typeRow}>
-                {(["home", "work", "other"] as AddressType[]).map((t) => {
-                  const meta = TYPE_META[t];
-                  const active = form.type === t;
-                  return (
-                    <Pressable
-                      key={t}
-                      onPress={() => set("type", t)}
-                      style={[styles.typeChip, active && styles.typeChipActive]}
-                    >
-                      <Ionicons
-                        name={meta.icon}
-                        size={14}
-                        color={active ? colors.light.primaryForeground : colors.light.foreground}
-                      />
-                      <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
-                        {meta.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <Body muted size="xs" style={styles.typeCopy}>{TYPE_META[form.type].copy}</Body>
-            </View>
-
-            <TouchableOpacity
-              onPress={handleAutoFetch}
-              disabled={fetchingLoc}
-              style={[styles.autoDetectBtn, { borderColor: colors.light.primary }]}
-              activeOpacity={0.75}
-            >
-              {fetchingLoc ? (
-                <ActivityIndicator size="small" color={colors.light.primary} />
-              ) : (
-                <Ionicons name="location-outline" size={16} color={colors.light.primary} />
-              )}
-              <Label style={[styles.autoDetectBtnText, { color: colors.light.primary }]}>
-                {fetchingLoc ? "Detecting location…" : "Auto-detect current address"}
-              </Label>
-            </TouchableOpacity>
-
-            <Label style={styles.sectionLabel}>Pin location</Label>
-            <AddressMapPicker
-              latitude={form.latitude}
-              longitude={form.longitude}
-              onLocationChange={handleMapChange}
-            />
-            {geoBusy ? (
-              <View style={styles.geoStatus}>
-                <ActivityIndicator size="small" color={colors.light.primary} />
-                <Text style={styles.geoStatusText}>Resolving address…</Text>
-              </View>
-            ) : (
-              <Body muted size="xs" style={styles.helper}>
-                Drag the pin, tap the map, or hit the locate button to refine.
-              </Body>
-            )}
-          </View>
-
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={styles.body}
@@ -349,6 +287,68 @@ export function AddressFormSheet({
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
           >
+            <View style={styles.mapSection}>
+              <View style={styles.typeBlock}>
+                <Label style={styles.sectionLabel}>Type</Label>
+                <View style={styles.typeRow}>
+                  {(["home", "work", "other"] as AddressType[]).map((t) => {
+                    const meta = TYPE_META[t];
+                    const active = form.type === t;
+                    return (
+                      <Pressable
+                        key={t}
+                        onPress={() => set("type", t)}
+                        style={[styles.typeChip, active && styles.typeChipActive]}
+                      >
+                        <Ionicons
+                          name={meta.icon}
+                          size={14}
+                          color={active ? colors.light.primaryForeground : colors.light.foreground}
+                        />
+                        <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
+                          {meta.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Body muted size="xs" style={styles.typeCopy}>{TYPE_META[form.type].copy}</Body>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleAutoFetch}
+                disabled={fetchingLoc}
+                style={[styles.autoDetectBtn, { borderColor: colors.light.primary }]}
+                activeOpacity={0.75}
+              >
+                {fetchingLoc ? (
+                  <ActivityIndicator size="small" color={colors.light.primary} />
+                ) : (
+                  <Ionicons name="location-outline" size={16} color={colors.light.primary} />
+                )}
+                <Label style={[styles.autoDetectBtnText, { color: colors.light.primary }]}>
+                  {fetchingLoc ? "Detecting location…" : "Auto-detect current address"}
+                </Label>
+              </TouchableOpacity>
+
+              <Label style={styles.sectionLabel}>Pin location</Label>
+              <AddressMapPicker
+                latitude={form.latitude}
+                longitude={form.longitude}
+                onLocationChange={handleMapChange}
+              />
+              {geoBusy ? (
+                <View style={styles.geoStatus}>
+                  <ActivityIndicator size="small" color={colors.light.primary} />
+                  <Text style={styles.geoStatusText}>Resolving address…</Text>
+                </View>
+              ) : (
+                <Body muted size="xs" style={styles.helper}>
+                  Drag the pin, tap the map, or hit the locate button to refine.
+                </Body>
+              )}
+            </View>
+
             {/* Manual fields */}
             <View style={styles.fieldRow}>
               <View style={{ flex: 1 }}>
@@ -556,7 +556,6 @@ const styles = StyleSheet.create({
     gap: spacing[4],
   },
   mapSection: {
-    paddingHorizontal: spacing[5],
     paddingBottom: spacing[3],
     gap: spacing[3],
   },
