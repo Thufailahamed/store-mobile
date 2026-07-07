@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { View, FlatList, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
+import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, radii } from "@/lib/theme/tokens";
@@ -175,7 +176,7 @@ export default function WishlistScreen() {
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: listBottomPad },
+          { paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] },
         ]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
