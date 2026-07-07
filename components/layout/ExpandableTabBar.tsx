@@ -132,9 +132,10 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
   );
 }
 
-/** Bottom padding for scroll content (safe area only — no tab bar). */
+/** Bottom padding for scroll content to clear the floating tab bar. */
 export function expandableTabBarInset(safeBottom: number) {
-  return Math.max(safeBottom, 10) + 24;
+  // Tab bar bottom position + Tab bar height (64) + extra visual spacing (16)
+  return Math.max(safeBottom, 10) + 64 + 16;
 }
 
 const styles = StyleSheet.create({
