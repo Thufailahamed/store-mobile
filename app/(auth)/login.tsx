@@ -11,7 +11,10 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+WebBrowser.maybeCompleteAuthSession();
 import { Ionicons } from "@/components/ui/Icon";
 import Svg, { Path } from "react-native-svg";
 import { supabase } from "@/lib/supabase/client";
@@ -154,7 +157,7 @@ export default function LoginScreen() {
 
   const handleSocialLogin = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: "luxe://auth/callback",
@@ -164,6 +167,11 @@ export default function LoginScreen() {
 
     if (error) {
       toast(error.message, "error");
+      return;
+    }
+
+    if (data?.url) {
+      WebBrowser.openAuthSessionAsync(data.url, "luxe://auth/callback");
     }
   };
 
