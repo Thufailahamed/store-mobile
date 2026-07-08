@@ -12,6 +12,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { releaseCartReservations } from "@/lib/inventory-reservations";
 import { useCart, useWishlist } from "@/lib/stores";
 import { clearPushToken } from "@/lib/notifications";
+import { clearDriverShiftState } from "@/lib/hooks/useDriverShift";
 
 export interface AuthState {
   session: Session | null;
@@ -211,6 +212,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn("[auth] signOut local clear failed:", err);
     }
+    // Shift on/off is stored under a device-wide key, not scoped to this
+    // user — clear it so the next driver signing in on this device doesn't
+    // inherit an "on shift" state (and the GPS pings that come with it).
+    await clearDriverShiftState();
   }, [user]);
 
   const resetPassword = useCallback(async (email: string) => {
