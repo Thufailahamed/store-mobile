@@ -15,10 +15,12 @@ import { updateDriverSelf } from "@/lib/api/driver-profile";
 const PING_INTERVAL_MS = 30_000;
 const MAX_ACCURACY_M = 100;
 
-export function useDriverLocation(shouldPing: boolean): void {
+export function useDriverLocation(shouldPing: boolean, onPermissionDenied?: () => void): void {
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const grantedRef = useRef(false);
+  const onPermissionDeniedRef = useRef(onPermissionDenied);
+  onPermissionDeniedRef.current = onPermissionDenied;
 
   useEffect(() => {
     if (!shouldPing) {
@@ -62,7 +64,14 @@ export function useDriverLocation(shouldPing: boolean): void {
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted" || cancelled) return;
+      if (cancelled) return;
+      if (status !== "granted") {
+        // Shift UI would otherwise keep showing "on" with a running timer
+        // while no location ever reaches dispatch — tell the caller so it
+        // can turn the shift back off and inform the driver.
+        onPermissionDeniedRef.current?.();
+        return;
+      }
       grantedRef.current = true;
 
       // Initial ping
