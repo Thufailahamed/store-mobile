@@ -53,8 +53,8 @@ export default function ApprovalsScreen() {
         icon: "storefront-outline" as const,
         route: `/(admin)/stores/${r.id}`,
       })),
-      ...(q.data?.brands ?? []).map((r) => ({ ...r, kind: "brand" as const, kindLabel: "Brand", icon: "pricetag-outline" as const, route: "/(admin)/brands" })),
-      ...(q.data?.products ?? []).map((r) => ({ ...r, kind: "product" as const, kindLabel: "Product", icon: "cube-outline" as const, route: "/(admin)/products" })),
+      ...(q.data?.brands ?? []).map((r) => ({ ...r, kind: "brand" as const, kindLabel: "Brand", icon: "pricetag-outline" as const, route: `/(admin)/brands/${r.id}` })),
+      ...(q.data?.products ?? []).map((r) => ({ ...r, kind: "product" as const, kindLabel: "Product", icon: "cube-outline" as const, route: `/(admin)/products/${r.id}` })),
     ]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return all.filter((r) => {
@@ -84,10 +84,46 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
     },
   });
-  const approveBrandM = useMutation({ mutationFn: (id: string) => approveBrand(id, "approved"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-approvals"] }) });
-  const rejectBrandM = useMutation({ mutationFn: (id: string) => approveBrand(id, "rejected"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-approvals"] }) });
-  const approveProductM = useMutation({ mutationFn: (id: string) => approveProduct(id, "active"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-approvals"] }) });
-  const rejectProductM = useMutation({ mutationFn: (id: string) => approveProduct(id, "rejected"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-approvals"] }) });
+  const approveBrandM = useMutation({
+    mutationFn: (id: string) => approveBrand(id, "approved"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Cannot approve brand", res.error);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["admin-approvals"] });
+    },
+  });
+  const rejectBrandM = useMutation({
+    mutationFn: (id: string) => approveBrand(id, "rejected"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Cannot reject brand", res.error);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["admin-approvals"] });
+    },
+  });
+  const approveProductM = useMutation({
+    mutationFn: (id: string) => approveProduct(id, "active"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Cannot approve product", res.error);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["admin-approvals"] });
+    },
+  });
+  const rejectProductM = useMutation({
+    mutationFn: (id: string) => approveProduct(id, "rejected"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Cannot reject product", res.error);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["admin-approvals"] });
+    },
+  });
 
   const handle = (row: any, action: "approve" | "reject") => {
     const fn = row.kind === "store"

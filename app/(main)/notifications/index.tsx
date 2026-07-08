@@ -21,7 +21,7 @@ import {
   markAllNotificationsRead,
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
-import { Skeleton } from "@/components/ui";
+import { Skeleton, useToast } from "@/components/ui";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, radii, typography } from "@/lib/theme/tokens";
@@ -78,6 +78,14 @@ function formatRelativeShort(dateStr: string): string {
   });
 }
 
+/** In-app relative path only — no scheme/host, no "..", reasonable length. */
+function isSafeInAppPath(path: string): boolean {
+  if (path.length === 0 || path.length > 200) return false;
+  if (!path.startsWith("/")) return false;
+  if (path.includes("://") || path.includes("..")) return false;
+  return /^\/[a-zA-Z0-9/_\-().[\]%]*$/.test(path);
+}
+
 function matchesFilter(notification: Notification, filter: NotifFilter): boolean {
   if (filter === "all") return true;
   return FILTER_TYPES[filter].includes(notification.type);
@@ -100,6 +108,7 @@ function getNotificationImage(notification: Notification): string | undefined {
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { user } = useAuth();
@@ -179,7 +188,21 @@ export default function NotificationsScreen() {
 
       const data = item.data;
       if (data?.screen && typeof data.screen === "string") {
-        router.push(data.screen as never);
+        // The screen path comes from a push-notification payload (server
+        // or provider controlled) — only follow it if it looks like a
+        // well-formed in-app route, and never let a bad value crash
+        // navigation with no feedback.
+        if (!isSafeInAppPath(data.screen)) {
+          console.warn("[notifications] rejected unsafe screen target:", data.screen);
+          toast("This notification's link is no longer valid.", "error");
+          return;
+        }
+        try {
+          router.push(data.screen as never);
+        } catch (err) {
+          console.warn("[notifications] navigation failed:", err);
+          toast("Couldn't open this notification.", "error");
+        }
         return;
       }
       if (data?.order_id && typeof data.order_id === "string") {
@@ -190,7 +213,7 @@ export default function NotificationsScreen() {
         router.push(`/(main)/products/${data.product_slug}` as never);
       }
     },
-    [markReadMutation, router]
+    [markReadMutation, router, toast]
   );
 
   const accent = theme.accent2.rust;

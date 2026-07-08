@@ -12,6 +12,20 @@ import { updateDriverSelf } from "@/lib/api/driver-profile";
 const SHIFT_KEY = "driver.shift.on";
 const SHIFT_START_KEY = "driver.shift.startedAt";
 
+/**
+ * Shift state is stored under a device-wide (not user-scoped) key. Call this
+ * on sign-out so a second driver logging in on the same device doesn't
+ * inherit the previous driver's "on shift" state and start sending GPS
+ * pings under their own session before ever toggling a shift on.
+ */
+export async function clearDriverShiftState(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([SHIFT_KEY, SHIFT_START_KEY]);
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface UseDriverShiftResult {
   on: boolean;
   startedAt: string | null;

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, useRouter, usePathname } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
@@ -21,7 +21,13 @@ export default function DeliveryLayout() {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
   const router = useRouter();
+  const pathname = usePathname();
   const [memberActive, setMemberActive] = useState<boolean | null>(null);
+
+  // Company owners/managers use the "Driver scan" tile on their own
+  // dashboard to receive packages at the hub — that's the one screen in
+  // this driver-only tab group they're meant to reach directly.
+  const isScanRoute = pathname.endsWith("/scan");
 
   // H-05 AUDIT: Role guard — only rider/admin may access this layout.
   // (delivery-company) members are redirected to their own layout below.
@@ -37,12 +43,13 @@ export default function DeliveryLayout() {
   useEffect(() => {
     if (loading || roleLoading || !user?.id) return;
     if (role !== "delivery_company") return;
+    if (isScanRoute) return; // let owners/managers reach the scan screen directly
     resolveDeliveryHomeRoute(user.id, role).then((home) => {
       if (home === "/(delivery-company)") {
         router.replace(home);
       }
     });
-  }, [user?.id, role, roleLoading, loading, router]);
+  }, [user?.id, role, roleLoading, loading, router, isScanRoute]);
 
   // Show spinner while auth/role is still resolving (prevents flash of dashboard
   // for non-rider roles before the redirect fires).

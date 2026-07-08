@@ -15,7 +15,7 @@ export default function AdminDeliveryLayout() {
     return (
       <CourierManagedExternally
         role="admin"
-        onClose={() => router.replace("/(admin)/index" as never)}
+        onClose={() => router.replace("/(admin)" as never)}
       />
     );
   }

@@ -96,6 +96,17 @@ export default function SellerCoupons() {
       Alert.alert("Error", "Enter a valid discount value");
       return;
     }
+    if (minOrder.trim() && (!Number.isFinite(Number(minOrder)) || Number(minOrder) < 0)) {
+      Alert.alert("Error", "Minimum order total must be a valid, non-negative number");
+      return;
+    }
+    if (
+      maxUses.trim() &&
+      (!Number.isInteger(Number(maxUses)) || Number(maxUses) <= 0)
+    ) {
+      Alert.alert("Error", "Maximum uses must be a whole number greater than 0");
+      return;
+    }
 
     setCreating(true);
     const storeRes = await getSellerStore(user!.id);

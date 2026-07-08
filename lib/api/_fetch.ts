@@ -11,7 +11,7 @@
  * here. Legacy handlers may return a bare resource — pass through.
  */
 
-import { supabase } from "@/lib/supabase/client";
+import { supabase, refreshSessionOnce } from "@/lib/supabase/client";
 
 import Constants from "expo-constants";
 
@@ -82,6 +82,59 @@ function buildQuery(q?: FetchOpts["query"]): string {
   return s ? `?${s}` : "";
 }
 
+type Attempt<T> =
+  | { kind: "response"; status: number; json: Record<string, unknown> | unknown[] }
+  | { kind: "network-error"; error: string };
+
+async function attemptRequest(
+  url: string,
+  token: string | null,
+  opts: FetchOpts,
+): Promise<Attempt<unknown>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
+  try {
+    const res = await fetch(url, {
+      method: opts.method ?? "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers ?? {}),
+      },
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: controller.signal,
+    });
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown> | unknown[];
+    return { kind: "response", status: res.status, json };
+  } catch (e: unknown) {
+    return { kind: "network-error", error: e instanceof Error ? e.message : "Network error" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function toResult<T>(status: number, json: Record<string, unknown> | unknown[]): ApiResult<T> {
+  if (status < 200 || status >= 300) {
+    const err = (json as { error?: unknown }).error;
+    const message =
+      typeof err === "string"
+        ? err
+        : err && typeof err === "object" && "message" in err
+          ? String((err as { message?: unknown }).message)
+          : `Request failed (${status})`;
+    return { ok: false, error: message };
+  }
+  // Envelope v2: { ok:true, data, version:2 }
+  if (json && typeof json === "object" && "ok" in (json as Record<string, unknown>)) {
+    const env = json as { ok: boolean; data?: unknown };
+    if (env.ok) return { ok: true, data: (env.data ?? json) as T };
+    // shouldn't happen on 2xx but be defensive
+    const e = (json as { error?: { message?: string } }).error;
+    return { ok: false, error: e?.message ?? "Unknown error" };
+  }
+  return { ok: true, data: json as T };
+}
+
 export async function fetchJson<T = unknown>(
   path: string,
   opts: FetchOpts = {},
@@ -96,45 +149,25 @@ export async function fetchJson<T = unknown>(
     return { ok: false, error: "Not signed in" };
   }
   const url = `${storeApiUrl}${path.startsWith("/") ? "" : "/"}${path}${buildQuery(opts.query)}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000);
-  try {
-    const res = await fetch(url, {
-      method: opts.method ?? "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(opts.headers ?? {}),
-      },
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown> | unknown[];
-    if (!res.ok) {
-      const err = (json as { error?: unknown }).error;
-      const message =
-        typeof err === "string"
-          ? err
-          : err && typeof err === "object" && "message" in err
-            ? String((err as { message?: unknown }).message)
-            : `Request failed (${res.status})`;
-      return { ok: false, error: message };
-    }
-    // Envelope v2: { ok:true, data, version:2 }
-    if (json && typeof json === "object" && "ok" in (json as Record<string, unknown>)) {
-      const env = json as { ok: boolean; data?: unknown };
-      if (env.ok) return { ok: true, data: (env.data ?? json) as T };
-      // shouldn't happen on 2xx but be defensive
-      const e = (json as { error?: { message?: string } }).error;
-      return { ok: false, error: e?.message ?? "Unknown error" };
-    }
-    return { ok: true, data: json as T };
-  } catch (e: unknown) {
-    clearTimeout(timer);
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : "Network error",
-    };
+
+  const first = await attemptRequest(url, token, opts);
+  if (first.kind === "network-error") {
+    return { ok: false, error: first.error };
   }
+
+  // A 401 on an authenticated call likely means the cached access token
+  // expired (e.g. the app sat backgrounded past its lifetime, so
+  // supabase-js's timer-based auto-refresh never fired). Refresh once and
+  // retry with the new token instead of surfacing a confusing auth error.
+  if (first.status === 401 && requireAuth) {
+    const { data, error } = await refreshSessionOnce();
+    const newToken = !error ? (data.session?.access_token ?? null) : null;
+    if (newToken && newToken !== token) {
+      const retry = await attemptRequest(url, newToken, opts);
+      if (retry.kind === "network-error") return { ok: false, error: retry.error };
+      return toResult<T>(retry.status, retry.json);
+    }
+  }
+
+  return toResult<T>(first.status, first.json);
 }

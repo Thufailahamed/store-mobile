@@ -47,7 +47,20 @@ export default function DeliveryDashboard() {
   const [now, setNow] = useState(Date.now());
 
   const { on: shiftOn, startedAt, toggle: toggleShift, shouldPing } = useDriverShift();
-  useDriverLocation(shouldPing);
+  useDriverLocation(
+    shouldPing,
+    useCallback(() => {
+      // Shift was toggled on but location access was denied — dispatch
+      // never receives pings for an "active" driver. Turn the shift back
+      // off rather than leaving the UI showing a running timer for a shift
+      // that's silently doing nothing.
+      void toggleShift(false);
+      Alert.alert(
+        "Location access needed",
+        "Turn on location access for LUXE to go on shift — dispatch uses it to route orders to you.",
+      );
+    }, [toggleShift]),
+  );
 
   // Tick once per minute for the shift timer + relative timestamps.
   useEffect(() => {
