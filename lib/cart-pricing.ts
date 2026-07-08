@@ -53,7 +53,10 @@ export function computeCartTotals(params: {
   });
   const afterCoupon = Math.max(0, sub - (params.couponDiscount ?? 0));
   const afterPoints = Math.max(0, afterCoupon - (params.pointsValue ?? 0));
-  const tax = Math.round(afterPoints * TAX_RATE);
+  // Not rounded — matches store/src/lib/utils.ts so mobile and web show
+  // the same pre-checkout total (the backend computes the authoritative
+  // final total either way).
+  const tax = afterPoints * TAX_RATE;
   const total = afterPoints + shipping + tax;
   return { sub, shipping, tax, total, afterCoupon, afterPoints };
 }
