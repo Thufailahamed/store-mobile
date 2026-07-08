@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo } from "react";
-import { ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { RefreshControl, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
+import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import {
   CategoryScroller,
   PromoCarousel,
@@ -22,6 +23,7 @@ import { useHomeScreenData } from "@/lib/hooks/useHomeScreen";
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabBarScrollHandler = useHideTabBarOnScroll();
   const { user } = useAuth();
   const wishlistIdsKey = useWishlist((s) => Object.keys(s.items).sort().join(","));
 
@@ -67,8 +69,10 @@ export default function HomeScreen() {
   return (
     <PaperBackground>
       <AppHeader showSearch />
-      <ScrollView
+      <AnimatedScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={tabBarScrollHandler}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={isRefreshing && !catalog.isLoading} onRefresh={refreshAll} />
         }
@@ -162,7 +166,7 @@ export default function HomeScreen() {
             <HomeJournalRail posts={catalogData?.journalPosts ?? []} />
           </>
         ) : null}
-      </ScrollView>
+      </AnimatedScrollView>
     </PaperBackground>
   );
 }
