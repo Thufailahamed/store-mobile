@@ -71,6 +71,9 @@ export const supabase = createClient(URL, ANON_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // PKCE (not the 'implicit' default) is required for the OAuth/deep-link
+    // callback flow in oauth.ts, which exchanges a `?code=` query param.
+    flowType: "pkce",
   },
 });
 
