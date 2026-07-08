@@ -368,24 +368,12 @@ export default function WardrobeScreen() {
             </View>
             <View style={styles.outfitsActions}>
               <TouchableOpacity
-                style={[styles.smallCta, styles.smallCtaGhost]}
+                style={styles.smallCta}
                 onPress={() => setAutoSheetOpen(true)}
                 activeOpacity={0.85}
               >
-                <Ionicons name="sparkles" size={13} color={INK} />
-                <Text style={[styles.smallCtaText, styles.smallCtaTextGhost]}>
-                  Auto-generate
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.smallCta}
-                onPress={() =>
-                  router.push("/(main)/wardrobe/share/new" as never)
-                }
-                activeOpacity={0.85}
-              >
-                <Ionicons name="add" size={13} color="#fff" />
-                <Text style={styles.smallCtaText}>New outfit</Text>
+                <Ionicons name="sparkles" size={13} color="#fff" />
+                <Text style={styles.smallCtaText}>Auto-generate</Text>
               </TouchableOpacity>
             </View>
 
