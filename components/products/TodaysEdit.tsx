@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import {
   View,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
   StyleSheet,
   TouchableOpacity,
   NativeScrollEvent,
@@ -14,8 +14,6 @@ import { ProductCard } from "@/components/product/ProductCard";
 import { colors, spacing } from "@/lib/theme/tokens";
 import type { Product } from "@/lib/types";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = Math.round(SCREEN_WIDTH * 0.46);
 const CARD_GAP = spacing[3];
 
 /**
@@ -26,6 +24,8 @@ const CARD_GAP = spacing[3];
 export function TodaysEdit({ products }: { products: Product[] }) {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
+  const CARD_WIDTH = Math.round(screenWidth * 0.46);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
