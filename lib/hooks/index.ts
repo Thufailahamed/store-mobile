@@ -13,3 +13,10 @@ export {
   fetchHomeCatalogPrimary,
   fetchHomeCatalogExtended,
 } from "./useHomeScreen";
+export {
+  TabBarVisibilityProvider,
+  useTabBarVisibility,
+  useHideTabBarOnScroll,
+  AnimatedScrollView,
+  AnimatedFlatList,
+} from "./useTabBarScroll";
