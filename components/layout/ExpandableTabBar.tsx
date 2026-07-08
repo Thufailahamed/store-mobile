@@ -1,11 +1,16 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { Ionicons } from "@/components/ui/Icon";
 import { useCart, useWishlist } from "@/lib/stores";
+import { useTabBarVisibility } from "@/lib/hooks/useTabBarScroll";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+
+/** Below this width, tighten the pill so 5 tabs don't crowd the edges. */
+const NARROW_SCREEN_WIDTH = 360;
 
 type IonIcon = keyof typeof Ionicons.glyphMap;
 
@@ -31,6 +36,7 @@ function TabItem({
   badge,
   onPress,
   onLongPress,
+  narrow,
 }: {
   focused: boolean;
   label: string;
@@ -39,6 +45,7 @@ function TabItem({
   badge?: number;
   onPress: () => void;
   onLongPress: () => void;
+  narrow: boolean;
 }) {
   return (
     <Pressable
@@ -49,7 +56,13 @@ function TabItem({
       accessibilityState={focused ? { selected: true } : {}}
       accessibilityLabel={label}
     >
-      <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+      <View
+        style={[
+          styles.iconPill,
+          narrow && styles.iconPillNarrow,
+          focused && styles.iconPillActive,
+        ]}
+      >
         <Ionicons
           name={focused ? iconFocused : icon}
           size={22}
@@ -76,8 +89,13 @@ function TabItem({
 
 export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const cartCount = useCart((s) => s.itemCount());
   const wishlistCount = useWishlist((s) => s.count());
+  const { translateY } = useTabBarVisibility();
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
 
   const focusedRoute = state.routes[state.index];
   const focusedOptions = descriptors[focusedRoute.key]?.options;
@@ -85,6 +103,7 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
     if (focusedOptions.tabBarStyle.display === "none") return null;
   }
 
+  const isNarrow = width < NARROW_SCREEN_WIDTH;
   const badges: Record<string, number> = {
     "products/index": cartCount,
     "wishlist/index": wishlistCount,
@@ -93,8 +112,13 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
   const visibleRoutes = state.routes.filter((route) => TAB_CONFIG[route.name]);
 
   return (
-    <View
-      style={[styles.shell, { bottom: Math.max(insets.bottom, 10) }]}
+    <Animated.View
+      style={[
+        styles.shell,
+        { bottom: Math.max(insets.bottom, 10) },
+        isNarrow && styles.shellNarrow,
+        animatedStyle,
+      ]}
       pointerEvents="box-none"
     >
       <View style={styles.pill}>
@@ -111,6 +135,7 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
               icon={config.icon}
               iconFocused={config.iconFocused}
               badge={badges[route.name]}
+              narrow={isNarrow}
               onPress={() => {
                 const event = navigation.emit({
                   type: "tabPress",
@@ -128,7 +153,7 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
           );
         })}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -144,6 +169,10 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     zIndex: 50,
+  },
+  shellNarrow: {
+    left: 10,
+    right: 10,
   },
   pill: {
     flexDirection: "row",
@@ -181,6 +210,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
+  },
+  iconPillNarrow: {
+    minWidth: 46,
   },
   iconPillActive: {
     backgroundColor: colors.olive[100],
