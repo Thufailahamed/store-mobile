@@ -2,17 +2,17 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground, AppHeader, ScreenHeader } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
+import { AnimatedFlatList, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { FilterSheet } from "@/components/search/FilterSheet";
 import { QuickRefine } from "@/components/search/QuickRefine";
 import { ProductCard } from "@/components/product/ProductCard";
@@ -36,17 +36,18 @@ import type { Product } from "@/lib/types";
 import { getPersonalizedSearch } from "@/lib/recommender";
 import { useAuth } from "@/lib/supabase/auth";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 12;
 const GRID_PADDING = 16;
 const GRID_COL_GAP = 12;
-const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_COL_GAP) / 2;
 
 const SORTS_FOR_BAR: SortOption[] = SORTS;
 
 export default function ProductsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = (screenWidth - GRID_PADDING * 2 - GRID_COL_GAP) / 2;
+  const tabBarScrollHandler = useHideTabBarOnScroll();
   const params = useLocalSearchParams<{
     category?: string;
     brand?: string;
@@ -196,7 +197,7 @@ export default function ProductsScreen() {
   const restProducts = showHero ? refined.slice(1) : refined;
 
   const renderGridItem = ({ item }: { item: Product }) => (
-    <View style={styles.gridItem}>
+    <View style={[styles.gridItem, { width: cardWidth }]}>
       <ProductCard product={item} />
     </View>
   );
@@ -210,7 +211,7 @@ export default function ProductsScreen() {
   return (
     <PaperBackground>
       <AppHeader compact showTicker={false} showBackToHome />
-      <FlatList
+      <AnimatedFlatList
         key={view}
         data={view === "list" ? restProducts : restProducts}
         keyExtractor={(item) => item.id}
@@ -219,6 +220,8 @@ export default function ProductsScreen() {
         columnWrapperStyle={view === "list" ? undefined : styles.gridRow}
         contentContainerStyle={[styles.listContent, { paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }]}
         showsVerticalScrollIndicator={false}
+        onScroll={tabBarScrollHandler}
+        scrollEventThrottle={16}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
@@ -550,7 +553,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: GRID_PADDING,
   },
   gridItem: {
-    width: CARD_WIDTH,
     marginBottom: GRID_GAP,
   },
   listItemWrap: {

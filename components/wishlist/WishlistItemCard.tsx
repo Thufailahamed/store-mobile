@@ -9,7 +9,7 @@ import { formatPrice } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
-import { WISHLIST_CARD_WIDTH, WISHLIST_IMAGE_HEIGHT } from "@/components/wishlist/layout";
+import { useWishlistLayout } from "@/components/wishlist/layout";
 
 const INK = "#16170f";
 const MUTED = "#6b6b6b";
@@ -25,6 +25,7 @@ function getStock(product: Product) {
 
 export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const router = useRouter();
+  const { cardWidth, imageHeight } = useWishlistLayout();
   const { addItem } = useCart();
   const { toggle } = useWishlist();
   const { toast } = useToast();
@@ -74,9 +75,9 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
   return (
     <Pressable
       onPress={open}
-      style={({ pressed }) => [styles.card, pressed && { opacity: 0.98 }]}
+      style={({ pressed }) => [styles.card, { width: cardWidth }, pressed && { opacity: 0.98 }]}
     >
-      <View style={styles.imageWrap}>
+      <View style={[styles.imageWrap, { height: imageHeight }]}>
         {primary ? (
           <Image source={{ uri: primary }} style={styles.image} contentFit="cover" transition={250} />
         ) : (
@@ -132,7 +133,6 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    width: WISHLIST_CARD_WIDTH,
     backgroundColor: "#ffffff",
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -142,7 +142,6 @@ const styles = StyleSheet.create({
   },
   imageWrap: {
     width: "100%",
-    height: WISHLIST_IMAGE_HEIGHT,
     position: "relative",
     backgroundColor: "#f5f5f5",
   },

@@ -2,14 +2,16 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Skeleton } from "@/components/ui";
 import { spacing, radii } from "@/lib/theme/tokens";
-import { WISHLIST_CARD_WIDTH, WISHLIST_GRID_GAP, WISHLIST_IMAGE_HEIGHT } from "@/components/wishlist/layout";
+import { WISHLIST_GRID_GAP, useWishlistLayout } from "@/components/wishlist/layout";
 
 export function WishlistSkeleton() {
+  const { cardWidth, imageHeight } = useWishlistLayout();
+
   return (
     <View style={styles.grid}>
       {[0, 1, 2, 3].map((i) => (
-        <View key={i} style={styles.card}>
-          <Skeleton width="100%" height={WISHLIST_IMAGE_HEIGHT} borderRadius={0} />
+        <View key={i} style={[styles.card, { width: cardWidth }]}>
+          <Skeleton width="100%" height={imageHeight} borderRadius={0} />
           <View style={styles.body}>
             <Skeleton width="45%" height={8} />
             <Skeleton width="90%" height={14} />
@@ -30,7 +32,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing[2],
   },
   card: {
-    width: WISHLIST_CARD_WIDTH,
     borderRadius: radii.lg,
     overflow: "hidden",
     borderWidth: 1,

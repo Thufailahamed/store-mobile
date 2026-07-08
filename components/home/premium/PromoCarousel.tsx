@@ -4,7 +4,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   Text,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -15,8 +15,6 @@ import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Banner } from "@/lib/types";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = SCREEN_WIDTH - spacing[5] * 2;
 const CARD_HEIGHT = 168;
 
 interface PromoCarouselProps {
@@ -25,6 +23,8 @@ interface PromoCarouselProps {
 
 export function PromoCarousel({ banners }: PromoCarouselProps) {
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const CARD_WIDTH = screenWidth - spacing[5] * 2;
   const list = banners.length ? banners : FALLBACK_PROMOS;
   const [active, setActive] = useState(0);
   const scrollRef = useRef<ScrollView>(null);

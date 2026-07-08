@@ -1,5 +1,5 @@
 import React from "react";
-import { View, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
+import { View, TouchableOpacity, StyleSheet, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
@@ -7,9 +7,6 @@ import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { formatPrice, discountPct } from "@/lib/utils";
 import type { Product } from "@/lib/types";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const HERO_HEIGHT = Math.round(SCREEN_WIDTH * 0.62);
 
 interface HeroCardProps {
   product: Product;
@@ -22,6 +19,8 @@ interface HeroCardProps {
  */
 export function HeroCard({ product }: HeroCardProps) {
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const heroHeight = Math.round(screenWidth * 0.62);
   const primaryImage =
     product.images?.find((i) => i.is_primary)?.url ?? product.images?.[0]?.url;
   const pct = discountPct(product.mrp, product.price);
@@ -34,7 +33,7 @@ export function HeroCard({ product }: HeroCardProps) {
       onPress={() => router.push(`/(main)/products/${product.slug}`)}
       style={styles.card}
     >
-      <View style={styles.imageWrap}>
+      <View style={[styles.imageWrap, { height: heroHeight }]}>
         {primaryImage ? (
           <Image
             source={{ uri: primaryImage }}
@@ -108,7 +107,6 @@ const styles = StyleSheet.create({
   },
   imageWrap: {
     width: "100%",
-    height: HERO_HEIGHT,
     position: "relative",
     backgroundColor: colors.light.muted,
   },

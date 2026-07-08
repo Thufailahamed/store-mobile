@@ -5,7 +5,7 @@ import {
   Modal,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -14,8 +14,6 @@ import { colors, radii, spacing, shadows, typography } from "@/lib/theme/tokens"
 import { fontFamilies } from "@/lib/theme/fonts";
 import { COLORS, SIZES, PRICE_PRESETS, PRICE_BOUNDS } from "@/lib/api/facets";
 import type { ProductFilters } from "@/lib/api/facets";
-
-const { height: SCREEN_H } = Dimensions.get("window");
 
 interface SearchFilterSheetProps {
   visible: boolean;
@@ -30,6 +28,7 @@ export function SearchFilterSheet({
   filters,
   onApply,
 }: SearchFilterSheetProps) {
+  const { height: screenHeight } = useWindowDimensions();
   const [draft, setDraft] = useState<ProductFilters>({ ...filters });
 
   const activeCount =
@@ -90,7 +89,7 @@ export function SearchFilterSheet({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { maxHeight: screenHeight * 0.82 }]}>
           {/* Header */}
           <View style={styles.sheetHeader}>
             <View style={styles.handle} />
@@ -265,7 +264,6 @@ const styles = StyleSheet.create({
     inset: 0,
   },
   sheet: {
-    maxHeight: SCREEN_H * 0.82,
     backgroundColor: colors.light.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

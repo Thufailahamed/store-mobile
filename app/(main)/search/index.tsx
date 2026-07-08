@@ -5,7 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -22,6 +22,7 @@ import { SearchSuggestions } from "@/components/search/SearchSuggestions";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
+import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { Button } from "@/components/ui";
 import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
@@ -39,10 +40,8 @@ import { useAuth } from "@/lib/supabase/auth";
 import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
 import { pickImage, takePhoto } from "@/lib/upload";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_GAP = 10;
 const GRID_PADDING = 20;
-const CARD_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / 2;
 
 const INK = "#1b1c1c";
 const MUTED = "#5e5e5d";
@@ -66,6 +65,9 @@ type TabKey = typeof TABS[number]["key"];
 export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = (screenWidth - GRID_PADDING * 2 - GRID_GAP) / 2;
+  const tabBarScrollHandler = useHideTabBarOnScroll();
 
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
@@ -615,8 +617,10 @@ export default function SearchScreen() {
             </View>
 
             {/* Scrollable results list */}
-            <ScrollView
+            <AnimatedScrollView
               showsVerticalScrollIndicator={false}
+              onScroll={tabBarScrollHandler}
+              scrollEventThrottle={16}
               contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
             >
               {/* Active filter chips */}
@@ -730,7 +734,7 @@ export default function SearchScreen() {
                   ) : (
                     <View style={styles.grid}>
                       {filtered.map((p) => (
-                        <View key={p.id} style={styles.gridItem}>
+                        <View key={p.id} style={[styles.gridItem, { width: cardWidth }]}>
                           <ProductCard product={p} />
                         </View>
                       ))}
@@ -812,7 +816,7 @@ export default function SearchScreen() {
                   ))}
                 </View>
               </View>
-            </ScrollView>
+            </AnimatedScrollView>
           </View>
         )}
         </View>
@@ -831,10 +835,11 @@ export default function SearchScreen() {
 
 /* ─── ScrollView wrapper for empty state ─── */
 function ScrollViewWrapper({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: spacing[24] }}
+      contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
     >
       {children}
     </ScrollView>
@@ -1178,9 +1183,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: GRID_GAP,
   },
-  gridItem: {
-    width: CARD_WIDTH,
-  },
+  gridItem: {},
 
   /* List */
   listItem: {
