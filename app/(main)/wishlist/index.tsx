@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { View, FlatList, StyleSheet, Text } from "react-native";
+import { View, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
+import { AnimatedFlatList, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, radii } from "@/lib/theme/tokens";
@@ -22,9 +23,9 @@ import { WishlistSkeleton } from "@/components/wishlist/WishlistSkeleton";
 import { WishlistEmptyState } from "@/components/wishlist/WishlistEmptyState";
 import { YouMayAlsoLove } from "@/components/wishlist/YouMayAlsoLove";
 import {
-  WISHLIST_CARD_WIDTH,
   WISHLIST_GRID_GAP,
   WISHLIST_H_PAD,
+  useWishlistLayout,
 } from "@/components/wishlist/layout";
 import type { Product } from "@/lib/types";
 
@@ -67,6 +68,8 @@ function formatCompactValue(amount: number, currency = "LKR") {
 
 export default function WishlistScreen() {
   const insets = useSafeAreaInsets();
+  const { cardWidth } = useWishlistLayout();
+  const tabBarScrollHandler = useHideTabBarOnScroll();
   const { toast } = useToast();
   const wishlist = useWishlist();
   const cart = useCart();
@@ -168,7 +171,7 @@ export default function WishlistScreen() {
   return (
     <PaperBackground style={styles.screen}>
       <AppHeader compact showTicker={false} showSearch={false} showBackToHome />
-      <FlatList
+      <AnimatedFlatList
         data={visibleProducts}
         keyExtractor={(item) => item.id}
         numColumns={2}
@@ -179,6 +182,8 @@ export default function WishlistScreen() {
           { paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] },
         ]}
         showsVerticalScrollIndicator={false}
+        onScroll={tabBarScrollHandler}
+        scrollEventThrottle={16}
         ListHeaderComponent={
           <View style={styles.headerBlock}>
             <View style={styles.hero}>
@@ -215,7 +220,7 @@ export default function WishlistScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <View style={styles.gridItem}>
+          <View style={[styles.gridItem, { width: cardWidth }]}>
             <WishlistItemCard product={item} />
           </View>
         )}
@@ -339,9 +344,7 @@ const styles = StyleSheet.create({
     gap: WISHLIST_GRID_GAP,
     marginBottom: WISHLIST_GRID_GAP,
   },
-  gridItem: {
-    width: WISHLIST_CARD_WIDTH,
-  },
+  gridItem: {},
   filterEmpty: {
     paddingVertical: spacing[10],
     alignItems: "center",
