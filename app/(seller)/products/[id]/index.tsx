@@ -102,6 +102,13 @@ export default function SellerProductEdit() {
   const [initialVariantIds, setInitialVariantIds] = useState<string[]>([]);
 
   useEffect(() => {
+    // Reset per-product edit-session state so leftover removals from a
+    // previously edited product can never be applied to this one if the
+    // screen instance is ever reused for a different id.
+    setPendingImages([]);
+    setRemovedImageIds([]);
+    setRemovedVariantIds([]);
+
     (async () => {
       if (!user) return;
       const storeRes = await getSellerStore(user.id);
