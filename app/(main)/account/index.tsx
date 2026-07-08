@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Text,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -15,6 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import { PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
+import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { Avatar } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
@@ -52,10 +53,8 @@ function savedCardToPaymentCard(c: SavedCard): PaymentCard {
   };
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const H_PAD = spacing[5];
 const CARD_GAP = spacing[3];
-const SUMMARY_CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - CARD_GAP) / 2;
 const RECENT_SIZE = 120;
 
 const ACCOUNT_LINKS: {
@@ -135,6 +134,7 @@ function buildOrderThumbs(orders: Order[]): string[] {
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarScrollHandler = useHideTabBarOnScroll();
   const router = useRouter();
   const { user, signOut, role } = useAuth();
   const wishlistItems = useWishlist((s) => s.items);
@@ -236,8 +236,10 @@ export default function AccountScreen() {
 
   return (
     <PaperBackground style={{ backgroundColor: "#ffffff" }}>
-      <ScrollView
+      <AnimatedScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={tabBarScrollHandler}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scroll,
           {
@@ -500,44 +502,7 @@ export default function AccountScreen() {
             <Text style={styles.signInText}>Sign in</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
-
-      {/* Floating Footer Navigation Bar to exactly match Mobbin */}
-      <View style={[styles.floatingFooter, { bottom: Math.max(insets.bottom, 16) }]}>
-        <TouchableOpacity
-          style={styles.floatingBackBtn}
-          activeOpacity={0.85}
-          onPress={() => router.replace("/(main)")}
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-        </TouchableOpacity>
-
-        <View style={styles.floatingTabBar}>
-          <TouchableOpacity
-            style={styles.floatingTabItem}
-            activeOpacity={0.7}
-            onPress={() => router.replace("/(main)")}
-          >
-            <Ionicons name="home" size={22} color={colors.light.foreground} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.floatingTabItem}
-            activeOpacity={0.7}
-            onPress={() => router.replace("/(main)/search")}
-          >
-            <Ionicons name="search-outline" size={22} color={colors.light.mutedForeground} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.floatingTabItem}
-            activeOpacity={0.7}
-            onPress={() => router.replace("/(main)/wishlist")}
-          >
-            <Ionicons name="bookmark-outline" size={22} color={colors.light.mutedForeground} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      </AnimatedScrollView>
     </PaperBackground>
   );
 }
@@ -591,8 +556,14 @@ function SummaryCard({
   emptyIcon?: keyof typeof Ionicons.glyphMap;
   children: React.ReactNode;
 }) {
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = (screenWidth - H_PAD * 2 - CARD_GAP) / 2;
   return (
-    <TouchableOpacity style={styles.summaryCard} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity
+      style={[styles.summaryCard, { width: cardWidth }]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
       <View style={styles.summaryVisual}>{children}</View>
       <Text style={styles.summaryLabel}>{label}</Text>
     </TouchableOpacity>
@@ -796,7 +767,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing[6],
   },
   summaryCard: {
-    width: SUMMARY_CARD_WIDTH,
     backgroundColor: "#ffffff",
     borderRadius: radii["2xl"],
     borderWidth: 1,
@@ -1195,52 +1165,5 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
     fontSize: 15,
     color: colors.light.primaryForeground,
-  },
-  floatingFooter: {
-    position: "absolute",
-    left: H_PAD,
-    right: H_PAD,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    zIndex: 100,
-  },
-  floatingBackBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-  },
-  floatingTabBar: {
-    flex: 1,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
-    paddingHorizontal: spacing[2],
-  },
-  floatingTabItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
   },
 });
