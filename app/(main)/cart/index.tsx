@@ -388,26 +388,46 @@ export default function CartScreen() {
       setHasSavedAddress(false);
       return;
     }
-    getAddresses(user.id).then((res) => {
-      if (res.ok && res.data && res.data.length > 0) {
-        const defaultAddr = res.data.find((a) => a.is_default) || res.data[0];
-        const text = `${defaultAddr.line1}${defaultAddr.city ? `, ${defaultAddr.city}` : ""}`;
-        setAddressText(text);
-        setHasSavedAddress(true);
-      } else {
+    let cancelled = false;
+    getAddresses(user.id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok && res.data && res.data.length > 0) {
+          const defaultAddr = res.data.find((a) => a.is_default) || res.data[0];
+          const text = `${defaultAddr.line1}${defaultAddr.city ? `, ${defaultAddr.city}` : ""}`;
+          setAddressText(text);
+          setHasSavedAddress(true);
+        } else {
+          setAddressText("Add delivery address");
+          setHasSavedAddress(false);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
         setAddressText("Add delivery address");
         setHasSavedAddress(false);
-      }
-    });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id]);
 
   // Load "Buy It Again" items
   useEffect(() => {
-    getProducts({ limit: 6 }).then((res) => {
-      if (res.ok && res.data) {
-        setBuyAgainProducts(res.data.products);
-      }
-    });
+    let cancelled = false;
+    getProducts({ limit: 6 })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok && res.data) {
+          setBuyAgainProducts(res.data.products);
+        }
+      })
+      .catch(() => {
+        /* Buy-It-Again is a soft-fail section; leave it empty on error. */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleAddressPress = () => {
