@@ -18,6 +18,7 @@ WebBrowser.maybeCompleteAuthSession();
 import { Ionicons } from "@/components/ui/Icon";
 import Svg, { Path } from "react-native-svg";
 import { supabase } from "@/lib/supabase/client";
+import { completeAuthCallback } from "@/lib/supabase/oauth";
 import { isOperationalStoreStatus } from "@/lib/catalog-visibility";
 import { isValidEmail, isValidPhone } from "@/lib/contact-validation";
 import { Button, Input, useToast } from "@/components/ui";
@@ -171,7 +172,15 @@ export default function LoginScreen() {
     }
 
     if (data?.url) {
-      WebBrowser.openAuthSessionAsync(data.url, "luxe://auth/callback");
+      const result = await WebBrowser.openAuthSessionAsync(data.url, "luxe://auth/callback");
+      if (result.type === "success" && result.url) {
+        const { error: cbError } = await completeAuthCallback(result.url);
+        if (cbError) {
+          toast(cbError, "error");
+        } else {
+          toast("Welcome back!", "success");
+        }
+      }
     }
   };
 

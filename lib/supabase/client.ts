@@ -1,17 +1,39 @@
 import { createClient } from "@supabase/supabase-js";
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+function readEnv(key: string, extraKey: string): string {
+  const fromProcess = process.env[key];
+  if (fromProcess) return fromProcess;
+  const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
+  return extra?.[extraKey] ?? "";
+}
+
+const URL = readEnv("EXPO_PUBLIC_SUPABASE_URL", "supabaseUrl");
+const ANON_KEY = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY", "supabaseAnonKey");
+
+if (!URL || !ANON_KEY) {
+  console.error(
+    "[supabase] EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY must be set. " +
+      "Add them to store-mobile/.env.local and restart Metro.",
+  );
+}
 
 /**
- * Expo SecureStore adapter for Supabase SSR-compatible auth storage.
- * Stores JWT and refresh token in the device's secure enclave.
+ * Prefer SecureStore; fall back to AsyncStorage when SecureStore is
+ * unavailable (Expo web, simulators with keychain issues).
  */
-const ExpoSecureStoreAdapter = {
+const storageAdapter = {
   getItem: async (key: string): Promise<string | null> => {
     try {
-      return await SecureStore.getItemAsync(key);
+      const secure = await SecureStore.getItemAsync(key);
+      if (secure) return secure;
+    } catch {
+      // fall through
+    }
+    try {
+      return await AsyncStorage.getItem(key);
     } catch {
       return null;
     }
@@ -19,22 +41,33 @@ const ExpoSecureStoreAdapter = {
   setItem: async (key: string, value: string): Promise<void> => {
     try {
       await SecureStore.setItemAsync(key, value);
+      return;
     } catch {
-      // Silently fail — storage might be full or unavailable
+      // fall through
+    }
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch (err) {
+      console.warn("[supabase] failed to persist session:", err);
     }
   },
   removeItem: async (key: string): Promise<void> => {
     try {
       await SecureStore.deleteItemAsync(key);
     } catch {
-      // Silently fail
+      // fall through
+    }
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {
+      // fall through
     }
   },
 };
 
 export const supabase = createClient(URL, ANON_KEY, {
   auth: {
-    storage: ExpoSecureStoreAdapter,
+    storage: storageAdapter,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

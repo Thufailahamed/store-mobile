@@ -92,9 +92,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let bootstrapDone = false;
 
     const applySession = (nextSession: Session | null) => {
       if (cancelled) return;
+      bootstrapDone = true;
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setLoading(false);
@@ -102,8 +104,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const sessionTimeout = setTimeout(() => {
-      applySession(null);
-    }, 8000);
+      // Only give up if bootstrap hasn't completed — don't wipe a session
+      // that onAuthStateChange already delivered.
+      if (!bootstrapDone) {
+        applySession(null);
+      }
+    }, 15000);
 
     supabase.auth
       .getSession()

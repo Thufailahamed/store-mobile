@@ -41,6 +41,7 @@ import {
 } from "@/lib/notifications";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
+import { completeAuthCallback } from "@/lib/supabase/oauth";
 import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush } from "@/lib/utils/safe-route";
 import { BiometricGate } from "@/components/auth/BiometricGate";
 
@@ -236,6 +237,14 @@ function RootLayoutNav() {
       // also land here for deep links that include the recovery fragment).
       if (parsed.hostname === "reset-password" || parsed.path === "/reset-password") {
         safeRoutePush(router, "/(auth)/reset-password");
+        return;
+      }
+
+      // OAuth / magic-link callback: luxe://auth/callback?code=... or #access_token=...
+      if (parsed.hostname === "auth" && (parsed.path === "/callback" || parsed.path === "callback")) {
+        void completeAuthCallback(url).then(({ error }) => {
+          if (error) console.warn("[deeplink] auth callback failed:", error);
+        });
         return;
       }
 
