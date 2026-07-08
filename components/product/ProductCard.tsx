@@ -1,4 +1,4 @@
-import { View, TouchableOpacity, StyleSheet, Dimensions, Text } from "react-native";
+import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Text } from "react-native";
 import { Image } from "expo-image";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
@@ -12,11 +12,6 @@ import { getVariantAvailableStock } from "@/lib/inventory";
 import { useToast } from "@/components/ui";
 import type { Product } from "@/lib/types";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-// Align card width precisely with products/index.tsx grid (GRID_PADDING = 16, GRID_COL_GAP = 12)
-const CARD_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
-const IMAGE_HEIGHT = CARD_WIDTH * (4 / 3);
-
 interface ProductCardProps {
   product: Product;
   /** Horizontal-rail card (fixed width, scrollable). */
@@ -27,6 +22,11 @@ interface ProductCardProps {
 
 export function ProductCard({ product, horizontal, listMode }: ProductCardProps) {
   const router = useRouter();
+  // Align with products/index.tsx grid (GRID_PADDING = 16, GRID_COL_GAP = 12); reactive
+  // via useWindowDimensions so it stays correct on window resize (Android split-screen, foldables).
+  const { width: screenWidth } = useWindowDimensions();
+  const cardWidth = (screenWidth - 32 - 12) / 2;
+  const imageHeight = cardWidth * (4 / 3);
   const { toast } = useToast();
   const addItem = useCart((s) => s.addItem);
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
@@ -248,7 +248,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
 
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={styles.card}>
-      <View style={styles.imageWrap}>
+      <View style={[styles.imageWrap, { height: imageHeight }]}>
         {primaryImage ? (
           <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={300} />
         ) : (
@@ -330,7 +330,6 @@ const styles = StyleSheet.create({
   },
   imageWrap: {
     width: "100%",
-    height: IMAGE_HEIGHT,
     borderRadius: radii.xl,
     backgroundColor: colors.light.card,
     borderWidth: 0.5,
