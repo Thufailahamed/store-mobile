@@ -158,21 +158,27 @@ export default function LoginScreen() {
 
   const handleSocialLogin = async () => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: "luxe://auth/callback",
-      },
-    });
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: "luxe://auth/callback",
+          skipBrowserRedirect: true,
+        },
+      });
 
-    if (error) {
-      toast(error.message, "error");
-      return;
-    }
+      if (error) {
+        toast(error.message, "error");
+        return;
+      }
 
-    if (data?.url) {
+      if (!data?.url) {
+        toast("Couldn't start Google sign-in. Please try again.", "error");
+        return;
+      }
+
       const result = await WebBrowser.openAuthSessionAsync(data.url, "luxe://auth/callback");
+
       if (result.type === "success" && result.url) {
         const { error: cbError } = await completeAuthCallback(result.url);
         if (cbError) {
@@ -180,7 +186,13 @@ export default function LoginScreen() {
         } else {
           toast("Welcome back!", "success");
         }
+      } else if (result.type === "cancel" || result.type === "dismiss") {
+        toast("Google sign-in was cancelled", "error");
+      } else {
+        toast("Google sign-in didn't complete. Please try again.", "error");
       }
+    } finally {
+      setLoading(false);
     }
   };
 
