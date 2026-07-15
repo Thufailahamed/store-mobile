@@ -19,8 +19,8 @@ import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
 import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
 import { SearchDiscover } from "@/components/search/SearchDiscover";
 import { SearchSuggestions } from "@/components/search/SearchSuggestions";
+import { QuickRefine } from "@/components/search/QuickRefine";
 import { Display, Label, Body } from "@/components/ui/Typography";
-import { AppHeader, PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { Button } from "@/components/ui";
@@ -28,7 +28,7 @@ import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, discountPct } from "@/lib/utils";
-import { SORTS, PRICE_BOUNDS } from "@/lib/api/facets";
+import { SORTS, PRICE_BOUNDS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
 import type { ProductFilters } from "@/lib/api/facets";
 import * as api from "@/lib/api";
 import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";
@@ -365,14 +365,7 @@ export default function SearchScreen() {
   const storeCount = matchedStores.length;
   const totalCount = productCount + brandCount + storeCount;
 
-  const activeFilterCount =
-    (filters.colors?.length ?? 0) +
-    (filters.sizes?.length ?? 0) +
-    (filters.brands?.length ?? 0) +
-    (filters.categories?.length ?? 0) +
-    (filters.minRating ? 1 : 0) +
-    (filters.minDiscount ? 1 : 0) +
-    (filters.price && (filters.price[0] > PRICE_BOUNDS.min || filters.price[1] < PRICE_BOUNDS.max) ? 1 : 0);
+  const activeFilterCount = computeActiveFilterCount(filters);
 
   const resetSearch = () => {
     setDraft("");
@@ -564,6 +557,15 @@ export default function SearchScreen() {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+
+            <View style={styles.quickRefineBleed}>
+              <QuickRefine
+                filters={filters}
+                onChange={setFilters}
+                onOpenSheet={() => setFilterVisible(true)}
+                activeCount={activeFilterCount}
+              />
             </View>
 
             {/* Controls bar */}
@@ -828,6 +830,9 @@ export default function SearchScreen() {
         onClose={() => setFilterVisible(false)}
         filters={filters}
         onApply={setFilters}
+        sort={sort}
+        onSortChange={setSort}
+        resultCount={productCount}
       />
     </KeyboardAvoidingView>
   );
@@ -1030,6 +1035,9 @@ const styles = StyleSheet.create({
   resultsContainer: {
     gap: spacing[4],
     paddingHorizontal: spacing[5],
+  },
+  quickRefineBleed: {
+    marginHorizontal: -spacing[5],
   },
 
   /* Tabs */
