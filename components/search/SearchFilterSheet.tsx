@@ -1,25 +1,53 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
   Modal,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";
-import { colors, radii, spacing, shadows, typography } from "@/lib/theme/tokens";
+import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { COLORS, SIZES, PRICE_PRESETS, PRICE_BOUNDS } from "@/lib/api/facets";
+import { COLORS, SIZES, DISCOUNTS, SORTS, PRICE_PRESETS, PRICE_BOUNDS, EMPTY_FILTERS, activeFilterCount } from "@/lib/api/facets";
 import type { ProductFilters } from "@/lib/api/facets";
+import * as api from "@/lib/api";
+import type { Brand, Category } from "@/lib/types";
+
+const GENDERS = [
+  { key: "", label: "All" },
+  { key: "women", label: "Women" },
+  { key: "men", label: "Men" },
+  { key: "unisex", label: "Unisex" },
+  { key: "kids", label: "Kids" },
+];
 
 interface SearchFilterSheetProps {
   visible: boolean;
   onClose: () => void;
   filters: ProductFilters;
   onApply: (filters: ProductFilters) => void;
+  sort: string;
+  onSortChange: (sort: string) => void;
+  resultCount: number;
+}
+
+function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.sizeChip, active && styles.sizeChipActive]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Body size="sm" style={[styles.sizeText, active && styles.sizeTextActive]}>
+        {label}
+      </Body>
+    </TouchableOpacity>
+  );
 }
 
 export function SearchFilterSheet({
@@ -27,18 +55,48 @@ export function SearchFilterSheet({
   onClose,
   filters,
   onApply,
+  sort,
+  onSortChange,
+  resultCount,
 }: SearchFilterSheetProps) {
   const { height: screenHeight } = useWindowDimensions();
   const [draft, setDraft] = useState<ProductFilters>({ ...filters });
+  const [draftSort, setDraftSort] = useState(sort);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [priceMinInput, setPriceMinInput] = useState(
+    String(filters.price?.[0] ?? PRICE_BOUNDS.min)
+  );
+  const [priceMaxInput, setPriceMaxInput] = useState(
+    String(filters.price?.[1] ?? PRICE_BOUNDS.max)
+  );
 
-  const activeCount =
-    (draft.colors?.length ?? 0) +
-    (draft.sizes?.length ?? 0) +
-    (draft.brands?.length ?? 0) +
-    (draft.categories?.length ?? 0) +
-    (draft.minRating ? 1 : 0) +
-    (draft.minDiscount ? 1 : 0) +
-    (draft.price && (draft.price[0] > PRICE_BOUNDS.min || draft.price[1] < PRICE_BOUNDS.max) ? 1 : 0);
+  useEffect(() => {
+    if (visible) {
+      setDraft({ ...filters });
+      setDraftSort(sort);
+      setPriceMinInput(String(filters.price?.[0] ?? PRICE_BOUNDS.min));
+      setPriceMaxInput(String(filters.price?.[1] ?? PRICE_BOUNDS.max));
+    }
+  }, [visible, filters, sort]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    Promise.all([api.getBrands({ limit: 200 }), api.getCategories(100)]).then(([br, cat]) => {
+      if (cancelled) return;
+      if (br.ok) setBrands(br.data);
+      if (cat.ok) setCategories(cat.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  const activeCount = activeFilterCount({
+    ...draft,
+    price: [Number(priceMinInput) || PRICE_BOUNDS.min, Number(priceMaxInput) || PRICE_BOUNDS.max],
+  });
 
   const toggleColor = (c: string) => {
     const cur = draft.colors ?? [];
@@ -64,24 +122,26 @@ export function SearchFilterSheet({
     });
   };
 
-  const setPriceRange = (range: [number, number]) => {
-    setDraft({ ...draft, price: range });
-  };
-
-  const handleClear = () => {
+  const toggleCategory = (c: string) => {
+    const cur = draft.categories ?? [];
     setDraft({
-      price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max],
-      colors: [],
-      sizes: [],
-      brands: [],
-      categories: [],
-      minRating: 0,
-      minDiscount: 0,
+      ...draft,
+      categories: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c],
     });
   };
 
+  const handleClear = () => {
+    setDraft({ ...EMPTY_FILTERS });
+    setDraftSort("newest");
+    setPriceMinInput(String(PRICE_BOUNDS.min));
+    setPriceMaxInput(String(PRICE_BOUNDS.max));
+  };
+
   const handleApply = () => {
-    onApply(draft);
+    const min = Number(priceMinInput) || PRICE_BOUNDS.min;
+    const max = Number(priceMaxInput) || PRICE_BOUNDS.max;
+    onApply({ ...draft, price: [min, max] });
+    onSortChange(draftSort);
     onClose();
   };
 
@@ -111,25 +171,63 @@ export function SearchFilterSheet({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.sheetBodyContent}
           >
+            {/* Sort */}
+            <View style={styles.filterSection}>
+              <Label style={styles.filterLabel}>SORT BY</Label>
+              <View style={styles.sizeGrid}>
+                {SORTS.map((s) => (
+                  <Chip
+                    key={s.value}
+                    label={s.label}
+                    active={draftSort === s.value}
+                    onPress={() => setDraftSort(s.value)}
+                  />
+                ))}
+              </View>
+            </View>
+
             {/* Price Range */}
             <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>PRICE RANGE</Label>
+              <Label style={styles.filterLabel}>PRICE RANGE (LKR)</Label>
+              <View style={styles.priceRow}>
+                <View style={styles.priceInputWrap}>
+                  <Label style={styles.priceInputLabel}>Min</Label>
+                  <TextInput
+                    value={priceMinInput}
+                    onChangeText={setPriceMinInput}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={colors.light.mutedForeground}
+                    style={styles.priceInput}
+                  />
+                </View>
+                <View style={styles.priceDash} />
+                <View style={styles.priceInputWrap}>
+                  <Label style={styles.priceInputLabel}>Max</Label>
+                  <TextInput
+                    value={priceMaxInput}
+                    onChangeText={setPriceMaxInput}
+                    keyboardType="numeric"
+                    placeholder={String(PRICE_BOUNDS.max)}
+                    placeholderTextColor={colors.light.mutedForeground}
+                    style={styles.priceInput}
+                  />
+                </View>
+              </View>
               <View style={styles.presetGrid}>
                 {PRICE_PRESETS.map((preset) => {
                   const isActive =
-                    draft.price &&
-                    draft.price[0] === preset.range[0] &&
-                    draft.price[1] === preset.range[1];
+                    Number(priceMinInput) === preset.range[0] && Number(priceMaxInput) === preset.range[1];
                   return (
                     <TouchableOpacity
                       key={preset.label}
                       style={[styles.presetChip, isActive && styles.presetChipActive]}
-                      onPress={() => setPriceRange(preset.range)}
+                      onPress={() => {
+                        setPriceMinInput(String(preset.range[0]));
+                        setPriceMaxInput(String(preset.range[1]));
+                      }}
                     >
-                      <Body
-                        size="sm"
-                        style={[styles.presetText, isActive && styles.presetTextActive]}
-                      >
+                      <Body size="sm" style={[styles.presetText, isActive && styles.presetTextActive]}>
                         {preset.label}
                       </Body>
                     </TouchableOpacity>
@@ -137,6 +235,38 @@ export function SearchFilterSheet({
                 })}
               </View>
             </View>
+
+            {/* Category */}
+            {categories.length > 0 ? (
+              <View style={styles.filterSection}>
+                <Label style={styles.filterLabel}>CATEGORY</Label>
+                <View style={styles.sizeGrid}>
+                  {categories.map((c) => {
+                    const list = draft.categories ?? [];
+                    const on = list.includes(c.id);
+                    return (
+                      <Chip key={c.id} label={c.name} active={on} onPress={() => toggleCategory(c.id)} />
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Brand */}
+            {brands.length > 0 ? (
+              <View style={styles.filterSection}>
+                <Label style={styles.filterLabel}>BRAND</Label>
+                <View style={styles.sizeGrid}>
+                  {brands.map((b) => {
+                    const list = draft.brands ?? [];
+                    const on = list.includes(b.id);
+                    return (
+                      <Chip key={b.id} label={b.name} active={on} onPress={() => toggleBrand(b.id)} />
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
 
             {/* Colors */}
             <View style={styles.filterSection}>
@@ -169,18 +299,7 @@ export function SearchFilterSheet({
                 {SIZES.map((s) => {
                   const isActive = draft.sizes?.includes(s);
                   return (
-                    <TouchableOpacity
-                      key={s}
-                      style={[styles.sizeChip, isActive && styles.sizeChipActive]}
-                      onPress={() => toggleSize(s)}
-                    >
-                      <Body
-                        size="sm"
-                        style={[styles.sizeText, isActive && styles.sizeTextActive]}
-                      >
-                        {s}
-                      </Body>
-                    </TouchableOpacity>
+                    <Chip key={s} label={s} active={!!isActive} onPress={() => toggleSize(s)} />
                   );
                 })}
               </View>
@@ -190,23 +309,15 @@ export function SearchFilterSheet({
             <View style={styles.filterSection}>
               <Label style={styles.filterLabel}>DISCOUNT</Label>
               <View style={styles.sizeGrid}>
-                {[10, 25, 50, 70].map((d) => {
-                  const isActive = draft.minDiscount === d;
+                {DISCOUNTS.map((d) => {
+                  const isActive = draft.minDiscount === d.min;
                   return (
-                    <TouchableOpacity
-                      key={d}
-                      style={[styles.sizeChip, isActive && styles.sizeChipActive]}
-                      onPress={() =>
-                        setDraft({ ...draft, minDiscount: isActive ? 0 : d })
-                      }
-                    >
-                      <Body
-                        size="sm"
-                        style={[styles.sizeText, isActive && styles.sizeTextActive]}
-                      >
-                        {d}%+
-                      </Body>
-                    </TouchableOpacity>
+                    <Chip
+                      key={d.min}
+                      label={d.label}
+                      active={isActive}
+                      onPress={() => setDraft({ ...draft, minDiscount: isActive ? 0 : d.min })}
+                    />
                   );
                 })}
               </View>
@@ -220,32 +331,46 @@ export function SearchFilterSheet({
                   const isActive = draft.minRating === r;
                   const label = r === 0 ? "Any" : `${r}★ & up`;
                   return (
-                    <TouchableOpacity
+                    <Chip
                       key={String(r)}
-                      style={[styles.sizeChip, isActive && styles.sizeChipActive]}
+                      label={label}
+                      active={isActive}
                       onPress={() => setDraft({ ...draft, minRating: r })}
-                    >
-                      <Body
-                        size="sm"
-                        style={[styles.sizeText, isActive && styles.sizeTextActive]}
-                      >
-                        {label}
-                      </Body>
-                    </TouchableOpacity>
+                    />
                   );
                 })}
+              </View>
+            </View>
+
+            {/* Gender */}
+            <View style={styles.filterSection}>
+              <Label style={styles.filterLabel}>GENDER</Label>
+              <View style={styles.sizeGrid}>
+                {GENDERS.map((g) => (
+                  <Chip
+                    key={g.key || "all"}
+                    label={g.label}
+                    active={(draft.gender || "") === g.key}
+                    onPress={() => setDraft({ ...draft, gender: g.key || undefined })}
+                  />
+                ))}
               </View>
             </View>
           </ScrollView>
 
           {/* Footer */}
           <View style={styles.sheetFooter}>
-            <Button variant="ghost" onPress={handleClear}>
-              Clear all
-            </Button>
-            <Button variant="brand" onPress={handleApply} style={styles.applyBtn}>
-              Show results
-            </Button>
+            <Body muted size="sm" style={styles.resultLabel}>
+              {resultCount} {resultCount === 1 ? "piece" : "pieces"}
+            </Body>
+            <View style={styles.footerActions}>
+              <Button variant="ghost" onPress={handleClear}>
+                Clear all
+              </Button>
+              <Button variant="brand" onPress={handleApply} style={styles.applyBtn}>
+                Show results
+              </Button>
+            </View>
           </View>
         </View>
       </View>
@@ -347,6 +472,36 @@ const styles = StyleSheet.create({
   presetTextActive: {
     color: colors.light.primaryForeground,
   },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing[2],
+  },
+  priceInputWrap: {
+    flex: 1,
+  },
+  priceInputLabel: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+    marginBottom: 4,
+  },
+  priceInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing[3],
+    color: colors.light.foreground,
+    fontSize: 14,
+    fontFamily: fontFamilies.sans.medium,
+  },
+  priceDash: {
+    width: 12,
+    height: 1,
+    backgroundColor: colors.light.border,
+    marginBottom: 20,
+  },
   colorGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -399,11 +554,19 @@ const styles = StyleSheet.create({
   sheetFooter: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing[3],
     paddingHorizontal: spacing[5],
     paddingVertical: spacing[4],
     borderTopWidth: 1,
     borderTopColor: `${colors.light.primary}15`,
+  },
+  resultLabel: {
+    flexShrink: 1,
+  },
+  footerActions: {
+    flexDirection: "row",
+    gap: spacing[2],
   },
   applyBtn: {
     flex: 1,
