@@ -26,7 +26,7 @@ export default function MainLayout() {
         }}
       >
         <Tabs.Screen name="index" options={{ title: "Home" }} />
-        <Tabs.Screen name="products/index" options={{ title: "Shop" }} />
+        <Tabs.Screen name="products/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="search/index" options={{ title: "Search" }} />
         <Tabs.Screen name="wishlist/index" options={{ title: "Wishlist" }} />
         <Tabs.Screen name="account" options={{ title: "Account", headerShown: false }} />

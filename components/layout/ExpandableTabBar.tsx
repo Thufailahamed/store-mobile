@@ -4,7 +4,7 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { Ionicons } from "@/components/ui/Icon";
-import { useCart, useWishlist } from "@/lib/stores";
+import { useWishlist } from "@/lib/stores";
 import { useTabBarVisibility } from "@/lib/hooks/useTabBarScroll";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -22,7 +22,6 @@ interface TabConfig {
 
 const TAB_CONFIG: Record<string, TabConfig> = {
   index: { label: "Home", icon: "home-outline", iconFocused: "home" },
-  "products/index": { label: "Shop", icon: "bag-outline", iconFocused: "bag" },
   "search/index": { label: "Search", icon: "search-outline", iconFocused: "search" },
   "wishlist/index": { label: "Wishlist", icon: "heart-outline", iconFocused: "heart" },
   account: { label: "Account", icon: "person-outline", iconFocused: "person" },
@@ -90,7 +89,6 @@ function TabItem({
 export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const cartCount = useCart((s) => s.itemCount());
   const wishlistCount = useWishlist((s) => s.count());
   const { translateY } = useTabBarVisibility();
   const animatedStyle = useAnimatedStyle(() => ({
@@ -105,7 +103,6 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
 
   const isNarrow = width < NARROW_SCREEN_WIDTH;
   const badges: Record<string, number> = {
-    "products/index": cartCount,
     "wishlist/index": wishlistCount,
   };
 

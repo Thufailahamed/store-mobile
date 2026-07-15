@@ -166,6 +166,8 @@ export function SearchSuggestions({
 
     const item = row.item;
     const isStore = item.kind === "store" || item.kind === "brand";
+    const isCategory = item.kind === "category";
+    const isProduct = item.kind === "product";
 
     return (
       <TouchableOpacity
@@ -181,9 +183,15 @@ export function SearchSuggestions({
               <Text style={styles.avatarFallbackText}>{item.label.charAt(0).toUpperCase()}</Text>
             </View>
           )
+        ) : isProduct && item.logo_url ? (
+          <Image source={{ uri: item.logo_url }} style={styles.avatar} contentFit="cover" />
         ) : (
           <View style={styles.searchIconWrap}>
-            <Ionicons name="search-outline" size={16} color={colors.light.mutedForeground} />
+            <Ionicons
+              name={isProduct ? "cube-outline" : isCategory ? "grid-outline" : "search-outline"}
+              size={16}
+              color={colors.light.mutedForeground}
+            />
           </View>
         )}
 
@@ -199,6 +207,16 @@ export function SearchSuggestions({
               <Text style={styles.followersText}>
                 {(item.followers ?? 0).toLocaleString()} followers
               </Text>
+            </>
+          ) : isCategory ? (
+            <>
+              {highlightMatch(item.label, term)}
+              <Text style={styles.kindTag}>Category</Text>
+            </>
+          ) : isProduct ? (
+            <>
+              {highlightMatch(item.label, term)}
+              <Text style={styles.kindTag}>Product</Text>
             </>
           ) : (
             highlightMatch(item.label, term)
@@ -358,6 +376,12 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
     color: colors.light.mutedForeground,
+  },
+  kindTag: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
   },
   itemLabel: {
     fontFamily: fontFamilies.sans.regular,

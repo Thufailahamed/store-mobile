@@ -2572,7 +2572,7 @@ export async function getStoreAnalytics(_storeId: string): Promise<Result<{
 // ============================================================================
 
 export type V2Suggestion = {
-  kind: "keyword" | "store" | "brand";
+  kind: "keyword" | "store" | "brand" | "category" | "product";
   label: string;
   slug?: string;
   count?: number;
@@ -2589,9 +2589,21 @@ export async function getSearchSuggestionsV2(term: string): Promise<Result<V2Sug
   const res = await B.getSearchSuggestionsBackend(cleanTerm);
   if (!res.ok) return fail(res.error);
   const shaped: V2Suggestion[] = (res.data.suggestions as unknown[]).map((s) => {
-    const row = s as { type: string; label: string; slug?: string; count?: number; logo_url?: string; followers?: number; is_verified?: boolean };
-    const kind = row.type === "store" ? "store" : row.type === "brand" ? "brand" : "keyword";
-    return { kind, label: row.label, slug: row.slug, count: row.count, logo_url: row.logo_url, followers: row.followers, is_verified: row.is_verified, trend_pct: 0 };
+    const row = s as { type: string; label: string; slug?: string; count?: number; image_url?: string | null; followers?: number; is_verified?: boolean };
+    const kind: V2Suggestion["kind"] =
+      row.type === "store" || row.type === "brand" || row.type === "category" || row.type === "product"
+        ? row.type
+        : "keyword";
+    return {
+      kind,
+      label: row.label,
+      slug: row.slug,
+      count: row.count,
+      logo_url: row.image_url ?? undefined,
+      followers: row.followers,
+      is_verified: row.is_verified,
+      trend_pct: 0,
+    };
   });
   return ok(shaped);
 }
