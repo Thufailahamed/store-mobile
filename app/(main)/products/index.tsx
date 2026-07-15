@@ -1,46 +1,32 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground, AppHeader, ScreenHeader } from "@/components/layout";
+import { PaperBackground, AppHeader } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedFlatList, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { FilterSheet } from "@/components/search/FilterSheet";
-import { QuickRefine } from "@/components/search/QuickRefine";
+import { ProductGridControls } from "@/components/products/ProductGridControls";
 import { ProductCard } from "@/components/product/ProductCard";
 import { HeroCard } from "@/components/product/HeroCard";
 import { ProductsEmptyState } from "@/components/product/ProductsEmptyState";
 import { TodaysEdit } from "@/components/products/TodaysEdit";
 import { Label, Body, Display } from "@/components/ui/Typography";
-import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
-import { fontFamilies } from "@/lib/theme/fonts";
-import {
-  SORTS,
-  VIEW_MODES,
-  EMPTY_FILTERS,
-  activeFilterCount,
-  type ProductFilters,
-  type ViewMode,
-  type SortOption,
-} from "@/lib/api/facets";
-import * as api from "@/lib/api";
+import { colors, spacing } from "@/lib/theme/tokens";
+import { SORTS, EMPTY_FILTERS, activeFilterCount, type ProductFilters, type ViewMode } from "@/lib/api/facets";
 import type { Product } from "@/lib/types";
-import { getPersonalizedSearch } from "@/lib/recommender";
-import { useAuth } from "@/lib/supabase/auth";
+import { useProductGrid } from "@/lib/hooks/useProductGrid";
 
 const GRID_GAP = 12;
 const GRID_PADDING = 16;
 const GRID_COL_GAP = 12;
-
-const SORTS_FOR_BAR: SortOption[] = SORTS;
 
 export default function ProductsScreen() {
   const router = useRouter();
@@ -54,64 +40,27 @@ export default function ProductsScreen() {
     sort?: string;
     search?: string;
   }>();
-  const { user } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [sort, setSort] = useState<string>(params.sort || "newest");
-  const [offset, setOffset] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<ProductFilters>({});
-  const [view, setView] = useState<ViewMode>("grid");
-  const LIMIT = 20;
 
-  // Filtered list — server applies the primary filter (category, brand,
-  // gender, search, sort). Refinement facets (price/color/size/rating/
-  // discount/brand-multi/category-multi) run on the loaded page so the
-  // server stays simple and the response is fast.
-  const refined = useMemo(() => {
-    let list = products;
-    if (filters.brands?.length) {
-      list = list.filter((p) => p.brand_id && filters.brands!.includes(p.brand_id));
-    }
-    if (filters.categories?.length) {
-      list = list.filter(
-        (p) => p.category_id && filters.categories!.includes(p.category_id)
-      );
-    }
-    if (filters.colors?.length) {
-      list = list.filter((p) => {
-        const pColors = (p.variants ?? []).map((v) => (v.color ?? "").toLowerCase());
-        return filters.colors!.some((c) => {
-          const cl = c.toLowerCase();
-          return pColors.some((pc) => pc.includes(cl) || cl.includes(pc));
-        });
-      });
-    }
-    if (filters.sizes?.length) {
-      list = list.filter((p) => {
-        const pSizes = (p.variants ?? []).map((v) => (v.size ?? "").toUpperCase());
-        return filters.sizes!.some((s) => pSizes.includes(s.toUpperCase()));
-      });
-    }
-    if (filters.minRating && filters.minRating > 0) {
-      list = list.filter((p) => p.rating >= filters.minRating!);
-    }
-    if (filters.minDiscount && filters.minDiscount > 0) {
-      list = list.filter(
-        (p) =>
-          p.mrp > p.price &&
-          Math.round(((p.mrp - p.price) / p.mrp) * 100) >= filters.minDiscount!
-      );
-    }
-    if (filters.price && (filters.price[0] > 0 || filters.price[1] < 500000)) {
-      list = list.filter(
-        (p) => p.price >= filters.price![0] && p.price <= filters.price![1]
-      );
-    }
-    return list;
-  }, [products, filters]);
+  const {
+    products,
+    refined,
+    total,
+    loading,
+    loadingMore,
+    sort,
+    setSort,
+    filters,
+    setFilters,
+    view,
+    setView,
+    loadMore,
+  } = useProductGrid({
+    category: params.category,
+    brand: params.brand,
+    search: params.search,
+    initialSort: params.sort || "newest",
+  });
 
   const showHero = view === "editorial" && !params.category && !params.brand && !params.search;
   const hasActiveContext = !!params.category || !!params.brand || !!params.search;
@@ -123,59 +72,6 @@ export default function ProductsScreen() {
       : params.category
         ? params.category.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
         : "The Atelier";
-
-  const fetchProducts = useCallback(
-    async (reset = false) => {
-      const off = reset ? 0 : offset;
-      // "for_you" is a client-side re-rank — fetch a server sort first
-      // (newest gives stable, full set), then personalize the loaded page.
-      const serverSort: string = sort === "for_you" ? "newest" : sort;
-      const res = await api.getProducts({
-        limit: LIMIT,
-        offset: off,
-        sort: serverSort as any,
-        categorySlug: params.category,
-        brandSlug: params.brand,
-        gender: filters.gender,
-        search: params.search,
-      });
-      if (res.ok) {
-        let page = res.data.products;
-        if (sort === "for_you") {
-          // Re-rank the loaded page using the recommender. When no user
-          // signal, the ranker still returns a popularity-sorted fallback.
-          const reranked = await getPersonalizedSearch(user?.id ?? null, page);
-          page = reranked.ok ? reranked.data : page;
-        }
-        setProducts((prev) => (reset ? page : [...prev, ...page]));
-        setTotal(res.data.total);
-      } else {
-        if (reset) {
-          setProducts([]);
-          setTotal(0);
-        }
-      }
-      setLoading(false);
-      setLoadingMore(false);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sort, params.category, params.brand, params.search, filters.gender, offset, user?.id]
-  );
-
-  useEffect(() => {
-    setLoading(true);
-    setOffset(0);
-    setProducts([]);
-    fetchProducts(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, params.category, params.brand, params.search, filters.gender]);
-
-  const loadMore = () => {
-    if (loadingMore || products.length >= total) return;
-    setLoadingMore(true);
-    setOffset((o) => o + LIMIT);
-    fetchProducts(false);
-  };
 
   const handleClearAll = () => {
     router.replace("/(main)/products");
@@ -214,7 +110,7 @@ export default function ProductsScreen() {
       <AnimatedFlatList
         key={view}
         data={view === "list" ? restProducts : restProducts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: Product) => item.id}
         renderItem={view === "list" ? renderListItem : renderGridItem}
         numColumns={view === "list" ? 1 : 2}
         columnWrapperStyle={view === "list" ? undefined : styles.gridRow}
@@ -320,7 +216,6 @@ function ProductsListHeader({
   hasActiveContext,
   clearAll,
 }: HeaderProps) {
-  const router = useRouter();
   return (
     <View>
       <View style={styles.heroBlock}>
@@ -346,69 +241,16 @@ function ProductsListHeader({
         <View style={styles.heroRule} />
       </View>
 
-      <View style={styles.toolbar}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.sortBar}
-        >
-          {SORTS_FOR_BAR.map((opt) => {
-            const active = sort === opt.value;
-            return (
-              <TouchableOpacity
-                key={opt.value}
-                onPress={() => setSort(opt.value)}
-                activeOpacity={0.8}
-                style={[styles.sortChip, active && styles.sortChipActive]}
-              >
-                <Label style={[styles.sortText, active && styles.sortTextActive]}>
-                  {opt.label}
-                </Label>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      <View style={styles.secondaryBar}>
-        <TouchableOpacity style={styles.refineBtn} onPress={openFilter} activeOpacity={0.8}>
-          <Ionicons name="options-outline" size={14} color={colors.light.primary} />
-          <Label style={styles.refineText}>Refine</Label>
-          {filterCount > 0 ? (
-            <View style={styles.refineCount}>
-              <Label style={styles.refineCountText}>{filterCount}</Label>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-
-        <View style={styles.viewToggle}>
-          {VIEW_MODES.map((m) => {
-            const active = view === m.value;
-            return (
-              <TouchableOpacity
-                key={m.value}
-                onPress={() => setView(m.value)}
-                activeOpacity={0.8}
-                style={[styles.viewBtn, active && styles.viewBtnActive]}
-                accessibilityLabel={m.label}
-                accessibilityState={{ selected: active }}
-              >
-                <Ionicons
-                  name={m.icon as any}
-                  size={16}
-                  color={active ? colors.light.primaryForeground : colors.light.foreground}
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <QuickRefine
+      <ProductGridControls
+        sort={sort}
+        setSort={setSort}
+        sorts={SORTS}
+        view={view}
+        setView={setView}
+        filterCount={filterCount}
+        openFilter={openFilter}
         filters={filters}
-        onChange={setFilters}
-        onOpenSheet={openFilter}
-        activeCount={filterCount}
+        setFilters={setFilters}
       />
 
       {heroProduct ? (
@@ -456,93 +298,6 @@ const styles = StyleSheet.create({
   heroRule: {
     height: 1,
     backgroundColor: colors.light.border,
-  },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing[2],
-  },
-  sortBar: {
-    paddingHorizontal: spacing[5],
-    gap: 8,
-  },
-  sortChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-  },
-  sortChipActive: {
-    backgroundColor: colors.light.foreground,
-    borderColor: colors.light.foreground,
-  },
-  sortText: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.wide,
-  },
-  sortTextActive: {
-    color: colors.light.primaryForeground,
-  },
-  secondaryBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingBottom: spacing[2],
-    paddingTop: spacing[1],
-  },
-  refineBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-  },
-  refineText: {
-    color: colors.light.primary,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    letterSpacing: typography.letterSpacing.wide,
-  },
-  refineCount: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.accent2.rust,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 5,
-  },
-  refineCountText: {
-    color: "#fff",
-    fontSize: 9,
-  },
-  viewToggle: {
-    flexDirection: "row",
-    backgroundColor: colors.light.card,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 3,
-    gap: 2,
-  },
-  viewBtn: {
-    width: 30,
-    height: 28,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  viewBtnActive: {
-    backgroundColor: colors.light.foreground,
   },
   heroCardWrap: {
     paddingHorizontal: GRID_PADDING,
