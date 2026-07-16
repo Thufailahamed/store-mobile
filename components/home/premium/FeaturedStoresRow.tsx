@@ -1,40 +1,41 @@
 import React from "react";
-import { View, ScrollView, TouchableOpacity, StyleSheet, Text } from "react-native";
+import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { HomeSectionHeader } from "./HomeSectionHeader";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
-
-const STORE_CARD_WIDTH = 120;
 
 interface FeaturedStoresRowProps {
   stores: Store[];
 }
 
+/**
+ * A vertical directory list — rows, not scrolling tiles — so "boutiques"
+ * reads as a distinct browsing mode instead of yet another circle-avatar
+ * horizontal scroller (CategoryScroller / ContinueBrowsingRow already own
+ * that shape).
+ */
 export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
   const router = useRouter();
-  const list = stores.slice(0, 10);
+  const list = stores.slice(0, 6);
   if (!list.length) return null;
 
   return (
     <View style={styles.wrap}>
       <HomeSectionHeader
-        title="Featured boutiques"
+        title="Boutique directory"
+        kicker="Shop by store"
         onPress={() => router.push("/(main)/stores")}
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        {list.map((s) => (
+      <View style={styles.list}>
+        {list.map((s, i) => (
           <TouchableOpacity
             key={s.id}
-            style={styles.card}
-            activeOpacity={0.85}
+            style={[styles.row, i === 0 && styles.rowFirst]}
+            activeOpacity={0.7}
             onPress={() => {
               if (s.slug) {
                 router.push({
@@ -46,72 +47,80 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
               }
             }}
           >
-            <View style={styles.logoWrap}>
+            <View style={styles.avatar}>
               {s.logo_url ? (
-                <Image source={{ uri: s.logo_url }} style={styles.logo} contentFit="cover" />
+                <Image source={{ uri: s.logo_url }} style={styles.avatarImage} contentFit="cover" />
               ) : (
-                <Ionicons name="storefront-outline" size={28} color={colors.light.primary} />
+                <Text style={styles.avatarInitial}>{s.name.charAt(0)}</Text>
               )}
             </View>
-            <Text style={styles.name} numberOfLines={2}>
-              {s.name}
-            </Text>
-            {s.rating > 0 ? (
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={11} color={colors.olive[600]} />
-                <Text style={styles.rating}>{s.rating.toFixed(1)}</Text>
-              </View>
-            ) : null}
+            <View style={styles.info}>
+              <Text style={styles.name} numberOfLines={1}>
+                {s.name}
+              </Text>
+              <Text style={styles.note} numberOfLines={1}>
+                {s.rating > 0 ? `${s.rating.toFixed(1)} rating · ` : ""}
+                {s.description || "Curated for the LUXE edit"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing[6],
+    marginBottom: spacing[8],
   },
-  scroll: {
+  list: {
     paddingHorizontal: spacing[5],
-    gap: spacing[3],
   },
-  card: {
-    width: STORE_CARD_WIDTH,
+  row: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    gap: spacing[3],
+    paddingVertical: spacing[3],
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
   },
-  logoWrap: {
-    width: STORE_CARD_WIDTH,
-    height: STORE_CARD_WIDTH,
-    borderRadius: radii["2xl"],
-    backgroundColor: colors.olive[50],
+  rowFirst: {
+    borderTopWidth: 0,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.light.border,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  logo: {
+  avatarImage: {
     width: "100%",
     height: "100%",
   },
+  avatarInitial: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: colors.light.primary,
+  },
+  info: {
+    flex: 1,
+    gap: 1,
+  },
   name: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
+    fontSize: 14,
     color: colors.light.foreground,
-    textAlign: "center",
-    lineHeight: 15,
   },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  rating: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+  note: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
     color: colors.light.mutedForeground,
   },
 });
