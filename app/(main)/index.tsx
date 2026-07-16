@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { RefreshControl, StyleSheet } from "react-native";
+import { RefreshControl, StyleSheet, View, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,14 +10,16 @@ import {
   CategoryScroller,
   PromoCarousel,
   ProductRail,
+  MasonryProductRail,
   FeaturedStoresRow,
   FeaturedBrandsRow,
   HomeJournalRail,
-  ForYouRail,
-  PersonalisedRails,
+  EditorialInterlude,
+  PersonalisedSection,
   ContinueBrowsingRow,
-  RecommendedForYouRail,
 } from "@/components/home/premium";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
 import { useHomeScreenData } from "@/lib/hooks/useHomeScreen";
@@ -132,11 +134,12 @@ export default function HomeScreen() {
           { paddingBottom: expandableTabBarInset(insets.bottom) + 24 },
         ]}
       >
+        {/* Zone 1 — discovery: browse entry points + the personalised feed */}
         <CategoryScroller categories={catalogData?.categories ?? []} />
         <PromoCarousel banners={catalogData?.banners ?? []} />
 
         {showForYouRail ? (
-          <ForYouRail
+          <PersonalisedSection
             title={forYou.data?.hasSignal ? "Recommended for you" : "Trending in the Edit"}
             products={forYou.data?.products ?? []}
             hasSignal={forYou.data?.hasSignal ?? false}
@@ -148,95 +151,118 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        <PersonalisedRails />
-        <RecommendedForYouRail />
         <ContinueBrowsingRow />
 
-        {wishlistRailData.wishlist.length > 0 ? (
-          <>
-            <ProductRail
-              kicker="From your wishlist"
-              title="Saved for you"
-              products={wishlistRailData.wishlist}
-              showSaleBadge
-              onSeeAll={() => router.push("/(main)/products?sort=newest")}
-            />
-            {wishlistRailData.companions.length > 0 ? (
+        {/* Zone 2 — the core catalog: deals, new stock, saved items */}
+        <View style={[styles.zone, styles.zoneWarm]}>
+          {wishlistRailData.wishlist.length > 0 ? (
+            <>
               <ProductRail
-                kicker="Pairs with your saves"
-                title="You might also like these"
-                products={wishlistRailData.companions}
+                kicker="From your wishlist"
+                title="Saved for you"
+                products={wishlistRailData.wishlist}
                 showSaleBadge
                 onSeeAll={() => router.push("/(main)/products?sort=newest")}
               />
-            ) : null}
-          </>
-        ) : null}
+              {wishlistRailData.companions.length > 0 ? (
+                <ProductRail
+                  kicker="Pairs with your saves"
+                  title="You might also like these"
+                  products={wishlistRailData.companions}
+                  showSaleBadge
+                  onSeeAll={() => router.push("/(main)/products?sort=newest")}
+                />
+              ) : null}
+            </>
+          ) : null}
 
-        <ProductRail
-          title="On sale"
-          products={catalogData?.saleProducts ?? []}
-          showSaleBadge
-          onSeeAll={() => router.push("/(main)/products?sort=sale")}
-        />
-        <ProductRail
-          title="New arrivals"
-          products={catalogData?.newArrivals ?? []}
-          showSaleBadge={false}
-          onSeeAll={() => router.push("/(main)/products?sort=newest")}
-        />
-        {(recentlyViewed.data?.length ?? 0) > 0 ? (
           <ProductRail
-            kicker="Pick up where you left off"
-            title="Recently viewed"
-            products={recentlyViewed.data ?? []}
+            kicker="Limited-time deals"
+            title="On sale"
+            products={catalogData?.saleProducts ?? []}
+            showSaleBadge
+            accent
+            onSeeAll={() => router.push("/(main)/products?sort=sale")}
+          />
+          <ProductRail
+            title="New arrivals"
+            products={catalogData?.newArrivals ?? []}
             showSaleBadge={false}
             onSeeAll={() => router.push("/(main)/products?sort=newest")}
           />
-        ) : null}
-        {catalogExtended.isSuccess || catalogExtended.isFetching ? (
-          <>
-            <FeaturedStoresRow stores={catalogData?.stores ?? []} />
+          {(recentlyViewed.data?.length ?? 0) > 0 ? (
             <ProductRail
-              title="Trending now"
-              products={catalogData?.trending ?? []}
-              showSaleBadge={false}
-              onSeeAll={() => router.push("/(main)/products?sort=rating")}
-            />
-            <ProductRail
-              title="Editor's picks"
-              products={catalogData?.editorsPicks ?? []}
-              showSaleBadge={false}
-              onSeeAll={() => router.push("/(main)/products?sort=price_desc")}
-            />
-            <ProductRail
-              title="Today's edit"
-              products={catalogData?.todaysEdit ?? []}
+              kicker="Pick up where you left off"
+              title="Recently viewed"
+              products={recentlyViewed.data ?? []}
               showSaleBadge={false}
               onSeeAll={() => router.push("/(main)/products?sort=newest")}
             />
-            <FeaturedBrandsRow brands={catalogData?.brands ?? []} />
-            <ProductRail
-              kicker="Trending today"
-              title="Most loved right now"
-              products={catalogData?.mostLoved ?? []}
-              showSaleBadge={false}
+          ) : null}
+        </View>
+
+        {catalogExtended.isSuccess || catalogExtended.isFetching ? (
+          <>
+            {/* Zone 3 — browse by store/brand + live ranking */}
+            <FeaturedStoresRow stores={catalogData?.stores ?? []} />
+            <MasonryProductRail
+              kicker="Live right now"
+              title="Trending now"
+              products={catalogData?.trending ?? []}
               onSeeAll={() => router.push("/(main)/products?sort=rating")}
             />
-            <ProductRail
-              kicker="Sponsored"
-              title="Featured from our partners"
-              products={catalogData?.sponsored ?? []}
-              showSaleBadge={false}
-              badgeLabel="Sponsored"
+            <FeaturedBrandsRow brands={catalogData?.brands ?? []} />
+
+            <EditorialInterlude
+              quote="Sculpted silhouettes and liquid silk mark the season's turn toward evening drama."
+              attribution="The Edit Desk"
             />
-            <HomeJournalRail posts={catalogData?.journalPosts ?? []} />
-            <HomeJournalRail
-              title="Top stories this week"
-              kicker="Trending in the journal"
-              posts={catalogData?.topStories ?? []}
-              seeAllHref="/(main)/blog"
-            />
+
+            {/* Zone 4 — the editorial desk: curated picks, the journal */}
+            <View style={[styles.zone, styles.zoneTint]}>
+              <ProductRail
+                kicker="Curated by our stylists"
+                title="Editor's picks"
+                products={catalogData?.editorsPicks ?? []}
+                showSaleBadge={false}
+                variant="feature"
+                onSeeAll={() => router.push("/(main)/products?sort=price_desc")}
+              />
+              <ProductRail
+                kicker="Updated daily"
+                title="Today's edit"
+                products={catalogData?.todaysEdit ?? []}
+                showSaleBadge={false}
+                variant="feature"
+                onSeeAll={() => router.push("/(main)/products?sort=newest")}
+              />
+              <ProductRail
+                kicker="Trending today"
+                title="Most loved right now"
+                products={catalogData?.mostLoved ?? []}
+                showSaleBadge={false}
+                onSeeAll={() => router.push("/(main)/products?sort=rating")}
+              />
+
+              <View style={styles.sponsoredWrap}>
+                <Text style={styles.sponsoredLabel}>Sponsored</Text>
+                <ProductRail
+                  title="Featured from our partners"
+                  products={catalogData?.sponsored ?? []}
+                  showSaleBadge={false}
+                  badgeLabel="Sponsored"
+                />
+              </View>
+
+              <HomeJournalRail
+                title="From the journal"
+                posts={catalogData?.journalPosts ?? []}
+                tabs={[
+                  { label: "Latest", posts: catalogData?.journalPosts ?? [] },
+                  { label: "Trending this week", posts: catalogData?.topStories ?? [] },
+                ]}
+              />
+            </View>
           </>
         ) : null}
 
@@ -274,6 +300,35 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   scroll: {
     paddingTop: 4,
+  },
+  zone: {
+    paddingTop: spacing[6],
+    paddingBottom: spacing[2],
+    marginBottom: spacing[6],
+  },
+  zoneWarm: {
+    backgroundColor: colors.paper.warm,
+  },
+  zoneTint: {
+    backgroundColor: colors.olive[50],
+  },
+  sponsoredWrap: {
+    marginHorizontal: spacing[4],
+    marginBottom: spacing[8],
+    paddingTop: spacing[4],
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.light.border,
+  },
+  sponsoredLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    paddingHorizontal: spacing[5],
+    marginBottom: spacing[2],
   },
   /* gridSectionHeader: {
     marginTop: spacing[6],
