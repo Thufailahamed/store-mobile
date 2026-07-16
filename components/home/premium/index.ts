@@ -9,3 +9,5 @@ export { HomeJournalRail } from "./HomeJournalRail";
 export { ForYouRail } from "./ForYouRail";
 export { ForYouProductCard } from "./ForYouProductCard";
 export { PersonalisedRails } from "./PersonalisedRails";
+export { ContinueBrowsingRow } from "./ContinueBrowsingRow";
+export { RecommendedForYouRail } from "./RecommendedForYouRail";

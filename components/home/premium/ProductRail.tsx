@@ -12,6 +12,8 @@ interface ProductRailProps {
   showSaleBadge?: boolean;
   kicker?: string;
   accent?: boolean;
+  /** Small disclosure pill (e.g. "Sponsored") shown on every card in the rail. */
+  badgeLabel?: string;
 }
 
 export function ProductRail({
@@ -21,6 +23,7 @@ export function ProductRail({
   showSaleBadge,
   kicker,
   accent,
+  badgeLabel,
 }: ProductRailProps) {
   const list = products.slice(0, 12);
   if (!list.length) return null;
@@ -34,7 +37,13 @@ export function ProductRail({
         contentContainerStyle={styles.scroll}
       >
         {list.map((p, i) => (
-          <HomeProductCard key={p.id} product={p} showSaleBadge={showSaleBadge} index={i} />
+          <HomeProductCard
+            key={p.id}
+            product={p}
+            showSaleBadge={showSaleBadge}
+            index={i}
+            badgeLabel={badgeLabel}
+          />
         ))}
       </ScrollView>
     </View>

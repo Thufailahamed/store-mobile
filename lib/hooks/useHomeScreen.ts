@@ -27,6 +27,9 @@ export interface HomeCatalogExtended {
   stores: Store[];
   brands: Brand[];
   journalPosts: BlogPost[];
+  topStories: BlogPost[];
+  mostLoved: Product[];
+  sponsored: Product[];
 }
 
 export interface HomeCatalogData extends HomeCatalogPrimary, HomeCatalogExtended {}
@@ -65,15 +68,27 @@ export async function fetchHomeCatalogPrimary(): Promise<HomeCatalogPrimary> {
 }
 
 export async function fetchHomeCatalogExtended(): Promise<HomeCatalogExtended> {
-  const [trendRes, picksRes, editRes, featuredStores, featuredBrands, blog] =
-    await Promise.all([
-      api.getHomepageProductPicks("trending_rail"),
-      api.getHomepageProductPicks("editors_picks_rail"),
-      api.getHomepageProductPicks("todays_edit"),
-      api.getFeaturedStores(8),
-      api.getFeaturedBrands(10),
-      api.getFeaturedBlogPosts(6),
-    ]);
+  const [
+    trendRes,
+    picksRes,
+    editRes,
+    featuredStores,
+    featuredBrands,
+    blog,
+    topStoriesRes,
+    mostLovedRes,
+    sponsoredRes,
+  ] = await Promise.all([
+    api.getHomepageProductPicks("trending_rail"),
+    api.getHomepageProductPicks("editors_picks_rail"),
+    api.getHomepageProductPicks("todays_edit"),
+    api.getFeaturedStores(8),
+    api.getFeaturedBrands(10),
+    api.getFeaturedBlogPosts(6),
+    api.getTopStoriesOfWeek(8),
+    api.getMostLovedToday(12),
+    api.getFeaturedProducts(10),
+  ]);
 
   const trend = trendRes.ok ? trendRes.data : [];
   const picks = picksRes.ok ? picksRes.data : [];
@@ -91,6 +106,9 @@ export async function fetchHomeCatalogExtended(): Promise<HomeCatalogExtended> {
     stores: featuredStores.ok ? featuredStores.data : [],
     brands: featuredBrands.ok ? featuredBrands.data : [],
     journalPosts: blog.ok ? blog.data : [],
+    topStories: topStoriesRes.ok ? topStoriesRes.data : [],
+    mostLoved: mostLovedRes.ok ? mostLovedRes.data : [],
+    sponsored: sponsoredRes.ok ? sponsoredRes.data : [],
   };
 }
 
@@ -230,6 +248,9 @@ export function useHomeScreenData(
       stores: catalogExtended.data?.stores ?? [],
       brands: catalogExtended.data?.brands ?? [],
       journalPosts: catalogExtended.data?.journalPosts ?? [],
+      topStories: catalogExtended.data?.topStories ?? [],
+      mostLoved: catalogExtended.data?.mostLoved ?? [],
+      sponsored: catalogExtended.data?.sponsored ?? [],
     };
   }, [catalogPrimary.data, catalogExtended.data]);
 

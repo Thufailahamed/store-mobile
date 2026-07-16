@@ -15,10 +15,12 @@ import type { Product, ProductImage } from "@/lib/types";
 import { spacing } from "@/lib/theme/tokens";
 
 /**
- * PersonalisedRails — renders the four personalised home-feed sections
- * (recents, top_categories, followed_brands, trending_for_you) using the
- * KV-cached `/api/users/home-feed` endpoint. Sections with empty arrays
- * collapse so the editorial layout shows through.
+ * PersonalisedRails — renders three personalised home-feed sections
+ * (recents, top_categories, followed_brands) using the KV-cached
+ * `/api/users/home-feed` endpoint. Sections with empty arrays collapse so
+ * the editorial layout shows through. `trending_for_you` is rendered as
+ * its own standalone `RecommendedForYouRail` section instead of a sub-rail
+ * here, so it gets a clearly-labelled header of its own.
  *
  * Each row is normalised into a Product-shape so HomeProductCard can
  * consume it. Dismiss feeds negative-feedback signal through the
@@ -103,14 +105,6 @@ export function PersonalisedRails() {
         kicker: "Your ateliers",
         title: "From brands you follow",
         products: sections.followed_brands.map(productFor),
-      });
-    }
-    if (sections.trending_for_you?.length) {
-      out.push({
-        key: "trending_for_you",
-        kicker: "Trending for you",
-        title: "What's moving in your segment",
-        products: sections.trending_for_you.map(productFor),
       });
     }
     return out;

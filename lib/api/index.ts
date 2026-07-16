@@ -17,7 +17,7 @@ export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } fr
 import * as B from "@/lib/api/backend";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
-import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner } from "@/lib/api/product-mapper";
+import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows } from "@/lib/api/product-mapper";
 import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
 import {
   tokenizeQuery,
@@ -78,7 +78,7 @@ const fromB = <T>(r: ApiResult<T>): Result<T> => (r.ok ? ok(r.data) : fail(r.err
  *  tables — the gaps are field-naming drift, not real schema differences. */
 const loose = <T>(data: unknown): T => data as T;
 
-export { mapProduct, mapProducts, mapStore, mapBrand } from "./product-mapper";
+export { mapProduct, mapProducts, mapStore, mapBrand, mapFlatProductRows } from "./product-mapper";
 export {
   PRODUCT_CARD_SELECT,
   getProductCards,
@@ -258,9 +258,23 @@ export async function getFeaturedBlogPosts(limit = 3): Promise<Result<LibBlogPos
   return ok((res.data.posts as LibBlogPost[]) ?? []);
 }
 
+export async function getTopStoriesOfWeek(limit = 8): Promise<Result<LibBlogPost[]>> {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const res = await B.getBlogPostsBackend({ limit, since });
+  if (!res.ok) return fail(res.error);
+  return ok((res.data.posts as LibBlogPost[]) ?? []);
+}
+
 export async function getFeaturedProducts(limit = 12): Promise<Result<Product[]>> {
   const res = await getProductCards({ limit, featuredOnly: true, sort: "popular" });
   return res;
+}
+
+export async function getMostLovedToday(limit = 12): Promise<Result<Product[]>> {
+  const res = await B.getHomepageBackend();
+  if (!res.ok) return fail(res.error);
+  const products = mapFlatProductRows((res.data.mostLoved as unknown[]) ?? []);
+  return ok(products.slice(0, limit));
 }
 
 export async function getFeaturedBrands(limit = 6): Promise<Result<Brand[]>> {
@@ -2035,9 +2049,9 @@ export async function unsubscribePriceAlert(id: string) {
 
 // ----- Personalised home feed (0169) ----------------------------------
 
-import type { HomeFeedResponse, HomeFeedSectionKey, HomeFeedProduct } from "@/lib/api/backend";
+import type { HomeFeedResponse, HomeFeedSectionKey, HomeFeedProduct, HomeFeedBrandOrStore } from "@/lib/api/backend";
 
-export type { HomeFeedResponse, HomeFeedSectionKey, HomeFeedProduct };
+export type { HomeFeedResponse, HomeFeedSectionKey, HomeFeedProduct, HomeFeedBrandOrStore };
 
 export async function getHomeFeed(opts: { exclude?: string[] } = {}) {
   return B.getHomeFeedBackend(opts);

@@ -15,6 +15,8 @@ import {
   HomeJournalRail,
   ForYouRail,
   PersonalisedRails,
+  ContinueBrowsingRow,
+  RecommendedForYouRail,
 } from "@/components/home/premium";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
@@ -147,6 +149,8 @@ export default function HomeScreen() {
         ) : null}
 
         <PersonalisedRails />
+        <RecommendedForYouRail />
+        <ContinueBrowsingRow />
 
         {wishlistRailData.wishlist.length > 0 ? (
           <>
@@ -212,7 +216,27 @@ export default function HomeScreen() {
               onSeeAll={() => router.push("/(main)/products?sort=newest")}
             />
             <FeaturedBrandsRow brands={catalogData?.brands ?? []} />
+            <ProductRail
+              kicker="Trending today"
+              title="Most loved right now"
+              products={catalogData?.mostLoved ?? []}
+              showSaleBadge={false}
+              onSeeAll={() => router.push("/(main)/products?sort=rating")}
+            />
+            <ProductRail
+              kicker="Sponsored"
+              title="Featured from our partners"
+              products={catalogData?.sponsored ?? []}
+              showSaleBadge={false}
+              badgeLabel="Sponsored"
+            />
             <HomeJournalRail posts={catalogData?.journalPosts ?? []} />
+            <HomeJournalRail
+              title="Top stories this week"
+              kicker="Trending in the journal"
+              posts={catalogData?.topStories ?? []}
+              seeAllHref="/(main)/blog"
+            />
           </>
         ) : null}
 

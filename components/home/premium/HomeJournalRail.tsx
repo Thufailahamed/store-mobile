@@ -18,9 +18,17 @@ function formatDate(value?: string) {
 
 interface HomeJournalRailProps {
   posts: BlogPost[];
+  title?: string;
+  kicker?: string;
+  seeAllHref?: string;
 }
 
-export function HomeJournalRail({ posts }: HomeJournalRailProps) {
+export function HomeJournalRail({
+  posts,
+  title = "From the journal",
+  kicker,
+  seeAllHref = "/(main)/blog",
+}: HomeJournalRailProps) {
   const router = useRouter();
   const list = posts.slice(0, 6);
   if (!list.length) return null;
@@ -28,8 +36,9 @@ export function HomeJournalRail({ posts }: HomeJournalRailProps) {
   return (
     <View style={styles.wrap}>
       <HomeSectionHeader
-        title="From the journal"
-        onPress={() => router.push("/(main)/blog")}
+        title={title}
+        kicker={kicker}
+        onPress={() => router.push(seeAllHref as never)}
       />
       <ScrollView
         horizontal

@@ -20,9 +20,11 @@ interface HomeProductCardProps {
    * `priority` on those so the OS image cache fills before paint.
    */
   index?: number;
+  /** Small disclosure pill (e.g. "Sponsored") shown opposite the sale badge. */
+  badgeLabel?: string;
 }
 
-function HomeProductCardInner({ product, showSaleBadge = true, index = 99 }: HomeProductCardProps) {
+function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badgeLabel }: HomeProductCardProps) {
   const router = useRouter();
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
   const toggle = useWishlist((s) => s.toggle);
@@ -78,6 +80,11 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99 }: Hom
         {showSaleBadge && onSale ? (
           <View style={styles.saleBadge}>
             <Text style={styles.saleText}>Sale</Text>
+          </View>
+        ) : null}
+        {badgeLabel ? (
+          <View style={styles.disclosureBadge}>
+            <Text style={styles.disclosureText}>{badgeLabel}</Text>
           </View>
         ) : null}
       </View>
@@ -151,7 +158,8 @@ export const HomeProductCard = React.memo(
   (prev, next) =>
     prev.product === next.product &&
     prev.showSaleBadge === next.showSaleBadge &&
-    prev.index === next.index,
+    prev.index === next.index &&
+    prev.badgeLabel === next.badgeLabel,
 );
 
 const styles = StyleSheet.create({
@@ -199,6 +207,22 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
     fontSize: 11,
     color: colors.light.destructive,
+  },
+  disclosureBadge: {
+    position: "absolute",
+    right: 8,
+    bottom: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    borderRadius: radii.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  disclosureText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 9,
+    color: "#ffffff",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   storeRow: {
     flexDirection: "row",
