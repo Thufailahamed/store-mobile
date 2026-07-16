@@ -51,6 +51,48 @@ export function mapProducts(products: any[]): Product[] {
   return products.map(mapProduct);
 }
 
+/**
+ * Normalises a flat RPC row (`product_id` + `image_url` instead of the full
+ * `id`/`images[]` product shape) into a `Product` the rail components can
+ * render. Used for personalisation/trending RPCs that return a denormalised
+ * row rather than the full catalog product.
+ */
+export function mapFlatProductRow(row: any): Product {
+  const id = row.id ?? row.product_id;
+  return {
+    id,
+    store_id: row.store_id ?? "",
+    brand_id: row.brand_id ?? undefined,
+    category_id: row.category_id ?? undefined,
+    name: row.name,
+    slug: row.slug,
+    mrp: Number(row.mrp ?? row.price ?? 0),
+    price: Number(row.price ?? row.mrp ?? 0),
+    currency: row.currency ?? "LKR",
+    discount_pct: 0,
+    tax_rate: 0,
+    status: "active",
+    product_type: "simple",
+    images: row.image_url
+      ? [{ url: resolveImageUrl(row.image_url), is_primary: true, position: 0 }]
+      : [],
+    rating: row.rating ?? 0,
+    total_sales: row.total_sales ?? 0,
+    created_at: row.created_at ?? new Date().toISOString(),
+    tags: [],
+    is_featured: false,
+    is_active: true,
+    total_reviews: 0,
+    view_count: 0,
+    wishlist_count: 0,
+  } as unknown as Product;
+}
+
+export function mapFlatProductRows(rows: any[]): Product[] {
+  if (!rows) return [];
+  return rows.map(mapFlatProductRow);
+}
+
 export function mapCategory<T extends { image_url?: string | null }>(category: T): T {
   return {
     ...category,
