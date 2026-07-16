@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { View, ScrollView, TouchableOpacity, StyleSheet, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -16,11 +16,22 @@ function formatDate(value?: string) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+interface JournalTab {
+  label: string;
+  posts: BlogPost[];
+}
+
 interface HomeJournalRailProps {
   posts: BlogPost[];
   title?: string;
   kicker?: string;
   seeAllHref?: string;
+  /**
+   * When provided, renders a segmented tab control instead of a single
+   * list — used to fold "From the journal" and "Top stories this week"
+   * into one section instead of two stacked, visually identical rails.
+   */
+  tabs?: JournalTab[];
 }
 
 export function HomeJournalRail({
@@ -28,9 +39,13 @@ export function HomeJournalRail({
   title = "From the journal",
   kicker,
   seeAllHref = "/(main)/blog",
+  tabs,
 }: HomeJournalRailProps) {
   const router = useRouter();
-  const list = posts.slice(0, 6);
+  const [activeTab, setActiveTab] = useState(0);
+  const hasTabs = Boolean(tabs && tabs.length > 1);
+  const activePosts = hasTabs ? tabs![activeTab]?.posts ?? [] : posts;
+  const list = useMemo(() => activePosts.slice(0, 6), [activePosts]);
   if (!list.length) return null;
 
   return (
@@ -40,6 +55,22 @@ export function HomeJournalRail({
         kicker={kicker}
         onPress={() => router.push(seeAllHref as never)}
       />
+      {hasTabs ? (
+        <View style={styles.tabRow}>
+          {tabs!.map((tab, i) => (
+            <TouchableOpacity
+              key={tab.label}
+              style={[styles.tabBtn, i === activeTab && styles.tabBtnActive]}
+              onPress={() => setActiveTab(i)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.tabText, i === activeTab && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -79,7 +110,30 @@ export function HomeJournalRail({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing[6],
+    marginBottom: spacing[8],
+  },
+  tabRow: {
+    flexDirection: "row",
+    gap: spacing[2],
+    paddingHorizontal: spacing[5],
+    marginBottom: spacing[4],
+  },
+  tabBtn: {
+    paddingHorizontal: spacing[3],
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.muted,
+  },
+  tabBtnActive: {
+    backgroundColor: colors.light.foreground,
+  },
+  tabText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+  },
+  tabTextActive: {
+    color: colors.light.card,
   },
   scroll: {
     paddingHorizontal: spacing[5],
