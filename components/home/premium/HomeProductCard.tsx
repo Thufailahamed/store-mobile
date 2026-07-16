@@ -11,6 +11,7 @@ import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
 export const HOME_PRODUCT_CARD_WIDTH = 148;
+export const HOME_PRODUCT_CARD_WIDTH_LARGE = 178;
 
 interface HomeProductCardProps {
   product: Product;
@@ -22,9 +23,17 @@ interface HomeProductCardProps {
   index?: number;
   /** Small disclosure pill (e.g. "Sponsored") shown opposite the sale badge. */
   badgeLabel?: string;
+  /** "large" is used by feature/spotlight rails so their cards read as a step up from plain listing rails. */
+  size?: "default" | "large";
 }
 
-function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badgeLabel }: HomeProductCardProps) {
+function HomeProductCardInner({
+  product,
+  showSaleBadge = true,
+  index = 99,
+  badgeLabel,
+  size = "default",
+}: HomeProductCardProps) {
   const router = useRouter();
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
   const toggle = useWishlist((s) => s.toggle);
@@ -36,14 +45,16 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badge
     product.mrp > product.price
       ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
       : 0;
+  const isLarge = size === "large";
+  const cardWidth = isLarge ? HOME_PRODUCT_CARD_WIDTH_LARGE : HOME_PRODUCT_CARD_WIDTH;
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { width: cardWidth }]}
       activeOpacity={0.85}
       onPress={() => router.push(`/(main)/products/${product.slug}`)}
     >
-      <View style={styles.imageWrap}>
+      <View style={[styles.imageWrap, { width: cardWidth, height: cardWidth }]}>
         {primaryImage ? (
           <Image
             source={{ uri: primaryImage }}
@@ -78,8 +89,10 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badge
           />
         </TouchableOpacity>
         {showSaleBadge && onSale ? (
-          <View style={styles.saleBadge}>
-            <Text style={styles.saleText}>Sale</Text>
+          <View style={styles.saleStamp}>
+            <Text style={styles.saleStampText}>
+              {discount > 0 ? `${discount}%\nOFF` : "SALE"}
+            </Text>
           </View>
         ) : null}
         {badgeLabel ? (
@@ -89,7 +102,7 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badge
         ) : null}
       </View>
 
-      <Text style={styles.productName} numberOfLines={1}>
+      <Text style={[styles.productName, isLarge && styles.productNameLarge]} numberOfLines={1}>
         {product.name || "Untitled Piece"}
       </Text>
 
@@ -130,7 +143,7 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badge
             <Text style={styles.originalPrice}>
               {formatPrice(product.mrp)}
             </Text>
-            <Text style={styles.sellingPrice}>
+            <Text style={[styles.sellingPrice, isLarge && styles.sellingPriceLarge]}>
               {product.price ? formatPrice(product.price) : "Price on request"}
             </Text>
             <Text style={styles.discountPct}>
@@ -138,7 +151,7 @@ function HomeProductCardInner({ product, showSaleBadge = true, index = 99, badge
             </Text>
           </>
         ) : (
-          <Text style={styles.sellingPrice}>
+          <Text style={[styles.sellingPrice, isLarge && styles.sellingPriceLarge]}>
             {product.price ? formatPrice(product.price) : "Price on request"}
           </Text>
         )}
@@ -159,7 +172,8 @@ export const HomeProductCard = React.memo(
     prev.product === next.product &&
     prev.showSaleBadge === next.showSaleBadge &&
     prev.index === next.index &&
-    prev.badgeLabel === next.badgeLabel,
+    prev.badgeLabel === next.badgeLabel &&
+    prev.size === next.size,
 );
 
 const styles = StyleSheet.create({
@@ -194,19 +208,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  saleBadge: {
+  saleStamp: {
     position: "absolute",
     left: 8,
-    bottom: 8,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.full,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    top: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    borderColor: colors.accent2.rust,
+    backgroundColor: "rgba(250, 248, 241, 0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ rotate: "-9deg" }],
   },
-  saleText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: colors.light.destructive,
+  saleStampText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8,
+    lineHeight: 9,
+    color: colors.accent2.rust,
+    textAlign: "center",
+    letterSpacing: 0.2,
   },
   disclosureBadge: {
     position: "absolute",
@@ -261,6 +283,10 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     lineHeight: 17,
   },
+  productNameLarge: {
+    fontSize: 14,
+    lineHeight: 19,
+  },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -271,6 +297,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
     fontSize: 12,
     color: colors.light.foreground,
+  },
+  sellingPriceLarge: {
+    fontSize: 13,
   },
   originalPrice: {
     fontFamily: fontFamilies.sans.regular,
