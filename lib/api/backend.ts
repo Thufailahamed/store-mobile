@@ -145,9 +145,9 @@ export async function getBannersBackend(opts: { placement?: string; limit?: numb
   return fetchJson("/api/banners", { requireAuth: false, query: { ...opts } });
 }
 
-export type BlogPost = { id: string; title: string; slug: string; excerpt?: string | null; cover_image_url?: string | null; author?: string | null; tags?: string[]; published_at?: string; created_at: string; body?: string; seo_title?: string | null; seo_description?: string | null };
+export type BlogPost = { id: string; title: string; slug: string; excerpt?: string | null; cover_image?: string | null; author?: { full_name?: string | null; avatar_url?: string | null } | null; tags?: string[]; published_at?: string; created_at: string; content?: string; seo_title?: string | null; seo_description?: string | null };
 
-export async function getBlogPostsBackend(opts: { tag?: string; limit?: number; offset?: number } = {}): Promise<ApiResult<{ count: number; limit: number; offset: number; posts: BlogPost[] }>> {
+export async function getBlogPostsBackend(opts: { tag?: string; since?: string; limit?: number; offset?: number } = {}): Promise<ApiResult<{ count: number; limit: number; offset: number; posts: BlogPost[] }>> {
   return fetchJson("/api/blog/posts", { requireAuth: false, query: { ...opts } });
 }
 
@@ -169,6 +169,7 @@ export type HomepagePayload = {
   testimonials: unknown[];
   newsletter: unknown;
   promises: unknown[];
+  mostLoved: unknown[];
 };
 
 let homepageCache: { data: HomepagePayload; timestamp: number } | null = null;
@@ -1343,7 +1344,7 @@ export async function getAdminBlogPostsBackend(): Promise<ApiResult<{ posts: Arr
   return fetchJson("/api/admin/blog");
 }
 
-export async function createBlogPostBackend(p: Partial<BlogPost>): Promise<ApiResult<{ post: BlogPost }>> {
+export async function createBlogPostBackend(p: Record<string, unknown>): Promise<ApiResult<{ post: BlogPost }>> {
   return fetchJson("/api/admin/blog", { method: "POST", body: p });
 }
 
@@ -1611,8 +1612,21 @@ export type HomeFeedProduct = {
   brand_name?: string | null;
 };
 
+export type HomeFeedBrandOrStore = {
+  brand_id?: string | null;
+  brand_name?: string | null;
+  brand_logo_url?: string | null;
+  store_id?: string | null;
+  store_name?: string | null;
+  store_logo_url?: string | null;
+  slug?: string | null;
+  last_viewed_at: string;
+};
+
 export type HomeFeedResponse = {
-  sections: Record<HomeFeedSectionKey, HomeFeedProduct[]>;
+  sections: Record<HomeFeedSectionKey, HomeFeedProduct[]> & {
+    continue_browsing?: HomeFeedBrandOrStore[];
+  };
   segment: {
     categories: string[];
     gender: string | null;
