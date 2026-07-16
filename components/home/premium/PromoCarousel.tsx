@@ -10,17 +10,23 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Banner } from "@/lib/types";
 
-const CARD_HEIGHT = 168;
+const CARD_HEIGHT = 440;
 
 interface PromoCarouselProps {
   banners: Banner[];
 }
 
+/**
+ * Full-bleed editorial hero — a magazine cover spread rather than a
+ * split copy/image tile, so it reads as the page's "feature story"
+ * instead of one more product card.
+ */
 export function PromoCarousel({ banners }: PromoCarouselProps) {
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
@@ -53,36 +59,38 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
         contentContainerStyle={styles.scroll}
         onMomentumScrollEnd={onScrollEnd}
       >
-        {list.map((b) => {
-          const bg = b.bg_color || colors.accent2.ochre + "33";
-          const accent = b.accent_color || colors.light.foreground;
-          return (
-            <View key={b.id} style={[styles.card, { width: CARD_WIDTH }]}>
-              <View style={[styles.copy, { backgroundColor: bg }]}>
-                <Text style={[styles.brand, { color: accent }]} numberOfLines={1}>
-                  {b.title}
-                </Text>
-                <Text style={styles.headline} numberOfLines={2}>
-                  {b.subtitle || "Curated pieces, delivered with care"}
-                </Text>
-                <TouchableOpacity
-                  style={styles.cta}
-                  activeOpacity={0.85}
-                  onPress={() => handleCta(b)}
-                >
-                  <Text style={styles.ctaText}>{b.cta_text || "Shop now"}</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.visual}>
-                {b.image_url ? (
-                  <Image source={{ uri: b.image_url }} style={styles.image} contentFit="cover" />
-                ) : (
-                  <View style={styles.imagePlaceholder} />
-                )}
-              </View>
+        {list.map((b, i) => (
+          <TouchableOpacity
+            key={b.id}
+            style={[styles.card, { width: CARD_WIDTH }]}
+            activeOpacity={0.92}
+            onPress={() => handleCta(b)}
+          >
+            <Text style={styles.eyebrow}>ISSUE No {String(i + 1).padStart(2, "0")} — FEATURED STORY</Text>
+            {b.image_url ? (
+              <Image source={{ uri: b.image_url }} style={styles.image} contentFit="cover" />
+            ) : (
+              <View style={styles.imagePlaceholder} />
+            )}
+            <LinearGradient
+              colors={["transparent", "rgba(10,9,8,0.15)", "rgba(10,9,8,0.88)"]}
+              locations={[0, 0.45, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.copy}>
+              <Text style={styles.brand} numberOfLines={1}>
+                {b.title}
+              </Text>
+              <Text style={styles.headline} numberOfLines={2}>
+                {b.subtitle || "Curated pieces, delivered with care"}
+              </Text>
             </View>
-          );
-        })}
+            <View style={styles.ctaStamp}>
+              <View style={styles.ctaDot} />
+              <Text style={styles.ctaText}>{b.cta_text || "Shop now"}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
       {list.length > 1 ? (
         <View style={styles.dots}>
@@ -112,63 +120,83 @@ const FALLBACK_PROMOS: Banner[] = [
 const styles = StyleSheet.create({
   wrap: {
     marginTop: spacing[2],
-    marginBottom: spacing[5],
+    marginBottom: spacing[6],
   },
   scroll: {
     paddingHorizontal: spacing[5],
     gap: spacing[3],
   },
   card: {
-    flexDirection: "row",
     height: CARD_HEIGHT,
-    borderRadius: radii["2xl"],
+    borderRadius: radii.md,
     overflow: "hidden",
-    backgroundColor: colors.light.card,
-    ...shadows.soft,
-  },
-  copy: {
-    flex: 1,
-    padding: spacing[4],
-    justifyContent: "center",
-    gap: spacing[2],
-  },
-  brand: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  headline: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 17,
-    lineHeight: 22,
-    color: colors.light.foreground,
-    letterSpacing: -0.3,
-  },
-  cta: {
-    alignSelf: "flex-start",
-    marginTop: spacing[1],
-    backgroundColor: colors.light.foreground,
-    borderRadius: radii.full,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-  },
-  ctaText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.card,
-  },
-  visual: {
-    width: CARD_HEIGHT,
-    height: CARD_HEIGHT,
+    backgroundColor: colors.olive[200],
   },
   image: {
-    width: "100%",
-    height: "100%",
+    ...StyleSheet.absoluteFillObject,
   },
   imagePlaceholder: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.olive[200],
+  },
+  eyebrow: {
+    position: "absolute",
+    top: spacing[3],
+    left: spacing[3],
+    zIndex: 2,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: colors.light.card,
+    backgroundColor: "rgba(22,23,15,0.55)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    overflow: "hidden",
+  },
+  copy: {
+    position: "absolute",
+    left: spacing[4],
+    right: spacing[4],
+    bottom: spacing[7],
+    gap: 4,
+  },
+  brand: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 14,
+    color: "#e3ded0",
+  },
+  headline: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    lineHeight: 33,
+    color: colors.light.card,
+    letterSpacing: -0.2,
+  },
+  ctaStamp: {
+    position: "absolute",
+    left: spacing[4],
+    bottom: spacing[3],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing[3],
+    paddingVertical: 7,
+    transform: [{ rotate: "-2deg" }],
+  },
+  ctaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: colors.light.foreground,
+  },
+  ctaText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: colors.light.foreground,
   },
   dots: {
     flexDirection: "row",
