@@ -391,7 +391,7 @@ export default function AccountScreen() {
         )}
 
         {/* Account shortcuts */}
-        <Text style={styles.sectionTitle}>Your account</Text>
+        <SectionHeader title="Your account" />
         <View style={styles.menuGroup}>
           {ACCOUNT_LINKS.map((link, index) => (
             <TouchableOpacity
@@ -933,8 +933,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing[4],
-    marginTop: spacing[2],
+    marginBottom: spacing[3],
   },
   menuGroup: {
     backgroundColor: "#ffffff",
