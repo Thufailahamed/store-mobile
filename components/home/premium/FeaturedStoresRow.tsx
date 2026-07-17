@@ -1,72 +1,157 @@
-import React from "react";
-import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { HomeSectionHeader } from "./HomeSectionHeader";
-import { colors, spacing } from "@/lib/theme/tokens";
+import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
+
+const CARD_HEIGHT = 268;
+const PEEK = 32; // next card shows this many px at the edge, hinting there's more to swipe
+
+const GRADIENTS: [string, string][] = [
+  [colors.olive[700], colors.olive[950]],
+  ["#3f4a2e", "#1f2414"],
+  ["#4a3f2e", "#241f14"],
+  ["#2e3f4a", "#141f24"],
+];
+
+function gradientFor(name: string): [string, string] {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+}
+
+function formatCount(value: number) {
+  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return value.toLocaleString();
+}
 
 interface FeaturedStoresRowProps {
   stores: Store[];
 }
 
 /**
- * A vertical directory list — rows, not scrolling tiles — so "boutiques"
- * reads as a distinct browsing mode instead of yet another circle-avatar
- * horizontal scroller (CategoryScroller / ContinueBrowsingRow already own
- * that shape).
+ * A paged, one-at-a-time "spotlight" deck — swipe through boutiques like a
+ * lookbook rather than scanning a scrolling card row or a directory list.
+ * Deliberately a different interaction (page + progress counter) from every
+ * other horizontally-scrolling rail on Home.
  */
 export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
   const router = useRouter();
-  const list = stores.slice(0, 6);
+  const { width: screenWidth } = useWindowDimensions();
+  const CARD_WIDTH = screenWidth - spacing[5] * 2 - PEEK;
+  const list = stores.slice(0, 8);
+  const [active, setActive] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
   if (!list.length) return null;
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + spacing[3]));
+    setActive(Math.min(Math.max(i, 0), list.length - 1));
+  };
 
   return (
     <View style={styles.wrap}>
       <HomeSectionHeader
-        title="Boutique directory"
-        kicker="Shop by store"
+        title="Shop by store"
+        kicker="Boutique spotlight"
         onPress={() => router.push("/(main)/stores")}
       />
-      <View style={styles.list}>
-        {list.map((s, i) => (
-          <TouchableOpacity
-            key={s.id}
-            style={[styles.row, i === 0 && styles.rowFirst]}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (s.slug) {
-                router.push({
-                  pathname: "/(main)/stores/[slug]",
-                  params: { slug: s.slug, id: s.id },
-                });
-              } else {
-                router.push("/(main)/products");
-              }
-            }}
-          >
-            <View style={styles.avatar}>
-              {s.logo_url ? (
-                <Image source={{ uri: s.logo_url }} style={styles.avatarImage} contentFit="cover" />
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={CARD_WIDTH + spacing[3]}
+        decelerationRate="fast"
+        contentContainerStyle={styles.scroll}
+        onMomentumScrollEnd={onScrollEnd}
+      >
+        {list.map((s) => {
+          const gradient = gradientFor(s.name);
+          return (
+            <TouchableOpacity
+              key={s.id}
+              style={[styles.card, { width: CARD_WIDTH }]}
+              activeOpacity={0.9}
+              onPress={() => {
+                if (s.slug) {
+                  router.push({
+                    pathname: "/(main)/stores/[slug]",
+                    params: { slug: s.slug, id: s.id },
+                  });
+                } else {
+                  router.push("/(main)/products");
+                }
+              }}
+            >
+              {s.banner_url ? (
+                <Image source={{ uri: s.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
               ) : (
-                <Text style={styles.avatarInitial}>{s.name.charAt(0)}</Text>
+                <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
               )}
-            </View>
-            <View style={styles.info}>
-              <Text style={styles.name} numberOfLines={1}>
-                {s.name}
-              </Text>
-              <Text style={styles.note} numberOfLines={1}>
-                {s.rating > 0 ? `${s.rating.toFixed(1)} rating · ` : ""}
-                {s.description || "Curated for the LUXE edit"}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
-          </TouchableOpacity>
-        ))}
-      </View>
+              <LinearGradient colors={["transparent", "rgba(0,0,0,0.78)"]} style={styles.overlay} />
+
+              <View style={styles.cardTop}>
+                <Text style={styles.tag}>BOUTIQUE</Text>
+              </View>
+
+              <View style={styles.cardBottom}>
+                <View style={styles.logoWrap}>
+                  {s.logo_url ? (
+                    <Image source={{ uri: s.logo_url }} style={styles.logo} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.logoInitial}>{s.name.charAt(0)}</Text>
+                  )}
+                </View>
+                <Text style={styles.name} numberOfLines={1}>
+                  {s.name}
+                </Text>
+                <View style={styles.metaRow}>
+                  {s.rating > 0 ? (
+                    <View style={styles.metaItem}>
+                      <Ionicons name="star" size={11} color="#f5d76e" />
+                      <Text style={styles.metaText}>{s.rating.toFixed(1)}</Text>
+                    </View>
+                  ) : null}
+                  {s.total_products > 0 ? (
+                    <Text style={styles.metaText}>{formatCount(s.total_products)} pieces</Text>
+                  ) : null}
+                  {s.total_followers > 0 ? (
+                    <Text style={styles.metaText}>{formatCount(s.total_followers)} followers</Text>
+                  ) : null}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {list.length > 1 ? (
+        <View style={styles.footer}>
+          <Text style={styles.counter}>
+            {String(active + 1).padStart(2, "0")} / {String(list.length).padStart(2, "0")}
+          </Text>
+          <View style={styles.track}>
+            <View style={[styles.progress, { width: `${((active + 1) / list.length) * 100}%` }]} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -75,52 +160,107 @@ const styles = StyleSheet.create({
   wrap: {
     marginBottom: spacing[8],
   },
-  list: {
+  scroll: {
     paddingHorizontal: spacing[5],
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: spacing[3],
-    paddingVertical: spacing[3],
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
   },
-  rowFirst: {
-    borderTopWidth: 0,
+  card: {
+    height: CARD_HEIGHT,
+    borderRadius: radii["2xl"],
+    overflow: "hidden",
+    backgroundColor: colors.olive[100],
+    ...shadows.editorial,
   },
-  avatar: {
+  overlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "72%",
+  },
+  cardTop: {
+    position: "absolute",
+    top: spacing[3],
+    left: spacing[3],
+  },
+  tag: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.6,
+    color: "rgba(255,255,255,0.85)",
+  },
+  cardBottom: {
+    position: "absolute",
+    left: spacing[4],
+    right: spacing[4],
+    bottom: spacing[4],
+  },
+  logoWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.85)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    marginBottom: spacing[2],
   },
-  avatarImage: {
+  logo: {
     width: "100%",
     height: "100%",
   },
-  avatarInitial: {
+  logoInitial: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontSize: 18,
     color: colors.light.primary,
   },
-  info: {
-    flex: 1,
-    gap: 1,
-  },
   name: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    color: "#ffffff",
+    letterSpacing: -0.2,
   },
-  note: {
-    fontFamily: fontFamilies.sans.regular,
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing[3],
+    marginTop: 4,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  metaText: {
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
+    color: "rgba(255,255,255,0.85)",
+  },
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingHorizontal: spacing[5],
+    marginTop: spacing[3],
+  },
+  counter: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
     color: colors.light.mutedForeground,
+    letterSpacing: 0.5,
+  },
+  track: {
+    flex: 1,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.light.border,
+    overflow: "hidden",
+  },
+  progress: {
+    height: "100%",
+    backgroundColor: colors.light.primary,
   },
 });
