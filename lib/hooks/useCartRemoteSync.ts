@@ -3,7 +3,7 @@ import { AppState, type AppStateStatus } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCart } from "@/lib/stores/cart-store";
-import { isRemoteSyncPullSuppressed } from "@/lib/remote-sync-guard";
+import { isRemoteSyncPullSuppressed, isPushInFlight } from "@/lib/remote-sync-guard";
 
 const DEBOUNCE_MS = 400;
 const URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
@@ -25,10 +25,10 @@ export function useCartRemoteSync(): void {
   const pullInFlightRef = useRef(false);
 
   const schedulePull = (userId: string) => {
-    if (!cartHydrated || isRemoteSyncPullSuppressed()) return;
+    if (!cartHydrated || isRemoteSyncPullSuppressed() || isPushInFlight()) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      if (pullInFlightRef.current || isRemoteSyncPullSuppressed()) return;
+      if (pullInFlightRef.current || isRemoteSyncPullSuppressed() || isPushInFlight()) return;
       pullInFlightRef.current = true;
       void useCart
         .getState()

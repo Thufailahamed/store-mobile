@@ -7,7 +7,7 @@ import type { CartReconciliation } from "@/lib/cart-validation";
 import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, assertStoreConsistency, buildCartLineKey } from "@/lib/cart-line-key";
 import { clearCheckoutSession } from "@/lib/cart-checkout-session";
 import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
-import { suppressRemoteSyncPull } from "@/lib/remote-sync-guard";
+import { suppressRemoteSyncPull, beginPushInFlight, endPushInFlight } from "@/lib/remote-sync-guard";
 
 /** Notice payload when a cart mutation was clamped to available stock. */
 export type CartClampNotice = {
@@ -200,7 +200,14 @@ export const useCart = create<CartStore>()(
       syncToServer: async (_userId): Promise<CartSyncResult> => {
         if (!get().hydrated) return { ok: true };
 
+        // Block remote pulls for the *entire* push, not just a fixed
+        // window from now — a pull that lands mid-push would read a
+        // stale (or, on the server, briefly empty) cart and stomp the
+        // change we're about to write. beginPushInFlight/endPushInFlight
+        // cover the request itself; the trailing suppressRemoteSyncPull
+        // covers the Realtime echo that follows a successful write.
         suppressRemoteSyncPull();
+        beginPushInFlight();
 
         try {
           const localItems = Object.values(get().items);
@@ -220,6 +227,9 @@ export const useCart = create<CartStore>()(
         } catch (err) {
           console.warn("[cart] sync failed:", err);
           return { ok: false, error: "Could not sync your bag. Try again shortly." };
+        } finally {
+          endPushInFlight();
+          suppressRemoteSyncPull();
         }
       },
 

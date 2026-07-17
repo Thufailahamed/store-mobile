@@ -656,7 +656,7 @@ export async function listReviewsBackend(productId: string, limit = 20): Promise
 }
 
 export async function listMyReviewsBackend(): Promise<ApiResult<{ reviews: Review[] }>> {
-  return fetchJson("/api/account/reviews");
+  return fetchJson("/api/users/reviews");
 }
 
 export async function addReviewBackend(input: {
@@ -681,7 +681,7 @@ export async function addReviewBackend(input: {
 }
 
 export async function deleteReviewBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
-  return fetchJson(`/api/reviews/${id}`, { method: "DELETE" });
+  return fetchJson(`/api/users/reviews/${id}`, { method: "DELETE" });
 }
 
 export async function voteReviewHelpfulBackend(id: string): Promise<ApiResult<{ helpful_count: number }>> {
