@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -19,7 +19,6 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
 
 const CARD_HEIGHT = 268;
-const PEEK = 32; // next card shows this many px at the edge, hinting there's more to swipe
 
 const GRADIENTS: [string, string][] = [
   [colors.olive[700], colors.olive[950]],
@@ -46,18 +45,31 @@ interface FeaturedStoresRowProps {
 }
 
 /**
- * A paged, one-at-a-time "spotlight" deck — swipe through boutiques like a
- * lookbook rather than scanning a scrolling card row or a directory list.
- * Deliberately a different interaction (page + progress counter) from every
- * other horizontally-scrolling rail on Home.
+ * A full-bleed, one-slide-at-a-time carousel — swipe through boutiques with
+ * dot pagination, mirroring the hero PromoCarousel's pattern instead of the
+ * card-row/directory-list shapes used elsewhere on Home.
  */
 export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
-  const CARD_WIDTH = screenWidth - spacing[5] * 2 - PEEK;
+  const CARD_WIDTH = screenWidth - spacing[5] * 2;
   const list = stores.slice(0, 8);
   const [active, setActive] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Auto-advance every 5s; resets on every change to `active` — including a
+  // manual swipe, which updates `active` via onScrollEnd below — so the
+  // countdown restarts from wherever the user leaves it instead of fighting
+  // their gesture.
+  useEffect(() => {
+    if (list.length <= 1) return;
+    const timer = setTimeout(() => {
+      const next = (active + 1) % list.length;
+      scrollRef.current?.scrollTo({ x: next * (CARD_WIDTH + spacing[3]), animated: true });
+      setActive(next);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [active, list.length, CARD_WIDTH]);
 
   if (!list.length) return null;
 
@@ -143,13 +155,10 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
       </ScrollView>
 
       {list.length > 1 ? (
-        <View style={styles.footer}>
-          <Text style={styles.counter}>
-            {String(active + 1).padStart(2, "0")} / {String(list.length).padStart(2, "0")}
-          </Text>
-          <View style={styles.track}>
-            <View style={[styles.progress, { width: `${((active + 1) / list.length) * 100}%` }]} />
-          </View>
+        <View style={styles.dots}>
+          {list.map((s, i) => (
+            <View key={s.id} style={[styles.dot, i === active && styles.dotActive]} />
+          ))}
         </View>
       ) : null}
     </View>
@@ -239,28 +248,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "rgba(255,255,255,0.85)",
   },
-  footer: {
+  dots: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
+    justifyContent: "center",
+    gap: 6,
     marginTop: spacing[3],
   },
-  counter: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.5,
-  },
-  track: {
-    flex: 1,
-    height: 2,
-    borderRadius: 1,
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.light.border,
-    overflow: "hidden",
   },
-  progress: {
-    height: "100%",
+  dotActive: {
+    width: 18,
     backgroundColor: colors.light.primary,
   },
 });
