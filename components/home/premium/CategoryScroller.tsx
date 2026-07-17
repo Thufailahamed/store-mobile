@@ -1,7 +1,6 @@
 import React from "react";
 import { View, ScrollView, TouchableOpacity, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
-import { HomeSectionHeader } from "./HomeSectionHeader";
 import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Category } from "@/lib/types";
@@ -11,8 +10,8 @@ interface CategoryScrollerProps {
 }
 
 /**
- * Plain text browse strip — deliberately no images/icons/card chrome so it
- * reads as quick top-level navigation (Men, Women, Kids…), distinct from the
+ * Plain text browse strip — no heading, no images/icons/card chrome, just
+ * quick top-level navigation (Men, Women, Kids…), distinct from the
  * image-led CategoryGrid section further down the page.
  */
 export function CategoryScroller({ categories }: CategoryScrollerProps) {
@@ -22,10 +21,6 @@ export function CategoryScroller({ categories }: CategoryScrollerProps) {
 
   return (
     <View style={styles.wrap}>
-      <HomeSectionHeader
-        title="Shop by category"
-        onPress={() => router.push("/(main)/categories")}
-      />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
