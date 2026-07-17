@@ -1,5 +1,6 @@
 export { HomeSectionHeader } from "./HomeSectionHeader";
 export { CategoryScroller } from "./CategoryScroller";
+export { CategoryGrid } from "./CategoryGrid";
 export { PromoCarousel } from "./PromoCarousel";
 export { HomeProductCard, HOME_PRODUCT_CARD_WIDTH } from "./HomeProductCard";
 export { ProductRail } from "./ProductRail";
