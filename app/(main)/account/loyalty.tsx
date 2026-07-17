@@ -107,40 +107,51 @@ export default function LoyaltyScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScreenHeader title="Rewards" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.heroCard, { backgroundColor: details.bg }]}>
-          <View style={styles.heroBlob1} />
-          <View style={styles.heroBlob2} />
-          <View style={styles.heroContent}>
-            <View style={styles.heroTopRow}>
-              <View>
-                <Label style={[styles.heroKicker, { color: details.fg, opacity: 0.8 }]}>
-                  Tier · {tier.name}
-                </Label>
-                <Display size="3xl" style={[styles.heroTitle, { color: details.fg }]}>
-                  {loyalty.state.points.toLocaleString()}
-                </Display>
-                <Body style={{ color: details.fg, opacity: 0.8 }}>points available to spend</Body>
+        <View
+          style={[
+            styles.heroShadowWrap,
+            {
+              backgroundColor: details.bg,
+              shadowColor: details.ring,
+              borderColor: details.ring + "40",
+            },
+          ]}
+        >
+          <View style={[styles.heroCard, { backgroundColor: details.bg }]}>
+            <View style={styles.heroBlob1} />
+            <View style={styles.heroBlob2} />
+            <View style={styles.heroContent}>
+              <View style={styles.heroTopRow}>
+                <View>
+                  <Label style={[styles.heroKicker, { color: details.fg, opacity: 0.8 }]}>
+                    Tier · {tier.name}
+                  </Label>
+                  <Display size="3xl" style={[styles.heroTitle, { color: details.fg }]}>
+                    {loyalty.state.points.toLocaleString()}
+                  </Display>
+                  <Body style={{ color: details.fg, opacity: 0.8 }}>points available to spend</Body>
+                </View>
+                <View style={[styles.trophyCircle, { borderColor: details.ring }]}>
+                  <Ionicons name="trophy" size={28} color={details.fg} />
+                </View>
               </View>
-              <View style={[styles.trophyCircle, { borderColor: details.ring }]}>
-                <Ionicons name="trophy" size={28} color={details.fg} />
-              </View>
-            </View>
 
-            <View style={styles.progressWrap}>
-              <View style={[styles.progressTrack, { backgroundColor: details.fg + "20" }]}>
-                <View style={[styles.progressFill, { width: `${tier.pct}%`, backgroundColor: details.fg }]} />
-              </View>
-              <View style={styles.progressMeta}>
-                <Body size="xs" style={{ color: details.fg, opacity: 0.85 }}>
-                  {loyalty.state.lifetime_points.toLocaleString()} lifetime
-                </Body>
-                {nextTierName ? (
+              <View style={styles.progressWrap}>
+                <View style={[styles.progressTrack, { backgroundColor: details.fg + "20" }]}>
+                  <View style={[styles.progressFill, { width: `${tier.pct}%`, backgroundColor: details.fg }]} />
+                </View>
+                <View style={styles.progressMeta}>
                   <Body size="xs" style={{ color: details.fg, opacity: 0.85 }}>
-                    {pointsToNext.toLocaleString()} to {nextTierName}
+                    {loyalty.state.lifetime_points.toLocaleString()} lifetime
                   </Body>
-                ) : (
-                  <Body size="xs" style={{ color: details.fg, opacity: 0.85 }}>Top tier unlocked</Body>
-                )}
+                  {nextTierName ? (
+                    <Body size="xs" style={{ color: details.fg, opacity: 0.85 }}>
+                      {pointsToNext.toLocaleString()} to {nextTierName}
+                    </Body>
+                  ) : (
+                    <Body size="xs" style={{ color: details.fg, opacity: 0.85 }}>Top tier unlocked</Body>
+                  )}
+                </View>
               </View>
             </View>
           </View>
@@ -286,11 +297,26 @@ function TierLadder({ currentTier, currentLifetime }: { currentTier: LoyaltyTier
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   content: { padding: spacing[5], paddingBottom: spacing[8] },
+  // Shadows and `overflow: hidden` can't live on the same node — the clip
+  // would cut off the drop shadow along with the content. The shadow (the
+  // card's "glow") lives on this outer wrapper; the inner `heroCard` clips
+  // the glow blobs to its rounded corners instead. `shadowColor` and
+  // `borderColor` are set per-tier inline (see JSX) so the glow actually
+  // matches the card's own accent color instead of a generic dark shadow —
+  // Android can't tint its elevation shadow, so the tier-colored border
+  // carries the "glow matches the card" effect there.
+  heroShadowWrap: {
+    borderRadius: radii["3xl"],
+    marginBottom: spacing[5],
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 22,
+    elevation: 12,
+  },
   heroCard: {
     borderRadius: radii["3xl"],
     overflow: "hidden",
-    marginBottom: spacing[5],
-    ...shadows.editorial,
   },
   heroBlob1: {
     position: "absolute",

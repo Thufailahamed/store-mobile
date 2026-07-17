@@ -87,7 +87,7 @@ export default function ReviewsScreen() {
       <ScreenHeader title="My reviews" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <View>
+          <View style={styles.heroText}>
             <Label style={styles.heroLabel}>Feedback</Label>
             <Display size="2xl" style={styles.heroTitle}>Words left behind</Display>
             <Body muted>The notes you've left on things you've worn, used, or gifted.</Body>
@@ -197,9 +197,11 @@ const styles = StyleSheet.create({
     ...shadows.soft,
     marginBottom: spacing[5],
   },
+  heroText: { flex: 1, marginRight: spacing[3] },
   heroLabel: { color: colors.light.mutedForeground },
   heroTitle: { marginTop: spacing[2], marginBottom: spacing[2] },
   ratingBox: {
+    flexShrink: 0,
     alignItems: "flex-end",
     backgroundColor: colors.olive[50],
     borderRadius: radii.xl,

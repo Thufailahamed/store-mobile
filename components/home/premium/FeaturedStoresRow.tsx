@@ -1,14 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
+import React, { useMemo } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -18,7 +9,8 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
 
-const CARD_HEIGHT = 268;
+const CARD_WIDTH = 232;
+const CARD_HEIGHT = 312;
 
 const GRADIENTS: [string, string][] = [
   [colors.olive[700], colors.olive[950]],
@@ -45,85 +37,56 @@ interface FeaturedStoresRowProps {
 }
 
 /**
- * A full-bleed, one-slide-at-a-time carousel — swipe through boutiques with
- * dot pagination, mirroring the hero PromoCarousel's pattern instead of the
- * card-row/directory-list shapes used elsewhere on Home.
+ * "Boutique posters" — big, full-bleed portrait cards, numbered like
+ * catalogue plates, with the store name set large in the display serif
+ * directly over the photo. Full-bleed on purpose (no white caption band)
+ * so it reads as one large image, not a smaller card-with-footer shape —
+ * and it's a numbered continuous scroll, not the single-focus landscape
+ * paging used for FeaturedBrandsRow below it.
  */
 export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
   const router = useRouter();
-  const { width: screenWidth } = useWindowDimensions();
-  const CARD_WIDTH = screenWidth - spacing[5] * 2;
-  const list = stores.slice(0, 8);
-  const [active, setActive] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
-
-  // Auto-advance every 5s; resets on every change to `active` — including a
-  // manual swipe, which updates `active` via onScrollEnd below — so the
-  // countdown restarts from wherever the user leaves it instead of fighting
-  // their gesture.
-  useEffect(() => {
-    if (list.length <= 1) return;
-    const timer = setTimeout(() => {
-      const next = (active + 1) % list.length;
-      scrollRef.current?.scrollTo({ x: next * (CARD_WIDTH + spacing[3]), animated: true });
-      setActive(next);
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [active, list.length, CARD_WIDTH]);
-
+  const list = useMemo(() => stores.slice(0, 10), [stores]);
   if (!list.length) return null;
 
-  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const i = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + spacing[3]));
-    setActive(Math.min(Math.max(i, 0), list.length - 1));
+  const goToStore = (s: Store) => {
+    if (s.slug) {
+      router.push({ pathname: "/(main)/stores/[slug]", params: { slug: s.slug, id: s.id } });
+    } else {
+      router.push("/(main)/products");
+    }
   };
 
   return (
     <View style={styles.wrap}>
       <HomeSectionHeader
         title="Shop by store"
-        kicker="Boutique spotlight"
+        kicker="Boutique plates"
         onPress={() => router.push("/(main)/stores")}
       />
       <ScrollView
-        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        snapToInterval={CARD_WIDTH + spacing[3]}
-        decelerationRate="fast"
         contentContainerStyle={styles.scroll}
-        onMomentumScrollEnd={onScrollEnd}
       >
-        {list.map((s) => {
+        {list.map((s, i) => {
           const gradient = gradientFor(s.name);
           return (
             <TouchableOpacity
               key={s.id}
-              style={[styles.card, { width: CARD_WIDTH }]}
-              activeOpacity={0.9}
-              onPress={() => {
-                if (s.slug) {
-                  router.push({
-                    pathname: "/(main)/stores/[slug]",
-                    params: { slug: s.slug, id: s.id },
-                  });
-                } else {
-                  router.push("/(main)/products");
-                }
-              }}
+              style={styles.card}
+              activeOpacity={0.92}
+              onPress={() => goToStore(s)}
             >
               {s.banner_url ? (
                 <Image source={{ uri: s.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
               ) : (
                 <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
               )}
-              <LinearGradient colors={["transparent", "rgba(0,0,0,0.78)"]} style={styles.overlay} />
+              <LinearGradient colors={["transparent", "transparent", "rgba(0,0,0,0.88)"]} style={StyleSheet.absoluteFill} />
 
-              <View style={styles.cardTop}>
-                <Text style={styles.tag}>BOUTIQUE</Text>
-              </View>
-
-              <View style={styles.cardBottom}>
+              <View style={styles.top}>
+                <Text style={styles.plate}>PLATE {String(i + 1).padStart(2, "0")}</Text>
                 <View style={styles.logoWrap}>
                   {s.logo_url ? (
                     <Image source={{ uri: s.logo_url }} style={styles.logo} contentFit="cover" />
@@ -131,7 +94,10 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
                     <Text style={styles.logoInitial}>{s.name.charAt(0)}</Text>
                   )}
                 </View>
-                <Text style={styles.name} numberOfLines={1}>
+              </View>
+
+              <View style={styles.bottom}>
+                <Text style={styles.name} numberOfLines={2}>
                   {s.name}
                 </Text>
                 <View style={styles.metaRow}>
@@ -144,23 +110,16 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
                   {s.total_products > 0 ? (
                     <Text style={styles.metaText}>{formatCount(s.total_products)} pieces</Text>
                   ) : null}
-                  {s.total_followers > 0 ? (
-                    <Text style={styles.metaText}>{formatCount(s.total_followers)} followers</Text>
-                  ) : null}
+                  <View style={styles.visitPill}>
+                    <Text style={styles.visitText}>Visit</Text>
+                    <Ionicons name="arrow-forward" size={11} color={colors.light.foreground} />
+                  </View>
                 </View>
               </View>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
-
-      {list.length > 1 ? (
-        <View style={styles.dots}>
-          {list.map((s, i) => (
-            <View key={s.id} style={[styles.dot, i === active && styles.dotActive]} />
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -171,50 +130,42 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: spacing[5],
-    gap: spacing[3],
+    gap: spacing[4],
   },
   card: {
+    width: CARD_WIDTH,
     height: CARD_HEIGHT,
     borderRadius: radii["2xl"],
     overflow: "hidden",
     backgroundColor: colors.olive[100],
     ...shadows.editorial,
   },
-  overlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "72%",
-  },
-  cardTop: {
+  top: {
     position: "absolute",
     top: spacing[3],
     left: spacing[3],
+    right: spacing[3],
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
-  tag: {
+  plate: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.6,
+    fontSize: 10,
+    letterSpacing: 1.4,
     color: "rgba(255,255,255,0.85)",
-  },
-  cardBottom: {
-    position: "absolute",
-    left: spacing[4],
-    right: spacing[4],
-    bottom: spacing[4],
+    marginTop: 6,
   },
   logoWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: "#ffffff",
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.85)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    marginBottom: spacing[2],
   },
   logo: {
     width: "100%",
@@ -222,21 +173,28 @@ const styles = StyleSheet.create({
   },
   logoInitial: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
+    fontSize: 17,
     color: colors.light.primary,
+  },
+  bottom: {
+    position: "absolute",
+    left: spacing[4],
+    right: spacing[4],
+    bottom: spacing[4],
   },
   name: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
+    fontStyle: "italic",
+    fontSize: 26,
+    lineHeight: 30,
     color: "#ffffff",
-    letterSpacing: -0.2,
+    marginBottom: spacing[2],
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: spacing[3],
-    marginTop: 4,
+    gap: spacing[2],
   },
   metaItem: {
     flexDirection: "row",
@@ -248,20 +206,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "rgba(255,255,255,0.85)",
   },
-  dots: {
+  visitPill: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: spacing[3],
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#ffffff",
+    borderRadius: radii.full,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginLeft: "auto",
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.light.border,
-  },
-  dotActive: {
-    width: 18,
-    backgroundColor: colors.light.primary,
+  visitText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    color: colors.light.foreground,
   },
 });

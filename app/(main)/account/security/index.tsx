@@ -327,7 +327,7 @@ export default function SecurityScreen() {
       <ScreenHeader title="Security" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <View>
+          <View style={styles.heroText}>
             <Label style={styles.heroLabel}>Account protection</Label>
             <Display size="2xl" style={styles.heroTitle}>Fort Knox calm</Display>
             <Body muted>Your account is in good shape. Tighten a few controls and breathe easier.</Body>
@@ -593,9 +593,11 @@ const styles = StyleSheet.create({
     ...shadows.soft,
     marginBottom: spacing[5],
   },
+  heroText: { flex: 1, marginRight: spacing[3] },
   heroLabel: { color: colors.light.mutedForeground },
   heroTitle: { marginTop: spacing[2], marginBottom: spacing[2] },
   health: {
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
