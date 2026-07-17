@@ -9,8 +9,8 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Brand } from "@/lib/types";
 
-const CARD_WIDTH = 188;
-const BANNER_HEIGHT = 116;
+const CARD_WIDTH = 240;
+const LOGO_SIZE = 56;
 
 const ACCENT_GRADIENTS: [string, string][] = [
   [colors.olive[700], colors.olive[900]],
@@ -74,54 +74,39 @@ function BrandCard({ brand, onPress }: { brand: Brand; onPress: () => void }) {
   ].filter(Boolean);
 
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.88} onPress={onPress}>
-      <View style={styles.banner}>
-        {brand.banner_url ? (
-          <Image source={{ uri: brand.banner_url }} style={styles.bannerImage} contentFit="cover" />
+    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
+      <View style={styles.logoWrap}>
+        {brand.logo_url ? (
+          <Image source={{ uri: brand.logo_url }} style={styles.logo} contentFit="cover" />
         ) : (
-          <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
-        )}
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.55)"]}
-          style={styles.bannerOverlay}
-        />
-        <View style={styles.bannerTop}>
-          {brand.rating > 0 ? (
-            <View style={styles.ratingPill}>
-              <Ionicons name="star" size={10} color="#f5d76e" />
-              <Text style={styles.ratingText}>{brand.rating.toFixed(1)}</Text>
-            </View>
-          ) : (
-            <View />
-          )}
-        </View>
-        <View style={styles.bannerBottom}>
-          <View style={styles.logoWrap}>
-            {brand.logo_url ? (
-              <Image source={{ uri: brand.logo_url }} style={styles.logo} contentFit="cover" />
-            ) : (
+          <LinearGradient colors={gradient} style={StyleSheet.absoluteFill}>
+            <View style={styles.logoInitialWrap}>
               <Text style={styles.logoInitial}>{brand.name.charAt(0)}</Text>
-            )}
-          </View>
-          <Text style={styles.bannerName} numberOfLines={2}>
-            {brand.name}
-          </Text>
-        </View>
+            </View>
+          </LinearGradient>
+        )}
       </View>
 
       <View style={styles.info}>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>
+            {brand.name}
+          </Text>
+          {brand.rating > 0 ? (
+            <View style={styles.ratingPill}>
+              <Ionicons name="star" size={9} color="#c9a227" />
+              <Text style={styles.ratingText}>{brand.rating.toFixed(1)}</Text>
+            </View>
+          ) : null}
+        </View>
         {brand.tagline ? (
-          <Text style={styles.tagline} numberOfLines={2}>
+          <Text style={styles.tagline} numberOfLines={1}>
             {brand.tagline}
           </Text>
         ) : null}
-        {metaParts.length > 0 ? (
-          <Text style={styles.meta} numberOfLines={1}>
-            {metaParts.join(" · ")}
-          </Text>
-        ) : (
-          <Text style={styles.meta}>Explore the collection</Text>
-        )}
+        <Text style={styles.meta} numberOfLines={1}>
+          {metaParts.length > 0 ? metaParts.join(" · ") : "Explore the collection"}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -146,62 +131,23 @@ const styles = StyleSheet.create({
   },
   card: {
     width: CARD_WIDTH,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
     backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.light.border,
-    overflow: "hidden",
+    padding: spacing[3],
     ...shadows.soft,
   },
-  banner: {
-    height: BANNER_HEIGHT,
-    backgroundColor: colors.olive[100],
-    overflow: "hidden",
-  },
-  bannerImage: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bannerTop: {
-    position: "absolute",
-    top: spacing[2],
-    left: spacing[2],
-    right: spacing[2],
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  ratingPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "rgba(0, 0, 0, 0.42)",
-    borderRadius: radii.full,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  ratingText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    color: "#ffffff",
-  },
-  bannerBottom: {
-    position: "absolute",
-    left: spacing[3],
-    right: spacing[3],
-    bottom: spacing[3],
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
   logoWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#ffffff",
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.8)",
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: LOGO_SIZE / 2,
+    backgroundColor: colors.olive[100],
+    borderWidth: 1,
+    borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -210,25 +156,45 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  logoInitialWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   logoInitial: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: colors.light.primary,
-  },
-  bannerName: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontSize: 20,
     color: "#ffffff",
-    lineHeight: 17,
-    letterSpacing: -0.2,
   },
   info: {
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
-    gap: 4,
-    minHeight: 58,
-    justifyContent: "center",
+    flex: 1,
+    gap: 2,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  name: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: colors.light.foreground,
+    letterSpacing: -0.2,
+  },
+  ratingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: colors.olive[50],
+    borderRadius: radii.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  ratingText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10,
+    color: colors.olive[700],
   },
   tagline: {
     fontFamily: fontFamilies.sans.medium,
