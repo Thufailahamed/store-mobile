@@ -1,5 +1,5 @@
-import React from "react";
-import { View, TouchableOpacity, StyleSheet, Text, useWindowDimensions } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, TouchableOpacity, StyleSheet, Text, Animated, Easing, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { HomeSectionHeader } from "./HomeSectionHeader";
@@ -34,31 +34,69 @@ export function CategoryGrid({ categories }: CategoryGridProps) {
         onPress={() => router.push("/(main)/categories")}
       />
       <View style={styles.grid}>
-        {list.map((c) => (
-          <TouchableOpacity
+        {list.map((c, i) => (
+          <CategoryTile
             key={c.id}
-            style={[styles.tile, { width: tileWidth }]}
-            activeOpacity={0.85}
+            category={c}
+            index={i}
+            width={tileWidth}
             onPress={() => router.push(`/(main)/products?category=${c.slug}`)}
-          >
-            <View style={styles.imageWrap}>
-              {c.image_url ? (
-                <Image source={{ uri: c.image_url }} style={styles.image} contentFit="cover" />
-              ) : (
-                <View style={[styles.image, styles.imagePlaceholder]}>
-                  <Text style={styles.placeholderInitial}>{c.name.charAt(0)}</Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.labelWrap}>
-              <Text style={styles.label} numberOfLines={1}>
-                {c.name}
-              </Text>
-            </View>
-          </TouchableOpacity>
+          />
         ))}
       </View>
     </View>
+  );
+}
+
+/** Fades + scales in on mount, staggered by index (row by row), instead of the whole grid popping in at once. */
+function CategoryTile({
+  category,
+  index,
+  width,
+  onPress,
+}: {
+  category: Category;
+  index: number;
+  width: number;
+  onPress: () => void;
+}) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 420,
+      delay: index * 60,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index]);
+
+  const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+
+  return (
+    <Animated.View style={{ opacity: anim, transform: [{ scale }] }}>
+      <TouchableOpacity
+        style={[styles.tile, { width }]}
+        activeOpacity={0.85}
+        onPress={onPress}
+      >
+        <View style={styles.imageWrap}>
+          {category.image_url ? (
+            <Image source={{ uri: category.image_url }} style={styles.image} contentFit="cover" />
+          ) : (
+            <View style={[styles.image, styles.imagePlaceholder]}>
+              <Text style={styles.placeholderInitial}>{category.name.charAt(0)}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.labelWrap}>
+          <Text style={styles.label} numberOfLines={1}>
+            {category.name}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 

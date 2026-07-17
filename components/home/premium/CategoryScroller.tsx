@@ -1,5 +1,5 @@
-import React from "react";
-import { View, ScrollView, TouchableOpacity, StyleSheet, Text } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, ScrollView, TouchableOpacity, StyleSheet, Text, Animated, Easing } from "react-native";
 import { useRouter } from "expo-router";
 import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -17,10 +17,24 @@ interface CategoryScrollerProps {
 export function CategoryScroller({ categories }: CategoryScrollerProps) {
   const router = useRouter();
   const list = categories.slice(0, 12);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!list.length) return;
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 380,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, list.length]);
+
   if (!list.length) return null;
 
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+
   return (
-    <View style={styles.wrap}>
+    <Animated.View style={[styles.wrap, { opacity: anim, transform: [{ translateY }] }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -35,7 +49,7 @@ export function CategoryScroller({ categories }: CategoryScrollerProps) {
           </View>
         ))}
       </ScrollView>
-    </View>
+    </Animated.View>
   );
 }
 

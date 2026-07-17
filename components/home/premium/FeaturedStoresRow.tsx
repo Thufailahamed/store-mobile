@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useEffect, useMemo, useRef } from "react";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated, Easing } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -69,58 +69,74 @@ export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {list.map((s, i) => {
-          const gradient = gradientFor(s.name);
-          return (
-            <TouchableOpacity
-              key={s.id}
-              style={styles.card}
-              activeOpacity={0.92}
-              onPress={() => goToStore(s)}
-            >
-              {s.banner_url ? (
-                <Image source={{ uri: s.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
-              ) : (
-                <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
-              )}
-              <LinearGradient colors={["transparent", "transparent", "rgba(0,0,0,0.88)"]} style={StyleSheet.absoluteFill} />
-
-              <View style={styles.top}>
-                <Text style={styles.plate}>PLATE {String(i + 1).padStart(2, "0")}</Text>
-                <View style={styles.logoWrap}>
-                  {s.logo_url ? (
-                    <Image source={{ uri: s.logo_url }} style={styles.logo} contentFit="cover" />
-                  ) : (
-                    <Text style={styles.logoInitial}>{s.name.charAt(0)}</Text>
-                  )}
-                </View>
-              </View>
-
-              <View style={styles.bottom}>
-                <Text style={styles.name} numberOfLines={2}>
-                  {s.name}
-                </Text>
-                <View style={styles.metaRow}>
-                  {s.rating > 0 ? (
-                    <View style={styles.metaItem}>
-                      <Ionicons name="star" size={11} color="#f5d76e" />
-                      <Text style={styles.metaText}>{s.rating.toFixed(1)}</Text>
-                    </View>
-                  ) : null}
-                  {s.total_products > 0 ? (
-                    <Text style={styles.metaText}>{formatCount(s.total_products)} pieces</Text>
-                  ) : null}
-                  <View style={styles.visitPill}>
-                    <Text style={styles.visitText}>Visit</Text>
-                    <Ionicons name="arrow-forward" size={11} color={colors.light.foreground} />
-                  </View>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+        {list.map((s, i) => (
+          <StorePlate key={s.id} store={s} index={i} onPress={() => goToStore(s)} />
+        ))}
       </ScrollView>
     </View>
+  );
+}
+
+/** Fades + slides up on mount, staggered by index, so the row reveals itself card by card instead of popping in all at once. */
+function StorePlate({ store, index, onPress }: { store: Store; index: number; onPress: () => void }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 480,
+      delay: Math.min(index, 8) * 90,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index]);
+
+  const gradient = gradientFor(store.name);
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
+
+  return (
+    <Animated.View style={{ opacity: anim, transform: [{ translateY }] }}>
+      <TouchableOpacity style={styles.card} activeOpacity={0.92} onPress={onPress}>
+        {store.banner_url ? (
+          <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+        ) : (
+          <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
+        )}
+        <LinearGradient colors={["transparent", "transparent", "rgba(0,0,0,0.88)"]} style={StyleSheet.absoluteFill} />
+
+        <View style={styles.top}>
+          <Text style={styles.plate}>PLATE {String(index + 1).padStart(2, "0")}</Text>
+          <View style={styles.logoWrap}>
+            {store.logo_url ? (
+              <Image source={{ uri: store.logo_url }} style={styles.logo} contentFit="cover" />
+            ) : (
+              <Text style={styles.logoInitial}>{store.name.charAt(0)}</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.bottom}>
+          <Text style={styles.name} numberOfLines={2}>
+            {store.name}
+          </Text>
+          <View style={styles.metaRow}>
+            {store.rating > 0 ? (
+              <View style={styles.metaItem}>
+                <Ionicons name="star" size={11} color="#f5d76e" />
+                <Text style={styles.metaText}>{store.rating.toFixed(1)}</Text>
+              </View>
+            ) : null}
+            {store.total_products > 0 ? (
+              <Text style={styles.metaText}>{formatCount(store.total_products)} pieces</Text>
+            ) : null}
+            <View style={styles.visitPill}>
+              <Text style={styles.visitText}>Visit</Text>
+              <Ionicons name="arrow-forward" size={11} color={colors.light.foreground} />
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
