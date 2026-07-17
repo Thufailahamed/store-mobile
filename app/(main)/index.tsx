@@ -8,6 +8,7 @@ import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import {
   CategoryScroller,
+  CategoryGrid,
   PromoCarousel,
   ProductRail,
   MasonryProductRail,
@@ -200,6 +201,8 @@ export default function HomeScreen() {
             />
           ) : null}
         </View>
+
+        <CategoryGrid categories={catalogData?.categories ?? []} />
 
         {catalogExtended.isSuccess || catalogExtended.isFetching ? (
           <>
