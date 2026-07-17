@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import {
   View,
-  ScrollView,
+  Animated,
   TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
@@ -31,12 +31,13 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const CARD_WIDTH = screenWidth - spacing[5] * 2;
+  const STEP = CARD_WIDTH + spacing[3];
   const list = banners.length ? banners : FALLBACK_PROMOS;
   const [active, setActive] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
 
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const i = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + spacing[3]));
+    const i = Math.round(e.nativeEvent.contentOffset.x / STEP);
     setActive(i);
   };
 
@@ -50,48 +51,67 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
 
   return (
     <View style={styles.wrap}>
-      <ScrollView
-        ref={scrollRef}
+      <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        snapToInterval={CARD_WIDTH + spacing[3]}
+        snapToInterval={STEP}
         decelerationRate="fast"
         contentContainerStyle={styles.scroll}
         onMomentumScrollEnd={onScrollEnd}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+          useNativeDriver: true,
+        })}
+        scrollEventThrottle={16}
       >
-        {list.map((b, i) => (
-          <TouchableOpacity
-            key={b.id}
-            style={[styles.card, { width: CARD_WIDTH }]}
-            activeOpacity={0.92}
-            onPress={() => handleCta(b)}
-          >
-            <Text style={styles.eyebrow}>ISSUE No {String(i + 1).padStart(2, "0")} — FEATURED STORY</Text>
-            {b.image_url ? (
-              <Image source={{ uri: b.image_url }} style={styles.image} contentFit="cover" />
-            ) : (
-              <View style={styles.imagePlaceholder} />
-            )}
-            <LinearGradient
-              colors={["transparent", "rgba(10,9,8,0.15)", "rgba(10,9,8,0.88)"]}
-              locations={[0, 0.45, 1]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.copy}>
-              <Text style={styles.brand} numberOfLines={1}>
-                {b.title}
-              </Text>
-              <Text style={styles.headline} numberOfLines={2}>
-                {b.subtitle || "Curated pieces, delivered with care"}
-              </Text>
-            </View>
-            <View style={styles.ctaStamp}>
-              <View style={styles.ctaDot} />
-              <Text style={styles.ctaText}>{b.cta_text || "Shop now"}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+        {list.map((b, i) => {
+          const inputRange = [(i - 1) * STEP, i * STEP, (i + 1) * STEP];
+          const scale = scrollX.interpolate({
+            inputRange,
+            outputRange: [0.93, 1, 0.93],
+            extrapolate: "clamp",
+          });
+          const opacity = scrollX.interpolate({
+            inputRange,
+            outputRange: [0.6, 1, 0.6],
+            extrapolate: "clamp",
+          });
+
+          return (
+            <TouchableOpacity
+              key={b.id}
+              style={{ width: CARD_WIDTH }}
+              activeOpacity={0.92}
+              onPress={() => handleCta(b)}
+            >
+              <Animated.View style={[styles.card, { transform: [{ scale }], opacity }]}>
+                <Text style={styles.eyebrow}>ISSUE No {String(i + 1).padStart(2, "0")} — FEATURED STORY</Text>
+                {b.image_url ? (
+                  <Image source={{ uri: b.image_url }} style={styles.image} contentFit="cover" />
+                ) : (
+                  <View style={styles.imagePlaceholder} />
+                )}
+                <LinearGradient
+                  colors={["transparent", "rgba(10,9,8,0.15)", "rgba(10,9,8,0.88)"]}
+                  locations={[0, 0.45, 1]}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.copy}>
+                  <Text style={styles.brand} numberOfLines={1}>
+                    {b.title}
+                  </Text>
+                  <Text style={styles.headline} numberOfLines={2}>
+                    {b.subtitle || "Curated pieces, delivered with care"}
+                  </Text>
+                </View>
+                <View style={styles.ctaStamp}>
+                  <View style={styles.ctaDot} />
+                  <Text style={styles.ctaText}>{b.cta_text || "Shop now"}</Text>
+                </View>
+              </Animated.View>
+            </TouchableOpacity>
+          );
+        })}
+      </Animated.ScrollView>
       {list.length > 1 ? (
         <View style={styles.dots}>
           {list.map((b, i) => (
