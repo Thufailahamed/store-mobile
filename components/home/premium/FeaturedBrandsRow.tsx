@@ -1,5 +1,14 @@
-import React, { useMemo } from "react";
-import { View, ScrollView, TouchableOpacity, StyleSheet, Text } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -9,10 +18,9 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Brand } from "@/lib/types";
 
-const CARD_WIDTH = 240;
-const LOGO_SIZE = 56;
+const CARD_HEIGHT = 210;
 
-const ACCENT_GRADIENTS: [string, string][] = [
+const GRADIENTS: [string, string][] = [
   [colors.olive[700], colors.olive[900]],
   ["#3f4a2e", "#1f2414"],
   ["#4a3f2e", "#241f14"],
@@ -24,7 +32,7 @@ function brandGradient(name: string): [string, string] {
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return ACCENT_GRADIENTS[Math.abs(hash) % ACCENT_GRADIENTS.length];
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 }
 
 function formatCount(value: number) {
@@ -36,79 +44,114 @@ interface FeaturedBrandsRowProps {
   brands: Brand[];
 }
 
+/**
+ * "Brand billboards" — one big landscape card snaps into focus at a time,
+ * each stamped with an oversized, half-faded initial as a typographic
+ * watermark behind the brand name. Landscape + single-focus paging is the
+ * opposite shape/interaction from the portrait, continuous-scroll
+ * FeaturedStoresRow above it, so the two "browse by X" rows read as
+ * distinct ideas rather than the same card reskinned.
+ */
 export function FeaturedBrandsRow({ brands }: FeaturedBrandsRowProps) {
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const CARD_WIDTH = screenWidth - spacing[5] * 2 - spacing[8];
   const list = useMemo(() => brands.slice(0, 10), [brands]);
+  const [active, setActive] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
   if (!list.length) return null;
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const i = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + spacing[3]));
+    setActive(Math.min(Math.max(i, 0), list.length - 1));
+  };
 
   return (
     <View style={styles.wrap}>
       <HomeSectionHeader
         title="Shop by brand"
+        kicker="Brand billboards"
         onPress={() => router.push("/(main)/search")}
       />
-      <Text style={styles.subtitle}>Discover labels curated for the LUXE edit</Text>
-
       <ScrollView
+        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
+        snapToInterval={CARD_WIDTH + spacing[3]}
+        decelerationRate="fast"
         contentContainerStyle={styles.scroll}
+        onMomentumScrollEnd={onScrollEnd}
       >
-        {list.map((brand) => (
-          <BrandCard
-            key={brand.id}
-            brand={brand}
-            onPress={() => router.push(`/(main)/products?brand=${brand.slug}`)}
-          />
-        ))}
+        {list.map((brand) => {
+          const gradient = brandGradient(brand.name);
+          const metaParts = [
+            brand.total_products > 0 ? `${formatCount(brand.total_products)} pieces` : null,
+            brand.total_followers > 0 ? `${formatCount(brand.total_followers)} followers` : null,
+          ].filter(Boolean);
+
+          return (
+            <TouchableOpacity
+              key={brand.id}
+              style={[styles.card, { width: CARD_WIDTH }]}
+              activeOpacity={0.92}
+              onPress={() => router.push(`/(main)/products?brand=${brand.slug}`)}
+            >
+              {brand.banner_url ? (
+                <Image source={{ uri: brand.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+              ) : (
+                <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
+              )}
+              <LinearGradient colors={["rgba(0,0,0,0.15)", "rgba(0,0,0,0.75)"]} style={StyleSheet.absoluteFill} />
+
+              <Text style={styles.watermark} numberOfLines={1}>
+                {brand.name.charAt(0)}
+              </Text>
+
+              <View style={styles.content}>
+                <View style={styles.contentTop}>
+                  {brand.logo_url ? (
+                    <Image source={{ uri: brand.logo_url }} style={styles.logo} contentFit="cover" />
+                  ) : null}
+                  {brand.rating > 0 ? (
+                    <View style={styles.ratingPill}>
+                      <Ionicons name="star" size={10} color="#f5d76e" />
+                      <Text style={styles.ratingText}>{brand.rating.toFixed(1)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <View>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {brand.name}
+                  </Text>
+                  {brand.tagline ? (
+                    <Text style={styles.tagline} numberOfLines={1}>
+                      {brand.tagline}
+                    </Text>
+                  ) : null}
+                  <View style={styles.footerRow}>
+                    <Text style={styles.meta} numberOfLines={1}>
+                      {metaParts.length > 0 ? metaParts.join(" · ") : "Explore the collection"}
+                    </Text>
+                    <View style={styles.shopBtn}>
+                      <Ionicons name="arrow-forward" size={13} color={colors.light.foreground} />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
-    </View>
-  );
-}
 
-function BrandCard({ brand, onPress }: { brand: Brand; onPress: () => void }) {
-  const gradient = brandGradient(brand.name);
-  const metaParts = [
-    brand.total_products > 0 ? `${formatCount(brand.total_products)} pieces` : null,
-    brand.total_followers > 0 ? `${formatCount(brand.total_followers)} followers` : null,
-  ].filter(Boolean);
-
-  return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
-      <View style={styles.logoWrap}>
-        {brand.logo_url ? (
-          <Image source={{ uri: brand.logo_url }} style={styles.logo} contentFit="cover" />
-        ) : (
-          <LinearGradient colors={gradient} style={StyleSheet.absoluteFill}>
-            <View style={styles.logoInitialWrap}>
-              <Text style={styles.logoInitial}>{brand.name.charAt(0)}</Text>
-            </View>
-          </LinearGradient>
-        )}
-      </View>
-
-      <View style={styles.info}>
-        <View style={styles.nameRow}>
-          <Text style={styles.name} numberOfLines={1}>
-            {brand.name}
-          </Text>
-          {brand.rating > 0 ? (
-            <View style={styles.ratingPill}>
-              <Ionicons name="star" size={9} color="#c9a227" />
-              <Text style={styles.ratingText}>{brand.rating.toFixed(1)}</Text>
-            </View>
-          ) : null}
+      {list.length > 1 ? (
+        <View style={styles.dots}>
+          {list.map((b, i) => (
+            <View key={b.id} style={[styles.dot, i === active && styles.dotActive]} />
+          ))}
         </View>
-        {brand.tagline ? (
-          <Text style={styles.tagline} numberOfLines={1}>
-            {brand.tagline}
-          </Text>
-        ) : null}
-        <Text style={styles.meta} numberOfLines={1}>
-          {metaParts.length > 0 ? metaParts.join(" · ") : "Explore the collection"}
-        </Text>
-      </View>
-    </TouchableOpacity>
+      ) : null}
+    </View>
   );
 }
 
@@ -116,95 +159,104 @@ const styles = StyleSheet.create({
   wrap: {
     marginBottom: spacing[6],
   },
-  subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.light.mutedForeground,
-    paddingHorizontal: spacing[5],
-    marginTop: -spacing[1],
-    marginBottom: spacing[4],
-    lineHeight: 18,
-  },
   scroll: {
     paddingHorizontal: spacing[5],
     gap: spacing[3],
   },
   card: {
-    width: CARD_WIDTH,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: "#ffffff",
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: spacing[3],
-    ...shadows.soft,
-  },
-  logoWrap: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
-    borderRadius: LOGO_SIZE / 2,
-    backgroundColor: colors.olive[100],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
+    height: CARD_HEIGHT,
+    borderRadius: radii["2xl"],
     overflow: "hidden",
+    backgroundColor: colors.olive[100],
+    ...shadows.editorial,
+  },
+  watermark: {
+    position: "absolute",
+    right: -10,
+    bottom: -46,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 200,
+    lineHeight: 200,
+    color: "rgba(255,255,255,0.08)",
+  },
+  content: {
+    flex: 1,
+    padding: spacing[4],
+    justifyContent: "space-between",
+  },
+  contentTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   logo: {
-    width: "100%",
-    height: "100%",
-  },
-  logoInitialWrap: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoInitial: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: "#ffffff",
-  },
-  info: {
-    flex: 1,
-    gap: 2,
-  },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  name: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
   },
   ratingPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: colors.olive[50],
+    backgroundColor: "rgba(0,0,0,0.4)",
     borderRadius: radii.full,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   ratingText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    color: colors.olive[700],
+    fontSize: 11,
+    color: "#ffffff",
+  },
+  name: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 26,
+    color: "#ffffff",
+    letterSpacing: -0.4,
   },
   tagline: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.light.foreground,
-    lineHeight: 16,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 2,
+  },
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: spacing[3],
   },
   meta: {
+    flex: 1,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.75)",
+    marginRight: spacing[2],
+  },
+  shopBtn: {
+    flexShrink: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: spacing[3],
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.light.border,
+  },
+  dotActive: {
+    width: 18,
+    backgroundColor: colors.light.primary,
   },
 });
