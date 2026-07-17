@@ -82,8 +82,12 @@ export function useProductGrid(scope: ProductGridScope = {}) {
   }, [products, filters]);
 
   const fetchProducts = useCallback(
-    async (reset = false) => {
-      const off = reset ? 0 : offset;
+    // `explicitOffset` lets loadMore pass the just-computed next page offset
+    // directly — reading the `offset` state here instead would still see
+    // the pre-update value (setOffset hasn't flushed yet in the same tick),
+    // re-fetching the current page and appending duplicate products.
+    async (reset = false, explicitOffset?: number) => {
+      const off = reset ? 0 : explicitOffset ?? offset;
       // "for_you" is a client-side re-rank — fetch a server sort first
       // (newest gives stable, full set), then personalize the loaded page.
       const serverSort: string = sort === "for_you" ? "newest" : sort;
@@ -104,7 +108,11 @@ export function useProductGrid(scope: ProductGridScope = {}) {
           const reranked = await getPersonalizedSearch(user?.id ?? null, page);
           page = reranked.ok ? reranked.data : page;
         }
-        setProducts((prev) => (reset ? page : [...prev, ...page]));
+        setProducts((prev) => {
+          if (reset) return page;
+          const seen = new Set(prev.map((p) => p.id));
+          return [...prev, ...page.filter((p) => !seen.has(p.id))];
+        });
         setTotal(res.data.total);
       } else {
         if (reset) {
@@ -130,8 +138,9 @@ export function useProductGrid(scope: ProductGridScope = {}) {
   const loadMore = () => {
     if (loadingMore || products.length >= total) return;
     setLoadingMore(true);
-    setOffset((o) => o + LIMIT);
-    fetchProducts(false);
+    const nextOffset = offset + LIMIT;
+    setOffset(nextOffset);
+    fetchProducts(false, nextOffset);
   };
 
   return {
