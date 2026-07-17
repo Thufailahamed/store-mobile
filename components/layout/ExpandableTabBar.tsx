@@ -1,16 +1,14 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { Ionicons } from "@/components/ui/Icon";
 import { useWishlist } from "@/lib/stores";
-import { useTabBarVisibility } from "@/lib/hooks/useTabBarScroll";
-import { colors, radii, typography } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-/** Below this width, tighten the pill so 5 tabs don't crowd the edges. */
-const NARROW_SCREEN_WIDTH = 360;
+/** Fixed height of the bar's content (icon + label), excluding the safe-area inset. */
+const BAR_HEIGHT = 64;
 
 type IonIcon = keyof typeof Ionicons.glyphMap;
 
@@ -35,7 +33,6 @@ function TabItem({
   badge,
   onPress,
   onLongPress,
-  narrow,
 }: {
   focused: boolean;
   label: string;
@@ -44,7 +41,6 @@ function TabItem({
   badge?: number;
   onPress: () => void;
   onLongPress: () => void;
-  narrow: boolean;
 }) {
   return (
     <Pressable
@@ -55,13 +51,7 @@ function TabItem({
       accessibilityState={focused ? { selected: true } : {}}
       accessibilityLabel={label}
     >
-      <View
-        style={[
-          styles.iconPill,
-          narrow && styles.iconPillNarrow,
-          focused && styles.iconPillActive,
-        ]}
-      >
+      <View style={[styles.iconPill, focused && styles.iconPillActive]}>
         <Ionicons
           name={focused ? iconFocused : icon}
           size={22}
@@ -86,14 +76,10 @@ function TabItem({
   );
 }
 
+/** Standard, screen-docked bottom tab bar (flush with the bottom edge — no floating pill). */
 export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const wishlistCount = useWishlist((s) => s.count());
-  const { translateY } = useTabBarVisibility();
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
 
   const focusedRoute = state.routes[state.index];
   const focusedOptions = descriptors[focusedRoute.key]?.options;
@@ -101,7 +87,6 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
     if (focusedOptions.tabBarStyle.display === "none") return null;
   }
 
-  const isNarrow = width < NARROW_SCREEN_WIDTH;
   const badges: Record<string, number> = {
     "wishlist/index": wishlistCount,
   };
@@ -109,16 +94,8 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
   const visibleRoutes = state.routes.filter((route) => TAB_CONFIG[route.name]);
 
   return (
-    <Animated.View
-      style={[
-        styles.shell,
-        { bottom: Math.max(insets.bottom, 10) },
-        isNarrow && styles.shellNarrow,
-        animatedStyle,
-      ]}
-      pointerEvents="box-none"
-    >
-      <View style={styles.pill}>
+    <View style={styles.shell} pointerEvents="box-none">
+      <View style={[styles.bar, { paddingBottom: insets.bottom + 8 }]}>
         {visibleRoutes.map((route) => {
           const index = state.routes.indexOf(route);
           const focused = state.index === index;
@@ -132,7 +109,6 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
               icon={config.icon}
               iconFocused={config.iconFocused}
               badge={badges[route.name]}
-              narrow={isNarrow}
               onPress={() => {
                 const event = navigation.emit({
                   type: "tabPress",
@@ -150,44 +126,37 @@ export function ExpandableTabBar({ state, descriptors, navigation }: BottomTabBa
           );
         })}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
-/** Bottom padding for scroll content to clear the floating tab bar. */
+/** Bottom padding for scroll content to clear the docked tab bar. */
 export function expandableTabBarInset(safeBottom: number) {
-  // Tab bar bottom position + Tab bar height (64) + extra visual spacing (16)
-  return Math.max(safeBottom, 10) + 64 + 16;
+  return safeBottom + BAR_HEIGHT;
 }
 
 const styles = StyleSheet.create({
   shell: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 50,
   },
-  shellNarrow: {
-    left: 10,
-    right: 10,
-  },
-  pill: {
+  bar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     backgroundColor: colors.light.card,
-    borderRadius: 9999,
-    borderWidth: 1.5,
-    borderColor: "rgba(200, 200, 184, 0.9)",
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    minHeight: 64,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(200, 200, 184, 0.9)",
+    paddingTop: 8,
+    minHeight: BAR_HEIGHT,
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.12,
-        shadowRadius: 16,
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
       },
       android: { elevation: 10 },
     }),
@@ -207,9 +176,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
-  },
-  iconPillNarrow: {
-    minWidth: 46,
   },
   iconPillActive: {
     backgroundColor: colors.olive[100],
