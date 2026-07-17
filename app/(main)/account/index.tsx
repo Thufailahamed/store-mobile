@@ -29,6 +29,7 @@ import {
 import { listPaymentMethodsBackend, getProfileBackend, getProductsByIdsBackend, type SavedCard } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
+import { navigateHome } from "@/lib/navigation";
 import type { Order, Product } from "@/lib/types";
 import { mapProducts } from "@/lib/api/product-mapper";
 
@@ -248,6 +249,16 @@ export default function AccountScreen() {
           },
         ]}
       >
+        {/* Back to home */}
+        <TouchableOpacity
+          style={styles.homeBtn}
+          onPress={() => navigateHome(router)}
+          activeOpacity={0.7}
+          accessibilityLabel="Back to home"
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
+        </TouchableOpacity>
+
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -714,6 +725,15 @@ function PaymentCardPreview({
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: H_PAD,
+  },
+  homeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[50],
+    marginBottom: spacing[3],
   },
   header: {
     flexDirection: "row",
