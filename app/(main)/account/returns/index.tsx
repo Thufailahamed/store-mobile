@@ -93,7 +93,7 @@ export default function ReturnsScreen() {
       <ScreenHeader title="Returns" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <View>
+          <View style={styles.heroText}>
             <Label style={styles.heroLabel}>Reverse logistics</Label>
             <Display size="2xl" style={styles.heroTitle}>
               Returns & refunds
@@ -185,9 +185,9 @@ export default function ReturnsScreen() {
                     )}
                   </View>
                   <View style={styles.cardFooter}>
-                    <View>
+                    <View style={styles.refundBlock}>
                       <Label style={styles.kicker}>Refund</Label>
-                      <Price style={styles.refundValue}>{formatPrice(r.refund_amount, r.currency)}</Price>
+                      <Price style={styles.refundValue} numberOfLines={1}>{formatPrice(r.refund_amount, r.currency)}</Price>
                     </View>
                     <View style={styles.metaRight}>
                       <Body muted size="xs">{new Date(r.created_at).toLocaleDateString()}</Body>
@@ -234,9 +234,11 @@ const styles = StyleSheet.create({
     ...shadows.soft,
     marginBottom: spacing[5],
   },
+  heroText: { flex: 1, marginRight: spacing[3] },
   heroLabel: { color: colors.light.mutedForeground },
   heroTitle: { marginTop: spacing[2], marginBottom: spacing[2] },
   refundBadge: {
+    flexShrink: 0,
     width: 40,
     height: 40,
     borderRadius: radii.lg,
@@ -344,8 +346,9 @@ const styles = StyleSheet.create({
   items: { gap: 4, marginBottom: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.light.border },
   itemLine: { color: colors.light.foreground },
   cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  refundBlock: { flex: 1, marginRight: spacing[2] },
   refundValue: { fontFamily: fontFamilies.mono.semibold, fontSize: typography.fontSizes.lg, color: colors.olive[700] },
-  metaRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  metaRight: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
   arrow: {
     width: 28,
     height: 28,
