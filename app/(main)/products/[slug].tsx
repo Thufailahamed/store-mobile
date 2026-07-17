@@ -555,6 +555,7 @@ const styles = StyleSheet.create({
   headerTitleText: {
     color: colors.light.foreground,
     fontSize: 14,
+    lineHeight: 18,
     fontWeight: "600",
     textAlign: "center",
     textTransform: "uppercase",
