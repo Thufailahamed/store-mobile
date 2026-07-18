@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
@@ -36,6 +36,7 @@ type Selection = Record<string, { selected: boolean; quantity: number }>;
 
 export default function NewReturnScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -49,24 +50,38 @@ export default function NewReturnScreen() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [reason, setReason] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [selection, setSelection] = useState<Selection>({});
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<CreateReturnResult | null>(null);
 
-  useEffect(() => {
+  const loadOrder = useCallback(() => {
     if (!orderId) return;
     let cancelled = false;
+    setLoading(true);
+    setFetchError(null);
     getOrderById(orderId).then((res) => {
       if (cancelled) return;
-      if (res.ok) setOrder(res.data);
+      if (res.ok) {
+        // res.data is null when the order genuinely doesn't exist — kept
+        // distinct from a fetch failure (res.ok === false) below.
+        setOrder(res.data);
+      } else {
+        setFetchError(res.error);
+      }
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
   }, [orderId]);
+
+  useEffect(() => {
+    const cleanup = loadOrder();
+    return cleanup;
+  }, [loadOrder]);
 
   // Initialize selection: pre-select all items, quantity = ordered qty.
   useEffect(() => {
@@ -155,7 +170,18 @@ export default function NewReturnScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <ScreenHeader title="Request return" onBack={() => router.back()} />
         <View style={styles.center}>
-          <Body muted>{loading ? "Loading order…" : "Order not found"}</Body>
+          {loading ? (
+            <Body muted>Loading order…</Body>
+          ) : fetchError ? (
+            <>
+              <Body muted style={{ textAlign: "center", marginBottom: spacing[4] }}>
+                Couldn't load this order — check your connection
+              </Body>
+              <Button variant="outline" onPress={loadOrder}>Retry</Button>
+            </>
+          ) : (
+            <Body muted>Order not found</Body>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -193,7 +219,10 @@ export default function NewReturnScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScreenHeader title="Request return" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing[6]) + spacing[4] }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.summaryCard}>
           <Label style={styles.kicker}>RETURNING FROM</Label>
           <Display size="lg">Order #{order.order_number}</Display>
@@ -298,7 +327,7 @@ export default function NewReturnScreen() {
           <Input
             value={notes}
             onChangeText={setNotes}
-            placeholder="Add photos, serial numbers, or context for the seller"
+            placeholder="Add serial numbers or context for the seller"
             multiline
             numberOfLines={4}
             style={styles.notes}
