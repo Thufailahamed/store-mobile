@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, Dimensions, Animated, Share } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,11 +36,10 @@ import {
 import type { Product, ProductVariant, Review } from "@/lib/types";
 import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
 export default function ProductDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { addItem, items: cartItems } = useCart();
   const { toggle, items: wishlistItems } = useWishlist();
@@ -108,6 +107,12 @@ export default function ProductDetailScreen() {
 
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
 
+  const fetchReviews = useCallback(async () => {
+    if (!product) return;
+    const r = await api.getReviews(product.id);
+    if (r.ok) setReviews(r.data);
+  }, [product]);
+
   useEffect(() => {
     if (!product) return;
     recordRecentlyViewed(user?.id, product.id);
@@ -121,7 +126,12 @@ export default function ProductDetailScreen() {
   const inventory = useInventoryRealtime(product);
   const liveVariantStock = getVariantStock(inventory, selectedVariant?.id);
   const unitPrice = selectedVariant?.price ?? product?.price ?? 0;
-  const currentStock = liveVariantStock?.available ?? selectedVariant?.stock ?? 0;
+  const hasVariants = (product?.variants?.length ?? 0) > 0;
+  // Products with no size/color variants have nothing for `selectedVariant`
+  // to resolve to — treat them as always available instead of defaulting to
+  // 0, matching ProductCard's "no variants → always available" assumption.
+  const currentStock =
+    liveVariantStock?.available ?? selectedVariant?.stock ?? (hasVariants ? 0 : Infinity);
   const isWishlisted = product ? !!wishlistItems[product.id] : false;
   const soldOut = currentStock <= 0;
   const cartItemKey = product
@@ -133,19 +143,24 @@ export default function ProductDetailScreen() {
     : "";
   const isInCart = product ? !!cartItems[cartItemKey] : false;
 
-  const handleAddToCart = () => {
-    if (!product) return;
+  const handleAddToCart = (): boolean => {
+    if (!product) return false;
     if (isInCart) {
       router.push("/(main)/cart");
-      return;
+      return true;
     }
     if (soldOut) {
       toast("Sold out", "error");
-      return;
+      return false;
     }
-    if (product.variants && product.variants.length > 0 && !selectedSize) {
+    // Only require a size when the product actually has a size dimension to
+    // pick from (mirrors VariantSelector, which only renders a size picker
+    // when some variant carries a `size`). Color-only products would
+    // otherwise never be able to satisfy `!selectedSize`.
+    const hasSizeDimension = !!product.variants?.some((v) => v.size && v.is_active);
+    if (hasSizeDimension && !selectedSize) {
       toast("Select a size", "error");
-      return;
+      return false;
     }
     const img = images.find((i) => i.is_primary)?.url || images[0]?.url;
     addItem({
@@ -158,15 +173,16 @@ export default function ProductDetailScreen() {
         : undefined,
       price: unitPrice,
       image: img,
-      stock: currentStock,
+      stock: hasVariants ? currentStock : null,
       quantity,
     });
     tracker.cartAdd(product);
     toast("Added to basket", "success");
+    return true;
   };
 
   const handleBuyNow = () => {
-    handleAddToCart();
+    if (!handleAddToCart()) return;
     router.push("/(main)/cart");
   };
 
@@ -517,7 +533,7 @@ export default function ProductDetailScreen() {
       productId={product.id}
       productName={product.name}
       onSubmitted={() => {
-        fetchProduct();
+        fetchReviews();
       }}
     />
     </>
