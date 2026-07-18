@@ -53,6 +53,10 @@ export default function AddPaymentMethodScreen() {
   const cvvLimit = cvvMaxLength(detectedBrand);
 
   const saveCard = async () => {
+    // Re-entrancy guard: without this, a fast double-tap can fire this
+    // handler twice before the first call reaches setSaving(true) below,
+    // saving two cards (possibly both marked default).
+    if (saving) return;
     if (!user?.id) {
       toast("Sign in to add a card", "error");
       return;
@@ -72,6 +76,17 @@ export default function AddPaymentMethodScreen() {
       toast("Use MM/YY expiry", "error");
       return;
     }
+    const expMonth = Number(expMatch[1]);
+    const expYear = 2000 + Number(expMatch[2]);
+    if (expMonth < 1 || expMonth > 12) {
+      toast("Expiry month must be between 01 and 12", "error");
+      return;
+    }
+    const expiryEnd = new Date(expYear, expMonth, 0, 23, 59, 59);
+    if (expiryEnd.getTime() < Date.now()) {
+      toast("This card has expired", "error");
+      return;
+    }
     if (form.cvv.length < cvvLimit) {
       toast(`Enter a valid ${cvvLimit}-digit CVV`, "error");
       return;
@@ -80,14 +95,17 @@ export default function AddPaymentMethodScreen() {
     // CVV is validated client-side but never sent — backend only stores
     // brand/last4/exp/holder/token. We don't keep the CVV anywhere.
     void form.cvv;
-    const exp_month = Number(expMatch[1]);
-    const exp_year = 2000 + Number(expMatch[2]);
+    const exp_month = expMonth;
+    const exp_year = expYear;
+
+    // Set before the first await so the Save button disables immediately
+    // and a rapid second tap is rejected by the re-entrancy guard above.
+    setSaving(true);
 
     // Backend picks is_default automatically if it's the user's first card.
     const existingRes = await listPaymentMethodsBackend();
     const existingCount = existingRes.ok ? (existingRes.data?.cards?.length ?? 0) : 0;
 
-    setSaving(true);
     const res = await createPaymentMethodBackend({
       brand,
       last4: clean.slice(-4),

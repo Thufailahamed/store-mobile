@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
 import {
@@ -45,6 +46,19 @@ import {
 } from "@/components/seller/ModerationResultBanner";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import type { Product, ProductImage, ProductVariant, Category, Brand } from "@/lib/types";
+
+// Carries how far the pending-image upload loop got before failing, so the
+// caller can report a specific "product created but incomplete" message
+// instead of a generic error (see syncImages).
+class ImageSyncError extends Error {
+  uploadedCount: number;
+  totalPending: number;
+  constructor(message: string, uploadedCount: number, totalPending: number) {
+    super(message);
+    this.uploadedCount = uploadedCount;
+    this.totalPending = totalPending;
+  }
+}
 
 export default function SellerProductEdit() {
   const router = useRouter();
@@ -287,7 +301,14 @@ export default function SellerProductEdit() {
         img.isPrimary,
         { mimeType: img.mimeType, fileName: img.fileName },
       );
-      if (res.error) throw new Error(res.error);
+      if (res.error) {
+        // The product record already exists at this point (created/updated before
+        // syncImages runs), and everything after this call — including variants —
+        // never gets saved. Throw a typed error so handleSave can tell the seller
+        // the product now exists in a half-configured state, instead of a generic
+        // failure message that hides that.
+        throw new ImageSyncError(res.error, i, pendingImages.length);
+      }
     }
     setUploadingImages(false);
 
@@ -340,6 +361,7 @@ export default function SellerProductEdit() {
     }
 
     setSaving(true);
+    let productId: string | undefined = isNew ? undefined : id;
     try {
       const productData: Partial<Product> = {
         name: name.trim(),
@@ -378,7 +400,6 @@ export default function SellerProductEdit() {
         currency: "LKR",
       };
 
-      let productId = isNew ? undefined : id;
       if (isNew) {
         const res = await createSellerProduct(productData);
         if (!res.ok) throw new Error(res.error);
@@ -418,7 +439,23 @@ export default function SellerProductEdit() {
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to save product");
+      if (e instanceof ImageSyncError && productId) {
+        const failedCount = e.totalPending - e.uploadedCount;
+        Alert.alert(
+          "Product incomplete",
+          `Product ${isNew ? "created" : "updated"}, but ${failedCount} of ${e.totalPending} image${e.totalPending === 1 ? "" : "s"} failed to upload and variants weren't saved. Please edit this product to finish setting it up.`,
+          [
+            {
+              text: "Edit now",
+              onPress: () => {
+                if (isNew) router.replace(`/(seller)/products/${productId}` as any);
+              },
+            },
+          ],
+        );
+      } else {
+        Alert.alert("Error", e?.message ?? "Failed to save product");
+      }
     } finally {
       setSaving(false);
       setUploadingImages(false);
@@ -486,13 +523,14 @@ export default function SellerProductEdit() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
         <Text style={styles.loadingText}>Loading...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -897,6 +935,7 @@ export default function SellerProductEdit() {
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

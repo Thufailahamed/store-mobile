@@ -1,4 +1,5 @@
 export { useAuth } from "../supabase/auth";
+export { useIsTablet, TABLET_BREAKPOINT } from "./useIsTablet";
 export { useTheme } from "./useTheme";
 export type { Theme } from "./useTheme";
 export { useSyncStores } from "./useSyncStores";

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { View, FlatList, StyleSheet, RefreshControl, Pressable, Share, Alert } from "react-native";
+import { View, FlatList, StyleSheet, RefreshControl, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@/components/ui/Icon";
 import { Card, Badge, useToast } from "@/components/ui";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -42,9 +43,10 @@ export default function AccountGiftCards() {
 
   const copyCode = async (code: string) => {
     try {
-      await Share.share({ message: code });
+      await Clipboard.setStringAsync(code);
+      toast("Code copied to clipboard", "success");
     } catch {
-      Alert.alert("Copy failed");
+      toast("Could not copy code", "error");
     }
   };
 

@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Share,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -21,9 +22,17 @@ import {
   type DcHistoryExportRow,
   type DcRoute,
 } from "@/lib/api/delivery-company-api";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
+const KPI_H_PADDING = 16;
+const KPI_GAP = 10;
+
 export default function CompanyHistoryScreen() {
+  const { width } = useWindowDimensions();
+  const isTablet = useIsTablet();
+  const kpiColumns = isTablet ? 4 : 2;
+  const kpiCardWidth = (width - KPI_H_PADDING * 2 - KPI_GAP * (kpiColumns - 1)) / kpiColumns;
   const [routes, setRoutes] = useState<DcRoute[]>([]);
   const [audit, setAudit] = useState<DcAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,10 +137,10 @@ export default function CompanyHistoryScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
         <View style={styles.kpiRow}>
-          <Kpi label="Routes" value={stats.total} />
-          <Kpi label="Delivered" value={stats.delivered} />
-          <Kpi label="Failed" value={stats.failed} />
-          <Kpi label="Completed" value={stats.completed} />
+          <Kpi label="Routes" value={stats.total} width={kpiCardWidth} />
+          <Kpi label="Delivered" value={stats.delivered} width={kpiCardWidth} />
+          <Kpi label="Failed" value={stats.failed} width={kpiCardWidth} />
+          <Kpi label="Completed" value={stats.completed} width={kpiCardWidth} />
         </View>
 
         <Text style={styles.section}>Recent routes</Text>
@@ -166,9 +175,9 @@ export default function CompanyHistoryScreen() {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: number }) {
+function Kpi({ label, value, width }: { label: string; value: number; width: number }) {
   return (
-    <View style={styles.kpi}>
+    <View style={[styles.kpi, { width }]}>
       <Text style={styles.kpiValue}>{value}</Text>
       <Text style={styles.kpiLabel}>{label}</Text>
     </View>
@@ -182,7 +191,6 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 40 },
   kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 20 },
   kpi: {
-    width: "47%",
     backgroundColor: colors.light.card,
     borderRadius: radii.lg,
     padding: 14,

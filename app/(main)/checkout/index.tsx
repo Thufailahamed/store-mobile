@@ -134,6 +134,11 @@ export default function CheckoutScreen() {
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const pendingLoyaltyPointsRef = useRef(0);
+  /** Synchronous re-entrancy guard for handlePlaceOrder — set before any
+   *  `await` so a second tap during the pre-`setLoading` validation phase
+   *  (address/cart checks, reservation hold) is a no-op instead of racing
+   *  the first tap into placing a duplicate order. */
+  const isSubmittingRef = useRef(false);
   /** Order ids created during a multi-vendor place_order fan-out. The first
    *  id is the PayHere-anchored order; the rest are tracked alongside it. */
   const pendingOrderIdsRef = useRef<string[]>([]);
@@ -362,6 +367,9 @@ export default function CheckoutScreen() {
   }, [user?.id, couponId, couponCode, sub]);
 
   const handlePlaceOrder = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    try {
     if (authLoading) return;
     if (!user) {
       toast("Please sign in to place your order", "error");
@@ -619,14 +627,14 @@ export default function CheckoutScreen() {
         await loyalty.redeem(freshPointsToUse, firstOrderId);
       }
       await loyalty.reload();
+      await releaseCartReservations();
+      reservationsHeld = false;
+      clear();
       toast("Order placed", "success");
       const orderIds = placed.map((o) => o.id).join(",");
       router.replace(
         `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIds)}` as never,
       );
-      await releaseCartReservations();
-      reservationsHeld = false;
-      clear();
     } catch (e: any) {
       if (reservationsHeld && !orderPlaced) {
         await releaseCartReservations();
@@ -634,6 +642,9 @@ export default function CheckoutScreen() {
       toast(e?.message || "Order failed", "error");
     } finally {
       setLoading(false);
+    }
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 

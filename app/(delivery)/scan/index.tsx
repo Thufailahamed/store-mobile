@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Linking,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -73,6 +74,10 @@ export default function DeliveryScanScreen() {
   const [otp, setOtp] = useState("");
   const [notes, setNotes] = useState("");
   const [scannedOnce, setScannedOnce] = useState(false);
+  // No successful read after a few seconds of continuous scanning — nudge the
+  // rider toward repositioning/lighting or the manual-entry fallback below.
+  const [scanTimedOut, setScanTimedOut] = useState(false);
+  const manualInputRef = useRef<TextInput>(null);
   // Proof-of-delivery photo state. Required before any verify_* action.
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -144,6 +149,14 @@ export default function DeliveryScanScreen() {
       resolveToken(deepToken);
     }
   }, [deepToken, resolveToken]);
+
+  const cameraActive = scanning && (!meta || awaitingCustomerQr);
+  useEffect(() => {
+    setScanTimedOut(false);
+    if (!cameraActive) return;
+    const timer = setTimeout(() => setScanTimedOut(true), 7000);
+    return () => clearTimeout(timer);
+  }, [cameraActive]);
 
   const onBarcodeScanned = useCallback(
     ({ data }: { data: string }) => {
@@ -342,13 +355,44 @@ export default function DeliveryScanScreen() {
   }
 
   if (!permission.granted) {
+    // Once the OS has permanently denied the permission (e.g. rider tapped
+    // "Don't ask again" on Android, or denied twice on iOS), calling
+    // requestPermission() again just silently re-resolves to denied without
+    // showing a prompt. The only recovery path at that point is the OS
+    // Settings screen.
+    const permanentlyDenied = !permission.canAskAgain;
     return (
       <View style={styles.center}>
         <Ionicons name="camera-outline" size={48} color={colors.mutedForeground} />
-        <Text style={styles.permText}>Camera access is required to scan package QR codes.</Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission}>
-          <Text style={styles.primaryBtnText}>Allow camera</Text>
-        </TouchableOpacity>
+        <Text style={styles.permText}>
+          {permanentlyDenied
+            ? "Camera access is blocked. Enable it for this app in your device Settings to scan package QR codes."
+            : "Camera access is required to scan package QR codes."}
+        </Text>
+        {permanentlyDenied ? (
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => Linking.openSettings()}>
+            <Text style={styles.primaryBtnText}>Open Settings</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={async () => {
+              const res = await requestPermission();
+              if (!res.granted && !res.canAskAgain) {
+                Alert.alert(
+                  "Camera blocked",
+                  "Camera access was denied. Open Settings to allow it.",
+                  [
+                    { text: "Not now", style: "cancel" },
+                    { text: "Open Settings", onPress: () => Linking.openSettings() },
+                  ],
+                );
+              }
+            }}
+          >
+            <Text style={styles.primaryBtnText}>Allow camera</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -380,7 +424,7 @@ export default function DeliveryScanScreen() {
         </Text>
       </View>
 
-      {scanning && (!meta || awaitingCustomerQr) ? (
+      {cameraActive ? (
         <View style={styles.cameraWrap}>
           <CameraView
             style={styles.camera}
@@ -393,6 +437,18 @@ export default function DeliveryScanScreen() {
             <Text style={styles.scanHint}>
               {awaitingCustomerQr ? "Align customer QR within the frame" : "Align QR code within the frame"}
             </Text>
+            {scanTimedOut ? (
+              <View style={styles.troubleBox}>
+                <Text style={styles.troubleText}>
+                  Still not reading? Try repositioning the code or improving the lighting.
+                </Text>
+                {!awaitingCustomerQr ? (
+                  <TouchableOpacity onPress={() => manualInputRef.current?.focus()}>
+                    <Text style={styles.troubleLink}>Enter the token manually below</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -565,6 +621,7 @@ export default function DeliveryScanScreen() {
         <View style={styles.manualSection}>
           <Text style={styles.manualLabel}>Or paste token manually</Text>
           <TextInput
+            ref={manualInputRef}
             style={styles.manualInput}
             value={manualToken}
             onChangeText={setManualToken}
@@ -608,6 +665,15 @@ const makeStyles = (
     cameraOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
     scanFrame: { width: 200, height: 200, borderWidth: 2, borderColor: "#fff", borderRadius: radii.lg },
     scanHint: { color: "#fff", marginTop: 16, fontSize: typography.fontSizes.sm },
+    troubleBox: { marginTop: 16, alignItems: "center", paddingHorizontal: 24 },
+    troubleText: { color: "#fff", fontSize: typography.fontSizes.xs, textAlign: "center" },
+    troubleLink: {
+      color: "#fff",
+      fontSize: typography.fontSizes.xs,
+      fontWeight: typography.fontWeights.bold as any,
+      textDecorationLine: "underline",
+      marginTop: 6,
+    },
     loadingText: { color: colors.mutedForeground },
     metaScroll: { flex: 1 },
     metaContent: { padding: 24, gap: 10, paddingBottom: 40 },

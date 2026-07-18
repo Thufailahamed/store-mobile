@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   StyleSheet,
-  ScrollView,
+  Animated,
   Share,
   RefreshControl,
 } from "react-native";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import {
   StorePageHeader,
+  StoreHero,
   StoreIdentityCard,
   StoreTabBar,
   StoreProductsSection,
@@ -68,6 +69,7 @@ export default function StoreScreen() {
   });
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const fetchAll = useCallback(async () => {
     if (!slug && !storeId) {
@@ -211,14 +213,26 @@ export default function StoreScreen() {
   return (
     <PaperBackground>
       <Stack.Screen options={{ headerShown: false }} />
-      <StorePageHeader onBack={handleBack} onShare={handleShare} />
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[600]} />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: false,
+        })}
+        scrollEventThrottle={16}
       >
+        <StoreHero
+          bannerUrl={store.banner_url}
+          logoUrl={store.logo_url}
+          storeName={store.name}
+          scrollY={scrollY}
+          onBack={handleBack}
+          onShare={handleShare}
+        />
+
         <StoreIdentityCard
           store={store}
           following={following}
@@ -253,7 +267,7 @@ export default function StoreScreen() {
             breakdown={ratingBreakdown}
           />
         ) : null}
-      </ScrollView>
+      </Animated.ScrollView>
     </PaperBackground>
   );
 }

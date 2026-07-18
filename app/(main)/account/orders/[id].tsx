@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
@@ -46,26 +46,42 @@ const PAYMENT_TONE: Record<string, { bg: string; fg: string }> = {
 
 export default function OrderDetailScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { toast } = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadOrder = useCallback(() => {
     if (!id) return;
     const orderId = id as string;
     let cancelled = false;
+    setLoading(true);
+    setFetchError(null);
     getOrderById(orderId).then((res) => {
       if (cancelled) return;
-      if (res.ok) setOrder(res.data);
+      if (res.ok) {
+        // res.data is null when the order genuinely doesn't exist — kept
+        // distinct from a fetch failure (res.ok === false) below so the
+        // UI can tell "not found" apart from "couldn't reach the server".
+        setOrder(res.data);
+      } else {
+        setFetchError(res.error);
+      }
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    const cleanup = loadOrder();
+    return cleanup;
+  }, [loadOrder]);
 
   const handleCancelOrder = async () => {
     if (!order) return;
@@ -144,7 +160,18 @@ export default function OrderDetailScreen() {
       <SafeAreaView style={styles.container}>
         <ScreenHeader title="Order" />
         <View style={styles.emptyContainer}>
-          <Body muted>{loading ? "Loading order…" : "Order not found"}</Body>
+          {loading ? (
+            <Body muted>Loading order…</Body>
+          ) : fetchError ? (
+            <>
+              <Body muted style={{ textAlign: "center", marginBottom: spacing[4] }}>
+                Couldn't load this order — check your connection
+              </Body>
+              <Button variant="outline" onPress={loadOrder}>Retry</Button>
+            </>
+          ) : (
+            <Body muted>Order not found</Body>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -170,7 +197,10 @@ export default function OrderDetailScreen() {
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing[6]) + spacing[4] }]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Status hero */}
         <View style={[styles.statusCard, { backgroundColor: tone.bg }]}>
           <View style={styles.statusIconWrap}>
@@ -327,6 +357,14 @@ export default function OrderDetailScreen() {
         {/* Shipping address */}
         <View style={styles.card}>
           <Display size="lg" style={styles.cardTitle}>Shipping address</Display>
+          {!order.address && !order.shipping_address ? (
+            <View style={styles.addressCard}>
+              <View style={styles.addressIcon}>
+                <Ionicons name="location-outline" size={18} color={colors.light.mutedForeground} />
+              </View>
+              <Body muted size="sm" style={{ flex: 1 }}>No shipping address on file.</Body>
+            </View>
+          ) : (
           <View style={styles.addressCard}>
             <View style={styles.addressIcon}>
               <Ionicons name="location-outline" size={18} color={colors.light.primary} />
@@ -345,6 +383,7 @@ export default function OrderDetailScreen() {
               <Body muted size="xs">{order.address?.phone || order.shipping_address?.phone}</Body>
             </View>
           </View>
+          )}
         </View>
 
         {/* Payment */}

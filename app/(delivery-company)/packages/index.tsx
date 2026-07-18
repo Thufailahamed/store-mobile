@@ -25,6 +25,7 @@ import {
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 type TabKey = "all" | "received" | "assigned" | "in_transit" | "delivered" | "failed" | "returned";
@@ -73,6 +74,7 @@ export default function CompanyPackagesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const isTablet = useIsTablet();
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [inventory, setInventory] = useState<DcPackageInventory[]>([]);
   const [routeStops, setRouteStops] = useState<any[]>([]);
@@ -237,8 +239,11 @@ export default function CompanyPackagesScreen() {
         </View>
       ) : (
         <FlatList
+          key={isTablet ? "grid-2" : "grid-1"}
           data={filtered}
           keyExtractor={(item) => `${item.kind}-${item.id}`}
+          numColumns={isTablet ? 2 : 1}
+          columnWrapperStyle={isTablet ? styles.columnWrapper : undefined}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
           ListEmptyComponent={
@@ -251,9 +256,20 @@ export default function CompanyPackagesScreen() {
           renderItem={({ item }) => (
             <PackageRow
               item={item}
+              gridItem={isTablet}
               acting={actingId === item.order?.id}
               onScan={() => {
                 if (item.kind === "inventory" && item.status === "received") {
+                  const when = item.received_at
+                    ? new Date(item.received_at).toLocaleString()
+                    : "earlier";
+                  Alert.alert(
+                    "Already received",
+                    `This package was already received at ${item.warehouse?.name ?? "this hub"} on ${when}. It can't be received again.`,
+                  );
+                  return;
+                }
+                if (item.kind === "inventory") {
                   const q = new URLSearchParams();
                   if (item.warehouse?.id) q.set("warehouseId", item.warehouse.id);
                   if (item.order?.id) q.set("orderId", item.order.id);
@@ -279,11 +295,13 @@ export default function CompanyPackagesScreen() {
 function PackageRow({
   item,
   acting,
+  gridItem,
   onScan,
   onLastMile,
 }: {
   item: PackageItem;
   acting: boolean;
+  gridItem?: boolean;
   onScan: () => void;
   onLastMile?: () => void;
 }) {
@@ -292,7 +310,7 @@ function PackageRow({
   const addr = order?.shipping_address;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, gridItem && styles.gridItem]}>
       <View style={styles.cardTop}>
         <Text style={styles.orderNum}>#{order?.order_number ?? "—"}</Text>
         <View style={[styles.statusPill, { backgroundColor: st.bg }]}>
@@ -364,6 +382,8 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.light.primary },
   chipText: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground },
   chipTextActive: { color: "#fff", fontWeight: typography.fontWeights.semibold },
+  columnWrapper: { gap: 12 },
+  gridItem: { flex: 1 },
   card: {
     backgroundColor: colors.light.card,
     borderRadius: radii.lg,

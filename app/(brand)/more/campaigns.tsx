@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet, Alert, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { BrandScreenHeader } from "@/components/brand/BrandScreenHeader";
@@ -102,14 +103,28 @@ function CampaignCard({ campaign, onEdit, onToggle, onDelete }: { campaign: Bran
 
 function CampaignModal({ campaign, onClose }: { campaign: BrandCampaign | null; onClose: () => void }) {
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [name, setName] = React.useState(campaign?.name ?? "");
   const [description, setDescription] = React.useState(campaign?.description ?? "");
   const [type, setType] = React.useState<CampaignType>((campaign?.type as CampaignType | undefined) ?? "sponsored");
   const [budget, setBudget] = React.useState(String(campaign?.budget ?? ""));
+  const [startsAt, setStartsAt] = React.useState(campaign?.starts_at ? campaign.starts_at.slice(0, 10) : "");
+  const [endsAt, setEndsAt] = React.useState(campaign?.ends_at ? campaign.ends_at.slice(0, 10) : "");
+
+  const budgetTrimmed = budget.trim();
+  const budgetNum = budgetTrimmed === "" ? 0 : Number(budgetTrimmed);
+  const budgetValid = Number.isFinite(budgetNum) && budgetNum >= 0;
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, description, type, budget: budget ? Number(budget) : 0 };
+      const body = {
+        name,
+        description,
+        type,
+        budget: budgetNum,
+        starts_at: startsAt.trim() || undefined,
+        ends_at: endsAt.trim() || undefined,
+      };
       return campaign ? updateBrandCampaign(campaign.id, body as never) : createBrandCampaign(body as never);
     },
     onSuccess: () => {
@@ -123,7 +138,7 @@ function CampaignModal({ campaign, onClose }: { campaign: BrandCampaign | null; 
     <Modal animationType="slide" transparent visible onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <Text style={styles.modalTitle}>{campaign ? "Edit campaign" : "New campaign"}</Text>
           <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <FieldLabel>Name</FieldLabel>
@@ -132,14 +147,19 @@ function CampaignModal({ campaign, onClose }: { campaign: BrandCampaign | null; 
             <View style={styles.chipsRow}>
               {TYPES.map((t) => <Chip key={t} selected={type === t} onPress={() => setType(t)}>{t}</Chip>)}
             </View>
+            <FieldLabel>Start date</FieldLabel>
+            <Input value={startsAt} onChangeText={setStartsAt} placeholder="YYYY-MM-DD" />
+            <FieldLabel>End date</FieldLabel>
+            <Input value={endsAt} onChangeText={setEndsAt} placeholder="YYYY-MM-DD" />
             <FieldLabel>Budget</FieldLabel>
             <Input value={budget} onChangeText={setBudget} placeholder="0" keyboardType="numeric" />
+            {!budgetValid ? <Text style={styles.errorText}>Enter a valid budget amount</Text> : null}
             <FieldLabel>Description</FieldLabel>
             <TextInput value={description} onChangeText={setDescription} placeholder="Campaign brief" multiline numberOfLines={4} style={styles.textArea} />
           </ScrollView>
           <View style={styles.sheetActions}>
             <Button variant="outline" onPress={onClose} style={styles.sheetBtn}>Cancel</Button>
-            <Button onPress={() => save.mutate()} loading={save.isPending} style={styles.sheetBtn}>{campaign ? "Save" : "Create"}</Button>
+            <Button onPress={() => save.mutate()} loading={save.isPending} disabled={!budgetValid} style={styles.sheetBtn}>{campaign ? "Save" : "Create"}</Button>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -174,4 +194,5 @@ const styles = StyleSheet.create({
   label: { fontFamily: fontFamilies.mono.medium, fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, textTransform: "uppercase", letterSpacing: typography.letterSpacing.editorial, marginTop: 8 },
   textArea: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.foreground, backgroundColor: colors.light.card, borderWidth: 1, borderColor: colors.light.border, borderRadius: radii.lg, padding: 12, minHeight: 100, textAlignVertical: "top" },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  errorText: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.xs, color: colors.light.destructive, marginTop: 4 },
 });

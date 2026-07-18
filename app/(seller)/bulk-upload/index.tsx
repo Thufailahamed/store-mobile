@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   Share,
@@ -48,8 +49,34 @@ interface Done {
   fail: number;
 }
 
+// Splits CSV text into logical rows, treating a newline as a row boundary
+// only when it falls outside an open quoted field — an embedded "\n" inside
+// a quoted description/text field is legal CSV and must stay in the same row.
+function splitCsvRows(text: string): string[] {
+  const rows: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') {
+      inQuotes = !inQuotes;
+      cur += c;
+      continue;
+    }
+    if ((c === "\r" || c === "\n") && !inQuotes) {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      rows.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += c;
+  }
+  if (cur.length > 0) rows.push(cur);
+  return rows.filter((l) => l.trim().length > 0);
+}
+
 function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const lines = splitCsvRows(text);
   if (lines.length < 2) return [];
   const headers = lines[0].split(",").map((h) => h.trim());
   return lines.slice(1).map((line) => {
@@ -417,72 +444,86 @@ export default function SellerBulkUpload() {
               <Text style={[styles.th, { width: 56 }]}>Stock</Text>
               <Text style={[styles.th, { width: 88, textAlign: "right" }]}>Status</Text>
             </View>
-            {rows.map((r) => {
-              const status =
-                r.result
-                  ? r.result.error
-                    ? "failed"
-                    : "imported"
-                  : r.errors.length === 0
-                    ? "ready"
-                    : "errors";
-              return (
-                <View
-                  key={r.index}
-                  style={[
-                    styles.tr,
-                    status === "failed" && styles.trFailed,
-                  ]}
-                >
-                  <Text style={[styles.td, styles.tdIdx, { width: 28 }]}>{r.index}</Text>
-                  <View style={[styles.td, { flex: 1 }]}>
-                    <Text style={styles.tdName} numberOfLines={1}>
-                      {r.raw.name || "—"}
-                    </Text>
-                    {r.raw.category ? (
-                      <Text style={styles.tdCat} numberOfLines={1}>{r.raw.category}</Text>
-                    ) : null}
+            <FlatList
+              data={rows}
+              keyExtractor={(r) => String(r.index)}
+              scrollEnabled={false}
+              nestedScrollEnabled
+              initialNumToRender={20}
+              windowSize={7}
+              removeClippedSubviews
+              renderItem={({ item: r }) => {
+                const status =
+                  r.result
+                    ? r.result.error
+                      ? "failed"
+                      : "imported"
+                    : r.errors.length === 0
+                      ? "ready"
+                      : "errors";
+                return (
+                  <View
+                    style={[
+                      styles.tr,
+                      status === "failed" && styles.trFailed,
+                    ]}
+                  >
+                    <Text style={[styles.td, styles.tdIdx, { width: 28 }]}>{r.index}</Text>
+                    <View style={[styles.td, { flex: 1 }]}>
+                      <Text style={styles.tdName} numberOfLines={1}>
+                        {r.raw.name || "—"}
+                      </Text>
+                      {r.raw.category ? (
+                        <Text style={styles.tdCat} numberOfLines={1}>{r.raw.category}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.td, { width: 70 }]}>{r.raw.mrp || "—"}</Text>
+                    <Text style={[styles.td, { width: 70 }]}>{r.raw.price || "—"}</Text>
+                    <Text style={[styles.td, { width: 56 }]}>{r.raw.stock || "—"}</Text>
+                    <View style={{ width: 88, alignItems: "flex-end" }}>
+                      {status === "imported" ? (
+                        <View style={[styles.pill, styles.pillOk]}>
+                          <Ionicons name="checkmark" size={10} color="#166534" />
+                          <Text style={[styles.pillText, styles.pillTextOk]}>Imported</Text>
+                        </View>
+                      ) : status === "failed" ? (
+                        <View style={[styles.pill, styles.pillFail]}>
+                          <Ionicons name="alert-circle" size={10} color="#9d174d" />
+                          <Text style={[styles.pillText, styles.pillTextFail]}>Failed</Text>
+                        </View>
+                      ) : status === "ready" ? (
+                        <View style={[styles.pill, styles.pillReady]}>
+                          <Text style={[styles.pillText, styles.pillTextReady]}>Ready</Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.pill, styles.pillError]}>
+                          <Ionicons name="alert-circle" size={10} color="#9d174d" />
+                          <Text style={[styles.pillText, styles.pillTextFail]}>
+                            {r.errors.length} {r.errors.length === 1 ? "err" : "errs"}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <Text style={[styles.td, { width: 70 }]}>{r.raw.mrp || "—"}</Text>
-                  <Text style={[styles.td, { width: 70 }]}>{r.raw.price || "—"}</Text>
-                  <Text style={[styles.td, { width: 56 }]}>{r.raw.stock || "—"}</Text>
-                  <View style={{ width: 88, alignItems: "flex-end" }}>
-                    {status === "imported" ? (
-                      <View style={[styles.pill, styles.pillOk]}>
-                        <Ionicons name="checkmark" size={10} color="#166534" />
-                        <Text style={[styles.pillText, styles.pillTextOk]}>Imported</Text>
-                      </View>
-                    ) : status === "failed" ? (
-                      <View style={[styles.pill, styles.pillFail]}>
-                        <Ionicons name="alert-circle" size={10} color="#9d174d" />
-                        <Text style={[styles.pillText, styles.pillTextFail]}>Failed</Text>
-                      </View>
-                    ) : status === "ready" ? (
-                      <View style={[styles.pill, styles.pillReady]}>
-                        <Text style={[styles.pillText, styles.pillTextReady]}>Ready</Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.pill, styles.pillError]}>
-                        <Ionicons name="alert-circle" size={10} color="#9d174d" />
-                        <Text style={[styles.pillText, styles.pillTextFail]}>
-                          {r.errors.length} {r.errors.length === 1 ? "err" : "errs"}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
+                );
+              }}
+            />
           </View>
           {/* Error details — collapsible per row by tapping status pill could be nice,
               but a flat list at the bottom is the simplest parity with web. */}
           {rows.some((r) => r.errors.length > 0 || r.result?.error) ? (
             <View style={styles.errorPanel}>
               <Text style={styles.errorPanelTitle}>Row details</Text>
-              {rows
-                .filter((r) => r.errors.length > 0 || r.result?.error)
-                .map((r) => (
-                  <View key={`err-${r.index}`} style={styles.errorRow}>
+              <FlatList
+                data={rows.filter((r) => r.errors.length > 0 || r.result?.error)}
+                keyExtractor={(r) => `err-${r.index}`}
+                scrollEnabled={false}
+                nestedScrollEnabled
+                initialNumToRender={20}
+                windowSize={7}
+                removeClippedSubviews
+                renderItem={({ item: r }) => (
+                  <View style={styles.errorRow}>
                     <Text style={styles.errorRowIdx}>#{r.index}</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.errorRowName} numberOfLines={1}>
@@ -493,7 +534,8 @@ export default function SellerBulkUpload() {
                       ))}
                     </View>
                   </View>
-                ))}
+                )}
+              />
             </View>
           ) : null}
         </View>

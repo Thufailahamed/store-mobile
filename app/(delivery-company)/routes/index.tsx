@@ -8,15 +8,19 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
+  getDeliveryCompanyMe,
   getDeliveryCompanyRoutes,
   hasStoreApi,
   type DcRoute,
 } from "@/lib/api/delivery-company-api";
+import { useAuth } from "@/lib/supabase/auth";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 const STATUS_FILTERS = ["all", "planned", "active", "completed", "cancelled"] as const;
@@ -39,11 +43,24 @@ function routeStatusStyle(status: string) {
 export default function CompanyRoutesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const isTablet = useIsTablet();
+  const params = useLocalSearchParams<{ driverId?: string; driverName?: string }>();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [routes, setRoutes] = useState<DcRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [error, setError] = useState<string | null>(null);
+  const [driverFilter, setDriverFilter] = useState<{ id: string; name?: string } | null>(
+    params.driverId ? { id: params.driverId, name: params.driverName } : null,
+  );
+
+  // A driverId param arrives when navigating here from a driver's profile
+  // ("View routes") — keep the filter in sync if that param changes.
+  useEffect(() => {
+    if (params.driverId) setDriverFilter({ id: params.driverId, name: params.driverName });
+  }, [params.driverId, params.driverName]);
 
   const load = useCallback(async () => {
     if (!hasStoreApi()) {
@@ -52,19 +69,27 @@ export default function CompanyRoutesScreen() {
       setRefreshing(false);
       return;
     }
-    const res = await getDeliveryCompanyRoutes(
-      statusFilter !== "all" ? { status: statusFilter } : undefined,
-    );
+    const meRes = await getDeliveryCompanyMe();
+    if (meRes.ok) setCompanyId(meRes.data.company.id);
+    const res = await getDeliveryCompanyRoutes({
+      ...(statusFilter !== "all" ? { status: statusFilter } : {}),
+      ...(driverFilter?.id ? { driver_id: driverFilter.id } : {}),
+    });
     if (res.ok) setRoutes(res.data.routes);
     else setError(res.error);
     setLoading(false);
     setRefreshing(false);
-  }, [statusFilter]);
+  }, [statusFilter, driverFilter?.id]);
 
   useEffect(() => {
     setLoading(true);
     load();
   }, [load]);
+
+  // Keep the list current after dispatch/cancel actions taken from the route
+  // detail screen — mirrors the realtime-refresh pattern used by the other
+  // list screens in this portal (drivers, packages, warehouses).
+  useCompanyRealtime(companyId, user?.id, load);
 
   const planned = routes.filter((r) => r.status === "planned").length;
   const active = routes.filter((r) => r.status === "active").length;
@@ -75,6 +100,17 @@ export default function CompanyRoutesScreen() {
       <Text style={styles.subtitle}>
         {planned} planned · {active} active
       </Text>
+      {driverFilter ? (
+        <View style={styles.driverFilterRow}>
+          <Ionicons name="person-outline" size={14} color={colors.light.primary} />
+          <Text style={styles.driverFilterText} numberOfLines={1}>
+            Filtered to {driverFilter.name ?? "driver"}
+          </Text>
+          <TouchableOpacity onPress={() => setDriverFilter(null)} hitSlop={8}>
+            <Text style={styles.driverFilterClear}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <View style={styles.filters}>
         {STATUS_FILTERS.map((s) => (
           <TouchableOpacity
@@ -99,8 +135,11 @@ export default function CompanyRoutesScreen() {
         </View>
       ) : (
         <FlatList
+          key={isTablet ? "grid-2" : "grid-1"}
           data={routes}
           keyExtractor={(item) => item.id}
+          numColumns={isTablet ? 2 : 1}
+          columnWrapperStyle={isTablet ? styles.columnWrapper : undefined}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
           refreshControl={
             <RefreshControl
@@ -120,7 +159,7 @@ export default function CompanyRoutesScreen() {
           }
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.card}
+              style={[styles.card, isTablet && styles.gridItem]}
               onPress={() => router.push(`/(delivery-company)/routes/${item.id}` as any)}
               activeOpacity={0.8}
             >
@@ -165,6 +204,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 10,
   },
+  driverFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  driverFilterText: {
+    flex: 1,
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.primary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  driverFilterClear: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    fontWeight: typography.fontWeights.semibold,
+  },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, marginBottom: 12 },
   chip: {
     paddingHorizontal: 12,
@@ -175,6 +232,8 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.light.primary },
   chipText: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, textTransform: "capitalize" },
   chipTextActive: { color: "#fff", fontWeight: typography.fontWeights.semibold },
+  columnWrapper: { gap: 12 },
+  gridItem: { flex: 1 },
   card: {
     flexDirection: "row",
     alignItems: "center",

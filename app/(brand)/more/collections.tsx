@@ -1,11 +1,13 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet, Alert, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { BrandScreenHeader } from "@/components/brand/BrandScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Chip } from "@/components/ui/Chip";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -72,6 +74,7 @@ export default function BrandCollections() {
 
 function CollectionModal({ collection, onClose }: { collection: BrandCollection | null; onClose: () => void }) {
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [name, setName] = React.useState(collection?.name ?? "");
   const [description, setDescription] = React.useState(collection?.description ?? "");
   const [featured, setFeatured] = React.useState(Boolean(collection?.is_featured));
@@ -92,7 +95,7 @@ function CollectionModal({ collection, onClose }: { collection: BrandCollection 
     <Modal animationType="slide" transparent visible onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <Text style={styles.modalTitle}>{collection ? "Edit collection" : "New collection"}</Text>
           <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             <FieldLabel>Name</FieldLabel>
@@ -101,9 +104,7 @@ function CollectionModal({ collection, onClose }: { collection: BrandCollection 
             <TextInput value={description} onChangeText={setDescription} placeholder="Collection story" multiline numberOfLines={4} style={styles.textArea} />
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>Feature on storefront</Text>
-              <Badge variant={featured ? "default" : "secondary"}>
-                <Text onPress={() => setFeatured(!featured)} style={styles.toggleText}>{featured ? "Live" : "Draft"}</Text>
-              </Badge>
+              <Chip selected={featured} onPress={() => setFeatured(!featured)}>{featured ? "Live" : "Draft"}</Chip>
             </View>
           </ScrollView>
           <View style={styles.sheetActions}>
@@ -142,5 +143,4 @@ const styles = StyleSheet.create({
   textArea: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.foreground, backgroundColor: colors.light.card, borderWidth: 1, borderColor: colors.light.border, borderRadius: radii.lg, padding: 12, minHeight: 100, textAlignVertical: "top" },
   toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, marginTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.light.border },
   toggleLabel: { fontFamily: fontFamilies.sans.medium, fontSize: typography.fontSizes.base, color: colors.light.foreground },
-  toggleText: { fontFamily: fontFamilies.mono.medium, fontSize: typography.fontSizes.xs, color: colors.light.foreground },
 });

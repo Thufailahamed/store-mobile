@@ -631,8 +631,8 @@ export default function CartScreen() {
             unavailableMessage={issue?.message}
             selected={!!selectedKeys[key]}
             onToggleSelect={() => handleToggleSelect(key)}
-            onIncrement={() => updateQuantity(key, cartItem.quantity + 1)}
-            onDecrement={() => updateQuantity(key, cartItem.quantity - 1)}
+            onIncrement={() => updateQuantity(key, (useCart.getState().items[key]?.quantity ?? cartItem.quantity) + 1)}
+            onDecrement={() => updateQuantity(key, (useCart.getState().items[key]?.quantity ?? cartItem.quantity) - 1)}
             onRemove={() => handleRemove(key, cartItem.name)}
             onUpdateQuantity={(quantity) => updateQuantity(key, quantity)}
             onUpdateVariant={(newVariantId, newVariantLabel) => handleUpdateVariant(key, newVariantId, newVariantLabel)}

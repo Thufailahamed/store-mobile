@@ -2226,7 +2226,7 @@ export interface BlogPost {
   content?: string;
   cover_image?: string;
   author?: string;
-  tags: string[];
+  tags?: string[];
   status: "draft" | "published";
   published_at?: string;
   created_at: string;

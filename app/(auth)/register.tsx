@@ -11,7 +11,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { supabase } from "@/lib/supabase/client";
-import { isValidEmail, isValidPhone, normalizePhoneE164 } from "@/lib/contact-validation";
+import { isValidEmail, isValidPhone, normalizePhoneE164, PASSWORD_MIN_LENGTH } from "@/lib/contact-validation";
 import { checkUniqueBackend } from "@/lib/api/backend";
 import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
@@ -20,6 +20,23 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { acceptDriverInvite, hasStoreApi } from "@/lib/api/delivery-company-api";
 
 type UserRole = "customer" | "store_owner" | "brand_owner" | "delivery";
+
+// Deep-link role params may use either the canonical UserRole value or a
+// friendlier alias (e.g. an invite link written as "seller" or "brand").
+const ROLE_PARAM_ALIASES: Record<string, UserRole> = {
+  customer: "customer",
+  store_owner: "store_owner",
+  seller: "store_owner",
+  brand_owner: "brand_owner",
+  brand: "brand_owner",
+  delivery: "delivery",
+  rider: "delivery",
+};
+
+function resolveRoleParam(value: string | undefined): UserRole {
+  if (!value) return "customer";
+  return ROLE_PARAM_ALIASES[value.toLowerCase()] ?? "customer";
+}
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -30,10 +47,9 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
-  const [role, setRole] = useState<UserRole>(
-    params.role === "delivery" ? "delivery" : "customer",
-  );
+  const [role, setRole] = useState<UserRole>(resolveRoleParam(params.role));
   const [inviteCode, setInviteCode] = useState(params.code ?? "");
   const [terms, setTerms] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -69,8 +85,13 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (password.length < 8) {
-      toast("Password must be at least 8 characters", "error");
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      toast(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`, "error");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast("Passwords do not match", "error");
       return;
     }
 
@@ -263,7 +284,7 @@ export default function RegisterScreen() {
 
           <Input
             label="Password"
-            placeholder="Min. 6 characters"
+            placeholder={`Min. ${PASSWORD_MIN_LENGTH} characters`}
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPwd}
@@ -278,6 +299,16 @@ export default function RegisterScreen() {
                 />
               </TouchableOpacity>
             }
+          />
+
+          <Input
+            label="Confirm password"
+            placeholder="Re-enter your password"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry={!showPwd}
+            autoComplete="new-password"
+            leftIcon={<Ionicons name="lock-closed-outline" size={18} color={colors.light.mutedForeground} />}
           />
 
           {/* Terms checkbox */}

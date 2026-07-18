@@ -39,9 +39,15 @@ export default function PriceAlertsScreen() {
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
 
   const onSaveThreshold = async (id: string) => {
     const num = editValue === "" ? null : Number(editValue);
+    if (num !== null && (!Number.isFinite(num) || num <= 0)) {
+      setEditError("Enter a valid price greater than 0");
+      return;
+    }
+    setEditError(null);
     const r = await updatePriceAlert(id, { threshold_price: num });
     if (r.ok) {
       toast("Updated", "success");
@@ -96,25 +102,30 @@ export default function PriceAlertsScreen() {
                 )}
               </View>
               {editing ? (
-                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                  <TextInput
-                    style={styles.input}
-                    value={editValue}
-                    onChangeText={setEditValue}
-                    placeholder={`New threshold (${item.currency})`}
-                    keyboardType="numeric"
-                    placeholderTextColor={colors.light.mutedForeground}
-                  />
-                  <Pressable onPress={() => onSaveThreshold(item.id)} style={styles.saveBtn}>
-                    <Label style={{ color: "#fff" }}>Save</Label>
-                  </Pressable>
-                  <Pressable onPress={() => setEditingId(null)}>
-                    <Label style={{ color: colors.light.mutedForeground }}>×</Label>
-                  </Pressable>
+                <View style={{ gap: 4 }}>
+                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                    <TextInput
+                      style={styles.input}
+                      value={editValue}
+                      onChangeText={(v) => { setEditValue(v); setEditError(null); }}
+                      placeholder={`New threshold (${item.currency})`}
+                      keyboardType="numeric"
+                      placeholderTextColor={colors.light.mutedForeground}
+                    />
+                    <Pressable onPress={() => onSaveThreshold(item.id)} style={styles.saveBtn}>
+                      <Label style={{ color: "#fff" }}>Save</Label>
+                    </Pressable>
+                    <Pressable onPress={() => { setEditingId(null); setEditError(null); }}>
+                      <Label style={{ color: colors.light.mutedForeground }}>×</Label>
+                    </Pressable>
+                  </View>
+                  {editError && (
+                    <Body size="sm" style={{ color: colors.light.destructive }}>{editError}</Body>
+                  )}
                 </View>
               ) : (
                 <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
-                  <Pressable onPress={() => { setEditingId(item.id); setEditValue(item.threshold_price?.toString() ?? ""); }}>
+                  <Pressable onPress={() => { setEditingId(item.id); setEditValue(item.threshold_price?.toString() ?? ""); setEditError(null); }}>
                     <Label style={{ color: colors.olive[700] }}>Edit threshold</Label>
                   </Pressable>
                   <Pressable onPress={() => onCancel(item.id)}>

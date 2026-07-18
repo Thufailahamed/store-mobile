@@ -6,6 +6,7 @@ import {
   Text,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -96,15 +97,28 @@ export default function WardrobeItemDetailScreen() {
     toast(next === "archived" ? "Archived" : "Restored", "success");
   }, [item, load, toast]);
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
     if (!item) return;
-    const res = await deleteWardrobeItem(item.id);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
-    }
-    toast("Item deleted", "success");
-    router.back();
+    Alert.alert(
+      "Delete this item?",
+      "This will remove it from your wardrobe. This can't be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const res = await deleteWardrobeItem(item.id);
+            if (!res.ok) {
+              toast(res.error, "error");
+              return;
+            }
+            toast("Item deleted", "success");
+            router.back();
+          },
+        },
+      ],
+    );
   }, [item, router, toast]);
 
   return (

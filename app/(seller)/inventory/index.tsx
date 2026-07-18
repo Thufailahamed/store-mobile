@@ -193,21 +193,51 @@ export default function SellerInventory() {
     [rows],
   );
 
-  const handleSaveStock = async (row: InventoryRow) => {
-    const newStock = Math.max(0, Number(draftStock) || 0);
-    if (newStock < row.reserved) {
+  // Shared reserved-stock safety check. Any target whose new stock would drop
+  // below its held/reserved quantity is a "breach" — warn before proceeding
+  // instead of silently letting the change break an in-progress cart.
+  const confirmReservedStock = (
+    targets: InventoryRow[],
+    newStock: number,
+    onConfirm: () => void,
+  ) => {
+    const breaches = targets.filter((r) => newStock < r.reserved);
+    if (breaches.length === 0) {
+      onConfirm();
+      return;
+    }
+    if (breaches.length === 1) {
+      const row = breaches[0];
       const available = Math.max(0, newStock - row.reserved);
       Alert.alert(
         "Held stock exceeds on-hand",
         `${row.reserved} units are held in carts. Setting on-hand to ${newStock} makes ${available} available to shoppers.`,
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Save anyway", onPress: () => void saveStock(row, newStock) },
+          { text: "Save anyway", onPress: onConfirm },
         ],
       );
       return;
     }
-    await saveStock(row, newStock);
+    const totalReserved = breaches.reduce((sum, r) => sum + r.reserved, 0);
+    const preview = breaches
+      .slice(0, 5)
+      .map((r) => `${r.sku} (${r.reserved} held)`)
+      .join("\n");
+    const more = breaches.length > 5 ? `\n…and ${breaches.length - 5} more` : "";
+    Alert.alert(
+      "Held stock exceeds on-hand",
+      `${breaches.length} of the selected variants have ${totalReserved} unit(s) held in carts. Setting on-hand to ${newStock} will make some or all of those carts break:\n\n${preview}${more}`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Apply anyway", onPress: onConfirm },
+      ],
+    );
+  };
+
+  const handleSaveStock = async (row: InventoryRow) => {
+    const newStock = Math.max(0, Number(draftStock) || 0);
+    confirmReservedStock([row], newStock, () => void saveStock(row, newStock));
   };
 
   const saveStock = async (row: InventoryRow, newStock: number) => {
@@ -246,12 +276,16 @@ export default function SellerInventory() {
     });
   };
 
-  const bulkApply = async () => {
+  const bulkApply = () => {
     if (selectedIds.size === 0) return;
     const newStock = Math.max(0, Number(bulkStock) || 0);
-    const ids = Array.from(selectedIds);
-    setBulkBusy(true);
     const targets = rows.filter((r) => selectedIds.has(r.variantId));
+    confirmReservedStock(targets, newStock, () => void performBulkApply(targets, newStock));
+  };
+
+  const performBulkApply = async (targets: InventoryRow[], newStock: number) => {
+    const ids = new Set(targets.map((r) => r.variantId));
+    setBulkBusy(true);
     const results = await Promise.allSettled(
       targets.map((r) => updateVariantStock(r.productId, r.variantId, newStock) as Promise<Result<void>>),
     );
@@ -260,10 +294,10 @@ export default function SellerInventory() {
       (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok),
     );
     if (failed.length === 0) {
-      Alert.alert("Done", `${ids.length} variant(s) updated to ${newStock}.`);
+      Alert.alert("Done", `${targets.length} variant(s) updated to ${newStock}.`);
       setRows((prev) =>
         prev.map((r) =>
-          selectedIds.has(r.variantId)
+          ids.has(r.variantId)
             ? { ...r, onHand: newStock, available: Math.max(0, newStock - r.reserved) }
             : r
         )
@@ -272,7 +306,7 @@ export default function SellerInventory() {
     } else {
       Alert.alert(
         "Partial",
-        `${ids.length - failed.length} updated, ${failed.length} failed.`,
+        `${targets.length - failed.length} updated, ${failed.length} failed.`,
         [{ text: "OK", onPress: () => onRefresh() }],
       );
     }

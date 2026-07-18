@@ -10,11 +10,10 @@ const OLIVE = "#556b2f";
 
 interface Props {
   onSync: () => void;
-  onAdd: () => void;
   syncing: boolean;
 }
 
-export function WardrobeEmptyState({ onSync, onAdd, syncing }: Props) {
+export function WardrobeEmptyState({ onSync, syncing }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.iconWrap}>
@@ -42,14 +41,6 @@ export function WardrobeEmptyState({ onSync, onAdd, syncing }: Props) {
           <Text style={styles.ctaPrimaryText}>
             {syncing ? "Syncing…" : "Sync delivered orders"}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.cta, styles.ctaSecondary]}
-          onPress={onAdd}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add-outline" size={14} color={INK} />
-          <Text style={styles.ctaSecondaryText}>Add manually</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -122,17 +113,6 @@ const styles: Record<string, any> = StyleSheet.create({
     color: "#fff",
     fontFamily: fontFamilies.sans.regular,
     fontWeight: "700",
-    fontSize: 13,
-  },
-  ctaSecondary: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "rgba(22,23,15,0.15)",
-  },
-  ctaSecondaryText: {
-    color: INK,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
     fontSize: 13,
   },
 });

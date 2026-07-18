@@ -1,12 +1,12 @@
 import React from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { View, StyleSheet, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Display, Body } from "@/components/ui/Typography";
 import { acceptBrandInvite } from "@/lib/api";
-import { colors, typography } from "@/lib/theme/tokens";
-import { fontFamilies } from "@/lib/theme/fonts";
+import { colors } from "@/lib/theme/tokens";
 
 type Status = "loading" | "ok" | "err";
 
@@ -46,16 +46,16 @@ export default function BrandAccept() {
             />
           )}
         </View>
-        <Text style={styles.title}>
+        <Display size="xl" style={styles.title}>
           {status === "loading" ? "Joining brand..." : status === "ok" ? "Welcome aboard" : "Invite not valid"}
-        </Text>
-        <Text style={styles.body}>
+        </Display>
+        <Body size="sm" muted style={styles.body}>
           {status === "loading"
             ? "Confirming your invite and adding you to the team."
             : status === "ok"
               ? "Redirecting you to the brand portal..."
               : error}
-        </Text>
+        </Body>
         {status === "err" ? (
           <Button variant="outline" onPress={() => router.replace("/")} style={styles.btn}>
             Back to home
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.light.background, justifyContent: "center", padding: 24 },
   card: { padding: 24, alignItems: "center", gap: 12 },
   iconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.light.muted, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: typography.fontSizes.xl, color: colors.light.foreground, textAlign: "center" },
-  body: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, textAlign: "center", lineHeight: 20 },
+  title: { textAlign: "center" },
+  body: { textAlign: "center", lineHeight: 20 },
   btn: { marginTop: 12, alignSelf: "stretch" },
 });

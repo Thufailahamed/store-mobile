@@ -6,17 +6,19 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { getSellerStore, getStoreAnalytics } from "@/lib/api";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const KPI_H_PADDING = 24;
+const KPI_GAP = 12;
 
 interface AnalyticsData {
   totalRevenue: number;
@@ -54,6 +56,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function SellerAnalytics() {
   const { user } = useAuth();
+  const { width: screenWidth } = useWindowDimensions();
+  const isTablet = useIsTablet();
+  const kpiColumns = isTablet ? 4 : 2;
+  const kpiCardWidth = (screenWidth - KPI_H_PADDING * 2 - KPI_GAP * (kpiColumns - 1)) / kpiColumns;
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,28 +119,28 @@ export default function SellerAnalytics() {
 
       {/* KPI Cards */}
       <View style={s.kpiGrid}>
-        <View style={[s.kpiCard, { borderLeftColor: colors.olive[600] }]}>
+        <View style={[s.kpiCard, { borderLeftColor: colors.olive[600], width: kpiCardWidth }]}>
           <View style={[s.kpiIconWrap, { backgroundColor: colors.olive[50] }]}>
             <Ionicons name="wallet-outline" size={20} color={colors.olive[600]} />
           </View>
           <Text style={s.kpiValue}>{formatPrice(data?.totalRevenue ?? 0)}</Text>
           <Text style={s.kpiLabel}>Total Revenue</Text>
         </View>
-        <View style={[s.kpiCard, { borderLeftColor: colors.accent2.ochre }]}>
+        <View style={[s.kpiCard, { borderLeftColor: colors.accent2.ochre, width: kpiCardWidth }]}>
           <View style={[s.kpiIconWrap, { backgroundColor: "#fef9c3" }]}>
             <Ionicons name="receipt-outline" size={20} color={colors.accent2.ochre} />
           </View>
           <Text style={s.kpiValue}>{data?.totalOrders ?? 0}</Text>
           <Text style={s.kpiLabel}>Total Orders</Text>
         </View>
-        <View style={[s.kpiCard, { borderLeftColor: colors.accent2.rust }]}>
+        <View style={[s.kpiCard, { borderLeftColor: colors.accent2.rust, width: kpiCardWidth }]}>
           <View style={[s.kpiIconWrap, { backgroundColor: "#fef2f2" }]}>
             <Ionicons name="cube-outline" size={20} color={colors.accent2.rust} />
           </View>
           <Text style={s.kpiValue}>{data?.totalProducts ?? 0}</Text>
           <Text style={s.kpiLabel}>Products</Text>
         </View>
-        <View style={[s.kpiCard, { borderLeftColor: colors.olive[400] }]}>
+        <View style={[s.kpiCard, { borderLeftColor: colors.olive[400], width: kpiCardWidth }]}>
           <View style={[s.kpiIconWrap, { backgroundColor: colors.olive[50] }]}>
             <Ionicons name="trending-up-outline" size={20} color={colors.olive[400]} />
           </View>
@@ -268,7 +274,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 24, marginBottom: 16,
   },
   kpiCard: {
-    width: (SCREEN_WIDTH - 60) / 2,
     backgroundColor: colors.light.card, borderRadius: radii.xl,
     borderWidth: 1, borderColor: colors.light.border,
     padding: 16, borderLeftWidth: 3,

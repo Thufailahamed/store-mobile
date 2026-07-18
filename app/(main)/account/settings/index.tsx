@@ -387,15 +387,7 @@ export default function SettingsScreen() {
     const { error } = await supabase.auth.updateUser({ phone: formatted });
     setSaving(false);
     if (error) {
-      // Fallback: if phone auth is disabled, allow updating settings table directly
-      const res = await updateSettingsBackend({ phone: formatted });
-      if (!res.ok) {
-        toast(res.error ?? error.message, "error");
-        return;
-      }
-      setPhone(formatted);
-      toast("Phone number updated", "success");
-      setChangePhoneOpen(false);
+      toast(error.message ?? "Could not send verification code", "error");
       return;
     }
     setNewPhone(formatted);

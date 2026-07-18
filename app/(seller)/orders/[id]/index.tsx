@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { getSellerStore, getSellerOrderById, transitionOrderStatus } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
@@ -91,17 +92,17 @@ export default function SellerOrderDetail() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
         <Text style={styles.loadingText}>Loading order...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!order) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
         <Text style={styles.loadingText}>Order not found</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -112,6 +113,7 @@ export default function SellerOrderDetail() {
   const statusIndex = STATUSES.indexOf(order.status as OrderStatus);
 
   return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
@@ -245,6 +247,7 @@ export default function SellerOrderDetail() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

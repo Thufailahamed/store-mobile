@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
-import { Badge } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { cancelReturn, getReturnByGroupId, type MobileReturnRequest } from "@/lib/api";
@@ -55,11 +55,13 @@ const TIMELINE: ReturnStatus[] = ["requested", "approved", "received", "refunded
 
 export default function ReturnDetailScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const [returnReq, setReturnReq] = useState<MobileReturnRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   /**
    * Mobile parity with web: the buyer can cancel a return as long as
@@ -99,14 +101,22 @@ export default function ReturnDetailScreen() {
     );
   }
 
-  useEffect(() => {
+  const loadReturn = useCallback(() => {
     if (!user?.id || !id) return;
     const userId = user.id;
     const groupId = id as string;
     let cancelled = false;
+    setLoading(true);
+    setFetchError(null);
     getReturnByGroupId(userId, groupId).then((res) => {
       if (cancelled) return;
-      if (res.ok) setReturnReq(res.data);
+      if (res.ok) {
+        // res.data is null when the return genuinely doesn't exist — kept
+        // distinct from a fetch failure (res.ok === false) below.
+        setReturnReq(res.data);
+      } else {
+        setFetchError(res.error);
+      }
       setLoading(false);
     });
     return () => {
@@ -114,12 +124,28 @@ export default function ReturnDetailScreen() {
     };
   }, [user?.id, id]);
 
+  useEffect(() => {
+    const cleanup = loadReturn();
+    return cleanup;
+  }, [loadReturn]);
+
   if (loading || !returnReq) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <ScreenHeader title="Return" />
         <View style={styles.loading}>
-          <Body muted>{loading ? "Loading return…" : "Return not found"}</Body>
+          {loading ? (
+            <Body muted>Loading return…</Body>
+          ) : fetchError ? (
+            <>
+              <Body muted style={{ textAlign: "center", marginBottom: spacing[4] }}>
+                Couldn't load this return — check your connection
+              </Body>
+              <Button variant="outline" onPress={loadReturn}>Retry</Button>
+            </>
+          ) : (
+            <Body muted>Return not found</Body>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -131,7 +157,10 @@ export default function ReturnDetailScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScreenHeader title={`Return #${returnReq.return_number}`} />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing[6]) + spacing[3] }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={[styles.statusCard, { backgroundColor: tone.bg }]}>
           <View style={styles.statusIconWrap}>
             <Ionicons name={tone.icon} size={26} color={tone.fg} />

@@ -12,6 +12,7 @@ import {
   ActionSheetIOS,
   Platform,
   Share,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
@@ -39,6 +40,9 @@ const SORT_TABS: { key: SortKey; label: string }[] = [
   { key: "oldest", label: "Oldest" },
 ];
 const PAGE_SIZE = 20;
+// Backend caps `limit` at 100 per request, so a full-catalogue export has to
+// page through results rather than exporting whatever page happens to be loaded.
+const EXPORT_PAGE_SIZE = 100;
 
 interface ProductStats {
   all: number;
@@ -187,6 +191,7 @@ export default function SellerProducts() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Track initial mount so the focus-effect doesn't refetch on first render.
   const mountedRef = useRef(false);
@@ -433,18 +438,46 @@ export default function SellerProducts() {
   };
 
   const exportCsv = async () => {
-    if (products.length === 0) {
+    if (!storeId || (total === 0 && products.length === 0)) {
       Alert.alert("Nothing to export", "Load some products first.");
       return;
     }
-    const csv = toCsv(products);
+    setExporting(true);
     try {
+      // Page through the full result set for the current filter/search/sort —
+      // `products` only holds whatever page is currently loaded in the list.
+      let all: Product[] = [];
+      let pageOffset = 0;
+      for (;;) {
+        const res = await getSellerProducts(storeId, {
+          status: status === "all" ? undefined : status,
+          search: debouncedSearch || undefined,
+          sort,
+          limit: EXPORT_PAGE_SIZE,
+          offset: pageOffset,
+        });
+        if (!res.ok) {
+          Alert.alert("Export failed", res.error);
+          return;
+        }
+        const batch = res.data.products ?? [];
+        all = all.concat(batch);
+        pageOffset += batch.length;
+        if (batch.length < EXPORT_PAGE_SIZE) break;
+      }
+      if (all.length === 0) {
+        Alert.alert("Nothing to export", "Load some products first.");
+        return;
+      }
+      const csv = toCsv(all);
       await Share.share({
         message: csv,
         title: `products-${new Date().toISOString().slice(0, 10)}.csv`,
       });
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Could not share");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -624,9 +657,14 @@ export default function SellerProducts() {
                 style={styles.iconBtn}
                 onPress={exportCsv}
                 hitSlop={6}
+                disabled={exporting}
                 accessibilityLabel="Export CSV"
               >
-                <Ionicons name="share-outline" size={16} color={colors.light.foreground} />
+                {exporting ? (
+                  <ActivityIndicator size="small" color={colors.light.foreground} />
+                ) : (
+                  <Ionicons name="share-outline" size={16} color={colors.light.foreground} />
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconBtn}

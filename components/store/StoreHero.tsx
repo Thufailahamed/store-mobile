@@ -1,13 +1,16 @@
 import React from "react";
-import { View, StyleSheet, TouchableOpacity, Dimensions, Animated } from "react-native";
+import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-export const STORE_HERO_HEIGHT = Math.round(SCREEN_WIDTH * (10 / 16));
+// Fallback for any external consumer that needs a static height before the
+// component mounts. The component itself recomputes this reactively via
+// useWindowDimensions() below.
+const { width: INITIAL_SCREEN_WIDTH } = Dimensions.get("window");
+export const STORE_HERO_HEIGHT = Math.round(INITIAL_SCREEN_WIDTH * (10 / 16));
 
 interface StoreHeroProps {
   bannerUrl?: string;
@@ -28,24 +31,27 @@ export function StoreHero({
   onShare,
   onMessage,
 }: StoreHeroProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const heroHeight = Math.round(screenWidth * (10 / 16));
+
   const translateY = scrollY.interpolate({
-    inputRange: [-STORE_HERO_HEIGHT, 0, STORE_HERO_HEIGHT],
-    outputRange: [STORE_HERO_HEIGHT / 2, 0, -STORE_HERO_HEIGHT / 3],
+    inputRange: [-heroHeight, 0, heroHeight],
+    outputRange: [heroHeight / 2, 0, -heroHeight / 3],
     extrapolate: "clamp",
   });
   const scale = scrollY.interpolate({
-    inputRange: [-STORE_HERO_HEIGHT, 0],
+    inputRange: [-heroHeight, 0],
     outputRange: [1.4, 1],
     extrapolate: "clamp",
   });
   const overlayOpacity = scrollY.interpolate({
-    inputRange: [0, STORE_HERO_HEIGHT * 0.6],
+    inputRange: [0, heroHeight * 0.6],
     outputRange: [0.55, 0.85],
     extrapolate: "clamp",
   });
 
   return (
-    <View style={[styles.wrap, { height: STORE_HERO_HEIGHT }]}>
+    <View style={[styles.wrap, { height: heroHeight }]}>
       <Animated.View style={[styles.imageWrap, { transform: [{ translateY }, { scale }] }]}>
         {bannerUrl ? (
           <Image

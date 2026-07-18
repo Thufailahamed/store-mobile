@@ -39,3 +39,20 @@ allprojects {
         maven { url 'https://www.jitpack.io' }
     }
 }
+
+// Windows' classic 260-char MAX_PATH is easily exceeded by AGP's own
+// transform-cache paths (e.g. an AAR's jetified dex output nested under
+// node_modules/<lib>/android/build/.transforms/<hash>/...), even with the
+// registry's LongPathsEnabled=1, because AGP's own file APIs don't
+// consistently opt in to long-path mode. Redirect every *library*
+// module's build dir to a short, drive-root-relative folder so the total
+// path stays under the limit. `:app` is left alone so build scripts that
+// expect the APK at android/app/build/outputs/... keep working.
+if (System.getProperty('os.name', '').toLowerCase().contains('windows')) {
+    def shortBuildRoot = "${System.getenv('SystemDrive') ?: 'C:'}\\gradle-out"
+    subprojects { subproject ->
+        if (subproject.name != 'app') {
+            subproject.buildDir = "${shortBuildRoot}\\${subproject.name}"
+        }
+    }
+}

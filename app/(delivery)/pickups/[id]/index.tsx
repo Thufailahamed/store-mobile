@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   deliveryPickupVerify,
@@ -25,6 +26,7 @@ import { ISSUE_REASONS, type IssueReason } from "@/lib/utils/delivery-format";
 
 export default function ReturnPickupDetail() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
@@ -166,7 +168,7 @@ export default function ReturnPickupDetail() {
     pickupAttempts < MAX_PICKUP_ATTEMPTS;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
       <TouchableOpacity onPress={() => router.back()}>
         <Text style={styles.backLink}>← Back</Text>
       </TouchableOpacity>
@@ -295,7 +297,7 @@ const makeStyles = (
 ) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 40 },
+    content: { paddingHorizontal: 24, paddingBottom: 40 },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
     muted: { color: colors.mutedForeground },
     backLink: { color: colors.primary, marginBottom: 16 },

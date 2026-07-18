@@ -212,7 +212,7 @@ export default function AddressesScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Addresses</Text>
         <TouchableOpacity onPress={openAdd} style={styles.headerSide} hitSlop={8}>
-          <Ionicons name="ellipsis-vertical" size={20} color={colors.light.foreground} />
+          <Ionicons name="add" size={22} color={colors.light.foreground} />
         </TouchableOpacity>
       </View>
 

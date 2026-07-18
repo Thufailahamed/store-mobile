@@ -32,7 +32,7 @@ import * as Linking from "expo-linking";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth, AuthProvider } from "@/lib/supabase/auth";
 import { useSyncStores, useCartRemoteSync, useWishlistRemoteSync } from "@/lib/hooks";
-import { ToastProvider } from "@/components/ui";
+import { ToastProvider, useToast } from "@/components/ui";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { colors } from "@/lib/theme/tokens";
 import {
@@ -72,6 +72,7 @@ const queryClient = new QueryClient({
 
 function RootLayoutNav() {
   const { session, user, role, loading, roleLoading } = useAuth();
+  const { toast } = useToast();
   useSyncStores();
   useCartRemoteSync();
   useWishlistRemoteSync();
@@ -111,9 +112,15 @@ function RootLayoutNav() {
             break;
           case "delivery_company":
             if (user?.id) {
-              resolveDeliveryHomeRoute(user.id, role).then((home) => {
-                router.replace(home);
-              });
+              resolveDeliveryHomeRoute(user.id, role)
+                .then((home) => {
+                  router.replace(home);
+                })
+                .catch((err) => {
+                  console.warn("[auth] delivery-company home route resolution failed:", err);
+                  toast("Couldn't load your dashboard. Opening default view.", "error");
+                  router.replace("/(delivery-company)");
+                });
             } else {
               router.replace("/(delivery-company)");
             }
