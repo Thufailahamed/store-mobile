@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
   TextInput,
   Alert,
 } from "react-native";
@@ -14,14 +14,13 @@ import { Image } from "expo-image";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
 import { getSellerAccessState } from "@/lib/seller-access";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Store, Order, Product, Notification } from "@/lib/types";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface KPIData {
   totalRevenue: number;
@@ -70,6 +69,12 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 export default function SellerDashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  const { width: screenWidth } = useWindowDimensions();
+  const isTablet = useIsTablet();
+  const kpiColumns = isTablet ? 4 : 2;
+  const kpiCardWidth = (screenWidth - spacing[4] * 2 - spacing[2] * (kpiColumns - 1)) / kpiColumns;
+  const actionColumns = isTablet ? 6 : 4;
+  const actionCardWidth = (screenWidth - spacing[4] * 2 - spacing[2] * (actionColumns - 1)) / actionColumns;
   const [store, setStore] = useState<Store | null>(null);
   const [accessBlocked, setAccessBlocked] = useState<string | null>(null);
   const [kpis, setKpis] = useState<KPIData | null>(null);
@@ -348,7 +353,7 @@ export default function SellerDashboard() {
       {/* ═══ KPI BENTO ═══ */}
       {kpis && (
         <View style={styles.kpiGrid}>
-          <View style={[styles.kpiCard, styles.kpiRevenue]}>
+          <View style={[styles.kpiCard, styles.kpiRevenue, { width: kpiCardWidth }]}>
             <View style={styles.kpiHeader}>
               <View style={[styles.kpiIcon, { backgroundColor: `${colors.olive[600]}15` }]}>
                 <Ionicons name="wallet-outline" size={16} color={colors.olive[600]} />
@@ -359,7 +364,7 @@ export default function SellerDashboard() {
             <Text style={styles.kpiSub}>Lifetime</Text>
           </View>
 
-          <View style={[styles.kpiCard, styles.kpiOrders]}>
+          <View style={[styles.kpiCard, styles.kpiOrders, { width: kpiCardWidth }]}>
             <View style={styles.kpiHeader}>
               <View style={[styles.kpiIcon, { backgroundColor: "#dbeafe" }]}>
                 <Ionicons name="bag-check-outline" size={16} color="#3b82f6" />
@@ -370,7 +375,7 @@ export default function SellerDashboard() {
             <Text style={styles.kpiSub}>{kpis.pendingOrders} pending</Text>
           </View>
 
-          <View style={[styles.kpiCard, styles.kpiProducts]}>
+          <View style={[styles.kpiCard, styles.kpiProducts, { width: kpiCardWidth }]}>
             <View style={styles.kpiHeader}>
               <View style={[styles.kpiIcon, { backgroundColor: "#fef3c7" }]}>
                 <Ionicons name="cube-outline" size={16} color="#d97706" />
@@ -381,7 +386,7 @@ export default function SellerDashboard() {
             <Text style={styles.kpiSub}>In catalogue</Text>
           </View>
 
-          <View style={[styles.kpiCard, kpis.lowStockVariants > 0 ? styles.kpiLowStock : styles.kpiHealthy]}>
+          <View style={[styles.kpiCard, kpis.lowStockVariants > 0 ? styles.kpiLowStock : styles.kpiHealthy, { width: kpiCardWidth }]}>
             <View style={styles.kpiHeader}>
               <View style={[styles.kpiIcon, { backgroundColor: kpis.lowStockVariants > 0 ? "#fef3c7" : "#dcfce7" }]}>
                 <Ionicons name={kpis.lowStockVariants > 0 ? "warning-outline" : "checkmark-circle-outline"} size={16} color={kpis.lowStockVariants > 0 ? "#d97706" : "#16a34a"} />
@@ -404,7 +409,7 @@ export default function SellerDashboard() {
           {QUICK_ACTIONS.map((a) => (
             <TouchableOpacity
               key={a.label}
-              style={styles.actionCard}
+              style={[styles.actionCard, { width: actionCardWidth }]}
               onPress={() => router.push(a.route as any)}
             >
               <View style={[styles.actionIcon, { backgroundColor: `${a.color}12` }]}>
@@ -816,7 +821,6 @@ const styles = StyleSheet.create({
     padding: spacing[4],
   },
   kpiCard: {
-    width: (SCREEN_WIDTH - spacing[4] * 2 - spacing[2]) / 2,
     padding: spacing[4],
     borderRadius: radii.xl,
     backgroundColor: colors.light.card,
@@ -898,7 +902,6 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   actionCard: {
-    width: (SCREEN_WIDTH - spacing[4] * 2 - spacing[2] * 3) / 4,
     alignItems: "center",
     padding: spacing[3],
     backgroundColor: colors.light.card,
