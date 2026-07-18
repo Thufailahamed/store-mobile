@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
@@ -47,6 +47,7 @@ const STATUS_META: Record<string, { label: string; icon: keyof typeof Ionicons.g
 export default function OrderTrackScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const tracker = useTrackEvent();
   const [data, setData] = useState<OrderTracking | null>(null);
@@ -99,13 +100,38 @@ export default function OrderTrackScreen() {
   }
 
   const { order, events, rider } = data;
-  const currentStep = Math.max(
-    0,
-    STATUS_ORDER.indexOf(order.status as OrderStatus)
+  const isException = (["cancelled", "returned", "refunded"] as OrderStatus[]).includes(
+    order.status as OrderStatus
   );
-  const isTerminal = ["delivered", "cancelled", "returned", "refunded"].includes(
-    order.status
-  );
+
+  // For terminal exception statuses, `order.status` itself isn't in
+  // STATUS_ORDER (indexOf would be -1), which used to clamp the whole
+  // timeline to step 0 and hide any progress made before the order
+  // diverged. Instead, look at the order's status history to find the
+  // furthest happy-path step it actually reached.
+  const reachedStep = isException
+    ? (() => {
+        const fromEvents = events
+          .map((ev) => STATUS_ORDER.indexOf(ev.status as OrderStatus))
+          .filter((i) => i >= 0);
+        if (fromEvents.length > 0) return Math.max(...fromEvents);
+        // returned/refunded can only happen after delivery
+        if (order.status === "returned" || order.status === "refunded") {
+          return STATUS_ORDER.length - 1;
+        }
+        return 0;
+      })()
+    : Math.max(0, STATUS_ORDER.indexOf(order.status as OrderStatus));
+
+  const visibleSteps = isException ? STATUS_ORDER.slice(0, reachedStep + 1) : STATUS_ORDER;
+  const currentStep = reachedStep;
+  const isTerminal = order.status === "delivered" || isException;
+  const exceptionTone =
+    order.status === "cancelled"
+      ? colors.light.destructive
+      : order.status === "returned"
+        ? colors.accent2.rust
+        : colors.accent2.ochre;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -115,7 +141,7 @@ export default function OrderTrackScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing[6]) + spacing[4] }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -213,10 +239,11 @@ export default function OrderTrackScreen() {
           Progress
         </Display>
         <View style={styles.timeline}>
-          {STATUS_ORDER.map((step, i) => {
+          {visibleSteps.map((step, i) => {
             const done = i <= currentStep;
             const current = i === currentStep && !isTerminal;
             const meta = STATUS_META[step];
+            const isLastRow = i === visibleSteps.length - 1 && !isException;
             return (
               <View key={step} style={styles.timelineRow}>
                 <View style={styles.timelineRail}>
@@ -235,7 +262,7 @@ export default function OrderTrackScreen() {
                       />
                     ) : null}
                   </View>
-                  {i < STATUS_ORDER.length - 1 && (
+                  {!isLastRow && (
                     <View
                       style={[styles.timelineLine, done && styles.timelineLineDone]}
                     />
@@ -260,6 +287,32 @@ export default function OrderTrackScreen() {
               </View>
             );
           })}
+          {isException ? (
+            <View style={styles.timelineRow}>
+              <View style={styles.timelineRail}>
+                <View
+                  style={[
+                    styles.timelineDot,
+                    styles.timelineDotDone,
+                    { backgroundColor: exceptionTone },
+                  ]}
+                >
+                  <Ionicons name="checkmark" size={11} color={colors.light.primaryForeground} />
+                </View>
+              </View>
+              <View style={styles.timelineBody}>
+                <Body
+                  size="sm"
+                  style={[styles.timelineLabel, styles.timelineLabelDone, { color: exceptionTone }]}
+                >
+                  {STATUS_META[order.status]?.label ?? order.status}
+                </Body>
+                <Body muted size="xs">
+                  {STATUS_META[order.status]?.copy}
+                </Body>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <Display size="lg" style={styles.sectionTitle}>
