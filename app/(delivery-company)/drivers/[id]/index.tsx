@@ -323,7 +323,12 @@ export default function DriverDetailScreen() {
 
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={() => router.push(`/(delivery-company)/routes`)}
+          onPress={() =>
+            router.push({
+              pathname: "/(delivery-company)/routes",
+              params: { driverId: id, driverName: u?.full_name ?? undefined },
+            })
+          }
           activeOpacity={0.7}
           accessibilityRole="button"
         >
