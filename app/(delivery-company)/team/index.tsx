@@ -133,7 +133,7 @@ export default function CompanyTeamScreen() {
             />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancel} onPress={() => setInviteOpen(false)}>
-                <Text>Cancel</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSave} onPress={handleInvite} disabled={inviting}>
                 {inviting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.modalSaveText}>Send</Text>}
@@ -190,6 +190,7 @@ const styles = StyleSheet.create({
   },
   modalActions: { flexDirection: "row", gap: 10 },
   modalCancel: { flex: 1, padding: 12, alignItems: "center", backgroundColor: colors.light.muted, borderRadius: radii.lg },
+  modalCancelText: { fontWeight: typography.fontWeights.semibold, color: colors.light.foreground },
   modalSave: { flex: 1, padding: 12, alignItems: "center", backgroundColor: colors.light.primary, borderRadius: radii.lg },
   modalSaveText: { color: "#fff", fontWeight: typography.fontWeights.semibold },
 });
