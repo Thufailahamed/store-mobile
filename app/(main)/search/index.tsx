@@ -876,7 +876,7 @@ function Price({ size = "base", style, children }: { size?: string; style?: any;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.paper.DEFAULT,
   },
   /* Body */
   body: {
