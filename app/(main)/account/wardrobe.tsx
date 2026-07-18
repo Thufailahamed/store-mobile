@@ -6,7 +6,7 @@ import {
   Text,
   TouchableOpacity,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
   FlatList,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -51,7 +51,6 @@ import type {
 } from "@/lib/types";
 
 type Tab = "items" | "outfits" | "stats" | "planned";
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: "items", label: "Items", icon: "shirt-outline" },
@@ -62,6 +61,7 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
 
 export default function WardrobeScreen() {
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -334,7 +334,6 @@ export default function WardrobeScreen() {
             ) : items.length === 0 ? (
               <WardrobeEmptyState
                 onSync={handleSync}
-                onAdd={() => router.push("/(main)/account/wardrobe" as never)}
                 syncing={syncing}
               />
             ) : (
