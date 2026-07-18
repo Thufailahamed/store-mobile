@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
@@ -31,6 +31,7 @@ const TOPICS = [
 
 export default function ContactScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const { user } = useAuth();
   const params = useLocalSearchParams<{ subject?: string; message?: string }>();
@@ -110,7 +111,7 @@ export default function ContactScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing[8] }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
