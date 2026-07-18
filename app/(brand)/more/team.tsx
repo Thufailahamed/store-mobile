@@ -14,6 +14,7 @@ import { getBrandTeam, getBrandTeamInvites, inviteBrandTeamMember, cancelBrandIn
 import type { BrandTeamMember, BrandTeamInvite } from "@/lib/api/backend";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { isValidEmail } from "@/lib/contact-validation";
 
 const ROLES = ["manager", "staff", "viewer"] as const;
 type Role = (typeof ROLES)[number];
@@ -71,7 +72,7 @@ export default function BrandTeam() {
           <View style={styles.chipsRow}>
             {ROLES.map((r) => <Chip key={r} selected={role === r} onPress={() => setRole(r)}>{r}</Chip>)}
           </View>
-          <Button onPress={() => invite.mutate()} loading={invite.isPending} disabled={!email.includes("@")} style={styles.inviteBtn}>Send invite</Button>
+          <Button onPress={() => invite.mutate()} loading={invite.isPending} disabled={!isValidEmail(email)} style={styles.inviteBtn}>Send invite</Button>
         </Card>
 
         <Text style={styles.sectionTitle}>Pending invites</Text>
@@ -93,10 +94,20 @@ export default function BrandTeam() {
             <MemberRow
               key={m.id}
               member={m}
-              onRemove={() => Alert.alert("Remove member?", m.user?.email ?? m.user_id, [
-                { text: "Cancel", style: "cancel" },
-                { text: "Remove", style: "destructive", onPress: () => remove.mutate(m.id) },
-              ])}
+              onRemove={() => {
+                const managerCount = (membersQ.data ?? []).filter((mm) => mm.role === "manager").length;
+                if (m.role === "manager" && managerCount <= 1) {
+                  Alert.alert(
+                    "Can't remove the only manager",
+                    "This brand needs at least one manager. Promote another member to manager before removing this one."
+                  );
+                  return;
+                }
+                Alert.alert("Remove member?", m.user?.email ?? m.user_id, [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Remove", style: "destructive", onPress: () => remove.mutate(m.id) },
+                ]);
+              }}
               onRoleChange={(r) => updateMember.mutate({ id: m.id, patch: { role: r } })}
               onSuspend={() => updateMember.mutate({ id: m.id, patch: { status: m.status === "suspended" ? "active" : "suspended" } })}
             />
