@@ -16,6 +16,9 @@
  *   - No whitespace anywhere.
  */
 export const PHONE_DIGIT_MIN = 7;
+
+/** Minimum password length enforced across auth flows (signup, reset). */
+export const PASSWORD_MIN_LENGTH = 8;
 export const PHONE_CHARS_ALLOWED = /^[0-9+\-\s()]+$/;
 
 /** Pragmatic email regex — `something@something.tld`, no whitespace. */
