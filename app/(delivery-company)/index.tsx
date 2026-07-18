@@ -7,11 +7,13 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/lib/supabase/auth";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import {
   getDeliveryCompanyMe,
   getDeliveryCompanyPackages,
@@ -28,6 +30,9 @@ import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
+const KPI_H_PADDING = 14;
+const KPI_GAP = 10;
+
 function sumLast(arr: number[] | undefined) {
   if (!arr?.length) return 0;
   return arr[arr.length - 1] ?? 0;
@@ -37,6 +42,10 @@ export default function DeliveryCompanyDashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isTablet = useIsTablet();
+  const kpiColumns = isTablet ? 3 : 2;
+  const kpiCardWidth = (width - KPI_H_PADDING * 2 - KPI_GAP * (kpiColumns - 1)) / kpiColumns;
   const [company, setCompany] = useState<DeliveryCompany | null>(null);
   const [stats, setStats] = useState({
     inHubs: 0,
@@ -175,12 +184,12 @@ export default function DeliveryCompanyDashboard() {
       ) : null}
 
       <View style={styles.kpiGrid}>
-        <KpiCard label="In hubs" value={stats.inHubs} icon="archive-outline" />
-        <KpiCard label="Pending assign" value={stats.pendingAssign} icon="git-branch-outline" accent />
-        <KpiCard label="Planned routes" value={stats.plannedRoutes} icon="map-outline" />
-        <KpiCard label="Active routes" value={stats.activeRoutes} icon="navigate-outline" />
-        <KpiCard label="Active drivers" value={stats.activeDrivers} icon="bicycle-outline" />
-        <KpiCard label="Warehouses" value={stats.warehouses} icon="storefront-outline" />
+        <KpiCard label="In hubs" value={stats.inHubs} icon="archive-outline" width={kpiCardWidth} />
+        <KpiCard label="Pending assign" value={stats.pendingAssign} icon="git-branch-outline" accent width={kpiCardWidth} />
+        <KpiCard label="Planned routes" value={stats.plannedRoutes} icon="map-outline" width={kpiCardWidth} />
+        <KpiCard label="Active routes" value={stats.activeRoutes} icon="navigate-outline" width={kpiCardWidth} />
+        <KpiCard label="Active drivers" value={stats.activeDrivers} icon="bicycle-outline" width={kpiCardWidth} />
+        <KpiCard label="Warehouses" value={stats.warehouses} icon="storefront-outline" width={kpiCardWidth} />
       </View>
 
       {stats.deliveredToday > 0 ? (
@@ -266,14 +275,16 @@ function KpiCard({
   value,
   icon,
   accent,
+  width,
 }: {
   label: string;
   value: number;
   icon: keyof typeof Ionicons.glyphMap;
   accent?: boolean;
+  width: number;
 }) {
   return (
-    <View style={[styles.kpiCard, accent && styles.kpiAccent]}>
+    <View style={[styles.kpiCard, { width }, accent && styles.kpiAccent]}>
       <Ionicons name={icon} size={20} color={accent ? colors.light.primary : colors.light.mutedForeground} />
       <Text style={styles.kpiValue}>{value}</Text>
       <Text style={styles.kpiLabel}>{label}</Text>
@@ -382,7 +393,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   kpiCard: {
-    width: "47%",
     backgroundColor: colors.light.card,
     borderRadius: radii.lg,
     padding: 16,
