@@ -30,6 +30,7 @@ import { formatPrice } from "@/lib/utils";
  */
 
 const AMOUNTS = [2500, 5000, 10000, 20000, 50000, 100000];
+const MIN_AMOUNT = AMOUNTS[0];
 
 export default function GiftCardsScreen() {
   const { user } = useAuth();
@@ -41,8 +42,14 @@ export default function GiftCardsScreen() {
   const [purchasing, setPurchasing] = useState(false);
   const [purchased, setPurchased] = useState<{ code: string; balance: number; currency: string; scheduled_for: string | null } | null>(null);
 
+  const isAmountValid = Number.isFinite(amount) && amount >= MIN_AMOUNT;
+
   const onPurchase = async () => {
     if (!user) return;
+    if (!isAmountValid) {
+      Alert.alert("Invalid amount", `Enter an amount of at least ${formatPrice(MIN_AMOUNT)}.`);
+      return;
+    }
     if (!recipient.email.includes("@")) {
       Alert.alert("Recipient email required");
       return;
@@ -137,11 +144,16 @@ export default function GiftCardsScreen() {
             <TextInput
               style={styles.input}
               value={String(amount)}
-              onChangeText={(v) => setAmount(Number(v) || 0)}
+              onChangeText={(v) => setAmount(Math.max(0, Number(v) || 0))}
               keyboardType="numeric"
               placeholder="Custom amount"
               placeholderTextColor={colors.light.mutedForeground}
             />
+            {!isAmountValid && (
+              <Body size="sm" style={{ color: colors.light.destructive, marginTop: 6 }}>
+                Enter an amount of at least {formatPrice(MIN_AMOUNT)}.
+              </Body>
+            )}
           </View>
         </Card>
 
@@ -192,7 +204,7 @@ export default function GiftCardsScreen() {
           )}
         </Card>
 
-        <Button onPress={onPurchase} disabled={purchasing || !recipient.email}>
+        <Button onPress={onPurchase} disabled={purchasing || !recipient.email || !isAmountValid}>
           {purchasing ? <ActivityIndicator color="#fff" /> : scheduled ? "Schedule card" : "Send card"}
         </Button>
       </ScrollView>
