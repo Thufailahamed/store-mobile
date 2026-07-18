@@ -82,7 +82,7 @@ export default function BrandInventory() {
 
 function InventoryRow({ row }: { row: BrandInventoryRow }) {
   const s = stockLevel(row);
-  const tone = s <= 0 ? colors.light.destructive : s <= 10 ? "#7a5b1a" : colors.olive[500];
+  const tone = s <= 0 ? colors.light.destructive : s <= 10 ? colors.accent2.ochre : colors.olive[500];
   return (
     <Card style={styles.invCard}>
       <View style={styles.invRow}>
