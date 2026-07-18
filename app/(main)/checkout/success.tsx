@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Clipboard,
   ActivityIndicator,
-  Dimensions,
   Share,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -25,8 +24,6 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Order, OrderItem, Product, OrderStatus } from "@/lib/types";
 import { ProductCard } from "@/components/product/ProductCard";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function OrderSuccessScreen() {
   const { orderId, orderIds } = useLocalSearchParams<{ orderId?: string; orderIds?: string }>();
