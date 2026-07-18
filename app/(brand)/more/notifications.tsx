@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import { BrandScreenHeader } from "@/components/brand/BrandScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
+import { StatusDot } from "@/components/ui/StatusDot";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getBrandNotifications, markBrandNotifications } from "@/lib/api";
@@ -14,9 +14,9 @@ import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 const TYPE_TONE: Record<string, { bg: string; fg: string }> = {
-  order: { bg: colors.olive[100] ?? "#e6efd9", fg: colors.olive[800] ?? "#3a4a1c" },
-  review: { bg: "#fdf3d7", fg: "#7a5b1a" },
-  return: { bg: "#fbe5dc", fg: "#7a2f1a" },
+  order: { bg: colors.olive[100], fg: colors.olive[800] },
+  review: { bg: colors.accent2.ochre + "20", fg: colors.accent2.ochre },
+  return: { bg: colors.accent2.rust + "20", fg: colors.accent2.rust },
   inventory: { bg: "#dde7f3", fg: "#1a3a7a" },
   system: { bg: colors.light.muted, fg: colors.light.foreground },
 };
@@ -89,7 +89,7 @@ function NotificationRow({ item, onPress }: { item: BrandNotification; onPress: 
             {item.body ? <Text style={styles.body2} numberOfLines={2}>{item.body}</Text> : null}
             <Text style={styles.meta}>{new Date(item.created_at).toLocaleString()}</Text>
           </View>
-          {!item.read_at ? <Badge variant="default" style={styles.dot}><View /></Badge> : null}
+          {!item.read_at ? <StatusDot tone="info" size={8} style={styles.dot} /> : null}
         </View>
       </Card>
     </Pressable>
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: 32, paddingHorizontal: 12, gap: 8 },
   skelRow: { height: 64, borderRadius: radii.lg },
   notifCard: { padding: 12, margin: 0 },
-  unreadCard: { backgroundColor: "#f6f6e9", borderColor: colors.olive[200] ?? "#d6dfba" },
+  unreadCard: { backgroundColor: colors.olive[50], borderColor: colors.olive[200] },
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
   iconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   iconText: { fontFamily: fontFamilies.mono.medium, fontSize: typography.fontSizes.sm },
