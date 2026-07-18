@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -325,6 +326,10 @@ export default function SecurityScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScreenHeader title="Security" />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           <View style={styles.heroText}>
@@ -473,10 +478,14 @@ export default function SecurityScreen() {
           <Body style={styles.tipText}>Enable 2FA and rotate your password every few months for stronger protection. Set a recovery email so you are never locked out.</Body>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Enroll 2FA modal */}
       <Modal visible={enrollOpen} transparent animationType="slide" onRequestClose={() => setEnrollOpen(false)}>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalBackdrop}
+        >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Display size="lg">Set up 2FA</Display>
@@ -527,7 +536,7 @@ export default function SecurityScreen() {
               </Button>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -579,6 +588,7 @@ function CheckRow({ done, label }: { done?: boolean; label: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
+  flex: { flex: 1 },
   content: { padding: spacing[5], paddingBottom: spacing[8] },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
   hero: {
