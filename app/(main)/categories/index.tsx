@@ -18,6 +18,7 @@ import type { Category } from "@/lib/types";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 export default function CategoriesDirectoryScreen() {
   const router = useRouter();
@@ -95,6 +96,21 @@ export default function CategoriesDirectoryScreen() {
           </View>
         ) : null}
 
+        {loading ? (
+          <View style={styles.grid}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={styles.card}>
+                <View style={styles.cardHead}>
+                  <Skeleton width={56} height={56} borderRadius={radii.lg} />
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Skeleton width="60%" height={14} />
+                    <Skeleton width="85%" height={12} />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
         <View style={styles.grid}>
           {parents.map((cat) => {
             const children = childrenByParent.get(cat.id) ?? [];
@@ -146,6 +162,7 @@ export default function CategoriesDirectoryScreen() {
             );
           })}
         </View>
+        )}
       </ScrollView>
     </PaperBackground>
   );
