@@ -1,15 +1,18 @@
 import React from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/supabase/auth";
 import { getBrandByOwner, getBrandKPIs } from "@/lib/api";
 import { Card, Button, Badge, Skeleton } from "@/components/ui";
 import { colors, typography } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 
 export default function BrandDashboard() {
   const { user } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const brandQuery = useQuery({
     queryKey: ["brand-owner", user?.id],
@@ -39,7 +42,7 @@ export default function BrandDashboard() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <Skeleton width={180} height={28} />
         </View>
         <View style={styles.kpiGrid}>
@@ -57,7 +60,7 @@ export default function BrandDashboard() {
   if (!brand) {
     return (
       <View style={styles.container}>
-        <View style={styles.center}>
+        <View style={[styles.center, { paddingTop: insets.top }]}>
           <Text style={styles.emptyTitle}>No Brand Found</Text>
           <Text style={styles.emptyText}>
             Your brand account is pending approval or hasn&apos;t been set up yet.
@@ -70,7 +73,7 @@ export default function BrandDashboard() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 24 }]}
       refreshControl={
         <RefreshControl
           refreshing={brandQuery.isFetching || kpiQuery.isFetching}
@@ -147,17 +150,17 @@ const styles = StyleSheet.create({
   header: { paddingTop: 32, paddingBottom: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32 },
   hero: { marginBottom: 24 },
-  greeting: { fontSize: typography.fontSizes.sm, color: colors.light.muted, textTransform: "uppercase", letterSpacing: 1 },
-  brandName: { fontSize: typography.fontSizes["3xl"], fontWeight: typography.fontWeights.bold, color: colors.light.foreground, marginTop: 4 },
+  greeting: { fontFamily: fontFamilies.mono.medium, fontSize: typography.fontSizes.sm, color: colors.light.muted, textTransform: "uppercase", letterSpacing: 1 },
+  brandName: { fontFamily: fontFamilies.display.semibold, fontSize: typography.fontSizes["3xl"], color: colors.light.foreground, marginTop: 4 },
   kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 24 },
   kpiCard: { width: "47%", padding: 24 },
-  kpiValue: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold, color: colors.light.foreground },
-  kpiLabel: { fontSize: typography.fontSizes.sm, color: colors.light.muted, marginTop: 4 },
+  kpiValue: { fontFamily: fontFamilies.display.semibold, fontSize: typography.fontSizes["2xl"], color: colors.light.foreground },
+  kpiLabel: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.muted, marginTop: 4 },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground, marginBottom: 16 },
+  sectionTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xl, color: colors.light.foreground, marginBottom: 16 },
   actionBtn: { marginBottom: 8 },
   aboutCard: { padding: 24 },
-  aboutText: { fontSize: typography.fontSizes.base, color: colors.light.foreground, lineHeight: 22 },
-  emptyTitle: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold, color: colors.light.foreground, marginBottom: 8 },
-  emptyText: { fontSize: typography.fontSizes.base, color: colors.light.muted, textAlign: "center" },
+  aboutText: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.base, color: colors.light.foreground, lineHeight: 22 },
+  emptyTitle: { fontFamily: fontFamilies.display.semibold, fontSize: typography.fontSizes["2xl"], color: colors.light.foreground, marginBottom: 8 },
+  emptyText: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.base, color: colors.light.muted, textAlign: "center" },
 });
