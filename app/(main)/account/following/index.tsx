@@ -13,6 +13,7 @@ import { Body } from "@/components/ui/Typography";
 import { ProductStoreCard } from "@/components/product/ProductStoreCard";
 import { FollowingEmptyState } from "@/components/account/FollowingEmptyState";
 import { useAuth } from "@/lib/supabase/auth";
+import { useToast } from "@/components/ui";
 import { getFollowedStores as getFollowedStoresFromDb } from "@/lib/api";
 import { getLocallyFollowedStoreIds } from "@/lib/api/stores";
 import { mapStore } from "@/lib/api/product-mapper";
@@ -23,6 +24,7 @@ import type { Store } from "@/lib/types";
 export default function FollowingScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,6 +36,12 @@ export default function FollowingScreen() {
         setStores(res.data.map((row) => row.store).filter(Boolean));
         return;
       }
+      // Signed-in user: a failed fetch must not silently fall through to the
+      // guest/local fallback below — that would show stale/wrong data with
+      // no indication anything went wrong.
+      toast(res.error || "Couldn't load your following list", "error");
+      setStores([]);
+      return;
     }
 
     const localIds = await getLocallyFollowedStoreIds();
