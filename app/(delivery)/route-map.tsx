@@ -165,7 +165,7 @@ export default function RouteMapScreen() {
       )}
 
       {/* Bottom sheet of stops */}
-      <View style={[styles.sheet, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+      <View style={[styles.sheet, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 24) }]}>
         <View style={styles.handle} />
         <Text style={styles.sheetTitle}>Stops</Text>
         <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ paddingBottom: 12 }}>
@@ -292,7 +292,6 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
       right: 0,
       paddingHorizontal: 16,
       paddingTop: 8,
-      paddingBottom: 24,
       borderTopWidth: StyleSheet.hairlineWidth,
       maxHeight: "60%",
     },
