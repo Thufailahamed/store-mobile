@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -22,7 +23,7 @@ export default function BlogScreen() {
   const posts = postsQuery.data ?? [];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.title}>Blog</Text>
         <Text style={styles.subtitle}>Style guides, trends & stories</Text>
@@ -41,7 +42,7 @@ export default function BlogScreen() {
       ) : posts.length === 0 ? (
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 40 }}>
           <Text style={{ fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground, marginBottom: 8 }}>No posts yet</Text>
-          <Text style={{ fontSize: typography.fontSizes.base, color: colors.light.muted, textAlign: "center" }}>Check back soon for style tips and brand stories.</Text>
+          <Text style={{ fontSize: typography.fontSizes.base, color: colors.light.mutedForeground, textAlign: "center" }}>Check back soon for style tips and brand stories.</Text>
         </View>
       ) : (
         <FlatList
@@ -64,9 +65,9 @@ export default function BlogScreen() {
                   </View>
                 )}
                 <View style={styles.postContent}>
-                  {item.tags.length > 0 && (
+                  {(item.tags ?? []).length > 0 && (
                     <View style={styles.tags}>
-                      {item.tags.slice(0, 3).map((tag) => (
+                      {(item.tags ?? []).slice(0, 3).map((tag) => (
                         <View key={tag} style={styles.tag}>
                           <Text style={styles.tagText}>{tag}</Text>
                         </View>
@@ -91,7 +92,7 @@ export default function BlogScreen() {
           )}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -99,7 +100,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   header: { padding: 24, paddingBottom: 0 },
   title: { fontSize: typography.fontSizes["3xl"], fontWeight: typography.fontWeights.bold, color: colors.light.foreground },
-  subtitle: { fontSize: typography.fontSizes.base, color: colors.light.muted, marginTop: 4 },
+  subtitle: { fontSize: typography.fontSizes.base, color: colors.light.mutedForeground, marginTop: 4 },
   list: { padding: 24 },
   postCard: { marginBottom: 24, padding: 0, overflow: "hidden" },
   coverContainer: { height: 160, backgroundColor: colors.light.muted + "20", justifyContent: "center", alignItems: "center" },
@@ -110,8 +111,8 @@ const styles = StyleSheet.create({
   tag: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.light.primary + "15", borderRadius: radii.full },
   tagText: { fontSize: typography.fontSizes.xs, color: colors.light.primary, textTransform: "uppercase", letterSpacing: 0.5 },
   postTitle: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground, marginBottom: 8 },
-  postExcerpt: { fontSize: typography.fontSizes.base, color: colors.light.muted, lineHeight: 22, marginBottom: 16 },
+  postExcerpt: { fontSize: typography.fontSizes.base, color: colors.light.mutedForeground, lineHeight: 22, marginBottom: 16 },
   postMeta: { flexDirection: "row", justifyContent: "space-between" },
   postAuthor: { fontSize: typography.fontSizes.sm, color: colors.light.foreground },
-  postDate: { fontSize: typography.fontSizes.sm, color: colors.light.muted },
+  postDate: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
 });
