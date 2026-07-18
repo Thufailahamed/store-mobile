@@ -32,6 +32,7 @@ import {
 } from "@/lib/api/delivery-company-api";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { getDeliveryCompanyAccessState } from "@/lib/delivery-company-access";
 import { isWarehouseGeocoded } from "@/lib/warehouse-routing";
 import { colors, typography, radii } from "@/lib/theme/tokens";
@@ -40,6 +41,7 @@ export default function CompanyWarehousesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const isTablet = useIsTablet();
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,8 +172,11 @@ export default function CompanyWarehousesScreen() {
         </View>
       ) : (
         <FlatList
+          key={isTablet ? "grid-2" : "grid-1"}
           data={warehouses}
           keyExtractor={(item) => item.id}
+          numColumns={isTablet ? 2 : 1}
+          columnWrapperStyle={isTablet ? styles.columnWrapper : undefined}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />
@@ -187,7 +192,11 @@ export default function CompanyWarehousesScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => router.push(`/(delivery-company)/warehouses/${item.id}` as any)} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={isTablet ? styles.gridItem : undefined}
+              onPress={() => router.push(`/(delivery-company)/warehouses/${item.id}` as any)}
+              activeOpacity={0.85}
+            >
               <WarehouseRow warehouse={item} />
             </TouchableOpacity>
           )}
@@ -296,6 +305,8 @@ const styles = StyleSheet.create({
     borderColor: "#bbf7d0",
   },
   scanLinkText: { fontSize: typography.fontSizes.sm, color: colors.light.primary, fontWeight: typography.fontWeights.medium },
+  columnWrapper: { gap: 12 },
+  gridItem: { flex: 1 },
   card: {
     flexDirection: "row",
     gap: 12,
