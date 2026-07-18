@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { View, StyleSheet, TouchableOpacity, Dimensions, FlatList } from "react-native";
+import { View, StyleSheet, TouchableOpacity, useWindowDimensions, FlatList } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { Label } from "@/components/ui/Typography";
@@ -10,11 +10,7 @@ import type { ProductImage } from "@/lib/types";
 import { ImageZoomModal } from "./ImageZoomModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = SCREEN_WIDTH - 32; // 16px margin on each side
-const CARD_HEIGHT = CARD_WIDTH * (4 / 3); // 3:4 portrait aspect ratio
 const CARD_GAP = 12;
-const SNAP_INTERVAL = CARD_WIDTH + CARD_GAP;
 
 interface ProductImageGalleryProps {
   images: ProductImage[];
@@ -29,6 +25,10 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
   const thumbRef = useRef<FlatList>(null);
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 52; // Header vertical offset
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const CARD_WIDTH = SCREEN_WIDTH - 32; // 16px margin on each side
+  const CARD_HEIGHT = CARD_WIDTH * (4 / 3); // 3:4 portrait aspect ratio
+  const SNAP_INTERVAL = CARD_WIDTH + CARD_GAP;
 
   const sorted = [...images].sort((a, b) => a.position - b.position);
   const displayImages = sorted.length ? sorted : [
@@ -59,7 +59,7 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
 
   return (
     <View style={[styles.root, { marginTop: headerHeight + 8 }]}>
-      <View style={styles.galleryWrapper}>
+      <View style={[styles.galleryWrapper, { width: SCREEN_WIDTH, height: CARD_HEIGHT }]}>
         <FlatList
           ref={mainRef}
           data={displayImages}
@@ -75,9 +75,9 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
             <TouchableOpacity
               activeOpacity={0.95}
               onPress={() => item.url && setZoomVisible(true)}
-              style={styles.cardWrapper}
+              style={[styles.cardWrapper, { width: CARD_WIDTH }]}
             >
-              <View style={styles.imageContainer}>
+              <View style={[styles.imageContainer, { width: CARD_WIDTH, height: CARD_HEIGHT }]}>
                 <Image
                   source={{ uri: item.url || undefined }}
                   style={styles.mainImage}
@@ -164,20 +164,15 @@ const styles = StyleSheet.create({
   },
   galleryWrapper: {
     position: "relative",
-    width: SCREEN_WIDTH,
-    height: CARD_HEIGHT,
   },
   listContent: {
     paddingLeft: 16,
     paddingRight: 16 - CARD_GAP,
   },
   cardWrapper: {
-    width: CARD_WIDTH,
     marginRight: CARD_GAP,
   },
   imageContainer: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     backgroundColor: colors.light.muted,
     borderRadius: radii["3xl"],
     overflow: "hidden",
