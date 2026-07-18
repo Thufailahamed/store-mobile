@@ -1,11 +1,14 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/supabase/auth";
 import { getBrandByOwner, getBrandProducts, deleteSellerProduct } from "@/lib/api";
 import { Card, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { useDebounce } from "@/lib/hooks/useDebounce";
 
 const STATUS_TABS = ["all", "active", "pending", "draft", "archived"];
 
@@ -13,8 +16,10 @@ export default function BrandProducts() {
   const { user } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 350);
 
   const brandQuery = useQuery({
     queryKey: ["brand-owner", user?.id],
@@ -27,10 +32,10 @@ export default function BrandProducts() {
   });
 
   const productsQuery = useQuery({
-    queryKey: ["brand-products", brandQuery.data?.id, status, search],
+    queryKey: ["brand-products", brandQuery.data?.id, status, debouncedSearch],
     queryFn: async () => {
       if (!brandQuery.data) return { products: [], total: 0 };
-      const res = await getBrandProducts(brandQuery.data.id, { status, search });
+      const res = await getBrandProducts(brandQuery.data.id, { status, search: debouncedSearch });
       return res.ok ? res.data : { products: [], total: 0 };
     },
     enabled: !!brandQuery.data,
@@ -47,7 +52,7 @@ export default function BrandProducts() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 24 }]}>
         <Text style={styles.title}>Products</Text>
         <Text style={styles.count}>{productsQuery.data?.total ?? 0} total</Text>
       </View>
@@ -85,8 +90,8 @@ export default function BrandProducts() {
         </View>
       ) : products.length === 0 ? (
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 40 }}>
-          <Text style={{ fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground, marginBottom: 8 }}>No products</Text>
-          <Text style={{ fontSize: typography.fontSizes.base, color: colors.light.muted, textAlign: "center" }}>No products found for this brand.</Text>
+          <Text style={{ fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.lg, color: colors.light.foreground, marginBottom: 8 }}>No products</Text>
+          <Text style={{ fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.base, color: colors.light.muted, textAlign: "center" }}>No products found for this brand.</Text>
         </View>
       ) : (
         <FlatList
@@ -133,22 +138,22 @@ export default function BrandProducts() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 24, paddingBottom: 0 },
-  title: { fontSize: typography.fontSizes["2xl"], fontWeight: typography.fontWeights.bold, color: colors.light.foreground },
-  count: { fontSize: typography.fontSizes.sm, color: colors.light.muted },
-  search: { margin: 24, marginBottom: 16, padding: 16, backgroundColor: colors.light.card, borderRadius: radii.md, borderWidth: 1, borderColor: colors.light.border, fontSize: typography.fontSizes.base, color: colors.light.foreground },
+  title: { fontFamily: fontFamilies.display.semibold, fontSize: typography.fontSizes["2xl"], color: colors.light.foreground },
+  count: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.muted },
+  search: { margin: 24, marginBottom: 16, padding: 16, backgroundColor: colors.light.card, borderRadius: radii.md, borderWidth: 1, borderColor: colors.light.border, fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.base, color: colors.light.foreground },
   tabs: { flexDirection: "row", paddingHorizontal: 24, gap: 4, marginBottom: 16 },
   tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: radii.full },
   tabActive: { backgroundColor: colors.light.primary },
-  tabText: { fontSize: typography.fontSizes.sm, color: colors.light.muted },
-  tabTextActive: { color: "#fff", fontWeight: "600" },
+  tabText: { fontFamily: fontFamilies.sans.medium, fontSize: typography.fontSizes.sm, color: colors.light.muted },
+  tabTextActive: { fontFamily: fontFamilies.sans.semibold, color: "#fff" },
   list: { padding: 24 },
   productCard: { marginBottom: 16, padding: 24 },
   productRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   productInfo: { flex: 1 },
-  productName: { fontSize: typography.fontSizes.base, fontWeight: typography.fontWeights.semibold, color: colors.light.foreground, marginBottom: 4 },
-  productPrice: { fontSize: typography.fontSizes.base, color: colors.light.primary, marginBottom: 8 },
+  productName: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.base, color: colors.light.foreground, marginBottom: 4 },
+  productPrice: { fontFamily: fontFamilies.mono.medium, fontSize: typography.fontSizes.base, color: colors.light.primary, marginBottom: 8 },
   productMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
-  storeName: { fontSize: typography.fontSizes.sm, color: colors.light.muted },
+  storeName: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.muted },
   deleteBtn: { paddingHorizontal: 16, paddingVertical: 8 },
-  deleteText: { fontSize: typography.fontSizes.sm, color: colors.light.destructive },
+  deleteText: { fontFamily: fontFamilies.sans.medium, fontSize: typography.fontSizes.sm, color: colors.light.destructive },
 });
