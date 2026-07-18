@@ -360,9 +360,9 @@ function makeStyles(colors: ReturnType<typeof useTheme>["colors"], isDark: boole
       gap: 14,
     },
     stepBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: "center",
