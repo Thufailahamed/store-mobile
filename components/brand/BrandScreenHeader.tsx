@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet, type ViewStyle } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -20,8 +21,9 @@ export function BrandScreenHeader({
   right,
   style,
 }: BrandScreenHeaderProps) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.wrap, style]}>
+    <View style={[styles.wrap, { paddingTop: insets.top + 16 }, style]}>
       {back ? (
         <Pressable onPress={back.onPress} hitSlop={10} style={styles.back}>
           <Text style={styles.backText}>← {back.label ?? "Back"}</Text>
@@ -40,7 +42,7 @@ export function BrandScreenHeader({
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, gap: 8 },
+  wrap: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 },
   back: { paddingVertical: 4 },
   backText: {
     fontFamily: fontFamilies.sans.medium,
