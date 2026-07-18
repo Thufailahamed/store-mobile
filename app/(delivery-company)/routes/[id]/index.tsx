@@ -15,16 +15,21 @@ import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
   cancelRoute,
   dispatchRoute,
+  getDeliveryCompanyMe,
   getDeliveryCompanyRoutes,
   hasStoreApi,
   type DcRoute,
   type DcRouteStop,
 } from "@/lib/api/delivery-company-api";
+import { useAuth } from "@/lib/supabase/auth";
+import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
 export default function CompanyRouteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { user } = useAuth();
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [route, setRoute] = useState<DcRoute | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -33,6 +38,8 @@ export default function CompanyRouteDetailScreen() {
 
   const load = useCallback(async () => {
     if (!id || !hasStoreApi()) return;
+    const meRes = await getDeliveryCompanyMe();
+    if (meRes.ok) setCompanyId(meRes.data.company.id);
     const res = await getDeliveryCompanyRoutes();
     if (res.ok) {
       const found = res.data.routes.find((r) => r.id === id) ?? null;
@@ -48,6 +55,10 @@ export default function CompanyRouteDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Realtime refresh so this screen's status reflects a dispatch/cancel
+  // performed elsewhere without requiring a manual pull-to-refresh.
+  useCompanyRealtime(companyId, user?.id, load);
 
   const handleDispatch = () => {
     if (!route) return;
