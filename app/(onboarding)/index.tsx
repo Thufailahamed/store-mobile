@@ -5,7 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Linking,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -18,8 +18,6 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { radii, spacing } from "@/lib/theme/tokens";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Body } from "@/components/ui/Typography";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const FALLBACK_SLIDES: OnboardingSlide[] = [
   {
@@ -46,6 +44,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const [activeSlide, setActiveSlide] = useState(0);
   const [slides, setSlides] = useState<OnboardingSlide[]>(FALLBACK_SLIDES);
   const [loadingSlides, setLoadingSlides] = useState(true);
