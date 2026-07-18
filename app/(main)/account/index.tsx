@@ -50,7 +50,6 @@ function savedCardToPaymentCard(c: SavedCard): PaymentCard {
     holder: c.holder,
     is_default: c.is_default,
     added,
-    charges: 0,
   };
 }
 
