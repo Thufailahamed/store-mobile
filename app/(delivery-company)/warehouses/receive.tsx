@@ -72,6 +72,26 @@ export default function WarehouseReceiveScreen() {
       selectedWarehouse.capacity_max,
     ).ok;
 
+  const commitReceive = async (whId: string, orderId: string, orderNumber: string) => {
+    setSubmitting(true);
+    try {
+      const res = await receiveAtWarehouse(whId, orderId);
+      if (!res.ok) {
+        Alert.alert("Receive failed", res.error);
+        return;
+      }
+      const lastMileNote = res.data.last_mile_error
+        ? `\n\nAuto last-mile: ${res.data.last_mile_error.replace(/_/g, " ")}`
+        : "";
+      Alert.alert("Received", `Package recorded at hub (#${orderNumber}).${lastMileNote}`, [
+        { text: "Receive another", onPress: () => setOrderRef("") },
+        { text: "Done", onPress: () => router.back() },
+      ]);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submit = async () => {
     if (submitting) return;
     if (!warehouseId) {
@@ -84,27 +104,28 @@ export default function WarehouseReceiveScreen() {
       return;
     }
     setSubmitting(true);
-    try {
-      const lookup = await lookupDeliveryCompanyOrder(trimmed);
-      if (!lookup.ok) {
-        Alert.alert("Order lookup failed", lookup.error);
-        return;
-      }
-      const res = await receiveAtWarehouse(warehouseId, lookup.data.order_id);
-      if (!res.ok) {
-        Alert.alert("Receive failed", res.error);
-        return;
-      }
-      const lastMileNote = res.data.last_mile_error
-        ? `\n\nAuto last-mile: ${res.data.last_mile_error.replace(/_/g, " ")}`
-        : "";
-      Alert.alert("Received", `Package recorded at hub (#${lookup.data.order_number}).${lastMileNote}`, [
-        { text: "Receive another", onPress: () => setOrderRef("") },
-        { text: "Done", onPress: () => router.back() },
-      ]);
-    } finally {
-      setSubmitting(false);
+    const lookup = await lookupDeliveryCompanyOrder(trimmed).finally(() => setSubmitting(false));
+    if (!lookup.ok) {
+      Alert.alert("Order lookup failed", lookup.error);
+      return;
     }
+    // Confirm before committing — the dispatcher should see which real order
+    // the reference resolved to (a typo'd order ref can still match a valid,
+    // but wrong, order) before the receive is recorded.
+    const warehouseName = selectedWarehouse?.name ?? "the selected hub";
+    Alert.alert(
+      "Confirm receive",
+      `Order #${lookup.data.order_number}\nStatus: ${lookup.data.status.replace(/_/g, " ")}\nHub: ${warehouseName}\n\nReceive this package?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Receive",
+          onPress: () => {
+            void commitReceive(warehouseId, lookup.data.order_id, lookup.data.order_number);
+          },
+        },
+      ],
+    );
   };
 
   if (loading) {
