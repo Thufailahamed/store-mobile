@@ -50,7 +50,6 @@ function savedCardToPaymentCard(c: SavedCard): PaymentCard {
     holder: c.holder,
     is_default: c.is_default,
     added,
-    charges: 0,
   };
 }
 
@@ -164,7 +163,7 @@ export default function PaymentsScreen() {
                   </View>
                   <View style={styles.cardMetaRow}>
                     <View>
-                      <Body size="xs" muted>Added {card.added} · {card.charges} charges</Body>
+                      <Body size="xs" muted>Added {card.added}</Body>
                       {card.is_default && <Badge style={{ marginTop: 6, backgroundColor: colors.olive[100] }}><Label style={{ color: colors.olive[700] }}>Default</Label></Badge>}
                     </View>
                     <View style={styles.cardActions}>
