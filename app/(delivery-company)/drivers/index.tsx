@@ -32,6 +32,7 @@ import {
 } from "@/lib/api/delivery-company-api";
 import { useAuth } from "@/lib/supabase/auth";
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
+import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { isValidEmail } from "@/lib/contact-validation";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
@@ -39,6 +40,7 @@ export default function CompanyDriversScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const isTablet = useIsTablet();
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [members, setMembers] = useState<DcDriverMember[]>([]);
   const [invites, setInvites] = useState<DcDriverInvite[]>([]);
@@ -56,6 +58,7 @@ export default function CompanyDriversScreen() {
   const [inviteWarehouseId, setInviteWarehouseId] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<DcWarehouse[]>([]);
   const [inviting, setInviting] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const load = useCallback(async () => {
@@ -188,7 +191,7 @@ export default function CompanyDriversScreen() {
   };
 
   const toggleActive = (member: DcDriverMember) => {
-    if (inviting) return; // reuse as "any mutation in flight"
+    if (togglingId) return;
     const next = !member.is_active;
     const displayName = member.user?.full_name ?? "this driver";
     Alert.alert(
@@ -200,13 +203,13 @@ export default function CompanyDriversScreen() {
           text: next ? "Activate" : "Deactivate",
           style: next ? "default" : "destructive",
           onPress: async () => {
-            setInviting(true);
+            setTogglingId(member.id);
             try {
               const res = await updateDriverMember(member.id, { is_active: next });
               if (!res.ok) Alert.alert("Failed", res.error);
               else load();
             } finally {
-              setInviting(false);
+              setTogglingId(null);
             }
           },
         },
@@ -304,8 +307,11 @@ export default function CompanyDriversScreen() {
         </View>
       ) : (
         <FlatList
+          key={isTablet ? "grid-2" : "grid-1"}
           data={filtered}
           keyExtractor={(item) => item.id}
+          numColumns={isTablet ? 2 : 1}
+          columnWrapperStyle={isTablet ? styles.columnWrapper : undefined}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
           ListEmptyComponent={
@@ -319,11 +325,14 @@ export default function CompanyDriversScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <DriverRow
-              member={item}
-              onToggle={() => toggleActive(item)}
-              onPress={() => router.push(`/(delivery-company)/drivers/${item.user_id}` as any)}
-            />
+            <View style={isTablet ? styles.gridItem : undefined}>
+              <DriverRow
+                member={item}
+                toggling={togglingId === item.id}
+                onToggle={() => toggleActive(item)}
+                onPress={() => router.push(`/(delivery-company)/drivers/${item.user_id}` as any)}
+              />
+            </View>
           )}
         />
       )}
@@ -488,10 +497,12 @@ export default function CompanyDriversScreen() {
 
 function DriverRow({
   member,
+  toggling,
   onToggle,
   onPress,
 }: {
   member: DcDriverMember;
+  toggling: boolean;
   onToggle: () => void;
   onPress: () => void;
 }) {
@@ -544,12 +555,16 @@ function DriverRow({
           </View>
         ) : null}
       </View>
-      <TouchableOpacity style={styles.toggleBtn} onPress={(e) => { onToggle(); }}>
-        <Ionicons
-          name={member.is_active ? "power" : "power-outline"}
-          size={20}
-          color={member.is_active ? colors.light.primary : colors.light.mutedForeground}
-        />
+      <TouchableOpacity style={styles.toggleBtn} onPress={onToggle} disabled={toggling}>
+        {toggling ? (
+          <ActivityIndicator size="small" color={colors.light.primary} />
+        ) : (
+          <Ionicons
+            name={member.is_active ? "power" : "power-outline"}
+            size={20}
+            color={member.is_active ? colors.light.primary : colors.light.mutedForeground}
+          />
+        )}
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -582,6 +597,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchInput: { flex: 1, fontSize: typography.fontSizes.base, color: colors.light.foreground },
+  columnWrapper: { gap: 12 },
+  gridItem: { flex: 1 },
   invitesBox: {
     marginHorizontal: 16,
     marginBottom: 12,
