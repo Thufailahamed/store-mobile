@@ -215,7 +215,7 @@ export default function CompanyAssignmentsScreen() {
     }
   };
 
-  const confirmManual = async (driverId: string) => {
+  const performManualAssign = async (driverId: string) => {
     if (!manualOrder || manualAssigning) return;
     setManualAssigning(true);
     try {
@@ -233,6 +233,23 @@ export default function CompanyAssignmentsScreen() {
     } finally {
       setManualAssigning(false);
     }
+  };
+
+  const confirmManual = (driverId: string, driverName: string) => {
+    if (!manualOrder || manualAssigning) return;
+    // A mis-tap on this dense candidate list would otherwise assign the
+    // wrong driver to a real delivery with no undo — confirm first.
+    Alert.alert(
+      "Assign driver?",
+      `Assign ${driverName} to order #${manualOrder.order_number} (${leg.replace(/_/g, " ")})?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Assign",
+          onPress: () => void performManualAssign(driverId),
+        },
+      ],
+    );
   };
 
   return (
@@ -419,7 +436,7 @@ export default function CompanyAssignmentsScreen() {
                   <TouchableOpacity
                     key={c.user_id}
                     style={[styles.candidateRow, !canAssign && styles.candidateRowDisabled]}
-                    onPress={() => canAssign && confirmManual(c.user_id)}
+                    onPress={() => canAssign && confirmManual(c.user_id, c.full_name)}
                     disabled={manualAssigning || !canAssign}
                   >
                     <View style={styles.candidateBody}>
