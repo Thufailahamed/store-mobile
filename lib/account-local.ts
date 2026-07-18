@@ -11,7 +11,6 @@ export type PaymentCard = {
   holder: string;
   is_default: boolean;
   added: string;
-  charges: number;
 };
 
 export const PAYMENT_BRAND_META: Record<
