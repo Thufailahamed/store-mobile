@@ -153,9 +153,16 @@ export default function CartScreen() {
           return;
         }
         const { reconciliation } = result;
-        if (reconciliation.remove.length > 0) {
+        const oosCount = reconciliation.outOfStock?.length ?? 0;
+        const removedCount = reconciliation.remove.length;
+        if (oosCount > 0) {
           toast(
-            `${reconciliation.remove.length} unavailable item${reconciliation.remove.length === 1 ? "" : "s"} removed from your bag`,
+            `${oosCount} item${oosCount === 1 ? " is" : "s are"} out of stock — please remove them to proceed.`,
+            "warning",
+          );
+        } else if (removedCount > 0) {
+          toast(
+            `${removedCount} unavailable item${removedCount === 1 ? "" : "s"} removed from your bag`,
             "info",
           );
         } else if (reconciliation.update.some((patch) => patch.price !== undefined)) {
@@ -195,6 +202,7 @@ export default function CartScreen() {
   }, [selectedKeys]);
 
   const allSelected = cartItems.length > 0 && selectedCount === cartItems.length;
+  const hasUnavailableItems = Object.values(items).some((i) => i.is_unavailable);
 
   const handleToggleSelect = useCallback((key: string) => {
     setSelectedKeys((prev) => ({
@@ -795,15 +803,15 @@ export default function CartScreen() {
                 shadowColor: theme.colors.primary,
                 overflow: "hidden",
               },
-              selectedCount === 0 && styles.checkoutBtnDisabled,
+              (selectedCount === 0 || hasUnavailableItems) && styles.checkoutBtnDisabled,
             ]}
-            disabled={selectedCount === 0}
+            disabled={selectedCount === 0 || hasUnavailableItems}
             onPress={handlePlaceOrder}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityState={{ disabled: selectedCount === 0 }}
+            accessibilityState={{ disabled: selectedCount === 0 || hasUnavailableItems }}
           >
-            {selectedCount > 0 ? (
+            {selectedCount > 0 && !hasUnavailableItems ? (
               <LinearGradient
                 colors={
                   theme.isDark
@@ -818,10 +826,10 @@ export default function CartScreen() {
               <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.muted, opacity: 0.5 }]} />
             )}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Body style={[styles.checkoutBtnText, { color: selectedCount === 0 ? theme.colors.mutedForeground : "#FFFFFF" }]}>
-                Place Order
+              <Body style={[styles.checkoutBtnText, { color: selectedCount === 0 || hasUnavailableItems ? theme.colors.mutedForeground : "#FFFFFF" }]}>
+                {hasUnavailableItems ? "Remove out of stock items" : "Place Order"}
               </Body>
-              {selectedCount > 0 && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
+              {selectedCount > 0 && !hasUnavailableItems && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
             </View>
           </TouchableOpacity>
         </View>

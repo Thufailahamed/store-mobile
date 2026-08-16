@@ -34,13 +34,15 @@ export interface CartItemPatch {
 export interface CartReconciliation {
   remove: CartItemIssue[];
   update: CartItemPatch[];
+  /** Items that are out of stock — kept in cart with is_unavailable flag, not deleted. */
+  outOfStock: CartItemIssue[];
 }
 
 export type CartRefreshResult =
   | { ok: true; reconciliation: CartReconciliation }
   | { ok: false; error: string; reconciliation: CartReconciliation };
 
-const EMPTY_RECONCILIATION: CartReconciliation = { remove: [], update: [] };
+const EMPTY_RECONCILIATION: CartReconciliation = { remove: [], update: [], outOfStock: [] };
 
 const PRODUCT_SNAPSHOT_SELECT =
   "*, images:product_images(*), variants:product_variants(*, inventory(quantity, reserved)), brand:brands(*), store:stores!products_store_id_fkey(*), category:categories(*)";
@@ -98,6 +100,7 @@ export function buildCartReconciliation(
 ): CartReconciliation {
   const remove: CartItemIssue[] = [];
   const update: CartItemPatch[] = [];
+  const outOfStock: CartItemIssue[] = [];
 
   for (const [key, item] of Object.entries(items)) {
     const product = productsById[item.productId];
@@ -165,10 +168,13 @@ export function buildCartReconciliation(
     }
 
     if (stock <= 0) {
-      remove.push({
+      // Enterprise UX: keep the item, flag it as unavailable so the UI can
+      // display the yellow out-of-stock banner. The checkout gate blocks
+      // on outOfStock items. User must manually remove before proceeding.
+      outOfStock.push({
         key,
         reason: "out_of_stock",
-        message: `${item.name} is out of stock and was removed from your bag.`,
+        message: `${item.name} is out of stock. Remove it or wait for restock.`,
       });
       continue;
     }
@@ -204,7 +210,7 @@ export function buildCartReconciliation(
     if (hasPatch) update.push(patch);
   }
 
-  return { remove, update };
+  return { remove, update, outOfStock };
 }
 
 export function applyCartReconciliation(reconciliation: CartReconciliation): void {
@@ -289,12 +295,10 @@ export async function validateCartForCheckout(): Promise<CartCheckoutValidation>
     applyCartReconciliation(reconciliation);
   }
 
-  if (reconciliation.remove.length > 0) {
-    const names = reconciliation.remove.map((issue) => issue.message).slice(0, 2);
-    const suffix =
-      reconciliation.remove.length > 2
-        ? ` (+${reconciliation.remove.length - 2} more)`
-        : "";
+  if (reconciliation.remove.length > 0 || reconciliation.outOfStock.length > 0) {
+    const allIssues = [...reconciliation.remove, ...reconciliation.outOfStock];
+    const names = allIssues.map((issue) => issue.message).slice(0, 2);
+    const suffix = allIssues.length > 2 ? ` (+${allIssues.length - 2} more)` : "";
     return {
       ok: false,
       error: `${names.join(" ")}${suffix}`,

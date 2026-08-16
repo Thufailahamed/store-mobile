@@ -49,6 +49,10 @@ export interface CartItem {
    *  set when the caller can't compute it. Reconciliation replaces this
    *  with the live catalogue figure on the next refresh. */
   stock: number | null;
+  /** Set to true by reconciliation when live stock is 0. Item remains in
+   *  the cart so the user sees the out-of-stock banner and can decide to
+   *  remove it. Excluded from itemCount() and subtotal(). */
+  is_unavailable?: boolean;
 }
 
 export type CartLoadResult =
@@ -328,7 +332,7 @@ export const useCart = create<CartStore>()(
 
       applyReconciliation: (reconciliation) => {
         set((state) => {
-          if (reconciliation.remove.length === 0 && reconciliation.update.length === 0) {
+          if (reconciliation.remove.length === 0 && reconciliation.update.length === 0 && (reconciliation.outOfStock?.length ?? 0) === 0) {
             return state;
           }
 
@@ -336,6 +340,15 @@ export const useCart = create<CartStore>()(
 
           for (const issue of reconciliation.remove) {
             delete items[issue.key];
+          }
+
+          // Out-of-stock items: keep in cart but flag as unavailable so the
+          // CartItemCard shows the yellow banner. Excluded from totals below.
+          for (const issue of (reconciliation.outOfStock ?? [])) {
+            const oos = items[issue.key];
+            if (oos) {
+              items[issue.key] = { ...oos, is_unavailable: true };
+            }
           }
 
           for (const patch of reconciliation.update) {
@@ -364,6 +377,9 @@ export const useCart = create<CartStore>()(
               ...(patch.variantLabel !== undefined
                 ? { variantLabel: patch.variantLabel }
                 : {}),
+              // If this item previously had is_unavailable set and now has
+              // valid stock, clear the flag so the banner is removed.
+              is_unavailable: false,
             };
           }
 
@@ -372,14 +388,15 @@ export const useCart = create<CartStore>()(
       },
 
       itemCount: () => {
-        return Object.values(get().items).reduce((sum, item) => sum + item.quantity, 0);
+        return Object.values(get().items)
+          .filter((item) => !item.is_unavailable)
+          .reduce((sum, item) => sum + item.quantity, 0);
       },
 
       subtotal: () => {
-        return Object.values(get().items).reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0
-        );
+        return Object.values(get().items)
+          .filter((item) => !item.is_unavailable)
+          .reduce((sum, item) => sum + item.price * item.quantity, 0);
       },
     }),
     {
