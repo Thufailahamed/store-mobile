@@ -12,10 +12,7 @@ import { isInternalDeliveryVisibleMobile } from "@/lib/feature-flags";
 import { CourierManagedExternally } from "@/components/courier/courier-managed-externally";
 
 export default function DeliveryLayout() {
-  // When internal delivery is retired, replace the rider hub with a notice.
-  if (!isInternalDeliveryVisibleMobile()) {
-    return <CourierManagedExternally role="rider" />;
-  }
+
 
   const { user, role, roleLoading, loading } = useAuth();
   const { colors } = useTheme();
@@ -51,20 +48,7 @@ export default function DeliveryLayout() {
     });
   }, [user?.id, role, roleLoading, loading, router, isScanRoute]);
 
-  // Show spinner while auth/role is still resolving (prevents flash of dashboard
-  // for non-rider roles before the redirect fires).
-  if (loading || roleLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
 
-  // Render nothing while redirect is in flight for non-rider roles.
-  if (role !== "rider" && role !== "admin" && role !== "delivery_company") {
-    return null;
-  }
 
   // Initial fetch + realtime refresh of the rider's membership status.
   // When the company deactivates the driver, the realtime channel added
@@ -88,6 +72,26 @@ export default function DeliveryLayout() {
   }, [refreshMember]);
 
   useRiderRealtime(user?.id, refreshMember);
+
+  // Show spinner while auth/role is still resolving (prevents flash of dashboard
+  // for non-rider roles before the redirect fires).
+  if (loading || roleLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // Render nothing while redirect is in flight for non-rider roles.
+  if (role !== "rider" && role !== "admin" && role !== "delivery_company") {
+    return null;
+  }
+
+  // When internal delivery is retired, replace the rider hub with a notice.
+  if (!isInternalDeliveryVisibleMobile()) {
+    return <CourierManagedExternally role="rider" />;
+  }
 
   if (memberActive === false) {
     return (

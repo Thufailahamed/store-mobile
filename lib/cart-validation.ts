@@ -268,7 +268,7 @@ export async function validateCartForCheckout(): Promise<CartCheckoutValidation>
     return {
       ok: false,
       error: "Your bag is empty.",
-      reconciliation: { remove: [], update: [] },
+      reconciliation: { remove: [], update: [], outOfStock: [] },
     };
   }
 
@@ -281,7 +281,7 @@ export async function validateCartForCheckout(): Promise<CartCheckoutValidation>
     return {
       ok: false,
       error: "Could not verify stock. Check your connection and try again.",
-      reconciliation: { remove: [], update: [] },
+      reconciliation: { remove: [], update: [], outOfStock: [] },
     };
   }
 
@@ -312,7 +312,7 @@ export async function validateCartForCheckout(): Promise<CartCheckoutValidation>
     return {
       ok: false,
       error: "Your bag is empty. Stock for every item was exhausted.",
-      reconciliation: { remove: [], update: [] },
+      reconciliation: { remove: [], update: [], outOfStock: [] },
     };
   }
 

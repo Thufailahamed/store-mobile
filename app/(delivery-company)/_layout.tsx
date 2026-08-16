@@ -20,10 +20,7 @@ import { CourierManagedExternally } from "@/components/courier/courier-managed-e
 const PUBLIC_SEGMENTS = new Set(["onboarding", "accept"]);
 
 export default function DeliveryCompanyLayout() {
-  // When internal delivery is retired, replace the company hub with a notice.
-  if (!isInternalDeliveryVisibleMobile()) {
-    return <CourierManagedExternally role="delivery_company" />;
-  }
+
   const { user, role, roleLoading, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
@@ -104,6 +101,11 @@ export default function DeliveryCompanyLayout() {
     if (!accessChecked || isPublicRoute || !locked || isAccessibleRoute) return;
     router.replace("/(delivery-company)/settings");
   }, [accessChecked, isPublicRoute, locked, isAccessibleRoute, router]);
+
+  // When internal delivery is retired, replace the company hub with a notice.
+  if (!isInternalDeliveryVisibleMobile()) {
+    return <CourierManagedExternally role="delivery_company" />;
+  }
 
   if ((loading || roleLoading || !accessChecked) && !isPublicRoute) {
     return (

@@ -3,15 +3,8 @@ import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-function readEnv(key: string, extraKey: string): string {
-  const fromProcess = process.env[key];
-  if (fromProcess) return fromProcess;
-  const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
-  return extra?.[extraKey] ?? "";
-}
-
-const URL = readEnv("EXPO_PUBLIC_SUPABASE_URL", "supabaseUrl");
-const ANON_KEY = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY", "supabaseAnonKey");
+const URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? (Constants.expoConfig?.extra?.supabaseUrl as string | undefined) ?? "";
+const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? (Constants.expoConfig?.extra?.supabaseAnonKey as string | undefined) ?? "";
 
 if (!URL || !ANON_KEY) {
   console.error(

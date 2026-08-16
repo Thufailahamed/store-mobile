@@ -158,7 +158,7 @@ export default function CartScreen() {
         if (oosCount > 0) {
           toast(
             `${oosCount} item${oosCount === 1 ? " is" : "s are"} out of stock — please remove them to proceed.`,
-            "warning",
+            "error",
           );
         } else if (removedCount > 0) {
           toast(
