@@ -12,6 +12,7 @@ export const ALLOWED_ROUTES = new Set<string>([
   "/(main)",
   "/(main)/orders",
   "/(main)/cart",
+  "/(main)/notifications",
   "/(main)/products",
   "/(main)/products/[slug]",
   "/(main)/gift-cards",
@@ -21,6 +22,8 @@ export const ALLOWED_ROUTES = new Set<string>([
   "/(main)/account/orders/[id]",
   "/(main)/account/gift-cards",
   "/(main)/account/price-alerts",
+  "/(main)/account/notifications",
+  "/(main)/account/notifications/preferences",
   "/(main)/checkout",
   "/(main)/checkout/success",
   "/(main)/search",
@@ -30,6 +33,12 @@ export const ALLOWED_ROUTES = new Set<string>([
   "/(delivery)/orders/[id]",
   "/(delivery-company)",
   "/(delivery-company)/accept",
+  "/(seller)",
+  "/(seller)/orders",
+  "/(seller)/orders/[id]",
+  "/(seller)/products",
+  "/(seller)/notifications",
+  "/(brand)/more/notifications",
   "/(auth)/login",
   "/(auth)/register",
   "/(auth)/forgot-password",
@@ -40,6 +49,39 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Accept UUID or a base64url-ish JWT segment (~20+ chars of [A-Za-z0-9_-]). */
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,}$/;
 const SLUG_RE = /^[a-zA-Z0-9_-]+$/;
+
+/**
+ * Maps a relative web path (e.g. "/cart", "/account/orders", "/products/silk-shirt")
+ * to its mobile router equivalent (e.g. "/(main)/cart", "/(main)/account/orders").
+ */
+export function mapWebPathToMobileRoute(path: string): string | null {
+  if (!path || typeof path !== "string") return null;
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("/")) return null;
+
+  const [pathname, query] = trimmed.split("?");
+  const querySuffix = query ? `?${query}` : "";
+
+  // Already prefixed with app group
+  if (
+    pathname.startsWith("/(main)") ||
+    pathname.startsWith("/(delivery)") ||
+    pathname.startsWith("/(seller)") ||
+    pathname.startsWith("/(auth)") ||
+    pathname.startsWith("/(brand)") ||
+    pathname.startsWith("/(delivery-company)")
+  ) {
+    return isAllowedRoute(pathname) ? `${pathname}${querySuffix}` : null;
+  }
+
+  // Common root-level web paths -> map to /(main)...
+  const candidate = `/(main)${pathname}`;
+  if (isAllowedRoute(candidate)) {
+    return `${candidate}${querySuffix}`;
+  }
+
+  return null;
+}
 
 export function isAllowedRoute(screen: string): boolean {
   if (!screen || typeof screen !== "string") return false;
@@ -52,13 +94,12 @@ export function isAllowedRoute(screen: string): boolean {
   // E.g. "/(main)/products/abc-123" -> "/(main)/products/[slug]"
   for (const allowed of ALLOWED_ROUTES) {
     if (!allowed.includes("[")) continue;
-    const re = new RegExp(
-      "^" +
-        allowed
-          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-          .replace(/\[([a-zA-Z0-9_]+)\]/g, "[^/?#]+") +
-        "(?:[/?#].*)?$",
-    );
+    const pattern = allowed
+      .replace(/\[([a-zA-Z0-9_]+)\]/g, "___DYNAMIC_PARAM___")
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/___DYNAMIC_PARAM___/g, "[^/?#]+");
+
+    const re = new RegExp(`^${pattern}(?:[/?#].*)?$`);
     if (re.test(base)) return true;
   }
   return false;

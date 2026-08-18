@@ -3,7 +3,8 @@ import * as Notifications from "expo-notifications";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Router } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
-import { isAllowedRoute, isUuid, safeRoutePush, sanitizeSlug } from "@/lib/utils/safe-route";
+import { isAllowedRoute, isUuid, safeRoutePush, sanitizeSlug, mapWebPathToMobileRoute } from "@/lib/utils/safe-route";
+import { syncBadgeCount } from "@/lib/notifications";
 
 interface NotificationRow {
   id: string;
@@ -11,6 +12,8 @@ interface NotificationRow {
   body: string | null;
   data: Record<string, unknown> | null;
   type: string;
+  is_read?: boolean;
+  read_at?: string | null;
   created_at: string;
 }
 
@@ -27,6 +30,21 @@ interface UseNotificationsRealtimeArgs {
 
 const shownKeys = new Set<string>();
 const MAX_SHOWN = 100;
+
+async function updateUnreadBadge(userId: string) {
+  try {
+    const { count, error } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null);
+    if (!error && typeof count === "number") {
+      await syncBadgeCount(count);
+    }
+  } catch {
+    // Non-critical badge count update
+  }
+}
 
 /**
  * Subscribe to realtime changes on the `notifications` table for the
@@ -59,6 +77,10 @@ export function useNotificationsRealtime({
 
   useEffect(() => {
     if (!userId) return;
+
+    // Initial badge synchronization
+    void updateUnreadBadge(userId);
+
     const channel: RealtimeChannel = supabase
       .channel(`notifications-${userId}`)
       .on(
@@ -73,6 +95,7 @@ export function useNotificationsRealtime({
           const row = payload.new as NotificationRow;
           onInsertRef.current?.(row);
           onChangeRef.current?.();
+          void updateUnreadBadge(userId);
           if (showLocalPush) {
             await maybeShowLocalPush(row);
           }
@@ -86,7 +109,10 @@ export function useNotificationsRealtime({
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-        () => onChangeRef.current?.(),
+        () => {
+          onChangeRef.current?.();
+          void updateUnreadBadge(userId);
+        },
       )
       .on(
         "postgres_changes",
@@ -96,7 +122,10 @@ export function useNotificationsRealtime({
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-        () => onChangeRef.current?.(),
+        () => {
+          onChangeRef.current?.();
+          void updateUnreadBadge(userId);
+        },
       )
       .subscribe();
 
@@ -112,8 +141,16 @@ export function useNotificationsRealtime({
     if (!router) return;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as
-        | { screen?: string; order_id?: string }
+        | { screen?: string; order_id?: string; link?: string; url?: string }
         | undefined;
+      const rawUrl = data?.url || data?.link;
+      if (rawUrl && typeof rawUrl === "string" && rawUrl.startsWith("/")) {
+        const mapped = mapWebPathToMobileRoute(rawUrl);
+        if (mapped) {
+          safeRoutePush(router, mapped);
+          return;
+        }
+      }
       if (data?.screen && isAllowedRoute(data.screen)) {
         safeRoutePush(router, data.screen);
       } else if (data?.order_id) {

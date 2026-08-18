@@ -170,3 +170,15 @@ export async function clearPushToken(_userId: string): Promise<void> {
     console.warn("[notifications] clearPushToken threw:", err);
   }
 }
+
+/**
+ * Synchronize the app icon badge count on iOS and Android.
+ */
+export async function syncBadgeCount(unreadCount: number): Promise<void> {
+  try {
+    await Notifications.setBadgeCountAsync(Math.max(0, unreadCount));
+  } catch (err) {
+    console.warn("[notifications] setBadgeCountAsync failed:", err);
+  }
+}
+
