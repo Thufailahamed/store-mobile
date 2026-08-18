@@ -42,7 +42,7 @@ import {
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 import { completeAuthCallback } from "@/lib/supabase/oauth";
-import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush } from "@/lib/utils/safe-route";
+import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush, mapWebPathToMobileRoute } from "@/lib/utils/safe-route";
 import { BiometricGate } from "@/components/auth/BiometricGate";
 
 SplashScreen.preventAutoHideAsync();
@@ -172,12 +172,37 @@ function RootLayoutNav() {
   useEffect(() => {
     notifListenerRef.current = addNotificationResponseListener(async (response) => {
       const data = response.notification.request.content.data as
-        | { screen?: string; order_id?: string }
+        | { screen?: string; order_id?: string; link?: string; url?: string }
         | undefined;
       if (!user?.id) {
         router.replace("/(auth)/login");
         return;
       }
+
+      // 1. External URL (e.g. Courier tracking URL)
+      const rawUrl = data?.url || data?.link;
+      if (rawUrl && typeof rawUrl === "string" && /^https?:\/\//i.test(rawUrl)) {
+        try {
+          const supported = await Linking.canOpenURL(rawUrl);
+          if (supported) {
+            await Linking.openURL(rawUrl);
+            return;
+          }
+        } catch (err) {
+          console.warn("[notif] failed to open external URL:", rawUrl, err);
+        }
+      }
+
+      // 2. Relative web link (e.g. "/cart", "/account/orders", "/notifications")
+      if (rawUrl && typeof rawUrl === "string" && rawUrl.startsWith("/")) {
+        const mapped = mapWebPathToMobileRoute(rawUrl);
+        if (mapped) {
+          safeRoutePush(router, mapped);
+          return;
+        }
+      }
+
+      // 3. Explicit screen parameter
       if (data?.screen) {
         // Validate against the allow-list before navigating. Unknown screens
         // are dropped with a warning so a malicious payload can't route the
