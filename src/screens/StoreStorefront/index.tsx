@@ -43,6 +43,7 @@ export default function StoreStorefrontScreen({ slug }: Props) {
       sessionId={sessionId}
       products={ctx.products}
       storeId={ctx.store?.id ?? null}
+      storeName={ctx.store?.name ?? ""}
     />
   );
 }

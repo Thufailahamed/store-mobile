@@ -10,18 +10,24 @@ interface Props {
   sessionId: string;
   products: { id: string }[];
   storeId?: string | null;
+  storeName: string;
 }
 
-export function MobileRenderer({ config, slug, sessionId, products, storeId }: Props) {
+export function MobileRenderer({ config, slug, sessionId, products, storeId, storeName }: Props) {
   useEffect(() => {
-    void emitStorefrontView({ slug, channel: "app", sessionId });
-  }, [slug, sessionId]);
+    void emitStorefrontView({
+      slug,
+      channel: "app",
+      sessionId,
+      storeId: storeId ?? undefined,
+    });
+  }, [slug, sessionId, storeId]);
 
   const productsById = new Map(products.map((p) => [p.id, p]));
   const sections = makeSectionRenderer({
     productsById,
     storeId: storeId ?? null,
-    storeName: "",
+    storeName,
     allProducts: products,
   });
   const sorted = [...config.sections].sort(
