@@ -28,11 +28,24 @@ export function getVariantAvailableStock(
   fallback = 0,
 ): number {
   if (!variant) return fallback;
-  const inv = Array.isArray(variant.inventory)
-    ? variant.inventory[0]
-    : variant.inventory ?? undefined;
-  if (inv && (inv.quantity != null || inv.reserved != null)) {
-    return getAvailableStock(inv, fallback);
+  // Multi-warehouse: a variant may have several inventory rows (one per
+  // store) — sum across all rows so the storefront reports total sellable
+  // stock rather than picking the first row's number.
+  if (Array.isArray(variant.inventory)) {
+    if (variant.inventory.length === 0) {
+      // fall through to stock field below
+    } else {
+      let quantity = 0;
+      let reserved = 0;
+      for (const row of variant.inventory) {
+        if (!row) continue;
+        quantity += Math.max(0, Number(row.quantity ?? 0));
+        reserved += Math.max(0, Number(row.reserved ?? 0));
+      }
+      return Math.max(0, quantity - reserved);
+    }
+  } else if (variant.inventory && (variant.inventory.quantity != null || variant.inventory.reserved != null)) {
+    return getAvailableStock(variant.inventory, fallback);
   }
   if (variant.stock != null) return Math.max(0, Number(variant.stock));
   return fallback;

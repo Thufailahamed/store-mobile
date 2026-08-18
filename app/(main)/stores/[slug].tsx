@@ -1,132 +1,117 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
+  ScrollView,
   StyleSheet,
-  Animated,
-  Share,
   RefreshControl,
+  Share,
+  Pressable,
 } from "react-native";
-import { useRouter, useLocalSearchParams, Stack } from "expo-router";
-import { Ionicons } from "@/components/ui/Icon";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground } from "@/components/layout";
-import { Display, Body } from "@/components/ui/Typography";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
+import { Display, Body } from "@/components/ui/Typography";
+import { Ionicons } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
-import {
-  StorePageHeader,
-  StoreHero,
-  StoreIdentityCard,
-  StoreTabBar,
-  StoreProductsSection,
-  StoreReviewsSection,
-  type StoreTab,
-  type StoreProductSort,
-} from "@/components/store";
-import { colors, spacing } from "@/lib/theme/tokens";
-import { fontFamilies } from "@/lib/theme/fonts";
 import { useAuth } from "@/lib/supabase/auth";
+import { StorePageHeader } from "@/components/store";
 import {
   getStoreBySlug,
-  getStoreById,
   getStoreProducts,
   getStoreReviewsList,
   toggleFollowStore,
   isFollowingStore,
 } from "@/lib/api/stores";
 import { navigateHome } from "@/lib/navigation";
+import { colors, spacing } from "@/lib/theme/tokens";
 import type { Product, Review, Store } from "@/lib/types";
+import StoreStorefrontScreen from "@/src/screens/StoreStorefront";
+import { useStorefrontContext } from "@/src/screens/StoreStorefront/hooks/useStorefrontContext";
+import { usePublishedConfig } from "@/src/screens/StoreStorefront/hooks/usePublishedConfig";
 
+/**
+ * Customer-facing store page (mobile app channel).
+ *
+ * Top: the seller's published app-channel config, rendered through the
+ * shared `@luxe/store-storefront` RN renderer. This is what changes when
+ * the seller hits Publish on the web dashboard — realtime pushes through
+ * `usePublishedConfig` invalidate the cached config and the renderer
+ * re-mounts with the new sections/theme within ~200ms.
+ *
+ * Bottom: the functional page bits every customer expects — store name,
+ * follow button, share, sortable product list, reviews. These are not in
+ * the seller's config (they're app-level concerns), so they live outside
+ * the renderer.
+ */
 export default function StoreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ slug?: string | string[]; id?: string | string[] }>();
+  const params = useLocalSearchParams<{ slug?: string | string[] }>();
   const slug = useMemo(() => {
     const raw = params.slug;
     return Array.isArray(raw) ? raw[0] : raw;
   }, [params.slug]);
-  const storeId = useMemo(() => {
-    const raw = params.id;
-    return Array.isArray(raw) ? raw[0] : raw;
-  }, [params.id]);
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [store, setStore] = useState<Store | null>(null);
-  const [loading, setLoading] = useState(true);
+  const ctx = useStorefrontContext(slug ?? "");
+  const published = usePublishedConfig(slug ?? "");
+
+  const [following, setFollowing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<StoreTab>("featured");
-  const [sort, setSort] = useState<StoreProductSort>("newest");
+  const [tab, setTab] = useState<"products" | "reviews">("products");
+  const [sort, setSort] = useState<"newest" | "price_asc" | "price_desc" | "sale">("newest");
   const [products, setProducts] = useState<Product[]>([]);
   const [productTotal, setProductTotal] = useState(0);
-  const [loadingProducts, setLoadingProducts] = useState(true);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [avgRating, setAvgRating] = useState(0);
   const [reviewTotal, setReviewTotal] = useState(0);
   const [ratingBreakdown, setRatingBreakdown] = useState<Record<number, number>>({
     5: 0, 4: 0, 3: 0, 2: 0, 1: 0,
   });
-  const [following, setFollowing] = useState(false);
-  const [followerCount, setFollowerCount] = useState(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
 
-  const fetchAll = useCallback(async () => {
-    if (!slug && !storeId) {
-      setLoading(false);
-      return;
-    }
-
-    let storeRes = slug ? await getStoreBySlug(slug) : { ok: false as const, error: "Missing slug" };
-    if ((!storeRes.ok || !storeRes.data) && storeId) {
-      storeRes = await getStoreById(storeId);
-    }
-
-    if (storeRes.ok && storeRes.data) {
-      setStore(storeRes.data);
-      setFollowerCount(storeRes.data.total_followers ?? 0);
-      const [r, follow] = await Promise.all([
-        getStoreReviewsList(storeRes.data.id, { limit: 30 }),
-        isFollowingStore(storeRes.data.id),
-      ]);
-      if (r.ok) {
-        setReviews(r.data.reviews);
-        setAvgRating(r.data.avgRating);
-        setReviewTotal(r.data.total);
-        setRatingBreakdown(r.data.ratingBreakdown);
-      }
-      setFollowing(follow);
-    } else {
-      setStore(null);
-    }
-    setLoading(false);
-  }, [slug, storeId]);
+  const store = ctx.store;
 
   const fetchProducts = useCallback(async () => {
-    const storeSlug = slug ?? store?.slug;
-    if (!storeSlug) return;
-    setLoadingProducts(true);
-    const res = await getStoreProducts(storeSlug, { sort, limit: 30, offset: 0 });
-    if (res.ok) {
-      setProducts(res.data.products);
-      setProductTotal(res.data.total);
+    if (!slug) return;
+    const r = await getStoreProducts(slug, { sort, limit: 30, offset: 0 });
+    if (r.ok) {
+      setProducts(r.data.products);
+      setProductTotal(r.data.total);
     }
-    setLoadingProducts(false);
-  }, [slug, store?.slug, sort]);
+  }, [slug, sort]);
+
+  const fetchReviews = useCallback(async () => {
+    if (!store?.id) return;
+    const r = await getStoreReviewsList(store.id, { limit: 30 });
+    if (r.ok) {
+      setReviews(r.data.reviews);
+      setAvgRating(r.data.avgRating);
+      setReviewTotal(r.data.total);
+      setRatingBreakdown(r.data.ratingBreakdown);
+    }
+  }, [store?.id]);
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    void fetchProducts();
+  }, [fetchProducts]);
 
   useEffect(() => {
-    if (store?.slug || slug) fetchProducts();
-  }, [fetchProducts, store?.slug, slug]);
+    void fetchReviews();
+  }, [fetchReviews]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchAll(), fetchProducts()]);
+    await Promise.all([ctx.refetch(), fetchProducts(), fetchReviews()]);
     setRefreshing(false);
-  }, [fetchAll, fetchProducts]);
+  }, [ctx, fetchProducts, fetchReviews]);
+
+  useEffect(() => {
+    if (!store?.id) return;
+    void isFollowingStore(store.id).then(setFollowing);
+  }, [store?.id]);
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -155,128 +140,207 @@ export default function StoreScreen() {
     const res = await toggleFollowStore(store.id);
     if (res.ok) {
       setFollowing(res.data.following);
-      setFollowerCount((c) => c + (res.data.following ? 1 : -1));
       toast(res.data.following ? `Following ${store.name}` : "Unfollowed", "success");
     } else {
       toast(res.error, "error");
     }
   }, [store, user, toast, router]);
 
-  const showProducts = tab === "featured" || tab === "products";
-
-  if (loading) {
-    return (
-      <PaperBackground>
-        <Stack.Screen options={{ headerShown: false }} />
-        <StorePageHeader onBack={handleBack} onShare={() => {}} />
-        <View style={styles.loadingBody}>
-          <Skeleton width={140} height={24} borderRadius={12} style={{ alignSelf: "center" }} />
-          <Skeleton width="60%" height={36} borderRadius={8} style={{ alignSelf: "center" }} />
-          <Skeleton width="45%" height={18} borderRadius={6} style={{ alignSelf: "center" }} />
-          <Skeleton height={88} borderRadius={20} style={{ marginTop: spacing[2] }} />
-          <Skeleton height={50} borderRadius={25} />
-          <View style={{ flexDirection: "row", gap: spacing[2], marginTop: spacing[2] }}>
-            <Skeleton height={40} borderRadius={20} style={{ flex: 1 }} />
-            <Skeleton height={40} borderRadius={20} style={{ flex: 1 }} />
-            <Skeleton height={40} borderRadius={20} style={{ flex: 1 }} />
-          </View>
-          <View style={{ flexDirection: "row", gap: spacing[2], marginTop: spacing[4] }}>
-            <Skeleton height={200} borderRadius={18} style={{ flex: 1 }} />
-            <Skeleton height={200} borderRadius={18} style={{ flex: 1 }} />
-          </View>
-        </View>
-      </PaperBackground>
-    );
-  }
-
-  if (!store) {
+  if (!slug) {
     return (
       <PaperBackground>
         <Stack.Screen options={{ headerShown: false }} />
         <StorePageHeader onBack={handleBack} onShare={() => {}} />
         <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="storefront-outline" size={36} color={colors.olive[600]} />
-          </View>
-          <Display size="2xl" style={styles.emptyTitle}>Boutique not found</Display>
-          <Body size="sm" muted style={styles.emptyBody}>
-            The boutique you are looking for may have closed or moved.
-          </Body>
-          <Button variant="brand" onPress={() => navigateHome(router)}>
-            Browse home
-          </Button>
+          <Display size="2xl">Boutique not found</Display>
+          <Button variant="brand" onPress={() => navigateHome(router)}>Browse home</Button>
         </View>
       </PaperBackground>
     );
   }
 
+  const isLoadingConfig = published.isLoading || ctx.isLoading;
+
   return (
     <PaperBackground>
       <Stack.Screen options={{ headerShown: false }} />
-      <Animated.ScrollView
+      <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[600]} />
+          <RefreshControl
+            refreshing={refreshing || published.isFetching}
+            onRefresh={onRefresh}
+            tintColor={colors.olive[600]}
+          />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-        })}
-        scrollEventThrottle={16}
       >
-        <StoreHero
-          bannerUrl={store.banner_url}
-          logoUrl={store.logo_url}
-          storeName={store.name}
-          scrollY={scrollY}
-          onBack={handleBack}
-          onShare={handleShare}
-        />
+        {/* Seller-customised sections (real-time on publish) */}
+        {isLoadingConfig ? (
+          <View style={styles.skeletonWrap}>
+            <Skeleton height={300} borderRadius={0} />
+            <View style={styles.skeletonBody}>
+              <Skeleton width={140} height={24} borderRadius={12} />
+              <Skeleton width="80%" height={36} borderRadius={8} />
+              <Skeleton width="60%" height={18} borderRadius={6} />
+              <Skeleton height={200} borderRadius={18} style={{ marginTop: spacing[3] }} />
+            </View>
+          </View>
+        ) : published.error || !published.data?.config ? (
+          <View style={styles.configError}>
+            <Ionicons name="cloud-offline-outline" size={32} color={colors.olive[600]} />
+            <Body size="sm" muted>Customised sections couldn't load.</Body>
+            <Button variant="outline" onPress={() => { published.refetch(); ctx.refetch(); }}>
+              Retry
+            </Button>
+          </View>
+        ) : (
+          <StoreStorefrontScreen slug={slug} />
+        )}
 
-        <StoreIdentityCard
-          store={store}
-          following={following}
-          followerCount={followerCount}
-          avgRating={avgRating}
-          onToggleFollow={handleToggleFollow}
-        />
+        {/* Functional bits that live below the renderer */}
+        {store ? (
+          <View style={styles.identityCard}>
+            <View style={styles.identityHeader}>
+              <View style={{ flex: 1 }}>
+                <Body size="xs" muted style={{ marginBottom: 2 }}>BOUTIQUE</Body>
+                <Display size="xl">{store.name}</Display>
+                {store.description ? (
+                  <Body size="sm" muted style={{ marginTop: spacing[1] }}>
+                    {store.description}
+                  </Body>
+                ) : null}
+              </View>
+              <Pressable onPress={handleToggleFollow} style={styles.followBtn} hitSlop={8}>
+                <Ionicons
+                  name={following ? "heart" : "heart-outline"}
+                  size={20}
+                  color={following ? colors.olive[700] : colors.light.foreground}
+                />
+                <Body size="sm" style={following ? styles.followingText : undefined}>
+                  {following ? "Following" : "Follow"}
+                </Body>
+              </Pressable>
+            </View>
 
-        <StoreTabBar
-          active={tab}
-          onChange={setTab}
-          productCount={productTotal}
-          reviewCount={reviewTotal}
-        />
+            <View style={styles.tabBar}>
+              <TabButton
+                active={tab === "products"}
+                label={`Products (${productTotal})`}
+                onPress={() => setTab("products")}
+              />
+              <TabButton
+                active={tab === "reviews"}
+                label={`Reviews (${reviewTotal})`}
+                onPress={() => setTab("reviews")}
+              />
+            </View>
 
-        {showProducts ? (
-          <StoreProductsSection
-            products={products}
-            total={productTotal}
-            sort={sort}
-            onSortChange={setSort}
-            loading={loadingProducts}
-            storeName={store.name}
-          />
+            {tab === "products" ? (
+              <View style={styles.section}>
+                <View style={styles.sortRow}>
+                  {(["newest", "price_asc", "price_desc", "sale"] as const).map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => setSort(s)}
+                      style={[styles.sortChip, sort === s && styles.sortChipActive]}
+                    >
+                      <Body size="xs" style={sort === s ? styles.sortChipActiveText : undefined}>
+                        {SORT_LABELS[s]}
+                      </Body>
+                    </Pressable>
+                  ))}
+                </View>
+                {products.length === 0 ? (
+                  <Body size="sm" muted>No products yet.</Body>
+                ) : (
+                  products.map((p) => <ProductRow key={p.id} product={p} />)
+                )}
+              </View>
+            ) : null}
+
+            {tab === "reviews" ? (
+              <View style={styles.section}>
+                <View style={styles.reviewSummary}>
+                  <Display size="2xl">{avgRating.toFixed(1)}</Display>
+                  <View style={styles.stars}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Ionicons
+                        key={n}
+                        name={n <= Math.round(avgRating) ? "star" : "star-outline"}
+                        size={14}
+                        color={colors.olive[700]}
+                      />
+                    ))}
+                  </View>
+                  <Body size="xs" muted>{reviewTotal} reviews</Body>
+                </View>
+                {reviews.length === 0 ? (
+                  <Body size="sm" muted>No reviews yet.</Body>
+                ) : (
+                  reviews.map((r) => (
+                    <View key={r.id} style={styles.reviewRow}>
+                      <Body size="sm">{r.title}</Body>
+                      <Body size="sm" muted style={{ marginTop: spacing[1] }}>{r.content}</Body>
+                      <Body size="xs" muted style={{ marginTop: spacing[2] }}>
+                        {r.user?.full_name ?? "Customer"} · {new Date(r.created_at).toLocaleDateString()}
+                      </Body>
+                    </View>
+                  ))
+                )}
+              </View>
+            ) : null}
+          </View>
         ) : null}
-
-        {tab === "reviews" ? (
-          <StoreReviewsSection
-            reviews={reviews}
-            avg={avgRating}
-            total={reviewTotal}
-            breakdown={ratingBreakdown}
-          />
-        ) : null}
-      </Animated.ScrollView>
+      </ScrollView>
     </PaperBackground>
   );
 }
 
+function TabButton({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
+      <Body size="sm" style={active ? styles.tabActiveText : undefined}>
+        {label}
+      </Body>
+    </Pressable>
+  );
+}
+
+function ProductRow({ product }: { product: Product }) {
+  const router = useRouter();
+  return (
+    <Pressable
+      style={styles.productRow}
+      onPress={() => router.push(`/(main)/products/${product.id}` as never)}
+    >
+      <View style={{ flex: 1 }}>
+        <Body size="sm">{product.name}</Body>
+        <Body size="xs" muted>{String(product.product_type ?? "")}</Body>
+      </View>
+      <Body size="sm">
+        {product.price?.toLocaleString() ?? "—"} LKR
+      </Body>
+    </Pressable>
+  );
+}
+
+const SORT_LABELS: Record<"newest" | "price_asc" | "price_desc" | "sale", string> = {
+  newest: "Newest",
+  price_asc: "Price ↑",
+  price_desc: "Price ↓",
+  sale: "On sale",
+};
+
 const styles = StyleSheet.create({
-  loadingBody: {
-    padding: spacing[5],
-    gap: spacing[3],
-  },
   empty: {
     flex: 1,
     alignItems: "center",
@@ -285,21 +349,80 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[20],
     gap: spacing[3],
   },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.olive[50],
+  skeletonWrap: { marginBottom: spacing[3] },
+  skeletonBody: { paddingHorizontal: spacing[5], gap: spacing[2], marginTop: spacing[3] },
+  configError: {
+    padding: spacing[6],
     alignItems: "center",
-    justifyContent: "center",
+    gap: spacing[2],
+  },
+  identityCard: {
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[4],
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
+    marginTop: spacing[2],
+  },
+  identityHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    marginBottom: spacing[4],
+  },
+  followBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[1],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: 20,
+  },
+  followingText: { color: colors.olive[700] },
+  tabBar: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: colors.light.border,
     marginBottom: spacing[3],
   },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.regular,
-    color: colors.light.foreground,
+  tab: {
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
-  emptyBody: {
-    textAlign: "center",
-    marginBottom: spacing[4],
+  tabActive: { borderBottomColor: colors.olive[700] },
+  tabActiveText: { color: colors.olive[700] },
+  section: { paddingVertical: spacing[3] },
+  sortRow: { flexDirection: "row", gap: spacing[2], marginBottom: spacing[3], flexWrap: "wrap" },
+  sortChip: {
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: 14,
+  },
+  sortChipActive: { backgroundColor: colors.olive[700], borderColor: colors.olive[700] },
+  sortChipActiveText: { color: "#FFF" },
+  productRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.light.border,
+    gap: spacing[3],
+  },
+  reviewSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    marginBottom: spacing[3],
+  },
+  stars: { flexDirection: "row", gap: 2 },
+  reviewRow: {
+    paddingVertical: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.light.border,
   },
 });

@@ -33,12 +33,18 @@ const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 function variantToStock(variant: ProductVariant, lowThreshold: number): VariantStock {
   const embedded = (variant as ProductVariant & {
     inventory?: Array<{ quantity?: number; reserved?: number }>;
-  }).inventory?.[0];
-  const quantity = Math.max(0, Number(embedded?.quantity ?? variant.stock ?? 0));
-  const reserved = Math.max(0, Number(embedded?.reserved ?? 0));
-  const available = embedded
-    ? getAvailableStock(embedded, Math.max(0, Number(variant.stock ?? 0)))
-    : Math.max(0, Number(variant.stock ?? 0));
+  }).inventory;
+  let quantity = 0;
+  let reserved = 0;
+  if (Array.isArray(embedded) && embedded.length > 0) {
+    for (const row of embedded) {
+      quantity += Math.max(0, Number(row?.quantity ?? 0));
+      reserved += Math.max(0, Number(row?.reserved ?? 0));
+    }
+  } else {
+    quantity = Math.max(0, Number(variant.stock ?? 0));
+  }
+  const available = Math.max(0, quantity - reserved);
   return {
     variantId: variant.id,
     quantity,
@@ -87,25 +93,38 @@ export function useInventoryRealtime(
         if (error || !data) return;
         setByVariant((prev) => {
           const next = new Map(prev);
+          const acc = new Map<string, { quantity: number; reserved: number; threshold: number; updatedAt?: string }>();
           for (const row of data as Array<Record<string, unknown>>) {
             const id = row.variant_id as string;
             if (!next.has(id)) continue;
-            const quantity = Math.max(0, Number(row.quantity) || 0);
-            const reserved = Math.max(0, Number(row.reserved) || 0);
+            const qty = Math.max(0, Number(row.quantity) || 0);
+            const resv = Math.max(0, Number(row.reserved) || 0);
             const threshold = Number(row.low_stock_threshold) || lowStockThreshold;
-            const available = getAvailableStock({ quantity, reserved }, 0);
+            const prevAcc = acc.get(id);
+            acc.set(id, {
+              quantity: (prevAcc?.quantity ?? 0) + qty,
+              reserved: (prevAcc?.reserved ?? 0) + resv,
+              threshold: prevAcc?.threshold ?? threshold,
+              updatedAt: (row.updated_at as string | undefined) ?? prevAcc?.updatedAt,
+            });
+          }
+          for (const [id, agg] of acc) {
+            const available = getAvailableStock(
+              { quantity: agg.quantity, reserved: agg.reserved },
+              0,
+            );
             next.set(id, {
               variantId: id,
-              quantity,
-              reserved,
+              quantity: agg.quantity,
+              reserved: agg.reserved,
               available,
               level:
                 available <= 0
                   ? "out_of_stock"
-                  : available <= threshold
+                  : available <= agg.threshold
                     ? "low_stock"
                     : "in_stock",
-              updatedAt: row.updated_at as string | undefined,
+              updatedAt: agg.updatedAt,
             });
           }
           return next;
