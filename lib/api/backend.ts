@@ -1507,7 +1507,15 @@ export async function appendEventsBackend(events: Array<Record<string, unknown>>
   // Phase 1 (0260): ingest via /api/recommender/track so the backend can
   // mint a new_anon_sid cookie for unauthenticated callers. The legacy
   // /api/recommender/events endpoint still works but does not mint tokens.
-  return fetchJson("/api/recommender/track", { method: "POST", body: { events } });
+  //
+  // Mobile has no automatic cookie jar, so we read the anon_sid token
+  // from AsyncStorage and forward it as a Cookie header. Same path the
+  // web uses — backend verifies HMAC and extracts session_id.
+  const { readAnonSidCookie } = await import("@/lib/recommender/anon-session-client");
+  const token = await readAnonSidCookie();
+  const headers: Record<string, string> = {};
+  if (token) headers.Cookie = `luxe_anon_sid=${token}`;
+  return fetchJson("/api/recommender/track", { method: "POST", body: { events }, headers });
 }
 
 export async function fetchRecentEventsBackend(limit = 50): Promise<ApiResult<{ events: unknown[] }>> {

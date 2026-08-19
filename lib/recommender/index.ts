@@ -20,6 +20,11 @@ export {
 } from "./engine";
 
 export { useTrackView, useTrackEvent } from "./hooks";
+export {
+  useTrackImpression,
+  useTrackViewableItems,
+  type ViewableItem,
+} from "./hooks-mobile";
 
 export {
   trackEvent,
@@ -63,3 +68,30 @@ export { getPairsWellWith } from "./cooccurrence";
 export { pullPersonalizedCandidates, POOL_LIMITS } from "./personalized-candidates";
 
 export { cacheGet, cacheSet, cacheDelete, cacheClear, cacheBustPrefix, cacheKey } from "./cache";
+
+export {
+  fetchRecommendations,
+  fetchTrending,
+  fetchSimilarById,
+  type FetchRecommendationsOptions,
+  type FetchRecommendationsResponse,
+  type FetchTrendingOptions,
+  type RecommendationContext,
+  type Result as IntelligenceResult,
+} from "./intelligence-client";
+
+export {
+  readAnonSidCookie,
+  writeAnonSidCookie,
+  clearAnonSidCookie,
+  mergeAnonSessionOnLogin,
+  ANON_SID_STORAGE_KEY,
+} from "./anon-session-client";
+
+export {
+  CategoryViewTracker,
+  CollectionViewTracker,
+  StoreViewTracker,
+  useTrackSearch,
+  useTrackCheckoutStarted,
+} from "./view-trackers-mobile";
