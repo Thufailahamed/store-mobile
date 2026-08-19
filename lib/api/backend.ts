@@ -1503,8 +1503,11 @@ export async function getCandidatesBackend(opts: { limit?: number; category_id?:
   });
 }
 
-export async function appendEventsBackend(events: Array<{ type: string; product_id?: string; category_id?: string; metadata?: Record<string, unknown>; occurred_at?: string }>): Promise<ApiResult<{ appended: number }>> {
-  return fetchJson("/api/recommender/events", { method: "POST", body: { events } });
+export async function appendEventsBackend(events: Array<Record<string, unknown>>): Promise<ApiResult<{ appended: number; new_anon_sid?: string | null }>> {
+  // Phase 1 (0260): ingest via /api/recommender/track so the backend can
+  // mint a new_anon_sid cookie for unauthenticated callers. The legacy
+  // /api/recommender/events endpoint still works but does not mint tokens.
+  return fetchJson("/api/recommender/track", { method: "POST", body: { events } });
 }
 
 export async function fetchRecentEventsBackend(limit = 50): Promise<ApiResult<{ events: unknown[] }>> {

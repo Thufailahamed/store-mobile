@@ -38,6 +38,18 @@ const BASE_WEIGHTS = {
   purchase: 10.0,
   dismiss: -3.0,        // user actively swiped past
   not_interested: -8.0, // strong negative — never show again
+  // Phase 1 (0260) — new tier-1 signals.
+  product_impression: 0.3,
+  product_click: 1.5,
+  search_result_click: 3.0,
+  product_share: 1.5,
+  remove_from_cart: -4.0,
+  checkout_started: 0,
+  category_view: 0,
+  collection_view: 0,
+  store_view: 0,
+  filter_used: 0,
+  sort_used: 0,
 } as const;
 
 const MAX_DWELL_MS = 120_000; // cap dwell bonus at 2 minutes
@@ -170,6 +182,23 @@ function baseWeightFor(ev: RecommendationEvent): number {
       return BASE_WEIGHTS.dismiss;
     case "not_interested":
       return BASE_WEIGHTS.not_interested;
+    case "product_impression":
+      return BASE_WEIGHTS.product_impression;
+    case "product_click":
+      return BASE_WEIGHTS.product_click;
+    case "search_result_click":
+      return BASE_WEIGHTS.search_result_click;
+    case "product_share":
+      return BASE_WEIGHTS.product_share;
+    case "remove_from_cart":
+      return BASE_WEIGHTS.remove_from_cart;
+    case "checkout_started":
+    case "category_view":
+    case "collection_view":
+    case "store_view":
+    case "filter_used":
+    case "sort_used":
+      return 0;
   }
 }
 
@@ -195,7 +224,7 @@ function applyEventToProfile(
   }
 
   // All other events have a TrackedProduct.
-  const product = "product" in ev ? (ev as Exclude<RecommendationEvent, SearchEvent>).product : null;
+  const product = (ev as { product?: TrackedProduct }).product;
   if (!product) return;
 
   bump(profile.categories, product.category_id, weight);
