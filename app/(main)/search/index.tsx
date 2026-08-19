@@ -159,6 +159,53 @@ export default function SearchScreen() {
     tracker.search(q, tokenizeQuery(q), productCount);
   }, [recentSearches, tracker]);
 
+  const handleResultPress = useCallback(
+    (p: Product) => {
+      tracker.searchResultClick(query, p);
+      router.push(`/(main)/products/${p.slug}`);
+    },
+    [query, router, tracker],
+  );
+
+  const handleSearchSortChange = useCallback(
+    (next: string) => {
+      if (next !== sort) tracker.sortUsed(next, "search");
+      setSort(next);
+    },
+    [sort, tracker],
+  );
+
+  const handleSearchFilterChange = useCallback(
+    (next: ProductFilters) => {
+      const before = computeActiveFilterCount(filters);
+      const after = computeActiveFilterCount(next);
+      if (after > before) {
+        // Pick the first added facet key in the same order the products screen
+        // would have picked — colours/sizes/brands/etc. The exact value isn't
+        // load-bearing for the ranker; the surface+key combo is.
+        const keys: Array<keyof ProductFilters> = [
+          "price",
+          "colors",
+          "sizes",
+          "brands",
+          "categories",
+        ];
+        for (const k of keys) {
+          const a = (filters[k] as unknown as unknown[]) ?? [];
+          const b = (next[k] as unknown as unknown[]) ?? [];
+          const set = new Set<string>(a.map((x) => String(x)));
+          const added = b.find((v) => !set.has(String(v)));
+          if (added !== undefined) {
+            tracker.filterUsed(`${k}:${String(added)}`, "search");
+            break;
+          }
+        }
+      }
+      setFilters(next);
+    },
+    [filters, tracker],
+  );
+
   const localSuggestions = useMemo<V2Suggestion[]>(() => {
     const term = draft.trim().toLowerCase();
     if (!term) return [];
@@ -580,7 +627,7 @@ export default function SearchScreen() {
                   onPress={() => {
                     const keys = SORTS.map((s) => s.value);
                     const idx = keys.indexOf(sort);
-                    setSort(keys[(idx + 1) % keys.length]);
+                    handleSearchSortChange(keys[(idx + 1) % keys.length]);
                   }}
                 >
                   <Ionicons name="swap-vertical" size={14} color={colors.light.mutedForeground} />
@@ -693,7 +740,7 @@ export default function SearchScreen() {
                       <TouchableOpacity
                         key={p.id}
                         style={styles.listItem}
-                        onPress={() => router.push(`/(main)/products/${p.slug}`)}
+                        onPress={() => handleResultPress(p)}
                       >
                         <View style={styles.listImage}>
                           {p.images?.[0]?.url ? (
@@ -829,9 +876,9 @@ export default function SearchScreen() {
         visible={filterVisible}
         onClose={() => setFilterVisible(false)}
         filters={filters}
-        onApply={setFilters}
+        onApply={handleSearchFilterChange}
         sort={sort}
-        onSortChange={setSort}
+        onSortChange={handleSearchSortChange}
         resultCount={productCount}
       />
     </KeyboardAvoidingView>

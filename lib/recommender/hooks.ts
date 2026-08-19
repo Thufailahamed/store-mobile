@@ -98,6 +98,40 @@ export function useTrackEvent() {
           product: snapshotProduct(product),
         });
       },
+      removeFromCart(product: Product) {
+        trackEvent(userId, {
+          type: "remove_from_cart",
+          t: Date.now(),
+          product: snapshotProduct(product),
+        });
+      },
+      searchResultClick(query: string, product: Product, position?: number) {
+        trackEvent(userId, {
+          type: "search_result_click",
+          t: Date.now(),
+          product: snapshotProduct(product),
+          query: query.trim(),
+          position: typeof position === "number" ? position : undefined,
+        });
+      },
+      sortUsed(sort: string, surface: string) {
+        trackEvent(userId, {
+          type: "sort_used",
+          t: Date.now(),
+          product: { id: `sort:${sort}` },
+          surface,
+          sort,
+        } as any);
+      },
+      filterUsed(facet: string, surface: string) {
+        trackEvent(userId, {
+          type: "filter_used",
+          t: Date.now(),
+          product: { id: `filter:${facet}` },
+          surface,
+          facet,
+        } as any);
+      },
       purchase(product: Product, quantity: number) {
         trackEvent(userId, {
           type: "purchase",

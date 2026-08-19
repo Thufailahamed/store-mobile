@@ -12,6 +12,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { supabase } from "@/lib/supabase/client";
+import { mergeAnonSessionOnLogin } from "@/lib/recommender";
 import { Button, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -98,6 +99,11 @@ export default function VerifyOtpScreen() {
     if (error) {
       toast(error.message, "error");
     } else {
+      try {
+        await mergeAnonSessionOnLogin();
+      } catch {
+        // ignore
+      }
       toast("Welcome back!", "success");
       // Auth state listener in _layout.tsx will handle redirection to main flow
     }

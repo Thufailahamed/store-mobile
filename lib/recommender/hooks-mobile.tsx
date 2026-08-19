@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useFocusEffect } from "expo-router";
+import type { ViewToken } from "react-native";
 import {
   trackEvent,
   snapshotProduct,
@@ -34,13 +35,7 @@ const VIEWABILITY_CONFIG = {
   minimumViewTime: 250,
 } as const;
 
-export interface ViewableItem<T> {
-  item: T;
-  key: string;
-  index: number | null;
-  isViewable: boolean;
-  [k: string]: unknown;
-}
+export type ViewableItem<T> = ViewToken<T>;
 
 export function useTrackEvent(): (event: RecommendationEvent) => void {
   const { user } = useAuth();
@@ -139,7 +134,7 @@ export function useTrackViewableItems<T extends Product>(
           t: Date.now(),
           product: snapshotProduct(product),
           surface,
-          position: v.index ?? undefined,
+          position: typeof v.index === "number" ? v.index : undefined,
         });
       }
     },

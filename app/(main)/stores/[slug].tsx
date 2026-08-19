@@ -30,6 +30,7 @@ import type { Product, Review, Store } from "@/lib/types";
 import StoreStorefrontScreen from "@/src/screens/StoreStorefront";
 import { useStorefrontContext } from "@/src/screens/StoreStorefront/hooks/useStorefrontContext";
 import { usePublishedConfig } from "@/src/screens/StoreStorefront/hooks/usePublishedConfig";
+import { StoreViewTracker, useTrackViewableItems } from "@/lib/recommender";
 
 /**
  * Customer-facing store page (mobile app channel).
@@ -73,6 +74,9 @@ export default function StoreScreen() {
   });
 
   const store = ctx.store;
+
+  // Track store_view + product impressions on the products tab.
+  useTrackViewableItems(products, "store_products");
 
   const fetchProducts = useCallback(async () => {
     if (!slug) return;
@@ -164,6 +168,7 @@ export default function StoreScreen() {
   return (
     <PaperBackground>
       <Stack.Screen options={{ headerShown: false }} />
+      <StoreViewTracker id={store?.id ?? null} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -320,7 +325,7 @@ function ProductRow({ product }: { product: Product }) {
   return (
     <Pressable
       style={styles.productRow}
-      onPress={() => router.push(`/(main)/products/${product.id}` as never)}
+      onPress={() => router.push(`/(main)/products/${product.slug ?? product.id}` as never)}
     >
       <View style={{ flex: 1 }}>
         <Body size="sm">{product.name}</Body>
