@@ -1,0 +1,20 @@
+appId: com.luxe.seller
+---
+- launchApp:
+    name: Payouts
+    arguments:
+      route: /(seller)/payouts
+
+- assertVisible: "Available balance"
+
+- assertVisible: "Withdraw"
+
+- assertVisible: "History"
+
+- tapOn: "Withdraw"
+
+- assertVisible: "Withdraw"
+- assertVisible: "Submit withdrawal"
+- assertVisible: "Cancel"
+
+- tapOn: "Cancel"
