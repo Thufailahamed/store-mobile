@@ -1,0 +1,21 @@
+appId: com.luxe.seller
+---
+- launchApp:
+    name: AI Studio
+    arguments:
+      route: /(seller)/ai-studio
+
+- assertVisible: "AI Studio Wallet"
+
+- tapOn: "Generate"
+
+- assertVisible: "Generate images"
+
+- tapOn: "Image prompt"
+- inputText: "Linen summer shirt, soft daylight, neutral backdrop"
+
+- tapOn: "Generate \\(1\\)"
+
+- assertVisible: "Status:"
+
+- tapOn: "Back to history"
