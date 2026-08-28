@@ -1920,3 +1920,13 @@ export async function regenerateStorefrontSectionBackend(input: {
     body: input,
   });
 }
+
+export interface StorefrontTemplate {
+  slug: string;
+  name: string;
+  description?: string;
+}
+
+export async function getStorefrontTemplatesBackend(): Promise<ApiResult<{ templates: StorefrontTemplate[] }>> {
+  return fetchJson<{ templates: StorefrontTemplate[] }>("/api/storefront/templates");
+}
