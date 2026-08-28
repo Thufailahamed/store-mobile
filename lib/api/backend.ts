@@ -1930,3 +1930,76 @@ export interface StorefrontTemplate {
 export async function getStorefrontTemplatesBackend(): Promise<ApiResult<{ templates: StorefrontTemplate[] }>> {
   return fetchJson<{ templates: StorefrontTemplate[] }>("/api/storefront/templates");
 }
+
+// --- AI Studio (seller) ---------------------------------------------------
+
+export type AiJobStatus = "pending" | "processing" | "succeeded" | "failed" | "cancelled";
+
+export interface AiJob {
+  id: string;
+  status: AiJobStatus;
+  prompt: string;
+  style?: string;
+  size?: string;
+  count: number;
+  results: Array<{ url: string; thumbnailUrl?: string }>;
+  error?: string;
+  createdAt: string;
+  completedAt?: string | null;
+  creditsCost: number;
+}
+
+export interface AiWallet {
+  balance: number;
+  currency: string;
+  topupUrl?: string;
+  lifetimeSpent: number;
+}
+
+export interface AiLibraryItem {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  prompt: string;
+  savedAt: string;
+}
+
+export async function getAiWalletBackend(): Promise<ApiResult<{ wallet: AiWallet }>> {
+  return fetchJson<{ wallet: AiWallet }>("/api/seller/ai-studio/wallet");
+}
+
+export async function createAiWalletTopupBackend(input: { amount: number }): Promise<ApiResult<{ checkoutUrl: string }>> {
+  return fetchJson<{ checkoutUrl: string }>("/api/seller/ai-studio/wallet/topup", { method: "POST", body: input });
+}
+
+export async function getAiJobsBackend(params: { limit?: number; status?: AiJobStatus; cursor?: string } = {}): Promise<ApiResult<{ jobs: AiJob[]; nextCursor?: string }>> {
+  return fetchJson<{ jobs: AiJob[]; nextCursor?: string }>("/api/seller/ai-studio/jobs", { query: params });
+}
+
+export async function getAiJobBackend(id: string): Promise<ApiResult<{ job: AiJob }>> {
+  return fetchJson<{ job: AiJob }>(`/api/seller/ai-studio/jobs/${id}`);
+}
+
+export async function createAiJobBackend(input: { prompt: string; style?: string; size?: string; count: number }): Promise<ApiResult<{ job: AiJob }>> {
+  return fetchJson<{ job: AiJob }>("/api/seller/ai-studio/jobs", { method: "POST", body: input });
+}
+
+export async function cancelAiJobBackend(id: string): Promise<ApiResult<{ cancelled: true }>> {
+  return fetchJson<{ cancelled: true }>(`/api/seller/ai-studio/jobs/${id}/cancel`, { method: "POST" });
+}
+
+export async function getAiLibraryBackend(params: { limit?: number; cursor?: string } = {}): Promise<ApiResult<{ items: AiLibraryItem[]; nextCursor?: string }>> {
+  return fetchJson<{ items: AiLibraryItem[]; nextCursor?: string }>("/api/seller/ai-studio/library", { query: params });
+}
+
+export async function saveAiLibraryItemBackend(input: { jobId: string; imageIndex: number; altText?: string }): Promise<ApiResult<{ item: AiLibraryItem }>> {
+  return fetchJson<{ item: AiLibraryItem }>("/api/seller/ai-studio/library", { method: "POST", body: input });
+}
+
+export async function deleteAiLibraryItemBackend(id: string): Promise<ApiResult<{ deleted: true }>> {
+  return fetchJson<{ deleted: true }>(`/api/seller/ai-studio/library/${id}`, { method: "DELETE" });
+}
+
+export async function getAiPricingBackend(): Promise<ApiResult<{ plans: Array<{ id: string; name: string; credits: number; priceCents: number; currency: string }>; currentPlanId: string; usageThisPeriod: number }>> {
+  return fetchJson("/api/seller/ai-studio/pricing");
+}
