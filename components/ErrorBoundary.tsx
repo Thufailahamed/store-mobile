@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { captureException } from "@/lib/sentry";
 
 interface Props {
   children: React.ReactNode;
@@ -28,6 +29,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       // eslint-disable-next-line no-console
       console.error("[ErrorBoundary]", error, info.componentStack);
     }
+    captureException(error, { info: info.componentStack ?? "" });
   }
 
   reset = () => this.setState({ error: null });
