@@ -1,0 +1,16 @@
+appId: com.luxe.marketplace
+name: Storefront edit + publish
+tags: [seller, storefront]
+---
+- launchApp:
+    clearState: true
+- tapOn: "Sign in as seller"
+- tapOn: "Storefront"
+- tapOn: "Editorial"
+- tapOn: "Preview"
+- assertVisible:
+    id: "storefront-preview-webview"
+- tapOn: "Close preview"
+- tapOn: "Publish"
+- tapOn: "Publish"
+- assertVisible: "Published"
