@@ -46,6 +46,7 @@ import { computeCartTotals } from "@/lib/cart-pricing";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
+import { useTrackCheckoutStarted, useTrackEvent } from "@/lib/recommender";
 
 const STEPS = [
   { key: 1, label: "Address" },
@@ -202,6 +203,10 @@ export default function CheckoutScreen() {
   const pointsValue = pointsToUse;
   const tax = checkoutTotals.tax;
   const total = checkoutTotals.total;
+
+  // Fire checkout_started once when the user reaches the address step with a
+  // non-empty bag. Mirrors web's behaviour.
+  useTrackCheckoutStarted(sub, cartItems.length);
   const earnEstimate = Math.floor(afterCoupon * 0.05);
   // Max redeemable points: capped at balance and post-coupon subtotal (100-pt blocks).
   const maxRedeemablePts =

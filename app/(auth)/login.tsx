@@ -20,6 +20,7 @@ import { Ionicons } from "@/components/ui/Icon";
 import Svg, { Path } from "react-native-svg";
 import { supabase } from "@/lib/supabase/client";
 import { completeAuthCallback } from "@/lib/supabase/oauth";
+import { mergeAnonSessionOnLogin } from "@/lib/recommender";
 import { isOperationalStoreStatus } from "@/lib/catalog-visibility";
 import { isValidEmail, isValidPhone } from "@/lib/contact-validation";
 import { Button, Input, useToast } from "@/components/ui";
@@ -98,6 +99,13 @@ export default function LoginScreen() {
       return;
     }
 
+    // Merge any pre-login anon signals (browse events captured under the
+    // HMAC anon_sid) into this freshly-authenticated user. Best-effort.
+    try {
+      await mergeAnonSessionOnLogin();
+    } catch {
+      // Ignore — anon merge is non-blocking.
+    }
     toast("Welcome back!", "success");
   };
 
@@ -186,6 +194,11 @@ export default function LoginScreen() {
         if (cbError) {
           toast(cbError, "error");
         } else {
+          try {
+            await mergeAnonSessionOnLogin();
+          } catch {
+            // ignore
+          }
           toast("Welcome back!", "success");
         }
       } else if (result.type === "cancel" || result.type === "dismiss") {

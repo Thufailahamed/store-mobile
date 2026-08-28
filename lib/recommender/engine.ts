@@ -36,6 +36,7 @@ import { cacheGet, cacheSet, cacheKey as makeKey, cacheBustPrefix } from "./cach
 import { useWishlist } from "@/lib/stores";
 import { isProductInStock } from "./inventory";
 import { pullPersonalizedCandidates } from "./personalized-candidates";
+import { fetchRecommendations, fetchSimilarById, fetchTrending } from "./intelligence-client";
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (e: string): Result<never> => ({ ok: false, error: e });
@@ -119,6 +120,29 @@ export async function getForYouRail(
   try {
     const profile = await loadProfile(userId);
     if (!profile.hasSignal) {
+      // Prefer 0260 facade (trending/homepage) before legacy cold-start.
+      const intel = await fetchRecommendations({ context: "homepage", limit });
+      if (intel.ok && intel.data.products.length > 0) {
+        const result: ForYouResult = {
+          products: intel.data.products.slice(0, limit),
+          hasSignal: false,
+          computedAt: Date.now(),
+        };
+        const wrapped: Result<ForYouResult> = ok(result);
+        cacheSet(key, wrapped, TTL_FOR_YOU);
+        return wrapped;
+      }
+      const trending = await fetchTrending({ limit });
+      if (trending.ok && trending.data.products.length > 0) {
+        const result: ForYouResult = {
+          products: trending.data.products.slice(0, limit),
+          hasSignal: false,
+          computedAt: Date.now(),
+        };
+        const wrapped: Result<ForYouResult> = ok(result);
+        cacheSet(key, wrapped, TTL_FOR_YOU);
+        return wrapped;
+      }
       const cold = await fetchColdStartProducts(limit);
       if (!cold.ok) return cold;
       const result: ForYouResult = {
@@ -177,9 +201,26 @@ export async function getSimilarProducts(
     if (cached) return cached;
   }
   try {
+    // Prefer embedding/Jaccard facade from 0260 before local candidate ranking.
+    const intel = await fetchSimilarById(product.id, limit);
+    if (intel.ok && intel.data.products.length >= Math.min(limit, 3)) {
+      const out: Result<Product[]> = ok(
+        intel.data.products.filter((p) => p.id !== product.id).slice(0, limit),
+      );
+      cacheSet(key, out, TTL_SIMILAR);
+      return out;
+    }
+
     const candidates = await pullCandidates(40, { categoryId: product.category_id });
     const pool = candidates.length > 0 ? candidates : await pullCandidates(40);
     if (pool.length === 0) {
+      if (intel.ok && intel.data.products.length > 0) {
+        const out: Result<Product[]> = ok(
+          intel.data.products.filter((p) => p.id !== product.id).slice(0, limit),
+        );
+        cacheSet(key, out, TTL_SIMILAR);
+        return out;
+      }
       const cold = await fetchColdStartSimilar(product.category_id, product.brand_id, limit);
       if (cold.ok) cacheSet(key, cold, TTL_SIMILAR);
       return cold;

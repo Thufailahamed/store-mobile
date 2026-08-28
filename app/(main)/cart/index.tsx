@@ -35,6 +35,7 @@ import {
 import { ProductCard } from "@/components/product/ProductCard";
 import { ProductRail } from "@/components/home/premium";
 import { fetchRecentlyViewed, fetchColdStartProducts } from "@/lib/recommender";
+import { useTrackEvent } from "@/lib/recommender";
 import { LinearGradient } from "expo-linear-gradient";
 
 export default function CartScreen() {
@@ -53,6 +54,7 @@ export default function CartScreen() {
   } = useCart();
   const items = cartRecord ?? {};
   const wishlist = useWishlist();
+  const tracker = useTrackEvent();
   const [savedForLater, setSavedForLater] = useState<
     Record<string, { product: Product | null }>
   >({});
@@ -256,13 +258,15 @@ export default function CartScreen() {
       return;
     }
     selectedCartItems.forEach(([key, item]) => {
+      const product = productDetails[item.productId];
+      if (product) tracker.removeFromCart(product);
       if (!wishlist.has(item.productId)) {
         wishlist.toggle(item.productId);
       }
       removeItem(key);
     });
     toast(`Moved ${selectedCartItems.length} items to wishlist`, "success");
-  }, [selectedCartItems, wishlist, removeItem, toast]);
+  }, [selectedCartItems, wishlist, removeItem, toast, productDetails, tracker]);
 
   // Update product variant inside cart store
   const handleUpdateVariant = useCallback(
@@ -368,10 +372,12 @@ export default function CartScreen() {
 
   const handleRemove = useCallback(
     (key: string, name: string) => {
+      const product = productDetails[items[key]?.productId ?? ""];
       removeItem(key);
+      if (product) tracker.removeFromCart(product);
       toast(`${name} removed from bag`, "info");
     },
-    [removeItem, toast]
+    [removeItem, toast, productDetails, items, tracker]
   );
 
   const handleSaveForLater = useCallback(

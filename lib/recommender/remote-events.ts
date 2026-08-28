@@ -89,12 +89,53 @@ async function writeQueue(
 /*  Wire format                                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Phase 1 (0260): wire shape mirrors the backend `/api/recommender/track`
+ * endpoint (flat fields + product snapshot). The legacy metadata envelope
+ * is preserved in `metadata` for backward-compat reads on older rows.
+ */
 interface WireEvent {
+  clientId: string;
+  t: number;
   type: string;
-  product_id?: string;
-  category_id?: string;
-  metadata: Record<string, unknown>;
-  occurred_at?: string;
+  query?: string | null;
+  tokens?: string[] | null;
+  resultCount?: number | null;
+  dwellMs?: number | null;
+  surface?: string | null;
+  position?: number | null;
+  quantity?: number | null;
+  category_id?: string | null;
+  collection_id?: string | null;
+  store_id?: string | null;
+  channel?: string | null;
+  filter_id?: string | null;
+  filter_value?: string | null;
+  sort_key?: string | null;
+  cart_total?: number | null;
+  item_count?: number | null;
+  product?: WireProduct | null;
+  /** Legacy metadata envelope, kept so older rows still deserialize. */
+  metadata?: Record<string, unknown>;
+}
+
+interface WireProduct {
+  id: string;
+  category_id?: string | null;
+  brand_id?: string | null;
+  store_id?: string | null;
+  material?: string | null;
+  gender?: string | null;
+  garment?: string | null;
+  price?: number | null;
+  colors?: string[] | null;
+  tags?: string[] | null;
+}
+
+/** WireProduct has nullable fields; TrackedProduct has optional fields.
+ *  Structurally identical — just an `as` to bridge. */
+function asTracked(p: WireProduct): import("./events").TrackedProduct {
+  return p as unknown as import("./events").TrackedProduct;
 }
 
 interface RemoteEventRow {
@@ -103,80 +144,205 @@ interface RemoteEventRow {
   category_id?: string | null;
   metadata?: Record<string, unknown> | null;
   occurred_at?: string | null;
+  // 0260 flat fields (server may emit either legacy or new shape).
+  t?: number | null;
+  clientId?: string | null;
+  query?: string | null;
+  tokens?: string[] | null;
+  resultCount?: number | null;
+  dwellMs?: number | null;
+  surface?: string | null;
+  position?: number | null;
+  quantity?: number | null;
+  collection_id?: string | null;
+  store_id?: string | null;
+  channel?: string | null;
+  filter_id?: string | null;
+  filter_value?: string | null;
+  sort_key?: string | null;
+  cart_total?: number | null;
+  item_count?: number | null;
+  product?: WireProduct | null;
 }
 
 /** Serialize a typed event to the wire shape the backend endpoint accepts. */
 function toRow(event: RecommendationEvent): WireEvent {
-  const metadata: Record<string, unknown> = {
-    client_id: `${event.t}-${Math.random().toString(36).slice(2, 8)}`,
+  const base: WireEvent = {
+    clientId: `${event.t}-${Math.random().toString(36).slice(2, 8)}`,
     t: event.t,
-  };
-  let product_id: string | null = null;
-  let category_id: string | null = null;
-
-  if (event.type === "search") {
-    metadata.query = event.query;
-    metadata.tokens = event.tokens;
-    metadata.resultCount = event.resultCount;
-  } else if ("product" in event && event.product) {
-    const p = event.product as { id: string; category_id?: string | null };
-    product_id = p.id ?? null;
-    category_id = p.category_id ?? null;
-    metadata.product = p;
-    if (event.type === "view") metadata.dwellMs = event.dwellMs ?? null;
-    if (event.type === "purchase") metadata.quantity = event.quantity;
-    if (event.type === "dismiss") metadata.surface = event.surface ?? null;
-  }
-
-  return {
     type: event.type,
-    ...(product_id ? { product_id } : {}),
-    ...(category_id ? { category_id } : {}),
-    metadata,
-    occurred_at: new Date(event.t).toISOString(),
   };
+  switch (event.type) {
+    case "search":
+      base.query = event.query;
+      base.tokens = event.tokens;
+      base.resultCount = event.resultCount;
+      if (event.surface) base.surface = event.surface;
+      break;
+    case "view":
+      base.dwellMs = event.dwellMs ?? null;
+      if (event.surface) base.surface = event.surface;
+      base.product = event.product as WireProduct;
+      break;
+    case "purchase":
+      base.quantity = event.quantity;
+      base.product = event.product as WireProduct;
+      break;
+    case "wishlist_add":
+    case "wishlist_remove":
+    case "cart_add":
+    case "remove_from_cart":
+      base.product = event.product as WireProduct;
+      break;
+    case "dismiss":
+    case "not_interested":
+      base.surface = event.surface ?? null;
+      base.product = event.product as WireProduct;
+      break;
+    case "product_impression":
+    case "product_click":
+      base.surface = event.surface ?? null;
+      base.position = event.position ?? null;
+      base.product = event.product as WireProduct;
+      break;
+    case "search_result_click":
+      base.query = event.query;
+      base.tokens = event.tokens ?? null;
+      base.position = event.position ?? null;
+      base.product = event.product as WireProduct;
+      break;
+    case "category_view":
+      base.category_id = event.category_id;
+      break;
+    case "collection_view":
+      base.collection_id = event.collection_id;
+      break;
+    case "store_view":
+      base.store_id = event.store_id;
+      break;
+    case "product_share":
+      base.channel = event.channel ?? null;
+      base.product = event.product as WireProduct;
+      break;
+    case "filter_used":
+      base.filter_id = event.filter_id;
+      base.filter_value = event.filter_value;
+      if (event.surface) base.surface = event.surface;
+      break;
+    case "sort_used":
+      base.sort_key = event.sort_key;
+      if (event.surface) base.surface = event.surface;
+      break;
+    case "checkout_started":
+      base.cart_total = event.cart_total ?? null;
+      base.item_count = event.item_count ?? null;
+      break;
+  }
+  // Carry legacy envelope so older rows still parse back.
+  base.metadata = base as unknown as Record<string, unknown>;
+  return base;
 }
 
 /** Hydrate a row from the server back into a typed RecommendationEvent. */
 function fromRow(row: RemoteEventRow): RecommendationEvent | null {
+  // Prefer flat 0260 fields; fall back to legacy metadata envelope.
   const meta = row.metadata ?? {};
   const t =
-    typeof meta.t === "number"
-      ? (meta.t as number)
-      : row.occurred_at
-        ? Date.parse(row.occurred_at)
-        : Date.now();
-  const product = (meta.product as RecommendationEvent extends { product?: infer P } ? P : never) ?? null;
+    typeof row.t === "number"
+      ? row.t
+      : typeof meta.t === "number"
+        ? (meta.t as number)
+        : row.occurred_at
+          ? Date.parse(row.occurred_at)
+          : Date.now();
+  const product =
+    (row.product as WireProduct | null | undefined) ??
+    ((meta.product as WireProduct | undefined) ?? null);
+  const surface = (row.surface ?? (meta.surface as string | undefined) ?? undefined) ?? undefined;
 
   if (row.type === "search") {
     return {
       type: "search",
       t,
-      query: String(meta.query ?? ""),
-      tokens: Array.isArray(meta.tokens) ? (meta.tokens as string[]) : [],
-      resultCount: Number(meta.resultCount ?? 0),
+      query: String(row.query ?? meta.query ?? ""),
+      tokens: Array.isArray(row.tokens ?? meta.tokens)
+        ? ((row.tokens ?? (meta.tokens as string[])) as string[])
+        : [],
+      resultCount: Number(row.resultCount ?? meta.resultCount ?? 0),
+      surface,
     };
   }
   if (row.type === "view" && product) {
-    return { type: "view", t, product: product as never, dwellMs: Number(meta.dwellMs ?? 0) || undefined };
+    return { type: "view", t, product: asTracked(product), dwellMs: Number(row.dwellMs ?? meta.dwellMs ?? 0) || undefined, surface };
   }
   if (row.type === "purchase" && product) {
-    return { type: "purchase", t, product: product as never, quantity: Number(meta.quantity ?? 1) };
+    return { type: "purchase", t, product: asTracked(product), quantity: Number(row.quantity ?? meta.quantity ?? 1) };
   }
   if (row.type === "wishlist_add" && product) {
-    return { type: "wishlist_add", t, product: product as never };
+    return { type: "wishlist_add", t, product: asTracked(product) };
   }
   if (row.type === "wishlist_remove" && product) {
-    return { type: "wishlist_remove", t, product: product as never };
+    return { type: "wishlist_remove", t, product: asTracked(product) };
   }
   if (row.type === "cart_add" && product) {
-    return { type: "cart_add", t, product: product as never };
+    return { type: "cart_add", t, product: asTracked(product) };
+  }
+  if (row.type === "remove_from_cart" && product) {
+    return { type: "remove_from_cart", t, product: asTracked(product) };
   }
   if (row.type === "dismiss" && product) {
-    return { type: "dismiss", t, product: product as never, surface: (meta.surface as string | undefined) ?? undefined };
+    return { type: "dismiss", t, product: asTracked(product), surface };
   }
   if (row.type === "not_interested" && product) {
-    return { type: "not_interested", t, product: product as never };
+    return { type: "not_interested", t, product: asTracked(product), surface };
+  }
+  if (row.type === "product_impression" && product) {
+    return { type: "product_impression", t, product: asTracked(product), surface, position: row.position ?? undefined };
+  }
+  if (row.type === "product_click" && product) {
+    return { type: "product_click", t, product: asTracked(product), surface, position: row.position ?? undefined };
+  }
+  if (row.type === "search_result_click" && product) {
+    return {
+      type: "search_result_click",
+      t,
+      query: String(row.query ?? ""),
+      tokens: row.tokens ?? undefined,
+      product: asTracked(product),
+      position: row.position ?? undefined,
+    };
+  }
+  if (row.type === "category_view" && (row.category_id ?? meta.category_id)) {
+    return { type: "category_view", t, category_id: String(row.category_id ?? meta.category_id) };
+  }
+  if (row.type === "collection_view" && (row.collection_id ?? meta.collection_id)) {
+    return { type: "collection_view", t, collection_id: String(row.collection_id ?? meta.collection_id) };
+  }
+  if (row.type === "store_view" && (row.store_id ?? meta.store_id)) {
+    return { type: "store_view", t, store_id: String(row.store_id ?? meta.store_id) };
+  }
+  if (row.type === "product_share" && product) {
+    return { type: "product_share", t, product: asTracked(product), channel: row.channel ?? undefined };
+  }
+  if (row.type === "filter_used" && row.filter_id) {
+    return {
+      type: "filter_used",
+      t,
+      filter_id: row.filter_id,
+      filter_value: row.filter_value ?? "",
+      surface,
+    };
+  }
+  if (row.type === "sort_used" && row.sort_key) {
+    return { type: "sort_used", t, sort_key: row.sort_key, surface };
+  }
+  if (row.type === "checkout_started") {
+    return {
+      type: "checkout_started",
+      t,
+      cart_total: row.cart_total ?? undefined,
+      item_count: row.item_count ?? undefined,
+    };
   }
   return null;
 }
@@ -221,7 +387,7 @@ export async function flushQueue(
 
   try {
     const rows = queue.map(toRow);
-    const res = await appendEventsBackend(rows);
+    const res = await appendEventsBackend(rows as unknown as Array<Record<string, unknown>>);
     if (!res.ok) {
       // Keep the queue intact so we retry next time.
       return 0;

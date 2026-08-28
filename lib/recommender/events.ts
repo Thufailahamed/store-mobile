@@ -6,7 +6,11 @@
  * ranker can score candidates even when the product is no longer available
  * or when the user is offline.
  *
- * We never block the UI on these writes — they are best-effort fire-and-forget.
+ * Phase 1 (0260) extends the taxonomy from 8 → 19 types so the backend
+ * ranker has the same signal on both web and mobile. New types:
+ * product_impression, product_click, search_result_click, category_view,
+ * collection_view, store_view, remove_from_cart, checkout_started,
+ * product_share, filter_used, sort_used.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,9 +25,20 @@ export type EventType =
   | "wishlist_add"
   | "wishlist_remove"
   | "cart_add"
+  | "remove_from_cart"
   | "purchase"
+  | "checkout_started"
   | "dismiss"
-  | "not_interested";
+  | "not_interested"
+  | "product_impression"
+  | "product_click"
+  | "search_result_click"
+  | "category_view"
+  | "collection_view"
+  | "store_view"
+  | "product_share"
+  | "filter_used"
+  | "sort_used";
 
 export interface TrackedProduct {
   id: string;
@@ -77,10 +92,21 @@ export interface CartEvent extends BaseEvent {
   product: TrackedProduct;
 }
 
+export interface RemoveFromCartEvent extends BaseEvent {
+  type: "remove_from_cart";
+  product: TrackedProduct;
+}
+
 export interface PurchaseEvent extends BaseEvent {
   type: "purchase";
   product: TrackedProduct;
   quantity: number;
+}
+
+export interface CheckoutStartedEvent extends BaseEvent {
+  type: "checkout_started";
+  cart_total?: number;
+  item_count?: number;
 }
 
 export interface DismissEvent extends BaseEvent {
@@ -93,6 +119,63 @@ export interface DismissEvent extends BaseEvent {
 export interface NotInterestedEvent extends BaseEvent {
   type: "not_interested";
   product: TrackedProduct;
+  surface?: string;
+}
+
+export interface ImpressionEvent extends BaseEvent {
+  type: "product_impression";
+  product: TrackedProduct;
+  surface?: string;
+  position?: number;
+}
+
+export interface ClickEvent extends BaseEvent {
+  type: "product_click";
+  product: TrackedProduct;
+  surface?: string;
+  position?: number;
+}
+
+export interface SearchResultClickEvent extends BaseEvent {
+  type: "search_result_click";
+  query: string;
+  tokens?: string[];
+  product: TrackedProduct;
+  position?: number;
+}
+
+export interface CategoryViewEvent extends BaseEvent {
+  type: "category_view";
+  category_id: string;
+}
+
+export interface CollectionViewEvent extends BaseEvent {
+  type: "collection_view";
+  collection_id: string;
+}
+
+export interface StoreViewEvent extends BaseEvent {
+  type: "store_view";
+  store_id: string;
+}
+
+export interface ShareEvent extends BaseEvent {
+  type: "product_share";
+  product: TrackedProduct;
+  channel?: string;
+}
+
+export interface FilterUsedEvent extends BaseEvent {
+  type: "filter_used";
+  filter_id: string;
+  filter_value: string;
+  surface?: string;
+}
+
+export interface SortUsedEvent extends BaseEvent {
+  type: "sort_used";
+  sort_key: string;
+  surface?: string;
 }
 
 export type RecommendationEvent =
@@ -100,9 +183,20 @@ export type RecommendationEvent =
   | SearchEvent
   | WishlistEvent
   | CartEvent
+  | RemoveFromCartEvent
   | PurchaseEvent
+  | CheckoutStartedEvent
   | DismissEvent
-  | NotInterestedEvent;
+  | NotInterestedEvent
+  | ImpressionEvent
+  | ClickEvent
+  | SearchResultClickEvent
+  | CategoryViewEvent
+  | CollectionViewEvent
+  | StoreViewEvent
+  | ShareEvent
+  | FilterUsedEvent
+  | SortUsedEvent;
 
 const EVENTS_SUFFIX = "rec_events";
 const MAX_EVENTS = 500; // hard cap to keep storage bounded
@@ -172,31 +266,91 @@ export function trackEvent(userId: string | null | undefined, event: Recommendat
   void appendEvent(userId, event);
 }
 
+/** Get the product id from an event if it carries one. */
+function productId(ev: RecommendationEvent): string | null {
+  return "product" in ev && (ev as { product?: TrackedProduct }).product?.id
+    ? ((ev as { product: TrackedProduct }).product.id as string)
+    : null;
+}
+
 function shouldDedupe(prev: RecommendationEvent, next: RecommendationEvent): boolean {
-  if (prev.t > Date.now() - 2000) {
-    if (prev.type === "view" && next.type === "view") {
-      return prev.product.id === (next as ViewEvent).product.id;
-    }
-    if (
-      (prev.type === "wishlist_add" || prev.type === "wishlist_remove") &&
-      (next.type === "wishlist_add" || next.type === "wishlist_remove")
-    ) {
-      return prev.product.id === (next as WishlistEvent).product.id;
-    }
-    if (prev.type === "search" && next.type === "search") {
-      return (prev as SearchEvent).query.trim().toLowerCase() ===
-        (next as SearchEvent).query.trim().toLowerCase();
-    }
-    if (
-      (prev.type === "not_interested" || prev.type === "dismiss") &&
-      (next.type === "not_interested" || next.type === "dismiss")
-    ) {
-      const a = "product" in prev ? (prev as { product: TrackedProduct }).product.id : null;
-      const b = "product" in next ? (next as { product: TrackedProduct }).product.id : null;
-      return a !== null && a === b;
-    }
+  if (prev.t <= Date.now() - 2000) return false;
+  if (prev.type !== next.type) return false;
+
+  switch (next.type) {
+    case "view":
+      return prev.type === "view" && prev.product.id === (next as ViewEvent).product.id;
+    case "wishlist_add":
+    case "wishlist_remove":
+      return (
+        (prev.type === "wishlist_add" || prev.type === "wishlist_remove") &&
+        productId(prev) === productId(next)
+      );
+    case "cart_add":
+    case "remove_from_cart":
+      return (
+        (prev.type === "cart_add" || prev.type === "remove_from_cart") &&
+        productId(prev) === productId(next)
+      );
+    case "search":
+      return (
+        prev.type === "search" &&
+        (prev as SearchEvent).query.trim().toLowerCase() ===
+          (next as SearchEvent).query.trim().toLowerCase()
+      );
+    case "search_result_click":
+      return (
+        prev.type === "search_result_click" &&
+        (prev as SearchResultClickEvent).query.trim().toLowerCase() ===
+          (next as SearchResultClickEvent).query.trim().toLowerCase() &&
+        productId(prev) === productId(next)
+      );
+    case "not_interested":
+    case "dismiss":
+      return (
+        (prev.type === "not_interested" || prev.type === "dismiss") &&
+        productId(prev) === productId(next)
+      );
+    case "product_impression":
+    case "product_click":
+      return (
+        (prev.type === "product_impression" || prev.type === "product_click") &&
+        productId(prev) === productId(next) &&
+        ((prev as ImpressionEvent).surface ?? "") ===
+          ((next as ImpressionEvent).surface ?? "")
+      );
+    case "category_view":
+      return (
+        prev.type === "category_view" &&
+        (prev as CategoryViewEvent).category_id === (next as CategoryViewEvent).category_id
+      );
+    case "collection_view":
+      return (
+        prev.type === "collection_view" &&
+        (prev as CollectionViewEvent).collection_id === (next as CollectionViewEvent).collection_id
+      );
+    case "store_view":
+      return (
+        prev.type === "store_view" &&
+        (prev as StoreViewEvent).store_id === (next as StoreViewEvent).store_id
+      );
+    case "product_share":
+      return prev.type === "product_share" && productId(prev) === productId(next);
+    case "filter_used":
+      return (
+        prev.type === "filter_used" &&
+        (prev as FilterUsedEvent).filter_id === (next as FilterUsedEvent).filter_id &&
+        (prev as FilterUsedEvent).filter_value === (next as FilterUsedEvent).filter_value
+      );
+    case "sort_used":
+      return (
+        prev.type === "sort_used" &&
+        (prev as SortUsedEvent).sort_key === (next as SortUsedEvent).sort_key
+      );
+    case "purchase":
+    case "checkout_started":
+      return false;
   }
-  return false;
 }
 
 /** Clear all events for a user. Exposed for settings. */

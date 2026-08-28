@@ -23,6 +23,11 @@ import { colors, spacing } from "@/lib/theme/tokens";
 import { SORTS, EMPTY_FILTERS, activeFilterCount, type ProductFilters, type ViewMode } from "@/lib/api/facets";
 import type { Product } from "@/lib/types";
 import { useProductGrid } from "@/lib/hooks/useProductGrid";
+import {
+  useTrackEvent,
+  useTrackViewableItems,
+  CategoryViewTracker,
+} from "@/lib/recommender";
 
 const GRID_GAP = 12;
 const GRID_PADDING = 16;
@@ -62,6 +67,13 @@ export default function ProductsScreen() {
     initialSort: params.sort || "newest",
   });
 
+  // Category page → fire category_view once. Search params pass a slug;
+  // hook expects a category id (uuid). If we only have a slug we still
+  // pass it through — the ranker treats it as a generic category surface.
+  const categoryId = params.category ?? null;
+  const tracker = useTrackEvent();
+  const viewable = useTrackViewableItems(refined, "category_grid");
+
   const showHero = view === "editorial" && !params.category && !params.brand && !params.search;
   const hasActiveContext = !!params.category || !!params.brand || !!params.search;
 
@@ -79,6 +91,21 @@ export default function ProductsScreen() {
 
   const handleClearFilters = () => {
     setFilters({ ...EMPTY_FILTERS });
+  };
+
+  const handleSortChange = (next: string) => {
+    if (next !== sort) tracker.sortUsed(next, "products");
+    setSort(next);
+  };
+
+  const handleFilterChange = (next: ProductFilters) => {
+    const before = activeFilterCount(filters);
+    const after = activeFilterCount(next);
+    if (after > before) {
+      const added = pickAddedFacet(filters, next);
+      if (added) tracker.filterUsed(added, "products");
+    }
+    setFilters(next);
   };
 
   const filterCount = activeFilterCount(filters);
@@ -107,6 +134,7 @@ export default function ProductsScreen() {
   return (
     <PaperBackground>
       <AppHeader compact showTicker={false} showBackToHome />
+      <CategoryViewTracker id={categoryId} />
       <AnimatedFlatList
         key={view}
         data={view === "list" ? restProducts : restProducts}
@@ -120,6 +148,7 @@ export default function ProductsScreen() {
         scrollEventThrottle={16}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
+        {...viewable}
         ListHeaderComponent={
           <ProductsListHeader
             loading={loading}
@@ -127,13 +156,13 @@ export default function ProductsScreen() {
             total={total}
             refinedCount={refined.length}
             sort={sort}
-            setSort={setSort}
+            setSort={handleSortChange}
             view={view}
             setView={setView}
             filterCount={filterCount}
             openFilter={() => setFilterOpen(true)}
             filters={filters}
-            setFilters={setFilters}
+            setFilters={handleFilterChange}
             heroProduct={heroProduct}
             hasActiveContext={hasActiveContext}
             clearAll={handleClearAll}
@@ -168,13 +197,40 @@ export default function ProductsScreen() {
         visible={filterOpen}
         onClose={() => setFilterOpen(false)}
         filters={filters}
-        onApply={setFilters}
+        onApply={handleFilterChange}
         sort={sort}
-        onSortChange={setSort}
+        onSortChange={handleSortChange}
         resultCount={refined.length}
       />
     </PaperBackground>
   );
+}
+
+/** Identify the first newly-added facet to attach to filter_used. */
+function pickAddedFacet(
+  prev: ProductFilters,
+  next: ProductFilters,
+): string | null {
+  const checks: Array<[string, unknown[], unknown[]]> = [
+    ["price", prev.price ?? [], next.price ?? []],
+    ["colors", prev.colors ?? [], next.colors ?? []],
+    ["sizes", prev.sizes ?? [], next.sizes ?? []],
+    ["brands", prev.brands ?? [], next.brands ?? []],
+    ["categories", prev.categories ?? [], next.categories ?? []],
+  ];
+  for (const [name, before, after] of checks) {
+    const a = new Set<string>((before as string[]).map((x) => String(x)));
+    for (const v of (after as string[])) {
+      if (!a.has(String(v))) return `${name}:${String(v)}`;
+    }
+  }
+  if ((next.minRating ?? 0) > (prev.minRating ?? 0)) {
+    return `minRating:${next.minRating}`;
+  }
+  if ((next.minDiscount ?? 0) > (prev.minDiscount ?? 0)) {
+    return `minDiscount:${next.minDiscount}`;
+  }
+  return null;
 }
 
 /* -------------------------------------------------------------------------- */

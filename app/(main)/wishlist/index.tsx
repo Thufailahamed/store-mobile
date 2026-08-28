@@ -28,6 +28,7 @@ import {
   useWishlistLayout,
 } from "@/components/wishlist/layout";
 import type { Product } from "@/lib/types";
+import { useTrackViewableItems } from "@/lib/recommender";
 
 function getProductStock(product: Product): number {
   return product.variants?.[0]?.stock ?? 0;
@@ -158,6 +159,7 @@ export default function WishlistScreen() {
   );
 
   const listBottomPad = insets.bottom + 24;
+  const viewable = useTrackViewableItems(visibleProducts, "wishlist");
 
   if (!loading && productIds.length === 0) {
     return (
@@ -184,6 +186,7 @@ export default function WishlistScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
         scrollEventThrottle={16}
+        {...viewable}
         ListHeaderComponent={
           <View style={styles.headerBlock}>
             <View style={styles.hero}>

@@ -28,6 +28,7 @@ import * as api from "@/lib/api";
 import {
   useTrackView,
   useTrackEvent,
+  useTrackImpression,
   getSimilarProducts,
   getYouMayAlsoLike,
   getPairsWellWithRail,
@@ -58,8 +59,9 @@ export default function ProductDetailScreen() {
   const [pairsWellWith, setPairsWellWith] = useState<Product[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
 
-  // Track view + dwell time.
+  // Track view + impression.
   useTrackView(product);
+  useTrackImpression(product, "pdp");
   const tracker = useTrackEvent();
 
   const scrollY = useRef(new Animated.Value(0)).current;
