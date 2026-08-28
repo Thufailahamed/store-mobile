@@ -204,6 +204,42 @@ export default function SellerLayout() {
       <Tabs.Screen name="coupons/index" options={{ href: null }} />
       <Tabs.Screen name="notifications/index" options={{ href: null }} />
       <Tabs.Screen name="bulk-upload/index" options={{ href: null }} />
+      <Tabs.Screen
+        name="storefront/index"
+        options={{
+          title: "Storefront",
+          href: locked ? null : undefined,
+          tabBarIcon: ({ color, size }) => <Ionicons name="storefront-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen name="storefront/[templateId]/edit" options={{ href: null }} />
+      <Tabs.Screen name="storefront/[templateId]/preview" options={{ href: null }} />
+      <Tabs.Screen name="storefront/[templateId]/publish" options={{ href: null }} />
+      <Tabs.Screen
+        name="ai-studio/index"
+        options={{
+          title: "AI Studio",
+          href: locked ? null : undefined,
+          tabBarIcon: ({ color, size }) => <Ionicons name="sparkles-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen name="ai-studio/generate" options={{ href: null }} />
+      <Tabs.Screen name="ai-studio/history" options={{ href: null }} />
+      <Tabs.Screen name="ai-studio/library" options={{ href: null }} />
+      <Tabs.Screen name="ai-studio/pricing" options={{ href: null }} />
+      <Tabs.Screen name="ai-studio/[jobId]" options={{ href: null }} />
+      <Tabs.Screen
+        name="payouts/index"
+        options={{
+          title: "Payouts",
+          href: locked ? null : undefined,
+          tabBarIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen name="payouts/settings" options={{ href: null }} />
+      <Tabs.Screen name="payouts/withdraw" options={{ href: null }} />
+      <Tabs.Screen name="payouts/stripe-return" options={{ href: null }} />
+      <Tabs.Screen name="payouts/[id]" options={{ href: null }} />
     </Tabs>
   );
 }
