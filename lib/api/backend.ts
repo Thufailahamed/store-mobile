@@ -2003,3 +2003,80 @@ export async function deleteAiLibraryItemBackend(id: string): Promise<ApiResult<
 export async function getAiPricingBackend(): Promise<ApiResult<{ plans: Array<{ id: string; name: string; credits: number; priceCents: number; currency: string }>; currentPlanId: string; usageThisPeriod: number }>> {
   return fetchJson("/api/seller/ai-studio/pricing");
 }
+
+// ───── Payouts / Stripe Connect ─────
+
+export interface PayoutSettings {
+  id?: string;
+  store_id?: string;
+  method?: "bank" | "upi" | "paypal" | "stripe_connect";
+  schedule?: "daily" | "weekly" | "biweekly" | "monthly";
+  bank_name?: string | null;
+  account_name?: string | null;
+  account_number_last4?: string | null;
+  ifsc?: string | null;
+  upi?: string | null;
+  paypal?: string | null;
+  stripe_account_id?: string | null;
+  tax_form_submitted?: boolean;
+}
+
+export interface Payout {
+  id: string;
+  store_id: string;
+  amount: number;
+  currency: string;
+  status: "pending" | "processing" | "paid" | "failed" | "cancelled";
+  method?: string;
+  reference?: string | null;
+  notes?: string | null;
+  requested_at?: string;
+  paid_at?: string | null;
+  created_at: string;
+}
+
+export interface PayoutBalance {
+  available: number;
+  balance: number;
+  pending: number;
+  lifetime: number;
+  lifetime_gross: number;
+  lifetime_commission: number;
+  lifetime_net: number;
+  currency: string;
+}
+
+export interface StripeConnectResponse {
+  url: string;
+  accountId: string;
+}
+
+export interface WithdrawResponse {
+  id: string;
+  amount: number;
+  status: Payout["status"];
+}
+
+export async function getPayoutsBackend(): Promise<ApiResult<{ payouts: Payout[]; payout: PayoutSettings | null }>> {
+  return fetchJson("/api/seller/payouts");
+}
+
+export async function updatePayoutSettingsBackend(input: Partial<PayoutSettings>): Promise<ApiResult<{ payout: PayoutSettings }>> {
+  return fetchJson("/api/seller/payouts", { method: "PATCH", body: input });
+}
+
+export async function getPayoutBalanceBackend(): Promise<ApiResult<PayoutBalance>> {
+  return fetchJson("/api/seller/payouts/balance");
+}
+
+export async function createStripeConnectLinkBackend(): Promise<ApiResult<StripeConnectResponse>> {
+  return fetchJson("/api/seller/payouts/connect", { method: "POST" });
+}
+
+export async function withdrawPayoutBackend(input: { amount: number; idempotencyKey: string }): Promise<ApiResult<WithdrawResponse>> {
+  return fetchJson("/api/seller/payouts/withdraw", {
+    method: "POST",
+    body: { amount: input.amount },
+    headers: { "Idempotency-Key": input.idempotencyKey },
+  });
+}
