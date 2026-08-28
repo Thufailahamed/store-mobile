@@ -1831,3 +1831,92 @@ export type ReferralStats = {
 export async function getReferralStatsBackend(): Promise<ApiResult<ReferralStats>> {
   return fetchJson("/api/users/referral");
 }
+
+// --- Storefront (seller) --------------------------------------------------
+
+export type StorefrontChannel = "web" | "app";
+
+export interface StorefrontSection {
+  id: string;
+  type: string;
+  content: Record<string, unknown>;
+  position: number;
+}
+
+export interface StorefrontConfig {
+  templateSlug: string;
+  sections: StorefrontSection[];
+}
+
+export interface StorefrontSnapshot {
+  storeId: string;
+  channel: StorefrontChannel;
+  config: StorefrontConfig;
+  publishedAt: string | null;
+  draftUpdatedAt: string | null;
+  templateSlug: string;
+}
+
+export interface PreviewToken {
+  token: string;
+  channel: StorefrontChannel;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export async function getStorefrontBackend(
+  channel: StorefrontChannel,
+): Promise<ApiResult<StorefrontSnapshot>> {
+  return fetchJson<StorefrontSnapshot>("/api/seller/storefront", { query: { channel } });
+}
+
+export async function saveStorefrontDraftBackend(
+  channel: StorefrontChannel,
+  config: StorefrontConfig,
+): Promise<ApiResult<{ ok: true }>> {
+  return fetchJson<{ ok: true }>("/api/seller/storefront/draft", {
+    method: "PATCH",
+    query: { channel },
+    body: config,
+  });
+}
+
+export async function publishStorefrontBackend(input: {
+  channel: StorefrontChannel | "both";
+  version?: number;
+}): Promise<ApiResult<{ publishedAt: string }>> {
+  return fetchJson<{ publishedAt: string }>("/api/seller/storefront/publish", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function createStorefrontPreviewTokenBackend(input: {
+  channel: StorefrontChannel;
+  ttlHours?: number;
+}): Promise<ApiResult<PreviewToken>> {
+  return fetchJson<PreviewToken>("/api/seller/storefront/share/preview", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function listStorefrontPreviewTokensBackend(): Promise<ApiResult<{ tokens: PreviewToken[] }>> {
+  return fetchJson<{ tokens: PreviewToken[] }>("/api/seller/storefront/share/preview", { method: "GET" });
+}
+
+export async function revokeStorefrontPreviewTokenBackend(token: string): Promise<ApiResult<{ revoked: true }>> {
+  return fetchJson<{ revoked: true }>(`/api/seller/storefront/share/preview/${token}`, { method: "DELETE" });
+}
+
+export async function regenerateStorefrontSectionBackend(input: {
+  sectionId: string;
+  sectionType: string;
+  currentContent: Record<string, unknown>;
+  prompt?: string;
+}): Promise<ApiResult<{ proposed: Record<string, unknown> }>> {
+  return fetchJson<{ proposed: Record<string, unknown> }>("/api/seller/storefront/ai/edit", {
+    method: "POST",
+    body: input,
+  });
+}
