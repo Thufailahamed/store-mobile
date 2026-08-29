@@ -293,9 +293,9 @@ export function PersonalisedSection({
 
             {gridSmalls.length > 0 ? (
               <View style={styles.gridSmallCol}>
-                {gridSmalls.map((p) => (
+                {gridSmalls.map((p, i) => (
                   <TouchableOpacity
-                    key={p.id}
+                    key={p.id ? `grid-small-${p.id}-${i}` : `grid-small-${i}`}
                     style={styles.smallCard}
                     activeOpacity={0.9}
                     onPress={() => router.push(`/(main)/products/${p.slug}`)}
@@ -320,8 +320,8 @@ export function PersonalisedSection({
 
           {gridSmalls.length > 0 ? (
             <View style={styles.captionRow}>
-              {gridSmalls.map((p) => (
-                <Text key={p.id} style={styles.captionText} numberOfLines={1}>
+              {gridSmalls.map((p, i) => (
+                <Text key={p.id ? `caption-${p.id}-${i}` : `caption-${i}`} style={styles.captionText} numberOfLines={1}>
                   {p.name} — {p.price ? formatPrice(p.price) : "Price on request"}
                 </Text>
               ))}
@@ -335,7 +335,7 @@ export function PersonalisedSection({
               contentContainerStyle={[styles.scroll, styles.moreScroll]}
             >
               {moreProducts.map((p, i) => (
-                <HomeProductCard key={p.id} product={p} index={i} />
+                <HomeProductCard key={p.id ? `more-${p.id}-${i}` : `more-${i}`} product={p} index={i} />
               ))}
             </ScrollView>
           ) : null}
@@ -351,7 +351,7 @@ export function PersonalisedSection({
 
       {subRails.map((rail, railIndex) => (
         <View
-          key={rail.key}
+          key={rail.key ? `subrail-${rail.key}-${railIndex}` : `subrail-${railIndex}`}
           style={[styles.subRail, railIndex === 0 && (visible.length > 0 || loading) && styles.subRailDivider]}
         >
           <Text style={styles.subLabel}>{rail.label}</Text>
@@ -361,7 +361,11 @@ export function PersonalisedSection({
             contentContainerStyle={styles.scroll}
           >
             {rail.products.slice(0, 10).map((p, i) => (
-              <HomeProductCard key={p.id} product={p} index={i} />
+              <HomeProductCard
+                key={p.id ? `rail-${rail.key}-${p.id}-${i}` : `rail-${rail.key}-${i}`}
+                product={p}
+                index={i}
+              />
             ))}
           </ScrollView>
         </View>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { View, FlatList, StyleSheet, Pressable, TouchableOpacity, Share } from "react-native";
+import { View, FlatList, StyleSheet, Pressable, TouchableOpacity, Share, ScrollView } from "react-native";
 import { navigateHome } from "@/lib/navigation";
 import { useRouter, useFocusEffect } from "expo-router";
 import { PaperBackground } from "@/components/layout";
@@ -516,10 +516,14 @@ export default function CartScreen() {
             <Ionicons name="heart-outline" size={20} color={theme.colors.foreground} />
           </TouchableOpacity>
         </View>
-        <View style={styles.emptyWrap}>
+        <ScrollView
+          style={styles.emptyWrap}
+          contentContainerStyle={styles.emptyScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <BagEmptyState hasWishlistItems={wishlistCount > 0} />
           <EmptyCartSuggestions userId={user?.id ?? null} onSeeAll={() => router.push("/(main)/products?sort=newest")} />
-        </View>
+        </ScrollView>
       </PaperBackground>
     );
   }
@@ -857,6 +861,11 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     flex: 1,
+  },
+  emptyScrollContent: {
+    flexGrow: 1,
+    paddingTop: spacing[4],
+    paddingBottom: spacing[10],
   },
   headerLeftBtn: {
     position: "absolute",
@@ -1384,7 +1393,7 @@ function EmptyCartSuggestions({
   if (!loaded || products.length === 0) return null;
 
   return (
-    <View style={{ marginTop: 8 }}>
+    <View style={{ marginTop: spacing[6], paddingBottom: spacing[4] }}>
       <ProductRail
         kicker="Just for you"
         title="You may also like"

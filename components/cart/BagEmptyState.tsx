@@ -45,11 +45,10 @@ export function BagEmptyState({ hasWishlistItems, style }: BagEmptyStateProps) {
             ]}
           >
             <View style={[styles.iconCore, { backgroundColor: theme.olive[50] }]}>
-              <Ionicons name="bag-outline" size={36} color={theme.olive[700]} />
+              <Ionicons name="bag-outline" size={32} color={theme.olive[700]} />
             </View>
           </View>
 
-          <Label style={[styles.kicker, { color: theme.olive[600] }]}>My bag</Label>
           <Label style={[styles.title, { color: theme.colors.foreground }]}>
             Nothing here yet
           </Label>
@@ -113,10 +112,7 @@ export function BagEmptyState({ hasWishlistItems, style }: BagEmptyStateProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    flex: 1,
-    justifyContent: "center",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[8],
   },
   heroCard: {
     borderRadius: radii["3xl"],
@@ -126,7 +122,7 @@ const styles = StyleSheet.create({
   },
   heroGradient: {
     paddingHorizontal: spacing[6],
-    paddingTop: spacing[8],
+    paddingTop: spacing[6],
     paddingBottom: spacing[6],
     alignItems: "center",
     overflow: "hidden",
@@ -148,32 +144,25 @@ const styles = StyleSheet.create({
     left: -20,
   },
   iconRing: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing[5],
+    marginBottom: spacing[4],
     ...shadows.soft,
   },
   iconCore: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
   },
-  kicker: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    marginBottom: spacing[2],
-  },
   title: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 26,
+    fontSize: 24,
     letterSpacing: -0.5,
     textAlign: "center",
     marginBottom: spacing[2],
@@ -220,7 +209,7 @@ const styles = StyleSheet.create({
   perks: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: spacing[6],
+    marginTop: spacing[5],
     paddingHorizontal: spacing[1],
     gap: spacing[2],
   },
