@@ -48,6 +48,9 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
   const [eligible, setEligible] = useState<EligibleReviewOrder[]>([]);
   const [eligibleLoading, setEligibleLoading] = useState(false);
   const [selectedOrderItemId, setSelectedOrderItemId] = useState<string | null>(null);
+  // Stable tmp id for upload path; the real review row id may differ
+  // after insert, but the file still lands in the user's prefix.
+  const tmpReviewIdRef = useRef<string>(crypto.randomUUID());
 
   // Tracks whether the component is still mounted. setState after unmount
   // warns in dev and is wasted work in prod. Set false in the cleanup.
@@ -119,7 +122,9 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
 
     let uploadedUrls: string[] = [];
     if (photos.length > 0) {
-      const uploads = await Promise.all(photos.map((uri) => uploadReviewPhoto(uri)));
+      const uploads = await Promise.all(
+        photos.map((uri, i) => uploadReviewPhoto(user.id, tmpReviewIdRef.current, uri, { index: i })),
+      );
       uploadedUrls = uploads.filter((u) => u.url).map((u) => u.url);
     }
 

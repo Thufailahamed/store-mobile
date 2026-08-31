@@ -123,7 +123,7 @@ async function uploadImageToBucket(
   bucket: string,
   path: string,
   uri: string,
-  options?: { contentType?: string; upsert?: boolean; mimeType?: string | null }
+  options?: { contentType?: string; upsert?: boolean; mimeType?: string | null; prefix?: string }
 ): Promise<UploadResult> {
   const rawExt = path.split(".").pop();
   const ext = normalizeExtension(rawExt, options?.mimeType);
@@ -148,6 +148,12 @@ async function uploadImageToBucket(
     }
 
     const filename = path.split("/").pop() || `file.${ext}`;
+    // Caller-supplied prefix (e.g. "<userId>/<reviewId>") is forwarded to the
+    // presign endpoint so the resulting R2 key is scoped under the user.
+    // Falls back to the default "uploads/" prefix when not provided.
+    const prefix = options?.prefix ?? path.includes("/")
+      ? path.split("/").slice(0, -1).join("/")
+      : undefined;
     const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
       method: "POST",
       headers: {
@@ -158,6 +164,7 @@ async function uploadImageToBucket(
         bucket,
         filename,
         contentType,
+        ...(prefix ? { prefix } : {}),
       }),
     });
 
@@ -355,17 +362,24 @@ export async function uploadProductImage(
 }
 
 export async function uploadReviewPhoto(
+  userId: string,
+  reviewId: string,
   uri: string,
-  options?: { mimeType?: string | null; fileName?: string | null }
+  options?: { mimeType?: string | null; fileName?: string | null; index?: number }
 ): Promise<UploadResult> {
   try {
+    if (!userId) return { url: "", error: "userId required" };
+    if (!reviewId) return { url: "", error: "reviewId required" };
     const ext = normalizeExtension(
       options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
       options?.mimeType
     );
-    const path = `reviews/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-    return uploadImageToBucket("review-media", path, uri, {
+    const idx = options?.index ?? 0;
+    // Path contract: <userId>/<reviewId>/<idx>.<ext> — matches the
+    // migration 0273 RLS policy (first path segment must be the user's
+    // uuid) and the web `use-review-photo-upload` convention.
+    const path = `${userId}/${reviewId}/${idx}.${ext}`;
+    return uploadImageToBucket("reviews", path, uri, {
       mimeType: options?.mimeType,
     });
   } catch (e: any) {
