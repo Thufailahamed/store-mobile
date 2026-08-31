@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getStoreReviews } from "@/lib/api";
+import { ReplyModal } from "@/components/seller/ReplyModal";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Review } from "@/lib/types";
@@ -36,6 +37,7 @@ export default function SellerReviews() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filterRating, setFilterRating] = useState(0);
+  const [replyTarget, setReplyTarget] = useState<Review | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -183,10 +185,44 @@ export default function SellerReviews() {
                   <Text style={s.verifiedText}>Verified Purchase</Text>
                 </View>
               )}
+              <View style={s.replyRow}>
+                <TouchableOpacity
+                  style={s.replyBtn}
+                  onPress={() => setReplyTarget(review)}
+                  accessibilityLabel="Reply to review"
+                >
+                  <Ionicons name="chatbubble-outline" size={14} color={colors.olive[600]} />
+                  <Text style={s.replyBtnLabel}>Reply</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))
         )}
       </View>
+
+      <ReplyModal
+        review={replyTarget}
+        visible={!!replyTarget}
+        onClose={() => setReplyTarget(null)}
+        onReplied={(reply) => {
+          setData((d) =>
+            d
+              ? {
+                  ...d,
+                  reviews: d.reviews.map((r) =>
+                    r.id === replyTarget?.id
+                      ? {
+                          ...r,
+                          seller_reply: reply.body,
+                          seller_replied_at: new Date().toISOString(),
+                        }
+                      : r,
+                  ),
+                }
+              : d,
+          );
+        }}
+      />
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -321,5 +357,25 @@ const s = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.olive[600],
     fontWeight: typography.fontWeights.medium as any,
+  },
+  replyRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 10,
+  },
+  replyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.olive[600],
+  },
+  replyBtnLabel: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium as any,
+    color: colors.olive[600],
   },
 });
