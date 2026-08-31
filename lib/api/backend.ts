@@ -688,6 +688,16 @@ export async function voteReviewHelpfulBackend(id: string): Promise<ApiResult<{ 
   return fetchJson(`/api/reviews/${id}/vote`, { method: "POST", body: { helpful: true } });
 }
 
+export async function replyToReviewBackend(
+  reviewId: string,
+  body: string,
+): Promise<ApiResult<{ reply: { review_id: string; body: string; created_at: string; editable_until?: string | null } }>> {
+  return fetchJson(`/api/reviews/${reviewId}/reply`, {
+    method: "POST",
+    body: { body },
+  });
+}
+
 export async function getEligibleReviewOrdersBackend(productId: string): Promise<ApiResult<{ orders: Array<{ id: string; order_number?: string; delivered_at?: string }> }>> {
   return fetchJson(`/api/reviews/eligible`, { query: { productId } });
 }
@@ -709,7 +719,7 @@ export async function answerQuestionBackend(questionId: string, answer: string):
 export type Coupon = {
   id: string;
   code: string;
-  discount_type: "percent" | "fixed" | "free_shipping";
+  discount_type: "percent" | "fixed" | "free_shipping" | "bxgy";
   discount_value: number;
   scope: "brand" | "store" | "category" | "global";
   scope_id?: string | null;
@@ -718,6 +728,13 @@ export type Coupon = {
   min_order_amount?: number;
   max_uses?: number | null;
   used_count?: number;
+  // BXGY (migration 0291 + CouponSchema extension). All optional because
+  // non-bxgy coupons never set them.
+  bxgy_buy_product_ids?: string[];
+  bxgy_get_product_ids?: string[];
+  bxgy_buy_quantity?: number;
+  bxgy_get_quantity?: number;
+  bxgy_get_discount_pct?: number;
 };
 
 export async function listCouponsBackend(): Promise<ApiResult<{ coupons: Coupon[] }>> {
@@ -833,7 +850,11 @@ export async function getSellerOrdersBackend(opts: { limit?: number; offset?: nu
 }
 
 export async function transitionOrderBackend(orderId: string, toStatus: string, note?: string): Promise<ApiResult<{ order: Order }>> {
-  return fetchJson(`/api/orders/${orderId}/transition`, { method: "POST", body: { status: toStatus, note } });
+  // Backend's TransitionSchema (store-backend/src/modules/orders/orders.ts)
+  // expects `{ to_status, reason?, admin_override? }` — the prior body of
+  // `{ status, note }` would 422 the request and break both the existing
+  // seller/admin transition buttons AND the new refund action.
+  return fetchJson(`/api/orders/${orderId}/transition`, { method: "POST", body: { to_status: toStatus, reason: note } });
 }
 
 export async function getSellerInventoryBackend(): Promise<ApiResult<{ inventory: Array<{ id: string; sku: string; size?: string; color?: string; price: number; product: { id: string; name: string; status: string }; inventory: { quantity: number; reserved: number } }> }>> {
@@ -981,6 +1002,112 @@ export async function getStoreCouponsBackend(): Promise<ApiResult<{ coupons: Cou
 
 export async function createStoreCouponBackend(coupon: Omit<Coupon, "id" | "used_count">): Promise<ApiResult<{ coupon: Coupon }>> {
   return fetchJson("/api/seller/coupons", { method: "POST", body: coupon });
+}
+
+export async function updateStoreCouponBackend(id: string, patch: Partial<Coupon>): Promise<ApiResult<{ coupon: Coupon }>> {
+  return fetchJson(`/api/seller/coupons/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function deleteStoreCouponBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
+  return fetchJson(`/api/seller/coupons/${id}`, { method: "DELETE" });
+}
+
+// ---------- Storefront meta (mobile /seller/settings/store-meta) ----------
+//
+// PATCH /api/seller/store already accepts announcement / social_links /
+// footer_links since migration 0290 + StoreSchema extension in
+// store-backend/src/modules/seller/store.ts. These wrappers normalise the
+// mobile shape (contact_phone/contact_email/social_links-as-object) onto
+// the backend columns (phone/email/social_instagram + social_links JSONB).
+
+export type StoreMetaSocialLinks = {
+  instagram?: string;
+  tiktok?: string;
+  facebook?: string;
+  twitter?: string;
+  youtube?: string;
+};
+
+export type StoreMetaFooterLink = { label: string; url: string };
+
+export type StoreMeta = {
+  announcement?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  social_links: StoreMetaSocialLinks;
+  footer_links: StoreMetaFooterLink[];
+  logo_url?: string | null;
+};
+
+export type StoreMetaPatch = Partial<{
+  announcement: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  social_links: StoreMetaSocialLinks;
+  footer_links: StoreMetaFooterLink[];
+  logo_url: string | null;
+}>;
+
+export async function getStoreMetaBackend(): Promise<ApiResult<{ meta: StoreMeta }>> {
+  const res = await getSellerStoreBackend();
+  if (!res.ok) return res;
+  const s = res.data.store as Store & Record<string, unknown>;
+  const social = (s.social_links as StoreMetaSocialLinks | null | undefined) ?? {};
+  const footerRaw = (s.footer_links as StoreMetaFooterLink[] | null | undefined) ?? [];
+  return {
+    ok: true,
+    data: {
+      meta: {
+        announcement: (s.announcement as string | null | undefined) ?? null,
+        contact_phone: (s.phone as string | null | undefined) ?? null,
+        contact_email: (s.email as string | null | undefined) ?? null,
+        social_links: social,
+        footer_links: footerRaw,
+        logo_url: (s.logo_url as string | null | undefined) ?? null,
+      },
+    },
+  };
+}
+
+export async function updateStoreMetaBackend(patch: StoreMetaPatch): Promise<ApiResult<{ meta: StoreMeta }>> {
+  const body: Record<string, unknown> = {};
+  if (patch.announcement !== undefined) body.announcement = patch.announcement;
+  if (patch.contact_phone !== undefined) body.phone = patch.contact_phone;
+  if (patch.contact_email !== undefined) body.email = patch.contact_email;
+  if (patch.social_links !== undefined) {
+    // Keep the JSONB shape but also mirror to individual social_* columns
+    // so the legacy /api/catalog/stores hydration on web still picks up the
+    // handles. Empty string clears.
+    const sl = patch.social_links;
+    body.social_links = sl;
+    body.social_instagram = sl.instagram || "";
+    body.social_tiktok = sl.tiktok || "";
+    body.social_facebook = sl.facebook || "";
+    body.social_twitter = sl.twitter || "";
+    body.social_youtube = sl.youtube || "";
+  }
+  if (patch.footer_links !== undefined) {
+    body.footer_links = patch.footer_links.map((l) => ({ label: l.label, url: l.url }));
+  }
+  if (patch.logo_url !== undefined) body.logo_url = patch.logo_url;
+  const res = await updateSellerStoreBackend(body as Partial<Store>);
+  if (!res.ok) return res;
+  const s = res.data.store as Store & Record<string, unknown>;
+  const social = (s.social_links as StoreMetaSocialLinks | null | undefined) ?? {};
+  const footerRaw = (s.footer_links as StoreMetaFooterLink[] | null | undefined) ?? [];
+  return {
+    ok: true,
+    data: {
+      meta: {
+        announcement: (s.announcement as string | null | undefined) ?? null,
+        contact_phone: (s.phone as string | null | undefined) ?? null,
+        contact_email: (s.email as string | null | undefined) ?? null,
+        social_links: social,
+        footer_links: footerRaw,
+        logo_url: (s.logo_url as string | null | undefined) ?? null,
+      },
+    },
+  };
 }
 
 export async function getStoreReviewsBackend(storeId: string, opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ reviews: Review[]; avg_rating?: number; total?: number }>> {

@@ -1664,6 +1664,13 @@ export interface AdminCoupon {
   is_active: boolean;
   scope?: string;
   created_at: string;
+  // BXGY (Buy X Get Y) — surfaced so the mobile /seller/coupons edit
+  // modal can round-trip without losing fields the seller already set.
+  bxgy_buy_product_ids?: string[];
+  bxgy_buy_quantity?: number;
+  bxgy_get_product_ids?: string[];
+  bxgy_get_quantity?: number;
+  bxgy_get_discount_pct?: number;
 }
 
 export async function getAdminCoupons(opts: {
@@ -1718,9 +1725,22 @@ const CouponCreateSchema = z.object({
   is_active: z.boolean().optional(),
   store_id: z.string().optional(),
   scope: z.string().optional(),
+  // BXGY (mirrors backend CouponSchema since migration 0291). The seller
+  // mobile form sends these only when type === "bxgy" so non-bxgy
+  // coupons never carry them.
+  bxgy_buy_product_ids: z.array(z.string().uuid()).max(64).optional(),
+  bxgy_get_product_ids: z.array(z.string().uuid()).max(64).optional(),
+  bxgy_buy_quantity: z.number().int().min(1).max(1000).optional(),
+  bxgy_get_quantity: z.number().int().min(1).max(1000).optional(),
+  bxgy_get_discount_pct: z.number().min(0).max(100).optional(),
 }).superRefine((v, ctx) => {
   if (v.type === "percentage" && v.value > 100) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Percentage coupons cannot exceed 100%" });
+  }
+  if (v.type === "bxgy") {
+    if (!v.bxgy_buy_product_ids?.length || !v.bxgy_get_product_ids?.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["bxgy_buy_product_ids"], message: "BXGY coupons require at least one buy and one get product" });
+    }
   }
   if (v.starts_at && v.expires_at) {
     const s = Date.parse(v.starts_at);
@@ -2506,6 +2526,23 @@ export async function deleteReview(reviewId: string, _userId: string): Promise<R
   return ok(undefined);
 }
 
+/**
+ * Reply to a review (seller or brand). Mirrors POST /api/reviews/:id/reply
+ * from the v2 backend. Used by the seller reviews screen's ReplyModal.
+ */
+export async function replyToReviewBackend(
+  reviewId: string,
+  body: string,
+): Promise<
+  Result<{
+    reply: { review_id: string; body: string; created_at: string; editable_until?: string | null };
+  }>
+> {
+  const res = await B.replyToReviewBackend(reviewId, body);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
+
 export async function getStoreReviews(_storeId: string, opts: {
   rating?: number;
   search?: string;
@@ -2524,17 +2561,82 @@ export async function getStoreReviews(_storeId: string, opts: {
 }
 
 // ============================================================================
+// Seller — Storefront meta (header/footer/announcement/social/contact)
+// ============================================================================
+
+export type {
+  StoreMeta,
+  StoreMetaPatch,
+  StoreMetaSocialLinks,
+  StoreMetaFooterLink,
+} from "@/lib/api/backend";
+
+export async function getStoreMeta(): Promise<Result<B.StoreMeta>> {
+  const res = await B.getStoreMetaBackend();
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.meta);
+}
+
+export async function updateStoreMeta(patch: B.StoreMetaPatch): Promise<Result<B.StoreMeta>> {
+  const storeRes = await B.getSellerStoreBackend();
+  if (!storeRes.ok) return fail(storeRes.error);
+  const storeId = storeRes.data.store?.id;
+  if (storeId) {
+    const guard = await assertSellerCanOperate(storeId);
+    if (!guard.ok) return guard;
+  }
+  const res = await B.updateStoreMetaBackend(patch);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.meta);
+}
+
+// ============================================================================
 // Seller — Coupons + analytics
 // ============================================================================
 
 export async function getStoreCoupons(_storeId: string): Promise<Result<AdminCoupon[]>> {
   const res = await B.getStoreCouponsBackend();
   if (!res.ok) return fail(res.error);
-  return ok((res.data.coupons as unknown[] as AdminCoupon[]) ?? []);
+  return ok(
+    (res.data.coupons as unknown[]).map((c) => {
+      const row = c as B.Coupon;
+      return {
+        id: row.id,
+        code: row.code,
+        // backend "percent" → mobile "percentage"; bxgy passes through
+        // (since CouponSchema accepts "bxgy" in longtail.ts).
+        type: (row.discount_type === "percent"
+          ? "percentage"
+          : row.discount_type) as AdminCoupon["type"],
+        value: row.discount_value,
+        min_order_total: row.min_order_amount,
+        max_uses: row.max_uses ?? undefined,
+        current_uses: row.used_count ?? 0,
+        starts_at: undefined,
+        ends_at: row.expires_at ?? undefined,
+        is_active: row.is_active,
+        scope: row.scope_id ?? undefined,
+        created_at: new Date().toISOString(),
+        bxgy_buy_product_ids: row.bxgy_buy_product_ids,
+        bxgy_buy_quantity: row.bxgy_buy_quantity,
+        bxgy_get_product_ids: row.bxgy_get_product_ids,
+        bxgy_get_quantity: row.bxgy_get_quantity,
+        bxgy_get_discount_pct: row.bxgy_get_discount_pct,
+      } satisfies AdminCoupon;
+    }),
+  );
 }
 
 export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
-  const parsed = CouponCreateSchema.safeParse(coupon);
+  // The seller mobile UI uses `min_order_total` / `max_uses`. CouponCreateSchema
+  // (and the backend CouponSchema) use `min_order_value` / `usage_limit`. Remap
+  // before validating so a seller-form save doesn't silently drop the fields.
+  const remapped = {
+    ...coupon,
+    min_order_value: coupon.min_order_total ?? coupon.value,
+    usage_limit: coupon.max_uses,
+  };
+  const parsed = CouponCreateSchema.safeParse(remapped);
   if (!parsed.success) {
     return fail(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
   }
@@ -2545,16 +2647,100 @@ export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<R
   }
   const res = await B.createStoreCouponBackend({
     code: parsed.data.code,
-    discount_type: parsed.data.type === "percentage" ? "percent" : (parsed.data.type as "percent" | "fixed" | "free_shipping"),
+    discount_type: parsed.data.type === "percentage" ? "percent" : parsed.data.type,
     discount_value: parsed.data.value,
     min_order_amount: parsed.data.min_order_value,
     max_uses: parsed.data.usage_limit,
     is_active: parsed.data.is_active ?? true,
     scope: "store",
     scope_id: storeId,
+    bxgy_buy_product_ids: parsed.data.bxgy_buy_product_ids,
+    bxgy_get_product_ids: parsed.data.bxgy_get_product_ids,
+    bxgy_buy_quantity: parsed.data.bxgy_buy_quantity,
+    bxgy_get_quantity: parsed.data.bxgy_get_quantity,
+    bxgy_get_discount_pct: parsed.data.bxgy_get_discount_pct,
   });
   if (!res.ok) return fail(res.error);
-  return ok(res.data.coupon as unknown as AdminCoupon);
+  const row = res.data.coupon;
+  return ok({
+    id: row.id,
+    code: row.code,
+    type: (row.discount_type === "percent" ? "percentage" : row.discount_type) as AdminCoupon["type"],
+    value: row.discount_value,
+    min_order_total: row.min_order_amount,
+    max_uses: row.max_uses ?? undefined,
+    current_uses: row.used_count ?? 0,
+    starts_at: undefined,
+    ends_at: row.expires_at ?? undefined,
+    is_active: row.is_active,
+    scope: row.scope_id ?? undefined,
+    created_at: new Date().toISOString(),
+    bxgy_buy_product_ids: row.bxgy_buy_product_ids,
+    bxgy_buy_quantity: row.bxgy_buy_quantity,
+    bxgy_get_product_ids: row.bxgy_get_product_ids,
+    bxgy_get_quantity: row.bxgy_get_quantity,
+    bxgy_get_discount_pct: row.bxgy_get_discount_pct,
+  } satisfies AdminCoupon);
+}
+
+export async function updateStoreCoupon(id: string, patch: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
+  const storeRes = await B.getSellerStoreBackend();
+  if (!storeRes.ok) return fail(storeRes.error);
+  const storeId = storeRes.data.store?.id;
+  if (storeId) {
+    const guard = await assertSellerCanOperate(storeId);
+    if (!guard.ok) return guard;
+  }
+  const body: Record<string, unknown> = {};
+  if (patch.code !== undefined) body.code = patch.code;
+  if (patch.type !== undefined) {
+    body.discount_type = patch.type === "percentage" ? "percent" : patch.type;
+  }
+  if (patch.value !== undefined) body.discount_value = patch.value;
+  if (patch.min_order_total !== undefined) body.min_order_value = patch.min_order_total;
+  if (patch.max_uses !== undefined) body.usage_limit = patch.max_uses;
+  if (patch.is_active !== undefined) body.is_active = patch.is_active;
+  if (patch.ends_at !== undefined) body.expires_at = patch.ends_at;
+  if (patch.bxgy_buy_product_ids !== undefined) body.bxgy_buy_product_ids = patch.bxgy_buy_product_ids;
+  if (patch.bxgy_get_product_ids !== undefined) body.bxgy_get_product_ids = patch.bxgy_get_product_ids;
+  if (patch.bxgy_buy_quantity !== undefined) body.bxgy_buy_quantity = patch.bxgy_buy_quantity;
+  if (patch.bxgy_get_quantity !== undefined) body.bxgy_get_quantity = patch.bxgy_get_quantity;
+  if (patch.bxgy_get_discount_pct !== undefined) body.bxgy_get_discount_pct = patch.bxgy_get_discount_pct;
+  const res = await B.updateStoreCouponBackend(id, body as Partial<B.Coupon>);
+  if (!res.ok) return fail(res.error);
+  const row = res.data.coupon;
+  return ok({
+    id: row.id,
+    code: row.code,
+    type: (row.discount_type === "percent" ? "percentage" : row.discount_type) as AdminCoupon["type"],
+    value: row.discount_value,
+    min_order_total: row.min_order_amount,
+    max_uses: row.max_uses ?? undefined,
+    current_uses: row.used_count ?? 0,
+    starts_at: undefined,
+    ends_at: row.expires_at ?? undefined,
+    is_active: row.is_active,
+    scope: row.scope_id ?? undefined,
+    created_at: new Date().toISOString(),
+    bxgy_buy_product_ids: row.bxgy_buy_product_ids,
+    bxgy_buy_quantity: row.bxgy_buy_quantity,
+    bxgy_get_product_ids: row.bxgy_get_product_ids,
+    bxgy_get_quantity: row.bxgy_get_quantity,
+    bxgy_get_discount_pct: row.bxgy_get_discount_pct,
+  } satisfies AdminCoupon);
+}
+
+export async function deleteStoreCoupon(id: string): Promise<Result<void>> {
+  const storeRes = await B.getSellerStoreBackend();
+  if (!storeRes.ok) return fail(storeRes.error);
+  const storeId = storeRes.data.store?.id;
+  if (storeId) {
+    const guard = await assertSellerCanOperate(storeId);
+    if (!guard.ok) return guard;
+  }
+  const res = await B.deleteStoreCouponBackend(id);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
 }
 
 export async function getStoreAnalytics(_storeId: string): Promise<Result<{
@@ -2709,3 +2895,5 @@ export async function reverseImageMatch(path: string): Promise<Result<ScanMatch>
 
 // Re-export helper for call-sites needing direct access.
 export { getAccessToken, fetchJson };
+export { searchProductsBackend } from "@/lib/api/backend";
+export type { SearchResultRow } from "@/lib/api/backend";
