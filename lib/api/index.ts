@@ -2543,6 +2543,19 @@ export async function replyToReviewBackend(
   return ok(res.data);
 }
 
+/**
+ * Toggle a helpful vote on a review. Mirrors POST /api/reviews/:id/vote
+ * (v2 toggle pattern in the backend). Used by the HelpfulButton on
+ * store + product review surfaces.
+ */
+export async function voteReviewHelpfulBackend(
+  reviewId: string,
+): Promise<Result<{ voted: boolean; helpful_count: number }>> {
+  const res = await B.voteReviewHelpfulBackend(reviewId);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
+
 export async function getStoreReviews(_storeId: string, opts: {
   rating?: number;
   search?: string;
