@@ -7,6 +7,7 @@ import { Button } from "@/components/ui";
 import { colors, spacing, radii, shadows, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Product, Review } from "@/lib/types";
+import { HelpfulButton } from "@/components/reviews/HelpfulButton";
 
 type Tab = "description" | "specs" | "reviews" | "qa";
 
@@ -282,6 +283,13 @@ function ReviewsTab({
             {r.content ? (
               <Body muted size="sm" style={styles.reviewContent}>{r.content}</Body>
             ) : null}
+            <View style={styles.helpfulRow}>
+              <HelpfulButton
+                reviewId={r.id}
+                initialVoted={Boolean((r as any).user_voted_helpful)}
+                initialCount={r.helpful_count ?? 0}
+              />
+            </View>
           </View>
         ))}
       </View>
@@ -538,6 +546,11 @@ const styles = StyleSheet.create({
   },
   reviewContent: {
     lineHeight: 20,
+  },
+  helpfulRow: {
+    marginTop: spacing[2],
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   emptyReviews: {
     alignItems: "center",

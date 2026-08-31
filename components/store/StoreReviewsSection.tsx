@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { StoreRatingSummary } from "./StoreRatingSummary";
+import { HelpfulButton } from "@/components/reviews/HelpfulButton";
 import type { Review } from "@/lib/types";
 
 interface StoreReviewsSectionProps {
@@ -108,6 +109,13 @@ function ReviewRow({ review }: { review: Review }) {
           {productName}
         </Body>
       </View>
+      <View style={styles.helpfulRow}>
+        <HelpfulButton
+          reviewId={review.id}
+          initialVoted={Boolean((review as any).user_voted_helpful)}
+          initialCount={review.helpful_count ?? 0}
+        />
+      </View>
     </View>
   );
 }
@@ -190,5 +198,10 @@ const styles = StyleSheet.create({
     color: colors.olive[700],
     fontFamily: fontFamilies.sans.medium,
     fontSize: 11,
+  },
+  helpfulRow: {
+    marginTop: spacing[2],
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
 });
