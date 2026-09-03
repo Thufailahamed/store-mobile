@@ -1,0 +1,38 @@
+# Maestro e2e: brand withdraw (slice 0310).
+#
+# Runs against:
+#   - backend: http://localhost:8787 (Hono store-backend on CF Workers local)
+#   - mobile:  Expo dev server + iOS sim
+#
+# Pre-conditions:
+#   - NEXT_PUBLIC_BRAND_WITHDRAWAL=true in env
+#   - Signed in as brand_owner (brand@gucci.com from seed)
+#   - Brand has available balance > 100 LKR
+#   - Brand KYC approved + payout settings already configured
+
+appId: com.luxe.app
+
+---
+- launchApp
+
+# Brand portal — open payouts
+- tap: "Brand"
+- tap: "Payouts"
+
+# Open withdraw dialog
+- tap: "Withdraw"
+- inputText: "5000"
+- tap: "Request withdrawal"
+
+# Toast confirmation
+- assertVisible:
+    text: "Withdrawal requested"
+    timeout: 10000
+
+# Back out
+- tap: "OK"
+
+# Verify payouts page reflects new status (row appears in recent payouts list)
+- assertVisible:
+    text: "requested"
+    timeout: 5000
