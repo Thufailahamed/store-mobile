@@ -529,29 +529,71 @@ export async function getOrderByIdBackend(id: string): Promise<ApiResult<{ order
   return fetchJson(`/api/orders/${id}`);
 }
 
-export async function placeOrderGroupBackend(input: {
-  cart_groups: Array<{ store_id: string; items: Array<{ product_id?: string; variant_id?: string | null; quantity: number }> }>;
-  address_id: string;
+export type PlaceOrderGroupInput = {
+  orders: Array<{
+    store_id: string;
+    items: Array<{
+      product_id?: string;
+      variant_id?: string | null;
+      product_name?: string;
+      variant_label?: string | null;
+      sku?: string | null;
+      quantity: number;
+      unit_price?: number;
+    }>;
+    subtotal?: number;
+    discount?: number;
+    shipping_fee?: number;
+    tax?: number;
+    total?: number;
+  }>;
+  address_id?: string | null;
+  shipping_address?: Record<string, unknown>;
   payment_method: string;
+  coupon_id?: string | null;
   coupon_code?: string | null;
   gift_card_code?: string | null;
   currency?: string;
   shipping_method?: string;
-  points_redeemed?: number;
-}): Promise<ApiResult<{ orders?: Order[]; results?: Order[]; group_id?: string }>> {
+  loyalty_points_redeemed?: number;
+  group_id?: string;
+  delivery_date?: string | null;
+};
+
+export async function placeOrderGroupBackend(
+  input: PlaceOrderGroupInput,
+): Promise<ApiResult<{ orders?: Order[]; group?: { orders?: Order[] }; group_id?: string; totals?: { total?: number } }>> {
   return fetchJson("/api/orders/group", {
     method: "POST",
     body: {
-      cart_groups: input.cart_groups,
-      address_id: input.address_id,
+      orders: input.orders,
       payment_method: input.payment_method,
       currency: input.currency ?? "LKR",
+      ...(input.address_id ? { address_id: input.address_id } : { address_id: null }),
+      ...(input.shipping_address ? { shipping_address: input.shipping_address } : {}),
+      ...(input.coupon_id ? { coupon_id: input.coupon_id } : {}),
       ...(input.coupon_code ? { coupon_code: input.coupon_code } : {}),
       ...(input.gift_card_code ? { gift_card_code: input.gift_card_code } : {}),
       ...(input.shipping_method ? { shipping_method: input.shipping_method } : {}),
-      ...(input.points_redeemed ? { points_redeemed: input.points_redeemed } : {}),
+      ...(input.loyalty_points_redeemed
+        ? { loyalty_points_redeemed: input.loyalty_points_redeemed }
+        : {}),
+      ...(input.group_id ? { group_id: input.group_id } : {}),
+      ...(input.delivery_date ? { delivery_date: input.delivery_date } : {}),
     },
     headers: { "Idempotency-Key": `place-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
+  });
+}
+
+export async function getCheckoutOptionsBackend(
+  storeIds: string[],
+): Promise<ApiResult<{
+  cod_allowed: boolean;
+  stores: Record<string, { cash_on_delivery: boolean }>;
+}>> {
+  return fetchJson("/api/checkout/options", {
+    method: "POST",
+    body: { store_ids: storeIds },
   });
 }
 
@@ -1138,6 +1180,55 @@ export type BrandKPIs = { revenue: number; orders: number; aov?: number; topProd
 
 export async function getBrandKPIsBackend(): Promise<ApiResult<BrandKPIs>> {
   return fetchJson("/api/brand/analytics/summary");
+}
+
+// ── Brand payouts (slice 0310) ──────────────────────────────────────────
+export type BrandPayoutSettings = {
+  id?: string;
+  brand_id?: string;
+  method: "bank" | "paypal";
+  bank_name?: string | null;
+  account_name?: string | null;
+  account_number_last4?: string | null;
+  paypal?: string | null;
+  updated_at?: string;
+};
+
+export type BrandWithdrawResult = {
+  payout: {
+    id: string;
+    brand_id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    idempotency_key?: string;
+    reference?: string;
+  };
+  replay?: boolean;
+  ledger_entries?: number;
+};
+
+export async function getBrandPayoutSettingsBackend(): Promise<
+  ApiResult<{ payout: BrandPayoutSettings | null }>
+> {
+  return fetchJson("/api/brand/payouts/settings");
+}
+
+export async function updateBrandPayoutSettingsBackend(
+  patch: Partial<BrandPayoutSettings>,
+): Promise<ApiResult<{ payout: BrandPayoutSettings }>> {
+  return fetchJson("/api/brand/payouts/settings", { method: "PATCH", body: patch });
+}
+
+export async function withdrawBrandBackend(
+  amount: number,
+  idempotencyKey: string,
+): Promise<ApiResult<BrandWithdrawResult>> {
+  return fetchJson("/api/brand/payouts/withdraw", {
+    method: "POST",
+    body: { amount },
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }
 
 // ----- Brand reads -----
