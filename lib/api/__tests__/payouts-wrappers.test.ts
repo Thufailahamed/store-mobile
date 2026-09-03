@@ -11,6 +11,7 @@ import {
   getPayoutBalanceBackend,
   createStripeConnectLinkBackend,
   withdrawPayoutBackend,
+  getPayoutDetailBackend,
 } from "@/lib/api/backend";
 
 beforeEach(() => {
@@ -53,5 +54,11 @@ describe("payouts wrappers", () => {
       body: { amount: 1000 },
       headers: { "Idempotency-Key": "wd-test-123" },
     });
+  });
+
+  it("getPayoutDetailBackend hits /api/seller/payouts/:id with encoded id", async () => {
+    fetchJsonMock.mockResolvedValueOnce({ ok: true, data: { payout: { id: "p1", amount: 100 } } });
+    await getPayoutDetailBackend("p1");
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/seller/payouts/p1");
   });
 });

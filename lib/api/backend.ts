@@ -2279,6 +2279,10 @@ export async function getPayoutsBackend(): Promise<ApiResult<{ payouts: Payout[]
   return fetchJson("/api/seller/payouts");
 }
 
+export async function getPayoutDetailBackend(id: string): Promise<ApiResult<{ payout: Payout }>> {
+  return fetchJson(`/api/seller/payouts/${encodeURIComponent(id)}`);
+}
+
 export async function updatePayoutSettingsBackend(input: Partial<PayoutSettings>): Promise<ApiResult<{ payout: PayoutSettings }>> {
   return fetchJson("/api/seller/payouts", { method: "PATCH", body: input });
 }
