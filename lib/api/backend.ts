@@ -813,6 +813,38 @@ export async function updateSellerStoreBackend(patch: Partial<Store>): Promise<A
   return fetchJson("/api/seller/store", { method: "PATCH", body: patch });
 }
 
+// ───── Seller Team ─────
+export interface SellerTeamMember {
+  id: string;
+  user_id?: string;
+  role: string;
+  created_at: string;
+  user?: { email?: string | null; full_name?: string | null } | null;
+}
+export interface SellerTeamInvite {
+  id: string;
+  email: string;
+  role: string;
+  expires_at?: string;
+  accepted_at?: string | null;
+}
+
+export async function getSellerTeamBackend(): Promise<ApiResult<{ members: SellerTeamMember[]; invites: SellerTeamInvite[] }>> {
+  return fetchJson("/api/seller/team");
+}
+
+export async function inviteSellerTeamBackend(input: { email: string; role: string }): Promise<ApiResult<{ invite: SellerTeamInvite }>> {
+  return fetchJson("/api/seller/team/invites", { method: "POST", body: input });
+}
+
+export async function resendSellerTeamInviteBackend(id: string): Promise<ApiResult<{ invite: SellerTeamInvite }>> {
+  return fetchJson(`/api/seller/team/invites/${encodeURIComponent(id)}/resend`, { method: "POST" });
+}
+
+export async function removeSellerTeamMemberBackend(id: string): Promise<ApiResult<{ removed: true }>> {
+  return fetchJson(`/api/seller/team/members/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function setProductActiveBackend(
   id: string,
   isActive: boolean,
