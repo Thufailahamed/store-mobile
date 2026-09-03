@@ -45,6 +45,8 @@ import {
   changePasswordBackend,
   checkUniqueBackend,
   deleteAccountBackend,
+  deactivateAccountBackend,
+  reactivateAccountBackend,
   exportUserDataBackend,
   getSettingsBackend,
   updateSettingsBackend,
@@ -166,6 +168,8 @@ export default function SettingsScreen() {
   const [newPwd, setNewPwd] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivateReason, setDeactivateReason] = useState("");
 
   /* ------------------------------ load ------------------------------ */
 
@@ -894,6 +898,27 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
+        {/* DEACTIVATE (reversible) */}
+        <View style={styles.danger}>
+          <View style={styles.dangerHeader}>
+            <View style={styles.dangerIcon}>
+              <Ionicons name="pause-circle-outline" size={16} color={colors.light.destructive} />
+            </View>
+            <View>
+              <Label style={styles.dangerKicker}>Take a break</Label>
+              <Display size="lg" style={styles.dangerTitle}>
+                Deactivate account
+              </Display>
+            </View>
+          </View>
+          <Body muted size="sm" style={styles.dangerCopy}>
+            Hide your profile and pause new orders. Sign back in any time to reactivate.
+          </Body>
+          <Button variant="outline" onPress={() => setDeactivateOpen(true)}>
+            Deactivate
+          </Button>
+        </View>
+
         {/* DANGER ZONE */}
         <View style={styles.danger}>
           <View style={styles.dangerHeader}>
@@ -1109,6 +1134,61 @@ export default function SettingsScreen() {
             disabled={deleteConfirm !== "DELETE"}
           >
             Delete account
+          </Button>
+        </View>
+      </CenteredModal>
+
+      <CenteredModal
+        visible={deactivateOpen}
+        onClose={() => { setDeactivateOpen(false); setDeactivateReason(""); }}
+        kicker="Take a break"
+        title="Deactivate account"
+        copy={
+          <Body muted size="sm" style={styles.modalCopy}>
+            Your profile and listings are hidden. New orders are paused. Sign back in any time to reactivate.
+          </Body>
+        }
+      >
+        <View style={{ gap: 6, marginTop: 8 }}>
+          <Label>Reason (optional)</Label>
+          <TextInput
+            value={deactivateReason}
+            onChangeText={setDeactivateReason}
+            placeholder="…"
+            maxLength={280}
+            editable={!saving}
+            style={{ borderWidth: 1, borderColor: colors.light.border, borderRadius: 8, padding: 10 }}
+          />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+          <Button variant="outline" onPress={() => setDeactivateOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            loading={saving}
+            onPress={async () => {
+              try {
+                setSaving(true);
+                const res = await deactivateAccountBackend(deactivateReason.trim() || undefined);
+                if (!res.ok) {
+                  Alert.alert("Couldn't deactivate", res.error || "Try again later.");
+                  return;
+                }
+                Alert.alert(
+                  "Account deactivated",
+                  "Sign back in any time to reactivate.",
+                );
+                setDeactivateOpen(false);
+                setDeactivateReason("");
+                await signOut();
+              } catch (err) {
+                Alert.alert("Couldn't deactivate", err instanceof Error ? err.message : "Unknown error");
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            Deactivate
           </Button>
         </View>
       </CenteredModal>

@@ -2113,6 +2113,14 @@ export async function deleteAccountBackend(): Promise<ApiResult<{ deleted: boole
   return fetchJson("/api/account/delete", { method: "POST", body: {} });
 }
 
+export async function deactivateAccountBackend(reason?: string): Promise<ApiResult<{ ok: true }>> {
+  return fetchJson("/api/account/deactivate", { method: "POST", body: { reason } });
+}
+
+export async function reactivateAccountBackend(): Promise<ApiResult<{ ok: true }>> {
+  return fetchJson("/api/account/reactivate", { method: "POST", body: {} });
+}
+
 export type ReferralStats = {
   code: string;
   totalReferrals: number;
