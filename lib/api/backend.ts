@@ -845,6 +845,26 @@ export async function removeSellerTeamMemberBackend(id: string): Promise<ApiResu
   return fetchJson(`/api/seller/team/members/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// ───── Seller Audit ─────
+export interface SellerAuditEntry {
+  id: string;
+  actor_id?: string;
+  action: string;
+  target_type?: string;
+  target_id?: string;
+  diff?: Record<string, unknown> | null;
+  created_at: string;
+  actor?: { id: string; full_name?: string | null; email?: string | null } | null;
+}
+
+export async function getSellerAuditLogBackend(input?: { entityType?: string; limit?: number }): Promise<ApiResult<{ entries: SellerAuditEntry[]; store_id?: string }>> {
+  const params = new URLSearchParams();
+  if (input?.entityType) params.set("entity_type", input.entityType);
+  if (input?.limit) params.set("limit", String(input.limit));
+  const qs = params.toString();
+  return fetchJson(qs ? `/api/seller/audit?${qs}` : "/api/seller/audit");
+}
+
 export async function setProductActiveBackend(
   id: string,
   isActive: boolean,
