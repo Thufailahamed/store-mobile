@@ -1,9 +1,9 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { getPayoutsBackend } from "@/lib/api/backend";
+import { getPayoutDetailBackend } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
@@ -12,20 +12,25 @@ import { fontFamilies } from "@/lib/theme/fonts";
 export default function PayoutDetail() {
   const { payoutId } = useLocalSearchParams<{ payoutId: string }>();
   const router = useRouter();
-  const { data, isLoading } = useQuery({
-    queryKey: ["payouts"],
-    queryFn: getPayoutsBackend,
-    select: (res) => (res.ok ? res.data.payouts.find((p) => p.id === payoutId) : undefined),
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["payout", payoutId],
+    enabled: Boolean(payoutId),
+    queryFn: async () => {
+      const res = await getPayoutDetailBackend(payoutId);
+      if (!res.ok) throw new Error(res.error ?? "Failed to load payout");
+      return res.data.payout;
+    },
   });
 
   if (isLoading) return <View style={styles.center}><Text style={styles.body}>Loading…</Text></View>;
-  if (!data) return <View style={styles.center}><Text style={styles.body}>Payout not found.</Text></View>;
+  if (isError || !data) return <View style={styles.center}><Text style={styles.body}>Payout not found.</Text></View>;
 
   const p = data;
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <Stack.Screen options={{ title: `Payout ${p.id.slice(0, 8)}` }} />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.amount}>{formatPrice(p.amount, p.currency)}</Text>
+        <Text style={styles.amount}>{formatPrice(p.amount, p.currency ?? "LKR")}</Text>
         <View style={styles.statusRow}>
           <Text style={styles.statusLabel}>Status</Text>
           <Text style={styles.statusValue}>{p.status}</Text>
