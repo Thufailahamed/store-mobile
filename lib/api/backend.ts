@@ -813,6 +813,28 @@ export async function updateSellerStoreBackend(patch: Partial<Store>): Promise<A
   return fetchJson("/api/seller/store", { method: "PATCH", body: patch });
 }
 
+// ───── Seller Branding ─────
+export interface SellerBranding {
+  theme_preset?: string | null;
+  button_style?: "rounded" | "pill" | "square" | null;
+  layout_density?: "compact" | "comfortable" | "spacious" | null;
+  font_mood?: "editorial" | "modern" | "classic" | null;
+  primary_color?: string | null;
+  accent_color?: string | null;
+  show_powered_by?: boolean | null;
+  [k: string]: unknown;
+}
+
+export async function getSellerBrandingBackend(): Promise<ApiResult<SellerBranding>> {
+  const res = await fetchJson<{ store: SellerBranding }>("/api/seller/store");
+  if (!res.ok) return res;
+  return { ok: true, data: res.data.store ?? {} };
+}
+
+export async function updateSellerBrandingBackend(input: Partial<SellerBranding>): Promise<ApiResult<{ store: SellerBranding }>> {
+  return fetchJson("/api/seller/store", { method: "PATCH", body: input });
+}
+
 // ───── Seller Team ─────
 export interface SellerTeamMember {
   id: string;
