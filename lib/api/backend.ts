@@ -288,6 +288,8 @@ export type CartLine = {
   variant_label?: string | null;
   sku?: string | null;
   image_url?: string | null;
+  is_gift?: boolean;
+  gift_message?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -406,6 +408,14 @@ export async function markNotificationReadBackend(id: string): Promise<ApiResult
 
 export async function markAllNotificationsReadBackend(): Promise<ApiResult<{ updated: number }>> {
   return fetchJson("/api/notifications", { method: "POST", body: { action: "mark_all_read" } });
+}
+
+export async function deleteNotificationBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
+  return fetchJson(`/api/notifications/${id}`, { method: "DELETE" });
+}
+
+export async function clearAllNotificationsBackend(): Promise<ApiResult<{ deleted: number }>> {
+  return fetchJson("/api/notifications/clear", { method: "POST" });
 }
 
 export async function registerPushTokenBackend(
@@ -540,6 +550,8 @@ export type PlaceOrderGroupInput = {
       sku?: string | null;
       quantity: number;
       unit_price?: number;
+      is_gift?: boolean;
+      gift_message?: string | null;
     }>;
     subtotal?: number;
     discount?: number;
@@ -583,6 +595,78 @@ export async function placeOrderGroupBackend(
     },
     headers: { "Idempotency-Key": `place-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
   });
+}
+
+export type PlaceGuestOrderInput = PlaceOrderGroupInput & {
+  guest_email: string;
+};
+
+export async function placeGuestOrderBackend(
+  input: PlaceGuestOrderInput,
+): Promise<ApiResult<{ orders?: Order[]; group_id?: string; guest_token?: string }>> {
+  return fetchJson("/api/orders/guest", {
+    method: "POST",
+    requireAuth: false,
+    body: {
+      guest_email: input.guest_email,
+      orders: input.orders,
+      payment_method: input.payment_method,
+      currency: input.currency ?? "LKR",
+      ...(input.shipping_address ? { shipping_address: input.shipping_address } : {}),
+      ...(input.coupon_code ? { coupon_code: input.coupon_code } : {}),
+      ...(input.gift_card_code ? { gift_card_code: input.gift_card_code } : {}),
+      ...(input.shipping_method ? { shipping_method: input.shipping_method } : {}),
+      ...(input.group_id ? { group_id: input.group_id } : {}),
+      ...(input.delivery_date ? { delivery_date: input.delivery_date } : {}),
+    },
+    headers: { "Idempotency-Key": `guest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
+  });
+}
+
+export async function getGuestOrderBackend(token: string): Promise<ApiResult<{
+  id: string;
+  order_number: string;
+  status: string;
+  payment_status: string;
+  total: number;
+  currency: string;
+  placed_at: string;
+  delivery_date?: string | null;
+  guest_email?: string | null;
+  items?: Array<{ id: string; product_id: string; quantity: number; unit_price: number; total: number; is_gift?: boolean; gift_message?: string | null }>;
+}>> {
+  return fetchJson(`/api/orders/guest/${encodeURIComponent(token)}`, { requireAuth: false });
+}
+
+export async function getOrderInvoiceBackend(id: string): Promise<ApiResult<{
+  invoice: { id: string; invoice_url?: string | null; invoice_number?: string | null; total?: number; currency?: string };
+}>> {
+  return fetchJson(`/api/orders/${id}/invoice`);
+}
+
+export async function resendOrderReceiptBackend(id: string): Promise<ApiResult<{ enqueued: boolean }>> {
+  return fetchJson(`/api/orders/${id}/resend-receipt`, { method: "POST" });
+}
+
+export async function aiSearchBackend(prompt: string): Promise<ApiResult<{ products?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }> }>> {
+  return fetchJson("/api/ai/search", { method: "POST", body: { prompt } });
+}
+
+export async function aiOutfitBackend(input: {
+  occasion?: string;
+  vibe?: string;
+}): Promise<ApiResult<{ outfit?: { occasion?: string; vibe?: string; pieces?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }> } } & { pieces?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }>; occasion?: string; vibe?: string }>> {
+  return fetchJson("/api/ai/outfit", { method: "POST", body: input });
+}
+
+export async function aiTrendsBackend(): Promise<ApiResult<{ trends?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string; category?: string }> }>> {
+  return fetchJson("/api/ai/trends");
+}
+
+export async function getInfluencerApplicationBackend(): Promise<ApiResult<{
+  application: { id: string; status: string; created_at: string; full_name?: string; email?: string; niches?: string[]; audience_size?: number } | null;
+}>> {
+  return fetchJson("/api/influencers/application");
 }
 
 export async function getCheckoutOptionsBackend(
@@ -745,6 +829,14 @@ export async function getEligibleReviewOrdersBackend(productId: string): Promise
 }
 
 export type Question = { id: string; product_id: string; question: string; answer?: string | null; answered_at?: string | null; created_at: string; user?: { id: string; full_name?: string } };
+
+export async function getSizeChartsBackend(opts: {
+  brand_id: string;
+  category_id: string;
+  seller_id?: string;
+}): Promise<ApiResult<{ data: Array<{ id: string; name?: string; rows?: Array<{ size_label: string; chest_min?: number; chest_max?: number; waist_min?: number; waist_max?: number; hips_min?: number; hips_max?: number; length_min?: number; length_max?: number }> }> }>> {
+  return fetchJson("/api/size-fit/charts", { query: opts });
+}
 
 export async function listQuestionsBackend(productId: string): Promise<ApiResult<{ questions: Question[] }>> {
   return fetchJson(`/api/qa`, { query: { productId } });
@@ -1629,7 +1721,7 @@ export async function sendBroadcastBackend(b: Record<string, unknown>): Promise<
 }
 
 export async function getAdminAuditLogBackend(limit = 50): Promise<ApiResult<{ entries: unknown[] }>> {
-  return fetchJson("/api/admin/audit", { query: { limit } });
+  return fetchJson("/api/admin/audit-log", { query: { limit } });
 }
 
 export async function getAdminBlogPostsBackend(): Promise<ApiResult<{ posts: Array<BlogPost & { status: string }> }>> {
@@ -1949,10 +2041,32 @@ export async function getHomeFeedBackend(opts: { exclude?: string[] } = {}): Pro
 // SEARCH SUGGESTIONS
 // =========================================================================
 
-export type SearchSuggestion = { type: "product" | "brand" | "category" | "store"; id: string; label: string; slug?: string; image_url?: string | null };
+export type SearchSuggestion = {
+  type: "product" | "brand" | "category" | "store" | "intent" | "keyword";
+  id?: string;
+  label: string;
+  slug?: string;
+  image_url?: string | null;
+  price?: number;
+  mrp?: number;
+  brand?: string;
+  count?: number;
+  followers?: number;
+  is_verified?: boolean;
+  meta?: Record<string, unknown>;
+};
 
 export async function getSearchSuggestionsBackend(term: string): Promise<ApiResult<{ suggestions: SearchSuggestion[] }>> {
-  return fetchJson("/api/catalog/search-suggestions", { query: { q: term } });
+  const clean = term.trim();
+  const res = await fetchJson<{ suggestions: SearchSuggestion[] }>("/api/catalog/search/suggestions", {
+    requireAuth: false,
+    query: { q: clean },
+  });
+  if (res.ok) return res;
+  return fetchJson<{ suggestions: SearchSuggestion[] }>("/api/catalog/search-suggestions", {
+    requireAuth: false,
+    query: { q: clean },
+  });
 }
 
 // =========================================================================
