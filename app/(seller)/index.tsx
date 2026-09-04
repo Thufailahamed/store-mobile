@@ -50,7 +50,7 @@ const QUICK_ACTIONS = [
   { label: "Returns", icon: "return-down-back-outline" as const, route: "/(seller)/returns", color: colors.accent2.rust },
   { label: "Products", icon: "cube-outline" as const, route: "/(seller)/products", color: colors.olive[700] },
   { label: "Inventory", icon: "layers-outline" as const, route: "/(seller)/inventory", color: colors.accent2.ochre },
-  { label: "Analytics", icon: "bar-chart-outline" as const, route: "/(seller)/analytics", color: colors.olive[500] },
+  { label: "Payouts", icon: "wallet-outline" as const, route: "/(seller)/payouts", color: colors.olive[700] },
   { label: "Reviews", icon: "star-outline" as const, route: "/(seller)/reviews", color: colors.accent2.rust },
   { label: "Coupons", icon: "pricetag-outline" as const, route: "/(seller)/coupons", color: colors.olive[600] },
   { label: "Notifications", icon: "notifications-outline" as const, route: "/(seller)/notifications", color: colors.olive[700] },
