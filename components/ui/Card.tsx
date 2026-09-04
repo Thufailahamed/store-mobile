@@ -1,35 +1,35 @@
 import React from "react";
-import { View, Text, StyleSheet, type ViewStyle, type TextStyle } from "react-native";
+import { View, Text, StyleSheet, type StyleProp, type ViewStyle, type TextStyle } from "react-native";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 interface CardHeaderProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 interface CardTitleProps {
   children: React.ReactNode;
-  style?: TextStyle;
+  style?: StyleProp<TextStyle>;
 }
 
 interface CardDescriptionProps {
   children: React.ReactNode;
-  style?: TextStyle;
+  style?: StyleProp<TextStyle>;
 }
 
 interface CardContentProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 interface CardFooterProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function Card({ children, style }: CardProps) {

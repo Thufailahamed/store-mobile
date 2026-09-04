@@ -12,3 +12,5 @@ export { EditorialInterlude } from "./EditorialInterlude";
 export { ForYouProductCard } from "./ForYouProductCard";
 export { PersonalisedSection } from "./PersonalisedSection";
 export { ContinueBrowsingRow } from "./ContinueBrowsingRow";
+export { ShopTheLookSection } from "./ShopTheLookSection";
+export { TrustStrip } from "./TrustStrip";

@@ -34,7 +34,7 @@ export default function PayoutsIndex() {
 
       <View style={styles.actions}>
         <ActionButton label="Settings" onPress={() => router.push("/(seller)/payouts/settings")} />
-        <ActionButton label="Stripe Connect" onPress={() => router.push("/(seller)/payouts/connect-return")} />
+        <ActionButton label="Stripe Connect" onPress={() => router.push("/(seller)/payouts/settings")} />
       </View>
 
       <Text style={styles.sectionHeading}>History</Text>

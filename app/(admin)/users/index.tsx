@@ -23,8 +23,15 @@ export default function AdminUsers() {
   const roleMutation = useMutation({
     mutationFn: ({ userId, newRole }: { userId: string; newRole: string }) =>
       updateUserRole(userId, newRole),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Couldn't change role", res.error);
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (e) => {
+      Alert.alert("Couldn't change role", e instanceof Error ? e.message : "Try again.");
     },
   });
 

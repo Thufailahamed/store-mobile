@@ -7,6 +7,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  Modal,
+  TextInput,
+  Pressable,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -61,6 +64,9 @@ export default function AdminDeliveryFailures() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [reassignSupported, setReassignSupported] = useState<boolean | null>(null);
+  const [reassignRow, setReassignRow] = useState<FailureRow | null>(null);
+  const [reassignRiderId, setReassignRiderId] = useState("");
+  const [reassignBusy, setReassignBusy] = useState(false);
 
   const load = useCallback(async () => {
     const res = await getAdminOrders({ status: "returned" });
@@ -121,24 +127,26 @@ export default function AdminDeliveryFailures() {
   };
 
   const handleReassign = (row: FailureRow) => {
-    Alert.prompt?.(
-      "Reassign rider",
-      `Enter the rider id to hand off ${row.order_number} to.`,
-      async (text) => {
-        const to = text?.trim();
-        if (!to) return;
-        const res = await reassignDelivery(row.id, to);
-        if (res.ok) {
-          await load();
-          Alert.alert("Reassigned", `${row.order_number} handed off to ${to}.`);
-        } else if (res.error === "reassign-not-supported") {
-          Alert.alert("Unavailable", "Server doesn't expose the reassign endpoint yet.");
-        } else {
-          Alert.alert("Error", res.error);
-        }
-      },
-      "plain-text",
-    );
+    setReassignRiderId("");
+    setReassignRow(row);
+  };
+
+  const submitReassign = async () => {
+    const row = reassignRow;
+    const to = reassignRiderId.trim();
+    if (!row || !to || reassignBusy) return;
+    setReassignBusy(true);
+    const res = await reassignDelivery(row.id, to);
+    setReassignBusy(false);
+    setReassignRow(null);
+    if (res.ok) {
+      await load();
+      Alert.alert("Reassigned", `${row.order_number} handed off to ${to}.`);
+    } else if (res.error === "reassign-not-supported") {
+      Alert.alert("Unavailable", "Server doesn't expose the reassign endpoint yet.");
+    } else {
+      Alert.alert("Error", res.error);
+    }
   };
 
   const ctxFor = (row: FailureRow): DeliveryFailureContext => ({
@@ -224,6 +232,41 @@ export default function AdminDeliveryFailures() {
         }
         renderItem={renderItem}
       />
+
+      <Modal
+        visible={!!reassignRow}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReassignRow(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setReassignRow(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Reassign rider</Text>
+            <Text style={styles.modalBody}>
+              Enter the rider id to hand off {reassignRow?.order_number} to.
+            </Text>
+            <TextInput
+              value={reassignRiderId}
+              onChangeText={setReassignRiderId}
+              placeholder="Rider id"
+              autoCapitalize="none"
+              style={styles.modalInput}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.reassignBtn} onPress={() => setReassignRow(null)}>
+                <Text style={styles.reassignBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={submitReassign}
+                disabled={reassignBusy || !reassignRiderId.trim()}
+              >
+                <Text style={styles.primaryBtnText}>{reassignBusy ? "Saving…" : "Reassign"}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -340,5 +383,39 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     textAlign: "center",
     marginTop: 40,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii.lg,
+    padding: 20,
+    gap: 12,
+  },
+  modalTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 16,
+    color: colors.light.foreground,
+  },
+  modalBody: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.md,
+    padding: 12,
+    fontFamily: fontFamilies.sans.regular,
+    color: colors.light.foreground,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 8,
   },
 });

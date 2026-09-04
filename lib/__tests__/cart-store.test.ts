@@ -42,4 +42,24 @@ describe("cart-store line keys", () => {
     // No throw and no-op — verified by hydrated gate in store implementation.
     expect(useCart.getState().hydrated).toBe(false);
   });
+
+  it("toggles gift wrap on a line", () => {
+    useCart.getState().addItem({
+      productId: "prod-1",
+      variantId: "var-1",
+      storeId: "store-a",
+      name: "Tee",
+      price: 1000,
+      stock: 5,
+      quantity: 1,
+    });
+    const key = buildCartLineKey("store-a", "prod-1", "var-1");
+    useCart.getState().setGift(key, true, "Happy birthday");
+    expect(useCart.getState().items[key].is_gift).toBe(true);
+    expect(useCart.getState().items[key].gift_message).toBe("Happy birthday");
+    expect(useCart.getState().giftWrapCount()).toBe(1);
+    useCart.getState().setGift(key, false);
+    expect(useCart.getState().items[key].is_gift).toBe(false);
+    expect(useCart.getState().giftWrapCount()).toBe(0);
+  });
 });

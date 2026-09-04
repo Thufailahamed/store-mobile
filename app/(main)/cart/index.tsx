@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { typography, spacing, colors, radii, shadows } from "@/lib/theme/tokens";
-import { computeCartTotals } from "@/lib/cart-pricing";
+import { computeCartTotals, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { CartItemCard } from "@/components/cart/CartItemCard";
@@ -51,6 +51,7 @@ export default function CartScreen() {
     subtotal,
     itemCount,
     addItem,
+    setGift,
   } = useCart();
   const items = cartRecord ?? {};
   const wishlist = useWishlist();
@@ -290,6 +291,8 @@ export default function CartScreen() {
         image: newVariant.image_url || oldItem.image,
         stock: getVariantStock(newVariant, newVariant.stock ?? 99),
         quantity: oldItem.quantity,
+        is_gift: oldItem.is_gift,
+        gift_message: oldItem.gift_message,
       });
     },
     [items, productDetails, removeItem, addItem]
@@ -301,7 +304,7 @@ export default function CartScreen() {
   }, [addItem]);
 
   const navigateToCheckout = useCallback(
-    async (openAddress: boolean) => {
+    async (openAddress: boolean, asGuest = false) => {
       const prep = await prepareCartForCheckout({
         items,
         selectedKeys,
@@ -312,7 +315,12 @@ export default function CartScreen() {
         return;
       }
 
-      const addressRes = await getAddresses(user!.id);
+      if (asGuest || !user) {
+        router.push("/(main)/checkout?guest=1&openAddress=1");
+        return;
+      }
+
+      const addressRes = await getAddresses(user.id);
       const hasAddress = addressRes.ok && (addressRes.data?.length ?? 0) > 0;
       router.push(
         hasAddress && !openAddress
@@ -357,12 +365,17 @@ export default function CartScreen() {
     [selectedCartItems],
   );
   const cartTotals = useMemo(
-    () => computeCartTotals({ lines: selectedPricingLines }),
-    [selectedPricingLines],
+    () =>
+      computeCartTotals({
+        lines: selectedPricingLines,
+        giftWrapCount: selectedCartItems.filter(([, item]) => item.is_gift).length,
+      }),
+    [selectedPricingLines, selectedCartItems],
   );
   const shippingFee = cartTotals.shipping;
   const tax = cartTotals.tax;
   const totalAmount = cartTotals.total;
+  const giftWrapFee = selectedCartItems.filter(([, item]) => item.is_gift).length * GIFT_WRAP_FEE;
   const total = totalAmount;
   const count = useMemo(() => {
     return selectedCartItems.reduce((sum, [_, item]) => sum + item.quantity, 0);
@@ -654,6 +667,7 @@ export default function CartScreen() {
             onRemove={() => handleRemove(key, cartItem.name)}
             onUpdateQuantity={(quantity) => updateQuantity(key, quantity)}
             onUpdateVariant={(newVariantId, newVariantLabel) => handleUpdateVariant(key, newVariantId, newVariantLabel)}
+            onGiftChange={(isGift, message) => setGift(key, isGift, message)}
           />
           );
         }}
@@ -682,6 +696,13 @@ export default function CartScreen() {
                       {shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
                     </Body>
                   </View>
+
+                  {giftWrapFee > 0 ? (
+                    <View style={styles.pdRow}>
+                      <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Gift wrap</Body>
+                      <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(giftWrapFee)}</Body>
+                    </View>
+                  ) : null}
 
                   <View style={styles.pdRow}>
                     <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Tax</Body>
@@ -842,6 +863,16 @@ export default function CartScreen() {
               {selectedCount > 0 && !hasUnavailableItems && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
             </View>
           </TouchableOpacity>
+          {!user ? (
+            <TouchableOpacity
+              style={[styles.checkoutBtn, { marginTop: 8, backgroundColor: "transparent", borderWidth: 1, borderColor: theme.colors.border }]}
+              disabled={selectedCount === 0 || hasUnavailableItems}
+              onPress={() => void navigateToCheckout(true, true)}
+              activeOpacity={0.85}
+            >
+              <Body style={[styles.checkoutBtnText, { color: theme.colors.foreground }]}>Checkout as guest</Body>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </PaperBackground>

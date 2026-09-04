@@ -8,19 +8,22 @@ import { SectionHeader } from "@/components/layout";
 import { ProductImageGallery } from "@/components/product/ProductImageGallery";
 import { ProductInfo } from "@/components/product/ProductInfo";
 import { VariantSelector } from "@/components/product/VariantSelector";
+import { SizeGuideModal } from "@/components/product/SizeGuideModal";
 import { TrustHighlights } from "@/components/product/TrustHighlights";
 import { ProductStoreCard } from "@/components/product/ProductStoreCard";
 import { ProductDetails } from "@/components/product/ProductDetails";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ReviewForm } from "@/components/product/ReviewForm";
 import { PriceAlertPill } from "@/components/product/PriceAlertPill";
+import { PincodeChecker } from "@/components/delivery/PincodeChecker";
 import { OverlapWarningBanner } from "@/components/wardrobe/OverlapWarningBanner";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
-import { useCart, useWishlist } from "@/lib/stores";
+import { useCart, useWishlist, useUI } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast, Button, Skeleton } from "@/components/ui";
-import { Display, Body, Price } from "@/components/ui/Typography";
+import { Display, Body, Price, Label } from "@/components/ui/Typography";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { navigateHome } from "@/lib/navigation";
 import { recordRecentlyViewed } from "@/lib/account-local";
@@ -180,6 +183,7 @@ export default function ProductDetailScreen() {
     });
     tracker.cartAdd(product);
     toast("Added to basket", "success");
+    useUI.getState().setCartDrawer(true);
     return true;
   };
 
@@ -205,15 +209,16 @@ export default function ProductDetailScreen() {
   };
 
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const headerBg = scrollY.interpolate({
-    inputRange: [100, 200],
-    outputRange: ["rgba(245, 244, 239, 0)", "rgba(245, 244, 239, 0.98)"],
-    extrapolate: "clamp",
-  });
+  const [showSizeGuide, setShowSizeGuide] = useState(false);
+
+  const totalCartCount = useMemo(
+    () => Object.values(cartItems).reduce((sum, item) => sum + (item.is_unavailable ? 0 : item.quantity), 0),
+    [cartItems]
+  );
 
   const headerBorder = scrollY.interpolate({
-    inputRange: [100, 200],
-    outputRange: ["rgba(83, 94, 44, 0)", "rgba(83, 94, 44, 0.12)"],
+    inputRange: [50, 150],
+    outputRange: ["transparent", "rgba(83, 94, 44, 0.15)"],
     extrapolate: "clamp",
   });
 
@@ -223,15 +228,15 @@ export default function ProductDetailScreen() {
     extrapolate: "clamp",
   });
 
-  const btnBg = scrollY.interpolate({
-    inputRange: [100, 200],
-    outputRange: ["rgba(250, 248, 241, 0.92)", "rgba(250, 248, 241, 0)"],
+  const stickyBottomTranslate = scrollY.interpolate({
+    inputRange: [380, 480],
+    outputRange: [100, 0],
     extrapolate: "clamp",
   });
 
-  const btnBorder = scrollY.interpolate({
-    inputRange: [100, 200],
-    outputRange: ["rgba(83, 94, 44, 0.15)", "rgba(83, 94, 44, 0)"],
+  const stickyBottomOpacity = scrollY.interpolate({
+    inputRange: [380, 460],
+    outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
@@ -263,35 +268,68 @@ export default function ProductDetailScreen() {
   return (
     <>
     <PaperBackground style={{ flex: 1 }}>
-      {/* Animated Sticky Header */}
+      {/* Sticky Top Navigation Bar */}
       <Animated.View
         style={[
           styles.topBar,
           {
             paddingTop: insets.top + 8,
-            backgroundColor: headerBg,
-            borderColor: headerBorder,
+            backgroundColor: colors.light.background,
+            borderBottomColor: headerBorder,
           },
         ]}
       >
-        <AnimatedTouchableOpacity
-          style={[styles.topBtn, { backgroundColor: btnBg, borderColor: btnBorder }]}
+        <TouchableOpacity
+          style={styles.topBtn}
           onPress={() => navigateHome(router)}
           activeOpacity={0.8}
         >
           <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
-        </AnimatedTouchableOpacity>
+        </TouchableOpacity>
 
         <Animated.View style={[styles.headerCenter, { opacity: headerTitleOpacity }]}>
-          <Display size="xs" style={styles.headerTitleText} numberOfLines={1}>
+          <Display size="xs" style={styles.headerTitleText} numberOfLines={1} ellipsizeMode="tail">
             {product.name}
           </Display>
           <Price size="xs" style={styles.headerPriceText}>
-            {formatPrice(unitPrice)}
+            {formatPrice(unitPrice, product.currency)}
           </Price>
         </Animated.View>
 
-        <View style={styles.topRight} />
+        <View style={styles.topRight}>
+          <TouchableOpacity
+            style={styles.topBtn}
+            onPress={() => {
+              if (product) {
+                tracker.wishlist(product, isWishlisted ? "remove" : "add");
+                toggle(product.id);
+              }
+            }}
+            activeOpacity={0.8}
+            accessibilityLabel="Wishlist"
+          >
+            <Ionicons
+              name={isWishlisted ? "heart" : "heart-outline"}
+              size={18}
+              color={isWishlisted ? colors.light.destructive : colors.light.foreground}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.topBtn, styles.cartBtn]}
+            onPress={() => router.push("/(main)/cart" as never)}
+            activeOpacity={0.8}
+            accessibilityLabel="Bag"
+          >
+            <Ionicons name="bag-outline" size={18} color={colors.light.foreground} />
+            {totalCartCount > 0 && (
+              <View style={styles.headerBadge}>
+                <Label style={styles.headerBadgeText}>
+                  {totalCartCount > 9 ? "9+" : totalCartCount}
+                </Label>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </Animated.View>
 
       <ScrollView
@@ -356,6 +394,7 @@ export default function ProductDetailScreen() {
               const live = v ? getVariantStock(inventory, v.id)?.available : undefined;
               return live ?? v?.stock ?? 0;
             }}
+            onOpenSizeGuide={() => setShowSizeGuide(true)}
           />
         </View>
 
@@ -392,6 +431,7 @@ export default function ProductDetailScreen() {
           </View>
 
           {/* Action buttons directly below quantity selection */}
+          <PincodeChecker />
           <View style={styles.actionRow}>
             <Button
               variant="outline"
@@ -448,12 +488,14 @@ export default function ProductDetailScreen() {
         {/* Related products — content-similar (always shown) */}
         {relatedProducts.length > 0 && (
           <View style={styles.relatedSection}>
-            <SectionHeader
-              kicker="You might also love"
-              title="Similar Pieces"
-              actionLabel="View all"
-              onAction={() => router.push("/(main)/products")}
-            />
+            <View style={styles.sectionHeaderWrap}>
+              <SectionHeader
+                kicker="You might also love"
+                title="Similar Pieces"
+                actionLabel="View all"
+                onAction={() => router.push("/(main)/products")}
+              />
+            </View>
             <FlatList
               data={relatedProducts}
               keyExtractor={(item) => item.id}
@@ -469,12 +511,14 @@ export default function ProductDetailScreen() {
             recommendation set distinct from the content-similar rail. */}
         {youMayAlsoLike.length > 0 && (
           <View style={styles.relatedSection}>
-            <SectionHeader
-              kicker="Picked for you"
-              title="You May Also Like"
-              actionLabel="View all"
-              onAction={() => router.push("/(main)/products?sort=newest")}
-            />
+            <View style={styles.sectionHeaderWrap}>
+              <SectionHeader
+                kicker="Picked for you"
+                title="You May Also Like"
+                actionLabel="View all"
+                onAction={() => router.push("/(main)/products?sort=newest")}
+              />
+            </View>
             <FlatList
               data={youMayAlsoLike}
               keyExtractor={(item) => item.id}
@@ -489,12 +533,14 @@ export default function ProductDetailScreen() {
         {/* Pairs well with — co-occurrence / complementary. */}
         {pairsWellWith.length > 0 && (
           <View style={styles.relatedSection}>
-            <SectionHeader
-              kicker="Complete the look"
-              title="Pairs Well With"
-              actionLabel="View all"
-              onAction={() => router.push("/(main)/products")}
-            />
+            <View style={styles.sectionHeaderWrap}>
+              <SectionHeader
+                kicker="Complete the look"
+                title="Pairs Well With"
+                actionLabel="View all"
+                onAction={() => router.push("/(main)/products")}
+              />
+            </View>
             <FlatList
               data={pairsWellWith}
               keyExtractor={(item) => item.id}
@@ -509,10 +555,12 @@ export default function ProductDetailScreen() {
         {/* Recently viewed. */}
         {recentlyViewed.length > 0 && (
           <View style={styles.relatedSection}>
-            <SectionHeader
-              kicker="Pick up where you left off"
-              title="Recently Viewed"
-            />
+            <View style={styles.sectionHeaderWrap}>
+              <SectionHeader
+                kicker="Pick up where you left off"
+                title="Recently Viewed"
+              />
+            </View>
             <FlatList
               data={recentlyViewed}
               keyExtractor={(item) => item.id}
@@ -524,9 +572,46 @@ export default function ProductDetailScreen() {
           </View>
         )}
 
-        {/* Bottom spacer for breathing room */}
-        <View style={{ height: Math.max(insets.bottom, spacing[6]) }} />
+        {/* Bottom spacer for sticky bar & insets */}
+        <View style={{ height: insets.bottom + 84 }} />
       </ScrollView>
+
+      {/* Floating Sticky Bottom Bar */}
+      <Animated.View
+        style={[
+          styles.stickyBottomBar,
+          {
+            paddingBottom: Math.max(insets.bottom, 12),
+            transform: [{ translateY: stickyBottomTranslate }],
+            opacity: stickyBottomOpacity,
+          },
+        ]}
+      >
+        <View style={styles.stickyBottomInner}>
+          <View style={styles.stickyPriceCol}>
+            <Price size="md" style={styles.stickyPrice}>
+              {formatPrice(unitPrice, product.currency)}
+            </Price>
+            <Body size="xs" muted numberOfLines={1} style={styles.stickyVariant}>
+              {selectedSize ? `Size ${selectedSize}` : "Select size"}
+              {selectedColor ? ` · ${selectedColor}` : ""}
+            </Body>
+          </View>
+
+          <View style={styles.stickyBtnWrapper}>
+            <Button
+              variant={isInCart ? "outline" : "brand"}
+              onPress={handleAddToCart}
+              disabled={!isInCart && soldOut}
+              style={styles.stickyAddBtn}
+              textStyle={{ fontSize: 13, letterSpacing: 0.5 }}
+              size="md"
+            >
+              {isInCart ? "Go to basket" : (soldOut ? "Sold out" : "Add to basket")}
+            </Button>
+          </View>
+        </View>
+      </Animated.View>
     </PaperBackground>
 
     <ReviewForm
@@ -537,6 +622,14 @@ export default function ProductDetailScreen() {
       onSubmitted={() => {
         fetchReviews();
       }}
+    />
+
+    <SizeGuideModal
+      visible={showSizeGuide}
+      onClose={() => setShowSizeGuide(false)}
+      category={product.category?.name}
+      brandId={product.brand_id}
+      categoryId={product.category_id}
     />
     </>
   );
@@ -572,29 +665,51 @@ const styles = StyleSheet.create({
   },
   headerTitleText: {
     color: colors.light.foreground,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "600",
+    fontSize: 13,
+    lineHeight: 17,
+    fontFamily: fontFamilies.sans.semibold,
     textAlign: "center",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
   headerPriceText: {
     color: colors.olive[600],
     fontSize: 12,
-    fontWeight: "500",
+    fontFamily: fontFamilies.mono.medium,
   },
   topRight: {
-    width: 40,
-    height: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
   },
   topBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1,
+    borderColor: `${colors.light.primary}18`,
+    backgroundColor: colors.light.card,
     alignItems: "center",
     justifyContent: "center",
+  },
+  cartBtn: {
+    position: "relative",
+  },
+  headerBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: colors.accent2.rust,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerBadgeText: {
+    color: "#ffffff",
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
   },
   section: {
     marginTop: spacing[4],
@@ -645,8 +760,11 @@ const styles = StyleSheet.create({
   relatedSection: {
     marginTop: spacing[6],
   },
+  sectionHeaderWrap: {
+    paddingHorizontal: spacing[5],
+  },
   relatedList: {
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[5],
   },
   actionRow: {
     flexDirection: "row",
@@ -668,5 +786,42 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 12,
+  },
+  /* Floating Sticky Bottom Bar */
+  stickyBottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.light.background,
+    borderTopWidth: 1,
+    borderTopColor: `${colors.light.primary}18`,
+    paddingTop: spacing[3],
+    paddingHorizontal: spacing[5],
+    ...shadows.editorial,
+  },
+  stickyBottomInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing[4],
+  },
+  stickyPriceCol: {
+    flex: 1,
+    gap: 1,
+  },
+  stickyPrice: {
+    color: colors.light.foreground,
+  },
+  stickyVariant: {
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.medium,
+  },
+  stickyBtnWrapper: {
+    flex: 1.2,
+  },
+  stickyAddBtn: {
+    height: 44,
+    borderRadius: 10,
   },
 });

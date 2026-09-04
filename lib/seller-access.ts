@@ -5,6 +5,7 @@ export interface SellerPayoutCompliance {
   account_name?: string | null;
   account_number_last4?: string | null;
   tax_form_submitted?: boolean;
+  kyc_status?: string | null;
 }
 
 export type ComplianceDocType = "business_registration" | "tax_certificate";

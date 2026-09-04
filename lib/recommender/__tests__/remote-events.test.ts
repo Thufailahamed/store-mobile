@@ -111,7 +111,11 @@ describe("flushQueue", () => {
     expect(await flushQueue(null)).toBe(0);
   });
 
-  it("serializes events to rows and calls appendEventsBackend", async () => {
+  it("serializes events to the 0260 flat wire shape and calls appendEventsBackend", async () => {
+    // Phase 1 (0260) wire format is flat fields (type/t/product/...) plus a
+    // legacy `metadata` envelope that mirrors the flat fields so older
+    // server-side reads still deserialize. Top-level `product_id` lives on
+    // the legacy row shape only; current rows carry `product.id` directly.
     store.set(QUEUE_KEY, JSON.stringify([viewEvent("a", 100)]));
     appendMock.mockResolvedValue({ ok: true, data: { appended: 1 } });
     const sent = await flushQueue(USER);
@@ -120,7 +124,8 @@ describe("flushQueue", () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: "view",
-          product_id: "a",
+          t: 100,
+          product: expect.objectContaining({ id: "a" }),
           metadata: expect.objectContaining({
             t: 100,
             product: expect.objectContaining({ id: "a" }),

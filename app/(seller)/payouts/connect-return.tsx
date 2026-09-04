@@ -1,19 +1,33 @@
 import React, { useEffect, useMemo } from "react";
-import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, AppState } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
+import { getPayoutsBackend } from "@/lib/api/backend";
 import { colors, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 export default function ConnectReturn() {
   const params = useLocalSearchParams<{ refresh?: string; success?: string }>();
   const router = useRouter();
+  const qc = useQueryClient();
   const state = useMemo<"loading" | "success" | "refresh">(() => {
     if (params.refresh === "true") return "refresh";
     if (params.success === "true") return "success";
     return "loading";
   }, [params]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void getPayoutsBackend().then(() => qc.invalidateQueries({ queryKey: ["payouts"] }));
+    };
+    refresh();
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") refresh();
+    });
+    return () => sub.remove();
+  }, [qc]);
 
   useEffect(() => {
     if (state === "success") {

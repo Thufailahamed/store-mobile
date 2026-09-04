@@ -1,42 +1,61 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
+  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Linking,
   useWindowDimensions,
-  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { completeOnboarding } from "@/lib/onboarding";
 import { getOnboardingSlides, type OnboardingSlide } from "@/lib/api";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { radii, spacing } from "@/lib/theme/tokens";
+import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Body } from "@/components/ui/Typography";
 
-const FALLBACK_SLIDES: OnboardingSlide[] = [
+interface SlideData extends OnboardingSlide {
+  tag: string;
+  localImage?: any;
+  fallbackRemote: string;
+}
+
+const ONBOARDING_DATA: SlideData[] = [
   {
     title: "Find and shop\nstores you love",
     description:
       "Explore custom pieces and curated boutique collections hand-finished in our ateliers.",
     imageUrl: "",
+    tag: "ATELIER CURATION",
+    localImage: require("@/assets/onboarding-hero.png"),
+    fallbackRemote:
+      "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1000&q=80",
   },
   {
     title: "Curate your\npersonal collection",
     description:
       "Save items you adore and build your private wardrobe collection with custom styling options.",
     imageUrl: "",
+    tag: "BESPOKE WARDROBE",
+    localImage: require("@/assets/onboarding-curate.png"),
+    fallbackRemote:
+      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1000&q=80",
   },
   {
     title: "Enjoy seamless\ncheckout & delivery",
     description:
       "Secure purchase, real-time shipping updates, and premium editorial packaging to your doorstep.",
     imageUrl: "",
+    tag: "DIRECT DISPATCH",
+    localImage: require("@/assets/onboarding-checkout.png"),
+    fallbackRemote:
+      "https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1000&q=80",
   },
 ];
 
@@ -44,10 +63,14 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
   const [activeSlide, setActiveSlide] = useState(0);
-  const [slides, setSlides] = useState<OnboardingSlide[]>(FALLBACK_SLIDES);
-  const [loadingSlides, setLoadingSlides] = useState(true);
+  const [slides, setSlides] = useState<SlideData[]>(ONBOARDING_DATA);
+
+  // Responsive arch sizing
+  const archWidth = Math.min(Math.round(SCREEN_WIDTH * 0.68), 260);
+  const archHeight = Math.min(Math.max(Math.round(SCREEN_HEIGHT * 0.35), 260), 310);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,9 +78,15 @@ export default function OnboardingScreen() {
       const res = await getOnboardingSlides();
       if (cancelled) return;
       if (res.ok && res.data.length > 0) {
-        setSlides(res.data);
+        setSlides(
+          res.data.map((b, i) => ({
+            ...b,
+            tag: ONBOARDING_DATA[i % ONBOARDING_DATA.length].tag,
+            localImage: ONBOARDING_DATA[i % ONBOARDING_DATA.length].localImage,
+            fallbackRemote: ONBOARDING_DATA[i % ONBOARDING_DATA.length].fallbackRemote,
+          }))
+        );
       }
-      setLoadingSlides(false);
     })();
     return () => {
       cancelled = true;
@@ -72,26 +101,43 @@ export default function OnboardingScreen() {
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const currentIndex = Math.round(contentOffsetX / SCREEN_WIDTH);
-    if (currentIndex !== activeSlide) {
+    if (currentIndex !== activeSlide && currentIndex >= 0 && currentIndex < slides.length) {
       setActiveSlide(currentIndex);
     }
   };
 
+  const goToSlide = (index: number) => {
+    scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
+    setActiveSlide(index);
+  };
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
+      {/* ── 1. Top Carousel Progress Indicators ───────────────── */}
       <View style={styles.progressRow}>
-        {slides.map((_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.progressSegment,
-              { backgroundColor: activeSlide === index ? theme.colors.primary : theme.colors.muted },
-            ]}
-          />
-        ))}
+        {slides.map((_, index) => {
+          const isActive = activeSlide === index;
+          return (
+            <TouchableOpacity
+              key={index}
+              onPress={() => goToSlide(index)}
+              activeOpacity={0.8}
+              hitSlop={8}
+              style={[
+                styles.progressSegment,
+                isActive ? styles.progressSegmentActive : styles.progressSegmentInactive,
+                { backgroundColor: isActive ? theme.colors.primary : theme.colors.muted },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Go to slide ${index + 1}`}
+            />
+          );
+        })}
       </View>
 
+      {/* ── 2. Carousel Slides ─────────────────────────────────── */}
       <ScrollView
+        ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -100,76 +146,106 @@ export default function OnboardingScreen() {
         style={styles.slider}
         contentContainerStyle={styles.sliderContent}
       >
-        {slides.map((slide, index) => (
-          <View key={index} style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <Display size="4xl" italic style={[styles.title, { color: theme.colors.foreground }]}>
-              {slide.title}
-            </Display>
+        {slides.map((slide, index) => {
+          const imageSource =
+            slide.imageUrl && slide.imageUrl.trim().length > 0
+              ? { uri: slide.imageUrl }
+              : slide.localImage ?? { uri: slide.fallbackRemote };
 
-            <View style={styles.heroWrap}>
-              <View style={[styles.arch, { backgroundColor: theme.colors.accent }]}>
-                {slide.imageUrl ? (
+          return (
+            <View key={index} style={[styles.slide, { width: SCREEN_WIDTH }]}>
+              {/* Slide Title */}
+              <Display size="4xl" italic style={[styles.title, { color: theme.colors.foreground }]}>
+                {slide.title}
+              </Display>
+
+              {/* Editorial Arch Frame */}
+              <View style={styles.heroWrap}>
+                <View
+                  style={[
+                    styles.arch,
+                    {
+                      width: archWidth,
+                      height: archHeight,
+                      borderTopLeftRadius: archWidth / 2,
+                      borderTopRightRadius: archWidth / 2,
+                      backgroundColor: theme.colors.card,
+                    },
+                  ]}
+                >
                   <Image
-                    source={{ uri: slide.imageUrl }}
-                    style={styles.heroImage}
+                    source={imageSource}
+                    style={StyleSheet.absoluteFillObject}
                     contentFit="cover"
-                    contentPosition="top center"
+                    contentPosition="center"
+                    transition={300}
                     accessibilityLabel={slide.description}
                   />
-                ) : loadingSlides ? (
-                  <ActivityIndicator color={theme.colors.primary} style={styles.heroLoader} />
-                ) : (
-                  <View style={styles.heroPlaceholder}>
-                    <Ionicons name="image-outline" size={40} color={theme.colors.mutedForeground} />
-                  </View>
-                )}
-              </View>
-            </View>
 
-            <Body size="base" style={[styles.description, { color: theme.colors.mutedForeground }]}>
-              {slide.description}
-            </Body>
-          </View>
-        ))}
+                  {/* Soft Editorial Base Scrim */}
+                  <LinearGradient
+                    colors={["transparent", "rgba(22,23,15,0.03)", "rgba(22,23,15,0.3)"]}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+
+                  {/* Floating Tag Badge */}
+                  <View style={styles.archBadge}>
+                    <View style={styles.badgeDot} />
+                    <Text style={styles.badgeText}>{slide.tag}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Subtitle / Description */}
+              <Body size="base" style={[styles.description, { color: theme.colors.mutedForeground }]}>
+                {slide.description}
+              </Body>
+            </View>
+          );
+        })}
       </ScrollView>
 
+      {/* ── 3. Bottom Actions & Legal Links ───────────────────── */}
       <View style={[styles.bottomContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TouchableOpacity
-          activeOpacity={0.85}
+          activeOpacity={0.88}
           style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
           onPress={() => finishOnboarding("register")}
           accessibilityRole="button"
+          accessibilityLabel="Create account"
         >
-          <Body size="base" style={[styles.primaryButtonText, { color: theme.colors.primaryForeground }]}>
+          <Text style={[styles.primaryButtonText, { color: theme.colors.primaryForeground }]}>
             Create account
-          </Body>
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          activeOpacity={0.85}
+          activeOpacity={0.88}
           style={[styles.secondaryButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.primary }]}
           onPress={() => finishOnboarding("login")}
           accessibilityRole="button"
+          accessibilityLabel="Sign in"
         >
-          <Body size="base" style={[styles.secondaryButtonText, { color: theme.colors.primary }]}>
+          <Text style={[styles.secondaryButtonText, { color: theme.colors.primary }]}>
             Sign in
-          </Body>
+          </Text>
         </TouchableOpacity>
 
-        <Body size="xs" style={[styles.disclaimer, { color: theme.colors.mutedForeground }]}>
+        <Text style={[styles.disclaimer, { color: theme.colors.mutedForeground }]}>
           Links in the app are sponsored.
-        </Body>
+        </Text>
 
         <View style={styles.legalRow}>
           <TouchableOpacity onPress={() => Linking.openURL("https://luxe.marketplace/terms")} hitSlop={8}>
-            <Body size="xs" style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
+            <Text style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
               User Terms
-            </Body>
+            </Text>
           </TouchableOpacity>
+          <Text style={[styles.legalBullet, { color: theme.colors.mutedForeground }]}>·</Text>
           <TouchableOpacity onPress={() => Linking.openURL("https://luxe.marketplace/privacy")} hitSlop={8}>
-            <Body size="xs" style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
+            <Text style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
               Privacy
-            </Body>
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -184,14 +260,20 @@ const styles = StyleSheet.create({
   progressRow: {
     flexDirection: "row",
     justifyContent: "center",
+    alignItems: "center",
     gap: spacing[2],
     marginTop: spacing[3],
-    marginBottom: spacing[4],
+    marginBottom: spacing[2],
   },
   progressSegment: {
-    width: 56,
     height: 4,
     borderRadius: radii.full,
+  },
+  progressSegmentActive: {
+    width: 48,
+  },
+  progressSegmentInactive: {
+    width: 28,
   },
   slider: {
     flex: 1,
@@ -206,79 +288,103 @@ const styles = StyleSheet.create({
   },
   title: {
     textAlign: "center",
-    marginBottom: spacing[6],
+    marginBottom: spacing[4],
+    letterSpacing: -0.5,
   },
   heroWrap: {
+    width: "100%",
     alignItems: "center",
-    marginBottom: spacing[6],
+    justifyContent: "center",
+    marginBottom: spacing[5],
   },
   arch: {
-    width: "100%",
-    maxWidth: 280,
-    height: 220,
-    borderTopLeftRadius: 140,
-    borderTopRightRadius: 140,
-    borderBottomLeftRadius: radii["2xl"],
-    borderBottomRightRadius: radii["2xl"],
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#c8c8b8",
+    ...shadows.soft,
   },
-  heroImage: {
-    width: "118%",
-    height: 480,
-    marginTop: -190,
-  },
-  heroLoader: {
-    marginTop: 40,
-  },
-  heroPlaceholder: {
-    flex: 1,
+  archBadge: {
+    position: "absolute",
+    bottom: 12,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(251, 250, 247, 0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 200, 184, 0.6)",
+  },
+  badgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.olive[600],
+  },
+  badgeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: colors.olive[900],
+    letterSpacing: 0.8,
   },
   description: {
     textAlign: "center",
     paddingHorizontal: spacing[4],
-    lineHeight: 20,
+    lineHeight: 22,
+    fontSize: 14,
   },
   bottomContainer: {
     paddingHorizontal: spacing[6],
-    paddingTop: spacing[4],
+    paddingTop: spacing[2],
   },
   primaryButton: {
     borderRadius: radii.full,
-    minHeight: 56,
+    minHeight: 52,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing[3],
+    ...shadows.soft,
   },
   primaryButtonText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontWeight: "600",
+    fontSize: 15,
   },
   secondaryButton: {
     borderRadius: radii.full,
     borderWidth: 1.5,
-    minHeight: 56,
+    minHeight: 52,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing[8],
+    marginBottom: spacing[6],
   },
   secondaryButtonText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontWeight: "600",
+    fontSize: 15,
   },
   disclaimer: {
     textAlign: "center",
-    marginBottom: spacing[3],
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    marginBottom: spacing[2],
   },
   legalRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    gap: spacing[8],
+    gap: spacing[2],
   },
   legalLink: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
     textDecorationLine: "underline",
   },
+  legalBullet: {
+    fontSize: 12,
+  },
 });
+

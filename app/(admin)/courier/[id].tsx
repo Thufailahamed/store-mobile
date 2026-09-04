@@ -97,11 +97,16 @@ export default function AdminCourierDetailScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Configuration</Text>
-        <View style={styles.codeBlock}>
-          <Text style={styles.codeText} selectable>
-            {JSON.stringify(data.env_vars ?? {}, null, 2)}
-          </Text>
-        </View>
+        <Text style={styles.note}>
+          Secrets are masked. Edit credentials from the web admin.
+        </Text>
+        {Object.keys(data.env_vars ?? {}).length === 0 ? (
+          <Text style={styles.note}>No configuration keys on this provider.</Text>
+        ) : (
+          Object.entries(data.env_vars ?? {}).map(([key, value]) => (
+            <Row key={key} label={key} value={maskSecret(value)} />
+          ))
+        )}
       </View>
 
       <Text style={styles.note}>
@@ -109,6 +114,12 @@ export default function AdminCourierDetailScreen() {
       </Text>
     </ScrollView>
   );
+}
+
+function maskSecret(value: string): string {
+  const raw = String(value ?? "");
+  if (raw.length <= 4) return "••••";
+  return `${"•".repeat(Math.max(4, raw.length - 4))}${raw.slice(-4)}`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

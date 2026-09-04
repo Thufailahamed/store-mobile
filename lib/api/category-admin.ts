@@ -1,4 +1,5 @@
 import { fetchJson } from "@/lib/api/backend";
+import { supabase } from "@/lib/supabase/client";
 import type { Category } from "@/lib/types";
 import {
   validateCategoryDelete,
@@ -33,18 +34,38 @@ export async function getCategoryDeleteImpact(id: string): Promise<Result<Catego
 }
 
 export async function getAdminCategoriesEnriched(): Promise<Result<AdminCategory[]>> {
-  const res = await fetchJson<{ categories: AdminCategory[] }>(
-    "/api/admin/categories",
-  );
-  if (!res.ok) return fail(res.error);
-  const rows = res.data.categories ?? [];
-  return ok(
-    rows.map((c) => ({
-      ...c,
-      product_count: Number(c.product_count ?? 0),
-      child_count: Number(c.child_count ?? 0),
-    })),
-  );
+  try {
+    const res = await fetchJson<{ categories: AdminCategory[] }>(
+      "/api/admin/categories",
+    );
+    if (res.ok && res.data && Array.isArray(res.data.categories)) {
+      const rows = res.data.categories ?? [];
+      return ok(
+        rows.map((c) => ({
+          ...c,
+          product_count: Number(c.product_count ?? 0),
+          child_count: Number(c.child_count ?? 0),
+        })),
+      );
+    }
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("name", { ascending: true });
+    if (error) return fail(error.message);
+    return ok(
+      ((data ?? []) as unknown as AdminCategory[]).map((c) => ({
+        ...c,
+        product_count: Number(c.product_count ?? 0),
+        child_count: Number(c.child_count ?? 0),
+      })),
+    );
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch categories");
+  }
 }
 
 export async function createCategory(c: Partial<Category>): Promise<Result<Category>> {

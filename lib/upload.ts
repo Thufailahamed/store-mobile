@@ -7,6 +7,7 @@ import Constants from "expo-constants";
 import { assertSellerCanOperate } from "@/lib/api";
 import { addProductImageBackend } from "@/lib/api/backend";
 import type { ComplianceDocType } from "@/lib/seller-access";
+import { uuidv4 } from "@/lib/utils";
 
 export interface UploadResult {
   url: string;
@@ -324,6 +325,21 @@ export async function uploadAvatar(
   }
 }
 
+export async function uploadStorefrontImage(
+  uri: string,
+  options?: { mimeType?: string | null; fileName?: string | null },
+): Promise<UploadResult> {
+  const ext = normalizeExtension(
+    options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
+    options?.mimeType,
+  );
+  const path = `storefront/${Date.now()}.${ext}`;
+  return uploadImageToBucket("product-images", path, uri, {
+    mimeType: options?.mimeType,
+    prefix: "storefront",
+  });
+}
+
 export async function uploadProductImage(
   storeId: string,
   productId: string,
@@ -533,7 +549,7 @@ export async function uploadComplianceDocument(
     // H-03 AUDIT: Never forward the user-supplied picker filename into the
     // storage key — on Android, DocumentPicker can return arbitrary path-like
     // segments. Generate a UUID-based key so the object key is always safe.
-    const safeKey = `${storeId}/${docType}-${crypto.randomUUID()}.${ext}`;
+    const safeKey = `${storeId}/${docType}-${uuidv4()}.${ext}`;
 
     const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
       method: "POST",

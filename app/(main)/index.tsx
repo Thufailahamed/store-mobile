@@ -18,7 +18,10 @@ import {
   EditorialInterlude,
   PersonalisedSection,
   ContinueBrowsingRow,
+  ShopTheLookSection,
+  TrustStrip,
 } from "@/components/home/premium";
+import { PinnedDrop } from "@/components/home/sections/PinnedDrop";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { useAuth } from "@/lib/supabase/auth";
@@ -50,6 +53,7 @@ export default function HomeScreen() {
   const tabBarScrollHandler = useHideTabBarOnScroll();
   const { user } = useAuth();
   const wishlistIdsKey = useWishlist((s) => Object.keys(s.items).sort().join(","));
+  const wishlistCount = useWishlist((s) => Object.keys(s.items).length);
 
   const {
     catalog,
@@ -137,6 +141,17 @@ export default function HomeScreen() {
       >
         {/* Zone 1 — discovery: browse entry points + the personalised feed */}
         <CategoryScroller categories={catalogData?.categories ?? []} />
+
+        {user ? (
+          <View style={styles.memberGreeting}>
+            <View style={styles.greetingDot} />
+            <Text style={styles.greetingText}>
+              Welcome back, <Text style={styles.greetingName}>{user.user_metadata?.full_name?.split(" ")[0] || "Member"}</Text>
+              {wishlistCount > 0 ? ` · ${wishlistCount} saved in your wardrobe` : " · Discover the new seasonal edit"}
+            </Text>
+          </View>
+        ) : null}
+
         <PromoCarousel banners={catalogData?.banners ?? []} />
 
         {showForYouRail ? (
@@ -177,13 +192,9 @@ export default function HomeScreen() {
             </>
           ) : null}
 
-          <ProductRail
-            kicker="Limited-time deals"
-            title="On sale"
+          <PinnedDrop
             products={catalogData?.saleProducts ?? []}
-            showSaleBadge
-            accent
-            onSeeAll={() => router.push("/(main)/products?sort=sale")}
+            endsAt={catalogData?.flashEndsAt}
           />
           <ProductRail
             title="New arrivals"
@@ -203,6 +214,9 @@ export default function HomeScreen() {
         </View>
 
         <CategoryGrid categories={catalogData?.categories ?? []} />
+
+        {/* Lookbook Feature */}
+        <ShopTheLookSection products={[...(catalogData?.newArrivals ?? []), ...(catalogData?.saleProducts ?? [])]} />
 
         {catalogExtended.isSuccess || catalogExtended.isFetching ? (
           <>
@@ -257,6 +271,8 @@ export default function HomeScreen() {
                 />
               </View>
 
+              <TrustStrip />
+
               <HomeJournalRail
                 title="From the journal"
                 posts={catalogData?.journalPosts ?? []}
@@ -303,6 +319,36 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   scroll: {
     paddingTop: 4,
+  },
+  memberGreeting: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    marginHorizontal: spacing[5],
+    marginTop: spacing[1],
+    marginBottom: spacing[3],
+    paddingHorizontal: spacing[3.5],
+    paddingVertical: spacing[2],
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[500]}12`,
+    borderWidth: 1,
+    borderColor: `${colors.olive[500]}22`,
+    alignSelf: "flex-start",
+  },
+  greetingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[600],
+  },
+  greetingText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    color: colors.light.foreground,
+  },
+  greetingName: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: colors.olive[700],
   },
   zone: {
     paddingTop: spacing[6],

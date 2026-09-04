@@ -57,7 +57,7 @@ export default function AdminMore() {
       { key: "content", label: "Content", description: "Reviews & Q&A", icon: "chatbubbles-outline", route: "/(admin)/content", group: "Engagement" },
       { key: "notifications", label: "Notifications", description: "Broadcasts & pushes", icon: "notifications-outline", route: "/(admin)/notifications", group: "Engagement" },
       { key: "blog", label: "Blog", description: "Editorial posts", icon: "document-text-outline", route: "/(admin)/blog", group: "Engagement" },
-      { key: "courier", label: "Courier Providers", description: "External delivery partners", icon: "bicycle-outline", route: "/(admin)/courier/index", group: "Operations" },
+      { key: "courier", label: "Courier Providers", description: "External delivery partners", icon: "bicycle-outline", route: "/(admin)/courier", group: "Operations" },
       { key: "delivery", label: "Delivery", description: "Delivery companies", icon: "car-outline", route: "/(admin)/delivery", group: "Operations" },
       { key: "commissions", label: "Commissions", description: "Tier management", icon: "wallet-outline", route: "/(admin)/commissions", group: "Operations" },
       { key: "homepage", label: "Homepage CMS", description: "Sections & ordering", icon: "globe-outline", route: "/(admin)/homepage", group: "Operations" },
@@ -122,7 +122,7 @@ export default function AdminMore() {
                 style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
               >
                 <View style={[styles.tileIconWrap, { backgroundColor: ICON_BG[groupName] ?? colors.light.muted }]}>
-                  <Ionicons name={item.icon} size={20} color={colors.light.foreground} />
+                  <Ionicons name={item.icon} size={18} color={colors.light.foreground} />
                 </View>
                 <Text style={styles.tileLabel} numberOfLines={1}>{item.label}</Text>
                 <Text style={styles.tileDesc} numberOfLines={1}>{item.description}</Text>
@@ -139,7 +139,7 @@ export default function AdminMore() {
 
       <Pressable onPress={signOut} style={styles.signOut}>
         <Ionicons name="log-out-outline" size={18} color={colors.light.destructive} />
-        <Text style={styles.signOutText}>Sign out</Text>
+        <Text style={styles.signOutText}>Sign out of Console</Text>
       </Pressable>
     </ScrollView>
   );
@@ -148,99 +148,103 @@ export default function AdminMore() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   content: { paddingBottom: 120 },
-  hero: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
+  hero: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
   eyebrow: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 10,
     color: colors.light.primary,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.4,
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: typography.fontSizes["4xl"],
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
     color: colors.light.foreground,
-    letterSpacing: typography.letterSpacing.tighter,
-    marginTop: 4,
+    letterSpacing: -0.6,
+    marginTop: 2,
   },
   subtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 12,
     color: colors.light.mutedForeground,
     marginTop: 4,
   },
   profile: {
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginTop: 12,
-    padding: 20,
+    padding: 16,
+    backgroundColor: colors.paper.DEFAULT,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
     ...shadows.soft,
   },
   profileRow: { flexDirection: "row", gap: 14, alignItems: "center" },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.light.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: typography.fontSizes["2xl"],
-    color: colors.light.card,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: "#fff",
   },
   profileInfo: { flex: 1, gap: 2 },
   profileName: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.lg,
+    fontSize: 16,
     color: colors.light.foreground,
   },
   profileEmail: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 11,
     color: colors.light.mutedForeground,
   },
   profileMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   profileRole: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 10,
     color: colors.olive[600],
-    letterSpacing: typography.letterSpacing.wide,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   },
-  group: { marginTop: 24, paddingHorizontal: 20 },
+  group: { marginTop: 20, paddingHorizontal: 16 },
   groupHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   groupLabel: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 10,
     color: colors.light.mutedForeground,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.2,
   },
   groupCount: {
     fontFamily: fontFamilies.mono.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 10,
     color: colors.light.mutedForeground,
   },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   tile: {
-    width: "47%",
+    width: "48%",
     flexGrow: 1,
     backgroundColor: colors.light.card,
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.light.border,
     padding: 14,
-    gap: 4,
-    minHeight: 96,
+    gap: 3,
+    minHeight: 90,
   },
   tilePressed: { opacity: 0.7 },
   tileIconWrap: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
@@ -248,29 +252,29 @@ const styles = StyleSheet.create({
   },
   tileLabel: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 13,
     color: colors.light.foreground,
   },
   tileDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 11,
     color: colors.light.mutedForeground,
   },
   badge: {
     position: "absolute",
     top: 10,
     right: 10,
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 6,
-    borderRadius: 11,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
     backgroundColor: colors.light.destructive,
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
+    fontSize: 9,
     color: "#fff",
   },
   signOut: {
@@ -278,14 +282,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginTop: 32,
-    paddingVertical: 16,
+    marginHorizontal: 16,
+    marginTop: 28,
+    marginBottom: 16,
+    paddingVertical: 14,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
   signOutText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.base,
+    fontSize: 13,
     color: colors.light.destructive,
-    textTransform: "uppercase",
-    letterSpacing: typography.letterSpacing.wide,
+    letterSpacing: 0.5,
   },
 });

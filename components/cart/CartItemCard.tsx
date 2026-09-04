@@ -15,6 +15,7 @@ import { formatPrice } from "@/lib/utils";
 import type { CartItem } from "@/lib/stores/cart-store";
 import type { Product } from "@/lib/types";
 import { SizePickerSheet } from "@/components/cart/SizePickerSheet";
+import { GiftWrapToggle } from "@/components/cart/GiftWrapToggle";
 import {
   buildAvailableSizeOptions,
   getVariantStock,
@@ -43,6 +44,7 @@ interface CartItemCardProps {
   onRemove: () => void;
   onUpdateQuantity: (quantity: number) => void;
   onUpdateVariant?: (newVariantId: string, newVariantLabel: string) => void;
+  onGiftChange?: (isGift: boolean, message: string) => void;
   style?: ViewStyle;
 }
 
@@ -56,6 +58,7 @@ export function CartItemCard({
   onDecrement,
   onRemove,
   onUpdateVariant,
+  onGiftChange,
   style,
 }: CartItemCardProps) {
   const router = useRouter();
@@ -282,6 +285,14 @@ export function CartItemCard({
           <Text style={styles.deleteText}>Delete</Text>
         </TouchableOpacity>
       </View>
+
+      {onGiftChange ? (
+        <GiftWrapToggle
+          isGift={!!item.is_gift}
+          message={item.gift_message}
+          onChange={onGiftChange}
+        />
+      ) : null}
 
       <SizePickerSheet
         visible={sizeModalVisible}

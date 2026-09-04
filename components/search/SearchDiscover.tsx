@@ -94,6 +94,28 @@ export function SearchDiscover({ recentSearches, onSearch, onClearRecent }: Sear
           ))}
         </View>
       </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>AI studio</Text>
+        <View style={styles.chipRow}>
+          {[
+            { label: "Smart search", route: "/(main)/ai/search" },
+            { label: "Outfit builder", route: "/(main)/ai/outfit" },
+            { label: "Trends", route: "/(main)/ai/trends" },
+            { label: "Image search", route: "/(main)/search/image-results" },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.route}
+              style={styles.categoryChip}
+              onPress={() => router.push(item.route as never)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.categoryChipText}>{item.label}</Text>
+              <Ionicons name="sparkles-outline" size={14} color={MUTED} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
     </ScrollView>
   );
 }

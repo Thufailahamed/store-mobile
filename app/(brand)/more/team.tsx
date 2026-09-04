@@ -95,11 +95,12 @@ export default function BrandTeam() {
               key={m.id}
               member={m}
               onRemove={() => {
-                const managerCount = (membersQ.data ?? []).filter((mm) => mm.role === "manager").length;
-                if (m.role === "manager" && managerCount <= 1) {
+                const isLead = m.role === "manager" || m.role === "owner";
+                const managerCount = (membersQ.data ?? []).filter((mm) => mm.role === "manager" || mm.role === "owner").length;
+                if (isLead && managerCount <= 1) {
                   Alert.alert(
                     "Can't remove the only manager",
-                    "This brand needs at least one manager. Promote another member to manager before removing this one."
+                    "This brand needs at least one manager or owner. Promote another member to manager before removing this one."
                   );
                   return;
                 }
@@ -108,7 +109,19 @@ export default function BrandTeam() {
                   { text: "Remove", style: "destructive", onPress: () => remove.mutate(m.id) },
                 ]);
               }}
-              onRoleChange={(r) => updateMember.mutate({ id: m.id, patch: { role: r } })}
+              onRoleChange={(r) => {
+                const isLead = m.role === "manager" || m.role === "owner";
+                const demoting = r !== "manager";
+                const managerCount = (membersQ.data ?? []).filter((mm) => mm.role === "manager" || mm.role === "owner").length;
+                if (isLead && demoting && managerCount <= 1) {
+                  Alert.alert(
+                    "Can't demote the only manager",
+                    "This brand needs at least one manager or owner. Promote another member first."
+                  );
+                  return;
+                }
+                updateMember.mutate({ id: m.id, patch: { role: r } });
+              }}
               onSuspend={() => updateMember.mutate({ id: m.id, patch: { status: m.status === "suspended" ? "active" : "suspended" } })}
             />
           ))

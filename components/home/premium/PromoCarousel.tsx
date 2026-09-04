@@ -1,6 +1,7 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
+  ScrollView,
   Animated,
   TouchableOpacity,
   StyleSheet,
@@ -35,6 +36,20 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
   const list = banners.length ? banners : FALLBACK_PROMOS;
   const [active, setActive] = useState(0);
   const scrollX = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (list.length <= 1) return;
+    const interval = setInterval(() => {
+      setActive((prev) => {
+        const next = (prev + 1) % list.length;
+        scrollRef.current?.scrollTo({ x: next * STEP, animated: true });
+        return next;
+      });
+    }, 4500);
+
+    return () => clearInterval(interval);
+  }, [list.length, STEP]);
 
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / STEP);
@@ -52,6 +67,7 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
   return (
     <View style={styles.wrap}>
       <Animated.ScrollView
+        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         snapToInterval={STEP}
@@ -113,9 +129,19 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
         })}
       </Animated.ScrollView>
       {list.length > 1 ? (
-        <View style={styles.dots}>
+        <View style={styles.progressWrap}>
           {list.map((b, i) => (
-            <View key={b.id} style={[styles.dot, i === active && styles.dotActive]} />
+            <TouchableOpacity
+              key={b.id}
+              style={styles.progressTrack}
+              onPress={() => {
+                setActive(i);
+                scrollRef.current?.scrollTo({ x: i * STEP, animated: true });
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.progressBar, i === active && styles.progressBarActive]} />
+            </TouchableOpacity>
           ))}
         </View>
       ) : null}
@@ -218,20 +244,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.light.foreground,
   },
-  dots: {
+  progressWrap: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 6,
-    marginTop: spacing[3],
+    alignItems: "center",
+    gap: 8,
+    marginTop: spacing[3.5],
+    paddingHorizontal: spacing[5],
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.light.border,
+  progressTrack: {
+    flex: 1,
+    maxWidth: 44,
+    height: 3,
+    backgroundColor: `${colors.light.primary}18`,
+    borderRadius: radii.full,
+    overflow: "hidden",
   },
-  dotActive: {
-    width: 18,
+  progressBar: {
+    height: "100%",
+    width: "0%",
     backgroundColor: colors.light.primary,
+    borderRadius: radii.full,
+  },
+  progressBarActive: {
+    width: "100%",
   },
 });

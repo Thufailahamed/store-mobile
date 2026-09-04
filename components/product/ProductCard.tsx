@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Text } from "react-native";
 import { Image } from "expo-image";
 import { Link, useRouter } from "expo-router";
@@ -10,7 +11,8 @@ import { formatPrice } from "@/lib/utils";
 import { useTrackEvent } from "@/lib/recommender";
 import { getVariantAvailableStock } from "@/lib/inventory";
 import { useToast } from "@/components/ui";
-import type { Product } from "@/lib/types";
+import { QuickSizeModal } from "./QuickSizeModal";
+import type { Product, ProductVariant } from "@/lib/types";
 
 interface ProductCardProps {
   product: Product;
@@ -80,9 +82,37 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
     );
   };
 
+  const [showQuickSize, setShowQuickSize] = useState(false);
+  const sizeVariants = (product.variants ?? []).filter((v) => v.is_active && v.size);
+
+  const addVariantToCart = (variant: ProductVariant) => {
+    const stock = getVariantAvailableStock(variant, variant.stock ?? 0);
+    if (stock <= 0) {
+      toast("Out of stock", "error");
+      return;
+    }
+    addItem({
+      productId: product.id,
+      variantId: variant.id,
+      storeId: product.store_id,
+      name: product.name,
+      variantLabel: `${variant.color ?? ""} ${variant.size ?? ""}`.trim() || undefined,
+      price: variant.price ?? product.price,
+      image: primaryImage,
+      stock,
+      quantity: 1,
+    });
+    tracker.cartAdd(product);
+    toast(`Added size ${variant.size} to basket`, "success");
+  };
+
   const handleAdd = () => {
     if (isSoldOut) {
       toast("Out of stock", "error");
+      return;
+    }
+    if (sizeVariants.length > 1) {
+      setShowQuickSize(true);
       return;
     }
     const variants = product.variants ?? [];
@@ -105,6 +135,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
       quantity: 1,
     });
     tracker.cartAdd(product);
+    toast("Added to basket", "success");
   };
 
   const handleWishlist = () => {
@@ -114,6 +145,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
 
   if (listMode) {
     return (
+      <>
       <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={styles.listCard}>
         <View style={styles.listImageWrap}>
           {primaryImage ? (
@@ -125,7 +157,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           )}
           {discount > 0 ? (
             <View style={[styles.discountBadge, { top: 6, right: 6 }]}>
-              <Label style={styles.discountText}>{discount}% OFF</Label>
+              <Label style={styles.discountText}>-{discount}%</Label>
             </View>
           ) : null}
           {isSoldOut ? (
@@ -154,7 +186,6 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
                 <>
                   <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
                   <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-                  <Body size="xs" style={styles.discountPct}>{discount}% OFF</Body>
                 </>
               ) : (
                 <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
@@ -179,6 +210,13 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           </View>
         </View>
       </TouchableOpacity>
+      <QuickSizeModal
+        visible={showQuickSize}
+        onClose={() => setShowQuickSize(false)}
+        product={product}
+        onSelectVariant={addVariantToCart}
+      />
+      </>
     );
   }
 
@@ -196,7 +234,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
           )}
           {discount > 0 && (
             <View style={styles.discountBadge}>
-              <Label style={styles.discountText}>{discount}% OFF</Label>
+              <Label style={styles.discountText}>-{discount}%</Label>
             </View>
           )}
           {isSoldOut ? (
@@ -228,7 +266,6 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
               <>
                 <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
                 <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-                <Body size="xs" style={styles.discountPct}>{discount}% OFF</Body>
               </>
             ) : (
               <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
@@ -247,6 +284,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
   }
 
   return (
+    <>
     <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={styles.card}>
       <View style={[styles.imageWrap, { height: imageHeight }]}>
         {primaryImage ? (
@@ -258,7 +296,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         )}
         {discount > 0 && (
           <View style={styles.discountBadge}>
-            <Label style={styles.discountText}>{discount}% OFF</Label>
+            <Label style={styles.discountText}>-{discount}%</Label>
           </View>
         )}
         {isSoldOut ? (
@@ -298,7 +336,6 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
             <>
               <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
               <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-              <Body size="xs" style={styles.discountPct}>{discount}% OFF</Body>
             </>
           ) : (
             <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
@@ -320,6 +357,13 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
         )}
       </View>
     </TouchableOpacity>
+    <QuickSizeModal
+      visible={showQuickSize}
+      onClose={() => setShowQuickSize(false)}
+      product={product}
+      onSelectVariant={addVariantToCart}
+    />
+    </>
   );
 }
 
@@ -355,14 +399,23 @@ const styles = StyleSheet.create({
     top: 10,
     right: 10,
     backgroundColor: colors.accent2.rust,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7.5,
+    paddingVertical: 3.5,
     borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.18,
+    shadowRadius: 2.5,
+    elevation: 3,
   },
   discountText: {
     color: "#fff",
-    fontSize: 9,
-    letterSpacing: typography.letterSpacing.wide,
+    fontSize: 9.5,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 0.4,
+    fontWeight: "600",
   },
   soldOutOverlay: {
     position: "absolute",

@@ -34,6 +34,7 @@ import { useAuth, AuthProvider } from "@/lib/supabase/auth";
 import { useSyncStores, useCartRemoteSync, useWishlistRemoteSync } from "@/lib/hooks";
 import { ToastProvider, useToast } from "@/components/ui";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CartDrawer } from "@/components/cart/CartDrawer";
 import { colors } from "@/lib/theme/tokens";
 import {
   registerForPushNotifications,
@@ -124,6 +125,9 @@ function RootLayoutNav() {
             } else {
               router.replace("/(delivery-company)");
             }
+            break;
+          case "admin":
+            router.replace("/(admin)");
             break;
           default:
             router.replace("/(main)");
@@ -394,6 +398,7 @@ export default function RootLayout() {
             <ToastProvider>
               <StatusBar style="dark" />
               <RootLayoutNav />
+              <CartDrawer />
             </ToastProvider>
           </AuthProvider>
         </QueryClientProvider>

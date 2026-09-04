@@ -25,16 +25,13 @@ import {
 } from "@/lib/api";
 import {
   Card,
-  StatTile,
   ListRow,
-  SectionHeader,
   EmptyState,
   StatusDot,
   ProgressBar,
-  Chip,
   Skeleton,
 } from "@/components/ui";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
@@ -44,11 +41,11 @@ function formatRelative(dateStr?: string) {
   const diff = Date.now() - d.getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
+  if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
+  if (h < 24) return `${h}h ago`;
   const days = Math.floor(h / 24);
-  if (days < 7) return `${days}d`;
+  if (days < 7) return `${days}d ago`;
   return d.toLocaleDateString("en-LK", { month: "short", day: "numeric" });
 }
 
@@ -62,11 +59,11 @@ function formatClock() {
   }).format(new Date());
 }
 
-const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info" | "muted"> = {
+const STATUS_TONE: Record<string, "default" | "success" | "warning" | "danger" | "info" | "muted"> = {
   pending: "warning",
   confirmed: "info",
   processing: "info",
-  shipped: "info",
+  shipped: "default",
   out_for_delivery: "info",
   delivered: "success",
   cancelled: "danger",
@@ -97,14 +94,16 @@ export default function AdminOverview() {
     },
     refetchInterval: 30_000,
   });
+
   const approvalsQ = useQuery({
     queryKey: ["admin-overview", "approvals"],
     queryFn: async () => {
-      const r = await getAdminPendingApprovals(8);
+      const r = await getAdminPendingApprovals(6);
       return r.ok ? r.data : { stores: [], brands: [], products: [] };
     },
     refetchInterval: 30_000,
   });
+
   const lowStockQ = useQuery({
     queryKey: ["admin-overview", "low-stock"],
     queryFn: async () => {
@@ -113,24 +112,27 @@ export default function AdminOverview() {
     },
     refetchInterval: 60_000,
   });
+
   const signupsQ = useQuery({
     queryKey: ["admin-overview", "signups"],
     queryFn: async () => {
-      const r = await getAdminRecentSignups(5);
+      const r = await getAdminRecentSignups(4);
       return r.ok ? r.data : [];
     },
   });
+
   const ordersQ = useQuery({
     queryKey: ["admin-overview", "recent-orders"],
     queryFn: async () => {
-      const r = await getAdminRecentOrders(5);
+      const r = await getAdminRecentOrders(4);
       return r.ok ? r.data : [];
     },
   });
+
   const auditQ = useQuery({
     queryKey: ["admin-overview", "audit"],
     queryFn: async () => {
-      const r = await getAdminAuditLog(8);
+      const r = await getAdminAuditLog(5);
       return r.ok ? r.data : [];
     },
   });
@@ -163,12 +165,13 @@ export default function AdminOverview() {
     ...(a?.products ?? []).map((r: any) => ({ ...r, kind: "Product" as const })),
   ]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 6);
+    .slice(0, 5);
 
   const pendingTotal = (s?.pendingStores ?? 0) + (s?.pendingBrands ?? 0) + (s?.pendingProducts ?? 0);
   const activeStoreRate = s?.stores ? (s.activeStores / s.stores) * 100 : 0;
   const customerShare = s?.users ? (s.customers / s.users) * 100 : 0;
-  const approvalLoad = s ? (s.stores + s.brands + s.products ? (pendingTotal / (s.stores + s.brands + s.products)) * 100 : 0) : 0;
+
+  const adminName = user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "Admin";
 
   return (
     <ScrollView
@@ -177,364 +180,438 @@ export default function AdminOverview() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.light.primary} />
       }
+      showsVerticalScrollIndicator={false}
     >
-      {/* Masthead */}
+      {/* ── 1. Executive Masthead ─────────────────────────────── */}
       <View style={styles.masthead}>
         <View style={styles.mastheadTop}>
-          <View style={styles.liveRow}>
-            <StatusDot tone="live" size={8} />
-            <Text style={styles.liveText}>LIVE</Text>
+          <View style={styles.liveIndicator}>
+            <StatusDot tone="live" size={7} />
+            <Text style={styles.liveText}>PLATFORM ONLINE</Text>
           </View>
-          <Text style={styles.clock}>{clock}</Text>
+          <View style={styles.clockWrap}>
+            <Ionicons name="time-outline" size={12} color={colors.light.mutedForeground} />
+            <Text style={styles.clockText}>{clock}</Text>
+          </View>
         </View>
+
         <Text style={styles.headline}>
-          The LUXE{`\n`}<Text style={styles.headlineAccent}>Marketplace</Text>
+          Command <Text style={styles.headlineAccent}>Deck</Text>
         </Text>
         <Text style={styles.subline}>
-          {user?.user_metadata?.full_name ?? "Admin"} · platform command centre
+          Welcome, {adminName} · LUXE Executive Overview
         </Text>
-        <View style={styles.mastheadStats}>
-          <View style={styles.mastheadStat}>
-            <Text style={styles.mastLabel}>AOV</Text>
-            <Text style={styles.mastValue}>{formatPrice(s?.aov ?? 0)}</Text>
-          </View>
-          <View style={styles.mastheadDivider} />
-          <View style={styles.mastheadStat}>
-            <Text style={styles.mastLabel}>Pending</Text>
-            <Text style={styles.mastValue}>{pendingTotal}</Text>
-          </View>
-          <View style={styles.mastheadDivider} />
-          <View style={styles.mastheadStat}>
-            <Text style={styles.mastLabel}>Revenue</Text>
-            <Text style={[styles.mastValue, { color: colors.olive[600] }]}>{formatPrice(s?.revenue ?? 0)}</Text>
-          </View>
+
+        {/* Action Pills */}
+        <View style={styles.quickPillsRow}>
+          <Pressable
+            onPress={() => router.push("/(admin)/analytics" as any)}
+            style={styles.quickPill}
+          >
+            <Ionicons name="bar-chart-outline" size={13} color={colors.light.primary} />
+            <Text style={styles.quickPillText}>Analytics</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push("/(admin)/catalogue" as any)}
+            style={styles.quickPill}
+          >
+            <Ionicons name="cube-outline" size={13} color={colors.light.primary} />
+            <Text style={styles.quickPillText}>Inventory</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push("/(admin)/approvals" as any)}
+            style={[styles.quickPill, pendingTotal > 0 && styles.quickPillHighlight]}
+          >
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={13}
+              color={pendingTotal > 0 ? "#7a5b1a" : colors.light.primary}
+            />
+            <Text style={[styles.quickPillText, pendingTotal > 0 && styles.quickPillTextHighlight]}>
+              Approvals {pendingTotal > 0 ? `(${pendingTotal})` : ""}
+            </Text>
+          </Pressable>
         </View>
       </View>
 
-      {/* Bento KPIs */}
+      {/* ── 2. Unified Executive Performance Deck (Non-redundant) ── */}
       {isLoading ? (
-        <View style={styles.bento}>
-          <View style={styles.bentoLarge}>
-            <Skeleton height={36} width="60%" />
-            <Skeleton height={20} width="40%" style={{ marginTop: 12 }} />
+        <Card style={styles.heroDeck}>
+          <Skeleton width="40%" height={14} />
+          <Skeleton width="60%" height={36} style={{ marginTop: 12 }} />
+          <View style={{ flexDirection: "row", gap: 16, marginTop: 20 }}>
+            <Skeleton width="30%" height={32} />
+            <Skeleton width="30%" height={32} />
+            <Skeleton width="30%" height={32} />
           </View>
-          {[0, 1, 2, 3].map((i) => (
-            <View key={i} style={styles.bentoSmall}>
-              <Skeleton height={12} width="60%" />
-              <Skeleton height={28} width="50%" style={{ marginTop: 8 }} />
-            </View>
-          ))}
-        </View>
+        </Card>
       ) : (
-        <View style={styles.bento}>
-          <View style={[styles.bentoLarge, styles.bentoRevenue]}>
-            <Text style={styles.bentoLabel}>Total Revenue</Text>
-            <Text style={styles.bentoRevenueValue}>{formatPrice(s?.revenue ?? 0)}</Text>
-            <Text style={styles.bentoSub}>LKR marketplace gross</Text>
-            <View style={styles.bentoFooter}>
-              <Text style={styles.bentoFootText}>{(s?.orders ?? 0).toLocaleString()} orders</Text>
-              <Text style={styles.bentoFootText}>AOV {formatPrice(s?.aov ?? 0)}</Text>
+        <Card style={styles.heroDeck}>
+          <View style={styles.heroTop}>
+            <Text style={styles.heroEyebrow}>MARKETPLACE VOLUME</Text>
+            <View style={styles.heroBadge}>
+              <Ionicons name="trending-up" size={12} color={colors.olive[700]} />
+              <Text style={styles.heroBadgeText}>GROSS REVENUE</Text>
             </View>
-            <ProgressBar value={Math.min(100, Math.max(8, approvalLoad))} fillColor={colors.olive[400]} style={{ marginTop: 12 }} />
           </View>
-          <StatTile label="Orders" value={(s?.orders ?? 0).toLocaleString()} sub={`${formatPrice(s?.aov ?? 0)} avg`} style={styles.bentoSmall} />
-          <StatTile label="Customers" value={(s?.customers ?? 0).toLocaleString()} sub={`${customerShare.toFixed(0)}% of users`} style={styles.bentoSmall} />
-          <StatTile label="Active Stores" value={`${s?.activeStores ?? 0}/${s?.stores ?? 0}`} sub="approved ratio" style={styles.bentoSmall} />
-          <StatTile label="Catalogue" value={(s?.products ?? 0).toLocaleString()} sub={`${s?.brands ?? 0} brands`} style={styles.bentoSmall} />
-          <View style={[styles.bentoWide, styles.bentoPending]}>
-            <View style={styles.pendingBlob} />
-            <View style={styles.pendingInner}>
-              <Text style={styles.bentoLabel}>Pending Reviews</Text>
-              <Text style={styles.bentoValue}>{pendingTotal.toLocaleString()}</Text>
-              <View style={styles.pendingChips}>
-                <Chip tone="amber">{s?.pendingStores ?? 0} stores</Chip>
-                <Chip tone="amber">{s?.pendingBrands ?? 0} brands</Chip>
-                <Chip tone="amber">{s?.pendingProducts ?? 0} products</Chip>
+
+          <Text style={styles.heroMainValue}>
+            {formatPrice(s?.revenue ?? 0)}
+          </Text>
+          <Text style={styles.heroSub}>Aggregated settled marketplace volume</Text>
+
+          {/* 3-Column Inline Metrics */}
+          <View style={styles.heroTripleRow}>
+            <View style={styles.tripleCol}>
+              <Text style={styles.tripleLabel}>ORDERS</Text>
+              <Text style={styles.tripleValue}>{(s?.orders ?? 0).toLocaleString()}</Text>
+              <Text style={styles.tripleSub}>{formatPrice(s?.aov ?? 0)} avg</Text>
+            </View>
+
+            <View style={styles.tripleDivider} />
+
+            <View style={styles.tripleCol}>
+              <Text style={styles.tripleLabel}>ACTIVE ATELIERS</Text>
+              <Text style={styles.tripleValue}>
+                {s?.activeStores ?? 0}
+                <Text style={styles.tripleTotal}> / {s?.stores ?? 0}</Text>
+              </Text>
+              <Text style={styles.tripleSub}>{activeStoreRate.toFixed(0)}% approved</Text>
+            </View>
+
+            <View style={styles.tripleDivider} />
+
+            <View style={styles.tripleCol}>
+              <Text style={styles.tripleLabel}>CATALOGUE</Text>
+              <Text style={styles.tripleValue}>{(s?.products ?? 0).toLocaleString()}</Text>
+              <Text style={styles.tripleSub}>{s?.brands ?? 0} brands</Text>
+            </View>
+          </View>
+
+          {/* Action Attention Banner */}
+          {pendingTotal > 0 ? (
+            <Pressable
+              onPress={() => router.push("/(admin)/approvals" as any)}
+              style={styles.actionBanner}
+            >
+              <View style={styles.actionBannerLeft}>
+                <Ionicons name="flash" size={14} color="#7a5b1a" />
+                <Text style={styles.actionBannerText}>
+                  {pendingTotal} submission{pendingTotal > 1 ? "s" : ""} require attention
+                </Text>
               </View>
+              <View style={styles.actionBannerBtn}>
+                <Text style={styles.actionBannerBtnText}>Review →</Text>
+              </View>
+            </Pressable>
+          ) : (
+            <View style={styles.nominalBanner}>
+              <Ionicons name="checkmark-circle-outline" size={14} color={colors.olive[700]} />
+              <Text style={styles.nominalBannerText}>All submission queues nominal · 0 pending</Text>
             </View>
-          </View>
-        </View>
+          )}
+        </Card>
       )}
 
-      {/* Approval queue + alerts + sidebar */}
-      <View style={styles.queueBlock}>
-        <View style={[styles.queue, styles.queueCol]}>
-          <View style={styles.queueHeader}>
-            <View>
-              <Text style={styles.queueLabel}>QUEUE</Text>
-              <Text style={styles.queueTitle}>Approval Queue</Text>
-            </View>
-            <Pressable onPress={() => router.push("/(admin)/approvals" as any)} hitSlop={10}>
-              <Text style={styles.queueLink}>View all →</Text>
-            </Pressable>
+      {/* ── 3. Priority Moderation Queue ───────────────────────── */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>MODERATION</Text>
+            <Text style={styles.sectionTitle}>Priority Queue</Text>
           </View>
-          {merged.length === 0 ? (
-            <View style={styles.queueEmpty}>
-              <Ionicons name="checkmark-done" size={22} color={colors.light.primary} />
-              <Text style={styles.queueEmptyText}>All caught up — nothing pending.</Text>
+          <Pressable onPress={() => router.push("/(admin)/approvals" as any)} hitSlop={10}>
+            <Text style={styles.headerLink}>View all →</Text>
+          </Pressable>
+        </View>
+
+        {merged.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="checkmark-done-circle-outline" size={32} color={colors.olive[600]} />
+            <Text style={styles.emptyTitle}>Inbox Zero</Text>
+            <Text style={styles.emptySub}>All submissions have been approved or handled.</Text>
+          </View>
+        ) : (
+          merged.map((row, i) => (
+            <ListRow
+              key={`${row.kind}-${row.id}`}
+              index={i + 1}
+              title={row.name}
+              subtitle={`${row.kind} · Submitted ${formatRelative(row.created_at)}`}
+              right={
+                <View style={styles.queueActions}>
+                  {row.kind === "Store" ? (
+                    <>
+                      <Pressable
+                        onPress={() =>
+                          Alert.alert("Approve Store", row.name, [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Approve", onPress: () => approveStoreM.mutate(row.id) },
+                          ])
+                        }
+                        style={[styles.iconBtn, styles.iconBtnApprove]}
+                      >
+                        <Ionicons name="checkmark" size={13} color="#fff" />
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          Alert.alert("Reject Store", row.name, [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Reject", style: "destructive", onPress: () => rejectStoreM.mutate(row.id) },
+                          ])
+                        }
+                        style={styles.iconBtn}
+                      >
+                        <Ionicons name="close" size={13} color={colors.light.destructive} />
+                      </Pressable>
+                    </>
+                  ) : row.kind === "Brand" ? (
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert("Approve Brand", row.name, [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Approve", onPress: () => approveBrandM.mutate(row.id) },
+                        ])
+                      }
+                      style={[styles.iconBtn, styles.iconBtnApprove]}
+                    >
+                      <Ionicons name="checkmark" size={13} color="#fff" />
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert("Approve Product", row.name, [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Approve", onPress: () => approveProductM.mutate(row.id) },
+                        ])
+                      }
+                      style={[styles.iconBtn, styles.iconBtnApprove]}
+                    >
+                      <Ionicons name="checkmark" size={13} color="#fff" />
+                    </Pressable>
+                  )}
+                </View>
+              }
+            />
+          ))
+        )}
+      </Card>
+
+      {/* ── 4. Operational Health & Telemetry (2x2 Grid) ───────── */}
+      <View style={styles.telemetryGrid}>
+        <View style={styles.telemetryCard}>
+          <View style={styles.telemetryTop}>
+            <Text style={styles.telemetryLabel}>STORE ACTIVATION</Text>
+            <View style={[styles.telemetryIcon, { backgroundColor: "#dde4d6" }]}>
+              <Ionicons name="storefront-outline" size={13} color={colors.olive[800]} />
             </View>
-          ) : (
-            merged.map((row, i) => (
+          </View>
+          <Text style={styles.telemetryValue}>{activeStoreRate.toFixed(0)}%</Text>
+          <Text style={styles.telemetrySub}>{s?.activeStores ?? 0} of {s?.stores ?? 0} stores live</Text>
+          <ProgressBar value={activeStoreRate} fillColor={colors.olive[600]} style={{ marginTop: 8 }} />
+        </View>
+
+        <View style={styles.telemetryCard}>
+          <View style={styles.telemetryTop}>
+            <Text style={styles.telemetryLabel}>CUSTOMER SHARE</Text>
+            <View style={[styles.telemetryIcon, { backgroundColor: "#fdf3d7" }]}>
+              <Ionicons name="people-outline" size={13} color="#7a5b1a" />
+            </View>
+          </View>
+          <Text style={styles.telemetryValue}>{customerShare.toFixed(0)}%</Text>
+          <Text style={styles.telemetrySub}>{s?.customers ?? 0} purchasers</Text>
+          <ProgressBar value={customerShare} fillColor="#c8a44a" style={{ marginTop: 8 }} />
+        </View>
+
+        <View style={styles.telemetryCard}>
+          <View style={styles.telemetryTop}>
+            <Text style={styles.telemetryLabel}>LOW STOCK ALERT</Text>
+            <View style={[styles.telemetryIcon, { backgroundColor: "#fbe5dc" }]}>
+              <Ionicons name="alert-circle-outline" size={13} color="#7a2f1a" />
+            </View>
+          </View>
+          <Text style={[styles.telemetryValue, (lowStockQ.data?.length ?? 0) > 0 && { color: colors.light.destructive }]}>
+            {lowStockQ.data?.length ?? 0}
+          </Text>
+          <Text style={styles.telemetrySub}>Variants near limit</Text>
+          <ProgressBar
+            value={Math.min(100, (lowStockQ.data?.length ?? 0) * 20)}
+            fillColor={colors.light.destructive}
+            style={{ marginTop: 8 }}
+          />
+        </View>
+
+        <View style={styles.telemetryCard}>
+          <View style={styles.telemetryTop}>
+            <Text style={styles.telemetryLabel}>NEW ACCOUNTS</Text>
+            <View style={[styles.telemetryIcon, { backgroundColor: "#e6e6d0" }]}>
+              <Ionicons name="person-add-outline" size={13} color={colors.olive[700]} />
+            </View>
+          </View>
+          <Text style={styles.telemetryValue}>{signupsQ.data?.length ?? 0}</Text>
+          <Text style={styles.telemetrySub}>Recent registrations</Text>
+          <ProgressBar
+            value={Math.min(100, (signupsQ.data?.length ?? 0) * 25)}
+            fillColor={colors.olive[500]}
+            style={{ marginTop: 8 }}
+          />
+        </View>
+      </View>
+
+      {/* ── 5. Recent Orders Stream ────────────────────────────── */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>DISPATCH</Text>
+            <Text style={styles.sectionTitle}>Recent Orders</Text>
+          </View>
+          <Pressable onPress={() => router.push("/(admin)/orders" as any)} hitSlop={10}>
+            <Text style={styles.headerLink}>View all →</Text>
+          </Pressable>
+        </View>
+
+        {(ordersQ.data ?? []).length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="receipt-outline" size={28} color={colors.light.mutedForeground} />
+            <Text style={styles.emptySub}>No orders received yet.</Text>
+          </View>
+        ) : (
+          (ordersQ.data ?? []).map((o: any, i: number) => (
+            <Pressable
+              key={o.id}
+              onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: o.id } })}
+            >
               <ListRow
-                key={`${row.kind}-${row.id}`}
                 index={i + 1}
-                title={row.name}
-                subtitle={`${row.kind} · ${formatRelative(row.created_at)}`}
+                title={o.user?.full_name ?? "Direct Customer"}
+                subtitle={`#${o.order_number ?? o.id.slice(0, 8)} · ${formatRelative(o.placed_at)}`}
                 right={
-                  <View style={styles.queueActions}>
-                    {row.kind === "Store" ? (
-                      <>
-                        <Pressable
-                          onPress={() =>
-                            Alert.alert("Approve store", row.name, [
-                              { text: "Cancel", style: "cancel" },
-                              { text: "Approve", onPress: () => approveStoreM.mutate(row.id) },
-                            ])
-                          }
-                          style={[styles.iconBtn, styles.iconBtnPrimary]}
-                        >
-                          <Ionicons name="checkmark" size={14} color="#fff" />
-                        </Pressable>
-                        <Pressable
-                          onPress={() =>
-                            Alert.alert("Reject store", row.name, [
-                              { text: "Cancel", style: "cancel" },
-                              { text: "Reject", style: "destructive", onPress: () => rejectStoreM.mutate(row.id) },
-                            ])
-                          }
-                          style={styles.iconBtn}
-                        >
-                          <Ionicons name="close" size={14} color={colors.light.foreground} />
-                        </Pressable>
-                      </>
-                    ) : row.kind === "Brand" ? (
-                      <Pressable
-                        onPress={() =>
-                          Alert.alert("Approve brand", row.name, [
-                            { text: "Cancel", style: "cancel" },
-                            { text: "Approve", onPress: () => approveBrandM.mutate(row.id) },
-                          ])
-                        }
-                        style={[styles.iconBtn, styles.iconBtnPrimary]}
-                      >
-                        <Ionicons name="checkmark" size={14} color="#fff" />
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        onPress={() =>
-                          Alert.alert("Approve product", row.name, [
-                            { text: "Cancel", style: "cancel" },
-                            { text: "Approve", onPress: () => approveProductM.mutate(row.id) },
-                          ])
-                        }
-                        style={[styles.iconBtn, styles.iconBtnPrimary]}
-                      >
-                        <Ionicons name="checkmark" size={14} color="#fff" />
-                      </Pressable>
-                    )}
-                  </View>
-                }
-              />
-            ))
-          )}
-        </View>
-
-        <View style={[styles.queue, styles.alertsCol]}>
-          <View style={styles.alertsHeader}>
-            <Ionicons name="flash-outline" size={14} color={colors.light.primary} />
-            <Text style={styles.alertsTitle}>Alerts</Text>
-          </View>
-          <AlertTile
-            icon="alert-circle-outline"
-            tone="warning"
-            label="Low Stock"
-            value={String(lowStockQ.data?.length ?? 0)}
-            sub="variants"
-            onPress={() => router.push("/(admin)/products" as any)}
-          />
-          <AlertTile
-            icon="shield-checkmark-outline"
-            tone="default"
-            label="KYC"
-            value={String(s?.pendingStores ?? 0)}
-            sub="stores"
-            onPress={() => router.push("/(admin)/stores" as any)}
-          />
-          <AlertTile
-            icon="cube-outline"
-            tone="info"
-            label="Products"
-            value={String(s?.pendingProducts ?? 0)}
-            sub="awaiting review"
-            onPress={() => router.push("/(admin)/products" as any)}
-          />
-          <AlertTile
-            icon="chatbubbles-outline"
-            tone="info"
-            label="Content"
-            value="Open"
-            sub="reviews & Q&A"
-            onPress={() => router.push("/(admin)/content" as any)}
-          />
-        </View>
-      </View>
-
-      {/* Recent orders + Audit log */}
-      <View style={styles.splitBlock}>
-        <View style={styles.splitCol}>
-          <View style={styles.splitHeader}>
-            <View>
-              <Text style={styles.queueLabel}>ORDERS</Text>
-              <Text style={styles.splitTitle}>Recent</Text>
-            </View>
-            <Pressable onPress={() => router.push("/(admin)/orders" as any)} hitSlop={10}>
-              <Text style={styles.queueLink}>All →</Text>
-            </Pressable>
-          </View>
-          {(ordersQ.data ?? []).length === 0 ? (
-            <View style={styles.miniEmpty}><Text style={styles.miniEmptyText}>No orders yet</Text></View>
-          ) : (
-            (ordersQ.data ?? []).map((o: any, i: number) => (
-              <Pressable
-                key={o.id}
-                onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: o.id } })}
-              >
-                <ListRow
-                  index={i + 1}
-                  title={o.user?.full_name ?? "Customer"}
-                  subtitle={`${o.order_number ?? o.id.slice(0, 8)} · ${formatRelative(o.placed_at)}`}
-                  right={
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={styles.orderAmount}>{formatPrice(Number(o.total ?? 0), o.currency ?? "LKR")}</Text>
-                      <View style={[styles.statusPill, { backgroundColor: pillBg(STATUS_TONE[o.status] ?? "muted") }]}>
-                        <Text style={[styles.statusPillText, { color: pillFg(STATUS_TONE[o.status] ?? "muted") }]}>{o.status}</Text>
-                      </View>
+                  <View style={{ alignItems: "flex-end", gap: 3 }}>
+                    <Text style={styles.orderAmount}>{formatPrice(Number(o.total ?? 0), o.currency ?? "LKR")}</Text>
+                    <View style={[styles.statusPill, { backgroundColor: pillBg(STATUS_TONE[o.status] ?? "muted") }]}>
+                      <Text style={[styles.statusPillText, { color: pillFg(STATUS_TONE[o.status] ?? "muted") }]}>
+                        {o.status}
+                      </Text>
                     </View>
-                  }
-                />
-              </Pressable>
-            ))
-          )}
-        </View>
-        <View style={styles.splitCol}>
-          <View style={styles.splitHeader}>
-            <View>
-              <Text style={styles.queueLabel}>ACTIVITY</Text>
-              <Text style={styles.splitTitle}>Audit Log</Text>
-            </View>
-            <Pressable onPress={() => router.push("/(admin)/audit-log" as any)} hitSlop={10}>
-              <Text style={styles.queueLink}>All →</Text>
+                  </View>
+                }
+              />
             </Pressable>
-          </View>
-          {(auditQ.data ?? []).length === 0 ? (
-            <View style={styles.miniEmpty}><Text style={styles.miniEmptyText}>No activity yet</Text></View>
-          ) : (
-            (auditQ.data ?? []).map((e: any) => (
-              <ListRow
-                key={e.id}
-                leftIcon={
-                  <View style={[styles.auditDot, { backgroundColor: auditColor(e.action) }]} />
-                }
-                title={e.actor_name ?? "Admin"}
-                subtitle={humanize(e.action)}
-                meta={formatRelative(e.created_at)}
-              />
-            ))
-          )}
-        </View>
-      </View>
+          ))
+        )}
+      </Card>
 
-      {/* Health strip */}
-      <View style={styles.healthBlock}>
-        <HealthCard
-          label="Store activation"
-          value={`${activeStoreRate.toFixed(0)}%`}
-          description={`${s?.activeStores ?? 0} of ${s?.stores ?? 0} stores approved`}
-          progress={activeStoreRate}
-        />
-        <HealthCard
-          label="Customer share"
-          value={`${customerShare.toFixed(0)}%`}
-          description={`${s?.customers ?? 0} customers across ${s?.users ?? 0} users`}
-          progress={customerShare}
-        />
-        <HealthCard
-          label="Catalogue pipeline"
-          value={String(pendingTotal)}
-          description={`${s?.pendingProducts ?? 0} products · ${s?.pendingStores ?? 0} stores · ${s?.pendingBrands ?? 0} brands`}
-          progress={approvalLoad}
-        />
-      </View>
+      {/* ── 6. Activity & Security Stream ──────────────────────── */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>AUDIT LOG</Text>
+            <Text style={styles.sectionTitle}>Live Activity</Text>
+          </View>
+          <Pressable onPress={() => router.push("/(admin)/audit-log" as any)} hitSlop={10}>
+            <Text style={styles.headerLink}>Stream →</Text>
+          </Pressable>
+        </View>
 
-      {/* Signups + low stock + quick links */}
-      <View style={styles.bottomBlock}>
-        <View style={styles.bottomCol}>
-          <View style={styles.bottomHeader}>
-            <Text style={styles.queueLabel}>USERS</Text>
-            <Text style={styles.splitTitle}>Recent signups</Text>
+        {(auditQ.data ?? []).length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="time-outline" size={28} color={colors.light.mutedForeground} />
+            <Text style={styles.emptySub}>No recent system activity recorded.</Text>
           </View>
-          {(signupsQ.data ?? []).length === 0 ? (
-            <View style={styles.miniEmpty}><Text style={styles.miniEmptyText}>No users</Text></View>
-          ) : (
-            (signupsQ.data ?? []).map((u: any) => (
-              <ListRow
-                key={u.id}
-                leftIcon={
-                  <View style={styles.userAvatar}>
-                    <Text style={styles.userAvatarText}>{(u.full_name ?? u.email ?? "U").charAt(0).toUpperCase()}</Text>
-                  </View>
-                }
-                title={u.full_name ?? "User"}
-                subtitle={u.email ?? u.phone ?? "—"}
-                meta={u.role}
-              />
-            ))
-          )}
-        </View>
-        <View style={styles.bottomCol}>
-          <View style={styles.bottomHeader}>
-            <Text style={styles.queueLabel}>INVENTORY</Text>
-            <Text style={styles.splitTitle}>Low stock</Text>
+        ) : (
+          (auditQ.data ?? []).map((e: any) => (
+            <ListRow
+              key={e.id}
+              leftIcon={<View style={[styles.auditDot, { backgroundColor: auditColor(e.action) }]} />}
+              title={e.actor_name ?? "Administrator"}
+              subtitle={humanize(e.action)}
+              meta={formatRelative(e.created_at)}
+            />
+          ))
+        )}
+      </Card>
+
+      {/* ── 7. Console Navigation Grid ─────────────────────────── */}
+      <Card style={[styles.sectionCard, { marginBottom: 24 }]}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>NAVIGATION</Text>
+            <Text style={styles.sectionTitle}>Console Hub</Text>
           </View>
-          {(lowStockQ.data ?? []).length === 0 ? (
-            <View style={styles.miniEmpty}><Text style={styles.miniEmptyText}>All stocked up</Text></View>
-          ) : (
-            (lowStockQ.data ?? []).map((item: any) => (
-              <ListRow
-                key={item.id}
-                leftIcon={
-                  <View style={styles.stockIcon}>
-                    <Ionicons name="cube-outline" size={14} color={colors.light.destructive} />
-                  </View>
-                }
-                title={item.variant?.product?.name ?? "Variant"}
-                subtitle={`${item.available ?? item.quantity} available · threshold ${item.low_stock_threshold}`}
-                right={
-                  <View style={{ width: 56 }}>
-                    <ProgressBar
-                      value={item.low_stock_threshold ? ((item.available ?? item.quantity) / item.low_stock_threshold) * 100 : 0}
-                      fillColor={colors.light.destructive}
-                    />
-                  </View>
-                }
-              />
-            ))
-          )}
         </View>
-        <View style={styles.bottomCol}>
-          <View style={styles.bottomHeader}>
-            <Text style={styles.queueLabel}>NAVIGATE</Text>
-            <Text style={styles.splitTitle}>Quick links</Text>
-          </View>
-          <QuickLink label="Analytics" icon="analytics-outline" onPress={() => router.push("/(admin)/analytics" as any)} />
-          <QuickLink label="Delivery" icon="car-outline" onPress={() => router.push("/(admin)/delivery" as any)} />
-          <QuickLink label="Commissions" icon="wallet-outline" onPress={() => router.push("/(admin)/commissions" as any)} />
-          <QuickLink label="Homepage CMS" icon="globe-outline" onPress={() => router.push("/(admin)/homepage" as any)} />
-          <QuickLink label="Gift Cards" icon="gift-outline" onPress={() => router.push("/(admin)/gift-cards" as any)} />
-          <QuickLink label="Reports" icon="download-outline" onPress={() => router.push("/(admin)/reports" as any)} />
+
+        <View style={styles.hubGrid}>
+          <HubTile
+            label="Analytics"
+            sub="Revenue & telemetry"
+            icon="bar-chart-outline"
+            bg="#dde4d6"
+            onPress={() => router.push("/(admin)/analytics" as any)}
+          />
+          <HubTile
+            label="Delivery"
+            sub="Riders & dispatches"
+            icon="car-outline"
+            bg="#fdf3d7"
+            onPress={() => router.push("/(admin)/delivery" as any)}
+          />
+          <HubTile
+            label="Couriers"
+            sub="3PL Integrations"
+            icon="bicycle-outline"
+            bg="#fbe5dc"
+            onPress={() => router.push("/(admin)/courier" as any)}
+          />
+          <HubTile
+            label="Commissions"
+            sub="Payout rates & tiers"
+            icon="wallet-outline"
+            bg="#e6e6d0"
+            onPress={() => router.push("/(admin)/commissions" as any)}
+          />
+          <HubTile
+            label="Homepage CMS"
+            sub="Sections & layout"
+            icon="globe-outline"
+            bg="#efece2"
+            onPress={() => router.push("/(admin)/homepage" as any)}
+          />
+          <HubTile
+            label="Gift Cards"
+            sub="Codes & balances"
+            icon="gift-outline"
+            bg="#d4d4b5"
+            onPress={() => router.push("/(admin)/gift-cards" as any)}
+          />
         </View>
-      </View>
+      </Card>
     </ScrollView>
+  );
+}
+
+function HubTile({
+  label,
+  sub,
+  icon,
+  bg,
+  onPress,
+}: {
+  label: string;
+  sub: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  bg: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.hubTile}>
+      <View style={[styles.hubIconWrap, { backgroundColor: bg }]}>
+        <Ionicons name={icon} size={18} color={colors.light.foreground} />
+      </View>
+      <Text style={styles.hubLabel} numberOfLines={1}>{label}</Text>
+      <Text style={styles.hubSub} numberOfLines={1}>{sub}</Text>
+    </Pressable>
   );
 }
 
@@ -547,6 +624,7 @@ function pillBg(tone: string) {
     default: return colors.light.secondary;
   }
 }
+
 function pillFg(tone: string) {
   switch (tone) {
     case "success": return "#3d4a1f";
@@ -563,88 +641,64 @@ function humanize(s: string) {
 
 function auditColor(action: string) {
   if (action.includes("delete") || action.includes("reject") || action.includes("ban")) return colors.light.destructive;
-  if (action.includes("create") || action.includes("approve")) return colors.olive[500];
+  if (action.includes("create") || action.includes("approve")) return colors.olive[600];
   if (action.includes("update")) return "#c8a44a";
   return colors.light.muted;
-}
-
-function AlertTile({ icon, tone, label, value, sub, onPress }: any) {
-  const c = tone === "warning" ? "#c8a44a" : tone === "danger" ? colors.light.destructive : colors.light.primary;
-  return (
-    <Pressable onPress={onPress} style={styles.alertTile}>
-      <View style={[styles.alertIcon, { backgroundColor: c + "22" }]}>
-        <Ionicons name={icon} size={14} color={c} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.alertLabel}>{label}</Text>
-        <Text style={styles.alertSub}>{sub}</Text>
-      </View>
-      <Text style={[styles.alertValue, { color: c }]}>{value}</Text>
-    </Pressable>
-  );
-}
-
-function HealthCard({ label, value, description, progress }: { label: string; value: string; description: string; progress: number }) {
-  return (
-    <View style={styles.healthCard}>
-      <View style={styles.healthHead}>
-        <Text style={styles.healthLabel}>{label}</Text>
-        <Text style={styles.healthPct}>{Math.round(progress)}%</Text>
-      </View>
-      <Text style={styles.healthValue}>{value}</Text>
-      <Text style={styles.healthDesc}>{description}</Text>
-      <ProgressBar value={progress} fillColor={colors.olive[500]} style={{ marginTop: 12 }} />
-    </View>
-  );
-}
-
-function QuickLink({ label, icon, onPress }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={styles.quickLink}>
-      <View style={styles.quickIcon}>
-        <Ionicons name={icon} size={14} color={colors.light.primary} />
-      </View>
-      <Text style={styles.quickLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
-    </Pressable>
-  );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   content: { paddingBottom: 120 },
 
+  /* ── 1. Masthead ─────────────────────────────── */
   masthead: {
-    margin: 16,
-    marginBottom: 0,
-    padding: 24,
-    backgroundColor: colors.light.card,
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 20,
+    backgroundColor: colors.paper.DEFAULT,
     borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: colors.light.border,
-    overflow: "hidden",
     ...shadows.soft,
   },
-  mastheadTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  liveRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  liveText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[600],
-    letterSpacing: 1.4,
+  mastheadTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  clock: {
+  liveIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: colors.olive[50],
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
+  liveText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: colors.olive[800],
+    letterSpacing: 0.8,
+  },
+  clockWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  clockText: {
     fontFamily: fontFamilies.mono.regular,
     fontSize: 10,
     color: colors.light.mutedForeground,
-    letterSpacing: 1.2,
   },
   headline: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 36,
+    fontSize: 32,
     color: colors.light.foreground,
-    letterSpacing: -1.2,
-    lineHeight: 38,
+    letterSpacing: -0.8,
+    lineHeight: 36,
     marginTop: 12,
   },
   headlineAccent: {
@@ -655,318 +709,362 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
-    marginTop: 8,
+    marginTop: 4,
   },
-  mastheadStats: {
+  quickPillsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
+    gap: 8,
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.light.border,
   },
-  mastheadStat: { flex: 1, gap: 4 },
-  mastheadDivider: { width: 1, height: 32, backgroundColor: colors.light.border, marginHorizontal: 12 },
-  mastLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-  },
-  mastValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    color: colors.light.foreground,
-    letterSpacing: -0.3,
-  },
-
-  bento: {
+  quickPill: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  bentoLarge: {
-    width: "100%",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
     backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.light.border,
-    padding: 20,
-    minHeight: 180,
-    justifyContent: "space-between",
   },
-  bentoSmall: {
-    width: "49%",
-    flexGrow: 1,
-  },
-  bentoWide: {
-    width: "100%",
-  },
-  bentoRevenue: { minHeight: 200 },
-  bentoRevenueValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 36,
-    color: colors.light.foreground,
-    letterSpacing: -1,
-    marginTop: 8,
-  },
-  bentoValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    color: colors.light.foreground,
-    letterSpacing: -0.5,
-    marginTop: 4,
-  },
-  bentoLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-  },
-  bentoSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  bentoFooter: { flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
-  bentoFootText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.5,
-  },
-  bentoPending: {
+  quickPillHighlight: {
     backgroundColor: "#fdf3d7",
-    overflow: "hidden",
-    minHeight: 110,
+    borderColor: "#f5d97a",
   },
-  pendingBlob: {
-    position: "absolute",
-    top: -30,
-    right: -30,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "#f5d97a",
-    opacity: 0.4,
-  },
-  pendingInner: { padding: 20, gap: 6 },
-  pendingChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-
-  queueBlock: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    overflow: "hidden",
-  },
-  queue: {},
-  queueCol: { flex: 2, borderRightWidth: 1, borderRightColor: colors.light.border },
-  alertsCol: { flex: 1, paddingVertical: 8 },
-  queueHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
-  },
-  queueLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: colors.light.primary,
-    letterSpacing: 1.4,
-  },
-  queueTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 16,
-    color: colors.light.foreground,
-    marginTop: 2,
-  },
-  queueLink: {
+  quickPillText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 11,
     color: colors.light.primary,
   },
-  queueEmpty: {
-    paddingVertical: 32,
+  quickPillTextHighlight: {
+    color: "#7a5b1a",
+  },
+
+  /* ── 2. Unified Executive Performance Deck ───── */
+  heroDeck: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 20,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    ...shadows.soft,
+  },
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  heroEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    color: colors.light.mutedForeground,
+    letterSpacing: 1.2,
+  },
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.olive[50],
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
+  heroBadgeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: colors.olive[800],
+    letterSpacing: 0.6,
+  },
+  heroMainValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 34,
+    color: colors.light.foreground,
+    letterSpacing: -0.8,
+    marginTop: 8,
+  },
+  heroSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+  },
+  heroTripleRow: {
+    flexDirection: "row",
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  tripleCol: {
+    flex: 1,
+  },
+  tripleDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: colors.light.border,
+    marginHorizontal: 10,
+    alignSelf: "center",
+  },
+  tripleLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 8.5,
+    color: colors.light.mutedForeground,
+    letterSpacing: 0.8,
+  },
+  tripleValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
+    color: colors.light.foreground,
+    marginTop: 2,
+  },
+  tripleTotal: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+  },
+  tripleSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
+  },
+  actionBanner: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fdf3d7",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.lg,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#f5d97a",
+  },
+  actionBannerLeft: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flex: 1,
   },
-  queueEmptyText: {
+  actionBannerText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: "#7a5b1a",
+  },
+  actionBannerBtn: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  actionBannerBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: "#7a5b1a",
+  },
+  nominalBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.olive[50],
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.lg,
+    marginTop: 16,
+  },
+  nominalBannerText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: colors.olive[800],
+  },
+
+  /* ── 3. Section Cards ───────────────────────── */
+  sectionCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    padding: 16,
+    ...shadows.soft,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: 12,
+  },
+  sectionEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    color: colors.light.primary,
+    letterSpacing: 1.2,
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 18,
+    color: colors.light.foreground,
+    marginTop: 2,
+  },
+  headerLink: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.light.primary,
+  },
+  emptyWrap: {
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 4,
+  },
+  emptyTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.light.foreground,
+    marginTop: 4,
+  },
+  emptySub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
+    textAlign: "center",
   },
-  queueActions: { flexDirection: "row", gap: 6 },
+  queueActions: {
+    flexDirection: "row",
+    gap: 6,
+  },
   iconBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
     backgroundColor: colors.light.background,
     borderWidth: 1,
     borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  iconBtnPrimary: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
-
-  alertsHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 6 },
-  alertsTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.light.foreground },
-  alertTile: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  iconBtnApprove: {
+    backgroundColor: colors.olive[600],
+    borderColor: colors.olive[600],
   },
-  alertIcon: { width: 26, height: 26, borderRadius: 7, alignItems: "center", justifyContent: "center" },
-  alertLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.light.foreground },
-  alertSub: { fontFamily: fontFamilies.sans.regular, fontSize: 9, color: colors.light.mutedForeground, marginTop: 1 },
-  alertValue: { fontFamily: fontFamilies.display.semibold, fontSize: 14 },
 
-  splitBlock: {
+  /* ── 4. Telemetry 2x2 Grid ──────────────────── */
+  telemetryGrid: {
     flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 12,
-    gap: 8,
+    flexWrap: "wrap",
+    paddingHorizontal: 16,
+    gap: 10,
+    marginTop: 14,
   },
-  splitCol: {
-    flex: 1,
+  telemetryCard: {
+    width: "48%",
+    flexGrow: 1,
     backgroundColor: colors.light.card,
     borderRadius: radii.xl,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.light.border,
-    overflow: "hidden",
+    ...shadows.soft,
   },
-  splitHeader: {
+  telemetryTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    alignItems: "center",
   },
-  splitTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 14,
+  telemetryLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 8.5,
+    color: colors.light.mutedForeground,
+    letterSpacing: 0.8,
+  },
+  telemetryIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  telemetryValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
     color: colors.light.foreground,
+    letterSpacing: -0.4,
+    marginTop: 8,
+  },
+  telemetrySub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
     marginTop: 2,
   },
+
+  /* ── 5. Orders Stream ───────────────────────── */
   orderAmount: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 13,
     color: colors.light.foreground,
   },
   statusPill: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 999,
-    marginTop: 2,
+    borderRadius: radii.full,
   },
   statusPillText: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  miniEmpty: { padding: 24, alignItems: "center" },
-  miniEmptyText: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.light.mutedForeground },
 
-  auditDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
+  /* ── 6. Audit Dot ───────────────────────────── */
+  auditDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 4,
+  },
 
-  healthBlock: {
+  /* ── 7. Console Hub Grid ────────────────────── */
+  hubGrid: {
     flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 4,
+  },
+  hubTile: {
+    width: "48%",
+    flexGrow: 1,
+    backgroundColor: colors.light.background,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.light.border,
-    overflow: "hidden",
+    padding: 12,
+    gap: 3,
   },
-  healthCard: { flex: 1, padding: 16, borderRightWidth: 1, borderRightColor: colors.light.border },
-  healthHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  healthLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
+  hubIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
-  healthPct: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: colors.olive[600] },
-  healthValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
+  hubLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: colors.light.foreground,
-    letterSpacing: -0.5,
-    marginTop: 8,
   },
-  healthDesc: {
+  hubSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 10,
     color: colors.light.mutedForeground,
-    marginTop: 4,
   },
-
-  bottomBlock: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 24,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    overflow: "hidden",
-  },
-  bottomCol: { flex: 1, borderRightWidth: 1, borderRightColor: colors.light.border },
-  bottomHeader: { padding: 12, borderBottomWidth: 1, borderBottomColor: colors.light.border },
-  userAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.light.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 4,
-  },
-  userAvatarText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.card,
-  },
-  stockIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#fbe5dc",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 4,
-  },
-  quickLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  quickIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: colors.light.accent + "55",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quickLabel: { flex: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.light.foreground },
 });
+

@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 
 export { resolveImageUrl } from "./resolve-image-url";
+export { uuidv4 } from "./uuid";
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);

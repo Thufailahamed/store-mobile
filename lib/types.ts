@@ -273,6 +273,8 @@ export interface OrderItem {
   unit_price: number;
   total: number;
   status: OrderStatus;
+  is_gift?: boolean;
+  gift_message?: string | null;
   product?: Product;
 }
 

@@ -6,6 +6,7 @@
  *   • getWishlistPriceDrops        → returns ok([]) directly (no backend call)
  *   • uploadScanImage              → presigned-URL upload via fetch (auth still via supabase)
  *   • reverseImageMatch            → B.imageSearchBackend, row → ScanMatch mapping
+ *   • reverseImageSearch           → full match list mapped to Product[]
  *   • trackEvent surface field     → preserved on view + search events
  */
 
@@ -63,6 +64,7 @@ import {
   getWishlistPriceDrops,
   uploadScanImage,
   reverseImageMatch,
+  reverseImageSearch,
 } from "@/lib/api";
 import { trackEvent, readEvents, type SearchEvent, type ViewEvent } from "@/lib/recommender/events";
 
@@ -195,6 +197,29 @@ describe("reverseImageMatch", () => {
     const r = await reverseImageMatch("user-1/123.jpg");
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data).toEqual({ kind: "none", confidence: 0 });
+  });
+});
+
+describe("reverseImageSearch", () => {
+  it("maps catalogue matches into products for the results grid", async () => {
+    imageSearchBackendMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        matches: [
+          { id: "p1", name: "Shirt X", slug: "shirt-x", price: 100, image_url: "https://cdn/x.jpg", score: 0.9 },
+          { id: "p2", name: "Shirt Y", slug: "shirt-y", price: 120, images: [{ url: "https://cdn/y.jpg", is_primary: true }] },
+        ],
+      },
+    });
+    const r = await reverseImageSearch("https://cdn/scan.jpg", 12);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data).toHaveLength(2);
+      expect(r.data[0].slug).toBe("shirt-x");
+      expect(r.data[0].images?.[0]?.url).toContain("x.jpg");
+      expect(r.data[1].id).toBe("p2");
+    }
+    expect(imageSearchBackendMock).toHaveBeenCalledWith("https://cdn/scan.jpg", 12);
   });
 });
 

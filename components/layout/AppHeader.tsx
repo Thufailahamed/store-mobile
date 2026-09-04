@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { Label, Body, Display } from "@/components/ui/Typography";
 import { LiveTicker } from "./LiveTicker";
-import { useCart, useWishlist } from "@/lib/stores";
+import { useCart, useWishlist, useUI } from "@/lib/stores";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import { useAuth } from "@/lib/supabase/auth";
 import { getAddresses, updateAddress } from "@/lib/api";
@@ -103,7 +103,7 @@ export function AppHeader({
   };
 
   const handleCartPress = () => {
-    router.push("/(main)/cart");
+    useUI.getState().setCartDrawer(true);
   };
 
   return (

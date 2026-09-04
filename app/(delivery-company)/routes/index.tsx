@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
@@ -85,6 +85,12 @@ export default function CompanyRoutesScreen() {
     setLoading(true);
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   // Keep the list current after dispatch/cancel actions taken from the route
   // detail screen — mirrors the realtime-refresh pattern used by the other

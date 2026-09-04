@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
 import { getPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
-import { placeOrderGroupBackend, abandonOrderGroupBackend, getCheckoutOptionsBackend } from "@/lib/api/backend";
+import { placeOrderGroupBackend, placeGuestOrderBackend, abandonOrderGroupBackend, getCheckoutOptionsBackend } from "@/lib/api/backend";
 import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
@@ -42,7 +42,7 @@ import {
   SHIPPING_OPTIONS,
   type ShippingKey,
 } from "@/lib/utils";
-import { computeCartTotals } from "@/lib/cart-pricing";
+import { computeCartTotals, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
@@ -135,7 +135,7 @@ function uuidv4(): string {
 
 export default function CheckoutScreen() {
   const router = useRouter();
-  const { openAddress } = useLocalSearchParams<{ openAddress?: string }>();
+  const { openAddress, guest } = useLocalSearchParams<{ openAddress?: string; guest?: string }>();
   const insets = useSafeAreaInsets();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -180,8 +180,11 @@ export default function CheckoutScreen() {
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("Sri Lanka");
   const [shippingKey, setShippingKey] = useState<ShippingKey>("standard");
+  const [deliveryDate, setDeliveryDate] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "payhere">("cod");
   const [addressSheetOpen, setAddressSheetOpen] = useState(false);
+  const [guestEmail, setGuestEmail] = useState("");
+  const isGuest = guest === "1" && !user;
 
   const cartItems = Object.values(items);
   const pricingLines = useMemo(
@@ -210,11 +213,13 @@ export default function CheckoutScreen() {
         pointsValue: pointsToUse,
         freeShippingCoupon,
         giftCardCredit: giftCardBalance,
+        giftWrapCount: cartItems.filter((i) => i.is_gift).length,
       }),
-    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance],
+    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance, cartItems],
   );
   const sub = checkoutTotals.sub;
   const shippingFee = checkoutTotals.shipping;
+  const giftWrapFee = cartItems.filter((i) => i.is_gift).length * GIFT_WRAP_FEE;
   const afterCoupon = checkoutTotals.afterCoupon;
   const pointsValue = pointsToUse;
   const tax = checkoutTotals.tax;
@@ -232,7 +237,7 @@ export default function CheckoutScreen() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
+    if (!user && !isGuest) {
       router.replace("/(auth)/login");
       return;
     }
@@ -296,6 +301,13 @@ export default function CheckoutScreen() {
 
   useEffect(() => {
     if (authLoading) return;
+    if (!user && guest === "1" && openAddress === "1") {
+      setAddressSheetOpen(true);
+    }
+  }, [authLoading, user, guest, openAddress]);
+
+  useEffect(() => {
+    if (authLoading) return;
     if (!user) return;
     api.getAddresses(user.id).then((res) => {
       if (res.ok && res.data.length) {
@@ -321,7 +333,29 @@ export default function CheckoutScreen() {
   };
 
   const handleNewAddressSubmit = async (payload: AddressFormPayload) => {
-    if (!user) return;
+    const local = {
+      id: "guest",
+      user_id: user?.id ?? "",
+      type: payload.type,
+      full_name: payload.full_name.trim(),
+      phone: payload.phone.trim(),
+      line1: payload.line1.trim(),
+      line2: payload.line2.trim() || undefined,
+      city: payload.city.trim(),
+      state: payload.state.trim(),
+      postal_code: payload.postal_code.trim(),
+      country: payload.country.trim() || "Sri Lanka",
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      is_default: false,
+    } as Address;
+    if (!user) {
+      fillAddress(local);
+      setSelectedAddressId("new");
+      setAddressSheetOpen(false);
+      toast("Delivery address set", "success");
+      return;
+    }
     const basePayload = {
       user_id: user.id,
       type: payload.type,
@@ -424,10 +458,18 @@ export default function CheckoutScreen() {
     isSubmittingRef.current = true;
     try {
     if (authLoading) return;
-    if (!user) {
+    if (!user && !isGuest) {
       toast("Please sign in to place your order", "error");
       router.replace("/(auth)/login");
       return;
+    }
+    if (isGuest) {
+      const email = guestEmail.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        toast("Enter a valid email so we can send your receipt", "error");
+        setStep(1);
+        return;
+      }
     }
     if (cartItems.length === 0) {
       toast("Your bag is empty", "error");
@@ -504,22 +546,24 @@ export default function CheckoutScreen() {
       return;
     }
 
-    const productIds = [...new Set(freshCartItems.map((item) => item.productId))];
-    const productsResult = await fetchCartProductSnapshots(productIds);
-    const hold = await flushCartReservationSync(
-      user.id,
-      cartItemsToReservations(
-        freshCartItems,
-        productsResult.ok ? productsResult.products : undefined,
-      ),
-    );
-    if (!hold.ok) {
-      toast(hold.error, "error");
-      router.replace("/(main)/cart");
-      return;
+    if (!isGuest && user) {
+      const productIds = [...new Set(freshCartItems.map((item) => item.productId))];
+      const productsResult = await fetchCartProductSnapshots(productIds);
+      const hold = await flushCartReservationSync(
+        user.id,
+        cartItemsToReservations(
+          freshCartItems,
+          productsResult.ok ? productsResult.products : undefined,
+        ),
+      );
+      if (!hold.ok) {
+        toast(hold.error, "error");
+        router.replace("/(main)/cart");
+        return;
+      }
     }
 
-    let reservationsHeld = true;
+    let reservationsHeld = !isGuest;
     let orderPlaced = false;
 
     const freshPricingLines = freshCartItems.map((item) => ({
@@ -539,8 +583,9 @@ export default function CheckoutScreen() {
       lines: freshPricingLines,
       shippingKey,
       couponDiscount,
-      pointsValue: freshPointsToUse,
+      pointsValue: isGuest ? 0 : freshPointsToUse,
       freeShippingCoupon,
+      giftWrapCount: freshCartItems.filter((i) => i.is_gift).length,
     });
     const freshSub = freshTotals.sub;
     const freshPointsValue = freshPointsToUse;
@@ -591,6 +636,7 @@ export default function CheckoutScreen() {
           couponDiscount: 0,
           pointsValue: 0,
           freeShippingCoupon,
+          giftWrapCount: items.filter((i) => i.is_gift).length,
         });
         return { storeId, items, totals };
       });
@@ -618,6 +664,8 @@ export default function CheckoutScreen() {
             sku: null,
             quantity: it.quantity,
             unit_price: it.price,
+            is_gift: !!it.is_gift,
+            gift_message: it.is_gift ? (it.gift_message ?? null) : null,
           })),
           subtotal: g.totals.sub,
           discount,
@@ -634,25 +682,41 @@ export default function CheckoutScreen() {
       // benefit and could leak holds if the group call fails.
 
       const { data: groupData, error: groupErr } = await (async () => {
-        const res = await placeOrderGroupBackend({
+        const payload = {
           orders: ordersPayload,
-          address_id: addressId,
+          address_id: isGuest ? null : addressId,
           shipping_address: shippingAddress,
-          payment_method: paymentMethod,
+          payment_method: isGuest ? "cod" : paymentMethod,
           coupon_id: couponId,
           coupon_code: couponInput.trim() || null,
           gift_card_code: giftCardCode || null,
-          currency: "LKR",
+          currency: "LKR" as const,
           shipping_method: shippingKey,
-          loyalty_points_redeemed: freshPointsToUse,
+          loyalty_points_redeemed: isGuest ? 0 : freshPointsToUse,
           group_id: groupId,
-        });
+          delivery_date: deliveryDate,
+        };
+        const res = isGuest
+          ? await placeGuestOrderBackend({ ...payload, guest_email: guestEmail.trim() })
+          : await placeOrderGroupBackend(payload);
         if (!res.ok) return { data: null, error: { message: res.error } };
         return { data: res.data, error: null };
       })();
 
       if (groupErr) {
         throw new Error(groupErr.message);
+      }
+      if (isGuest) {
+        const token = (groupData as { guest_token?: string } | null)?.guest_token;
+        orderPlaced = true;
+        await releaseCartReservations();
+        reservationsHeld = false;
+        clear();
+        toast("Order placed", "success");
+        router.replace(
+          `/(main)/orders/guest-lookup?token=${encodeURIComponent(token ?? "")}` as never,
+        );
+        return;
       }
       const parsedGroup = parseGroupOrders(groupData);
       const subOrders = parsedGroup.orders;
@@ -809,6 +873,28 @@ export default function CheckoutScreen() {
         {step === 1 && (
           <View style={styles.panel}>
             <SectionHeader kicker="Step 01" title="Delivery address" />
+            {isGuest ? (
+              <View style={{ marginBottom: 16 }}>
+                <Label style={{ marginBottom: 6 }}>Email for receipt</Label>
+                <TextInput
+                  value={guestEmail}
+                  onChangeText={setGuestEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.light.mutedForeground}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.light.border,
+                    borderRadius: radii.md,
+                    paddingHorizontal: 12,
+                    height: 44,
+                    fontFamily: fontFamilies.sans.regular,
+                    color: colors.light.foreground,
+                  }}
+                />
+              </View>
+            ) : null}
             {savedAddresses.map((a) => (
               <TouchableOpacity
                 key={a.id}
@@ -878,6 +964,25 @@ export default function CheckoutScreen() {
                 <Label>{sub >= FREE_SHIPPING_THRESHOLD && opt.key === "standard" ? "FREE" : formatPrice(opt.fee)}</Label>
               </TouchableOpacity>
             ))}
+            <SectionHeader kicker="Preferred day" title="Delivery date" />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {[1, 2, 3, 5].map((offset) => {
+                const d = new Date();
+                d.setDate(d.getDate() + offset);
+                const iso = d.toISOString().slice(0, 10);
+                const label = d.toLocaleDateString("en-LK", { weekday: "short", month: "short", day: "numeric" });
+                const active = deliveryDate === iso;
+                return (
+                  <TouchableOpacity
+                    key={iso}
+                    onPress={() => setDeliveryDate(iso)}
+                    style={[styles.optionCard, active && styles.optionCardActive, { flex: undefined, paddingVertical: 10, paddingHorizontal: 12 }]}
+                  >
+                    <Body size="xs" style={{ fontWeight: active ? "600" : "400" }}>{label}</Body>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <Button variant="brand" onPress={() => setStep(3)}>Continue</Button>
           </View>
         )}
@@ -893,7 +998,7 @@ export default function CheckoutScreen() {
             {([
               { key: "cod" as const, label: "Cash on delivery", desc: "Pay when you receive", icon: "cash-outline" as const },
               { key: "payhere" as const, label: "Card via PayHere", desc: "Visa · Mastercard · Amex", icon: "card-outline" as const },
-            ] as const).filter((m) => !(m.key === "cod" && codAllowed === false)).map((m) => (
+            ] as const).filter((m) => !(m.key === "cod" && codAllowed === false) && !(isGuest && m.key === "payhere")).map((m) => (
               <TouchableOpacity
                 key={m.key}
                 style={[styles.optionCard, paymentMethod === m.key && styles.optionCardActive]}
@@ -1053,7 +1158,10 @@ export default function CheckoutScreen() {
             <View style={styles.receiptCard}>
               <Label style={styles.receiptLabel}>Price details</Label>
               <View style={styles.receiptRule} />
-              <SummaryLine label="Subtotal" value={formatPrice(sub)} />
+              <SummaryLine label="Subtotal" value={formatPrice(sub - giftWrapFee)} />
+              {giftWrapFee > 0 ? (
+                <SummaryLine label="Gift wrap" value={formatPrice(giftWrapFee)} />
+              ) : null}
               {couponDiscount > 0 && (
                 <SummaryLine label="Coupon discount" value={`-${formatPrice(couponDiscount)}`} accent />
               )}

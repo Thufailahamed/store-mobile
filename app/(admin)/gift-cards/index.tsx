@@ -226,11 +226,23 @@ function AdjustForm({ card, onDone }: { card: any; onDone: () => void }) {
   const submit = async () => {
     const n = Number(delta);
     if (!Number.isFinite(n) || n === 0) return Alert.alert("Enter non-zero delta");
-    setBusy(true);
-    const r = await adjustAdminGiftCard(card.id, { delta: n, note: note || undefined });
-    setBusy(false);
-    if (r.ok) { Alert.alert("Adjusted"); onDone(); }
-    else Alert.alert("Failed", r.error);
+    Alert.alert(
+      "Adjust balance?",
+      `${n > 0 ? "Add" : "Remove"} ${Math.abs(n)} ${card.currency ?? "LKR"} ${n > 0 ? "to" : "from"} this card.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Adjust",
+          onPress: async () => {
+            setBusy(true);
+            const r = await adjustAdminGiftCard(card.id, { delta: n, note: note || undefined });
+            setBusy(false);
+            if (r.ok) { Alert.alert("Adjusted"); onDone(); }
+            else Alert.alert("Failed", r.error);
+          },
+        },
+      ],
+    );
   };
   return (
     <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
@@ -246,11 +258,24 @@ function VoidForm({ card, onDone }: { card: any; onDone: () => void }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async () => {
-    setBusy(true);
-    const r = await voidAdminGiftCard(card.id, { reason: reason || undefined });
-    setBusy(false);
-    if (r.ok) { Alert.alert("Voided"); onDone(); }
-    else Alert.alert("Failed", r.error);
+    Alert.alert(
+      "Void this card?",
+      "Voiding is permanent — remaining balance becomes unusable.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Void",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            const r = await voidAdminGiftCard(card.id, { reason: reason || undefined });
+            setBusy(false);
+            if (r.ok) { Alert.alert("Voided"); onDone(); }
+            else Alert.alert("Failed", r.error);
+          },
+        },
+      ],
+    );
   };
   return (
     <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>

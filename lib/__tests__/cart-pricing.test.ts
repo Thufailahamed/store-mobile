@@ -36,4 +36,15 @@ describe("cart-pricing", () => {
     expect(totals.giftApplied).toBe(1000);
     expect(totals.total).toBe(4400);
   });
+
+  it("adds LKR 250 per gift-wrapped line to the subtotal", () => {
+    const totals = computeCartTotals({
+      lines: [{ storeId: "s1", quantity: 2, unitPrice: 2500 }],
+      shippingKey: "standard",
+      giftWrapCount: 1,
+    });
+    expect(totals.sub).toBe(5250);
+    expect(totals.tax).toBe(420);
+    expect(totals.total).toBe(5670);
+  });
 });

@@ -40,6 +40,9 @@ export function computeOrderShipping(
   return shippingTotal;
 }
 
+/** LKR surcharge per gift-wrapped line, matching web cart-store. */
+export const GIFT_WRAP_FEE = 250;
+
 export function computeCartTotals(params: {
   lines: CartPricingLine[];
   shippingKey?: ShippingKey;
@@ -47,8 +50,11 @@ export function computeCartTotals(params: {
   pointsValue?: number;
   freeShippingCoupon?: boolean;
   giftCardCredit?: number;
+  giftWrapCount?: number;
 }) {
-  const sub = params.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const merchandise = params.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const giftWrap = Math.max(0, params.giftWrapCount ?? 0) * GIFT_WRAP_FEE;
+  const sub = merchandise + giftWrap;
   const shipping = computeOrderShipping(params.lines, params.shippingKey ?? "standard", {
     freeShippingCoupon: params.freeShippingCoupon,
   });

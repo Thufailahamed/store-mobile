@@ -107,6 +107,20 @@ const ACCOUNT_LINKS: {
     requiresAuth: true,
   },
   {
+    icon: "gift-outline",
+    label: "Referrals",
+    sub: "Share your code",
+    route: "/(main)/account/referrals",
+    requiresAuth: true,
+  },
+  {
+    icon: "megaphone-outline",
+    label: "Influencer program",
+    sub: "Application status",
+    route: "/(main)/account/influencer-status",
+    requiresAuth: true,
+  },
+  {
     icon: "headset-outline",
     label: "Contact support",
     sub: "Get help with orders",

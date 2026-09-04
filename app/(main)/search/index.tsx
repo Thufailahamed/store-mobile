@@ -39,6 +39,11 @@ import { tokenizeQuery, expandQueryTerms, buildDidYouMean } from "@/lib/utils/se
 import { useAuth } from "@/lib/supabase/auth";
 import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
 import { pickImage, takePhoto } from "@/lib/upload";
+import {
+  getFashionKeywordCompletions,
+  matchCategories,
+  matchBrands,
+} from "@/lib/search/suggestion-engine";
 
 const GRID_GAP = 10;
 const GRID_PADDING = 20;
@@ -103,6 +108,9 @@ export default function SearchScreen() {
   const [recs, setRecs] = useState<Product[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
 
+  const [preloadedCategories, setPreloadedCategories] = useState<Category[]>([]);
+  const [preloadedBrands, setPreloadedBrands] = useState<Brand[]>([]);
+
   // Load recent searches from AsyncStorage
   useEffect(() => {
     AsyncStorage.getItem("luxe_search_history").then((v) => {
@@ -114,6 +122,18 @@ export default function SearchScreen() {
         setRecentSearches(parsed.slice(0, 20));
       } catch {}
     });
+
+    // Warm up categories and brands cache for instant 0ms suggestions
+    let cancelled = false;
+    Promise.all([api.getCategories(50), api.getBrands({ limit: 50 })]).then(([catRes, brandRes]) => {
+      if (cancelled) return;
+      if (catRes.ok) setPreloadedCategories(catRes.data);
+      if (brandRes.ok) setPreloadedBrands(brandRes.data);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const saveRecent = async (term: string) => {
@@ -212,24 +232,41 @@ export default function SearchScreen() {
 
     const items: V2Suggestion[] = [];
 
+    // 1. Recent searches matching term
     for (const label of recentSearches) {
       if (label.toLowerCase().includes(term)) {
         items.push({ kind: "keyword", label });
       }
     }
 
-    for (const label of SUGGESTIONS) {
-      const lower = label.toLowerCase();
-      if (
-        (lower.startsWith(term) || lower.includes(term)) &&
-        !items.some((item) => item.label.toLowerCase() === lower)
-      ) {
-        items.push({ kind: "keyword", label });
+    // 2. Matching categories (Shirts, Dresses, Shoes, etc.)
+    const activeCategories = preloadedCategories.length > 0 ? preloadedCategories : categories;
+    const catMatches = matchCategories(term, activeCategories, 3);
+    for (const c of catMatches) {
+      if (!items.some((i) => i.label.toLowerCase() === c.label.toLowerCase())) {
+        items.push(c);
       }
     }
 
-    return items.slice(0, 4);
-  }, [draft, recentSearches]);
+    // 3. Matching brands / ateliers
+    const activeBrands = preloadedBrands.length > 0 ? preloadedBrands : brands;
+    const brandMatches = matchBrands(term, activeBrands, 3);
+    for (const b of brandMatches) {
+      if (!items.some((i) => i.label.toLowerCase() === b.label.toLowerCase())) {
+        items.push(b);
+      }
+    }
+
+    // 4. Comprehensive Fashion Taxonomy completions (Shirts, Linen Shirt, Oversized Shirt, etc.)
+    const keywordCompletions = getFashionKeywordCompletions(term, 8);
+    for (const k of keywordCompletions) {
+      if (!items.some((i) => i.label.toLowerCase() === k.label.toLowerCase())) {
+        items.push(k);
+      }
+    }
+
+    return items;
+  }, [draft, recentSearches, preloadedCategories, categories, preloadedBrands, brands]);
 
   useEffect(() => {
     const term = debouncedDraft.trim();
@@ -293,16 +330,10 @@ export default function SearchScreen() {
           router.push("/scan");
           return;
         }
-        const match = await api.reverseImageMatch(upload.data.path);
-        if (!match.ok || match.data.kind === "none") {
-          router.push("/scan");
-          return;
-        }
-        if (match.data.kind === "product" && match.data.slug) {
-          router.push(`/(main)/products/${match.data.slug}`);
-        } else if (match.data.kind === "store" && match.data.slug) {
-          router.push(`/(main)/stores/${match.data.slug}`);
-        }
+        router.push({
+          pathname: "/(main)/search/image-results",
+          params: { url: upload.data.url, preview: uri },
+        });
       } catch {
         router.push("/scan");
       } finally {

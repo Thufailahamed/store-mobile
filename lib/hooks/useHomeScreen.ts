@@ -18,6 +18,7 @@ export interface HomeCatalogPrimary {
   banners: Banner[];
   saleProducts: Product[];
   newArrivals: Product[];
+  flashEndsAt?: string;
 }
 
 export interface HomeCatalogExtended {
@@ -51,11 +52,11 @@ export async function fetchHomeCatalogPrimary(): Promise<HomeCatalogPrimary> {
   const [cats, heroBanners, flash, arrivalsRes] = await Promise.all([
     api.getCategories(12),
     api.getBanners("home_hero"),
-    api.getFlashSaleProducts(12),
+    api.getFlashSaleRail(12),
     api.getHomepageProductPicks("new_arrivals_rail"),
   ]);
 
-  const sale = flash.ok && flash.data.length ? flash.data : [];
+  const sale = flash.ok && flash.data.products.length ? flash.data.products : [];
   const arrivals = arrivalsRes.ok ? arrivalsRes.data : [];
   const [dedupedSale, dedupedArrivals] = dedupeProductRails(sale, arrivals);
 
@@ -64,6 +65,7 @@ export async function fetchHomeCatalogPrimary(): Promise<HomeCatalogPrimary> {
     banners: heroBanners.ok ? heroBanners.data : [],
     saleProducts: dedupedSale,
     newArrivals: dedupedArrivals,
+    flashEndsAt: flash.ok ? flash.data.endsAt : undefined,
   };
 }
 
@@ -242,6 +244,7 @@ export function useHomeScreenData(
       banners: catalogPrimary.data?.banners ?? [],
       saleProducts: catalogPrimary.data?.saleProducts ?? [],
       newArrivals: catalogPrimary.data?.newArrivals ?? [],
+      flashEndsAt: catalogPrimary.data?.flashEndsAt,
       trending: catalogExtended.data?.trending ?? [],
       editorsPicks: catalogExtended.data?.editorsPicks ?? [],
       todaysEdit: catalogExtended.data?.todaysEdit ?? [],

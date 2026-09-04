@@ -97,9 +97,19 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
         {/* Floating Overlays */}
         {pct > 0 && (
           <View style={styles.stamp}>
-            <Label style={styles.stampText}>{pct}% OFF</Label>
+            <Label style={styles.stampText}>-{pct}%</Label>
           </View>
         )}
+
+        {/* Zoom trigger affordance */}
+        <TouchableOpacity
+          style={styles.zoomHintBtn}
+          onPress={() => displayImages[activeIndex]?.url && setZoomVisible(true)}
+          activeOpacity={0.8}
+          hitSlop={6}
+        >
+          <Ionicons name="expand-outline" size={15} color="#ffffff" />
+        </TouchableOpacity>
 
         {/* Image counter */}
         {displayImages.length > 1 && (
@@ -199,9 +209,20 @@ const styles = StyleSheet.create({
   },
   stampText: {
     color: "#ffffff",
-    fontSize: 9.5,
+    fontSize: 10,
     fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+  },
+  zoomHintBtn: {
+    position: "absolute",
+    top: 16,
+    right: 32,
+    backgroundColor: "rgba(22, 23, 15, 0.45)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   counter: {
     position: "absolute",

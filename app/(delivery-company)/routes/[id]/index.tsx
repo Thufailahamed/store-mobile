@@ -9,7 +9,7 @@ import {
   Alert,
   RefreshControl,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {
@@ -55,6 +55,12 @@ export default function CompanyRouteDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   // Realtime refresh so this screen's status reflects a dispatch/cancel
   // performed elsewhere without requiring a manual pull-to-refresh.

@@ -14,6 +14,7 @@ interface VariantSelectorProps {
   onSizeChange: (size: string) => void;
   /** Live sellable units per size label (overrides variant.stock when set). */
   stockForSize?: (size: string) => number;
+  onOpenSizeGuide?: () => void;
 }
 
 export function VariantSelector({
@@ -23,6 +24,7 @@ export function VariantSelector({
   onColorChange,
   onSizeChange,
   stockForSize,
+  onOpenSizeGuide,
 }: VariantSelectorProps) {
   const uniqueColors = Array.from(
     new Map(
@@ -91,16 +93,20 @@ export function VariantSelector({
         <View style={styles.section}>
           <View style={styles.sizeHeader}>
             <Label style={styles.sectionLabel}>SIZE</Label>
-            <TouchableOpacity activeOpacity={0.6}>
-              <Body size="xs" style={styles.sizeChart}>
-                Size chart →
-              </Body>
-            </TouchableOpacity>
+            {onOpenSizeGuide && (
+              <TouchableOpacity activeOpacity={0.6} onPress={onOpenSizeGuide} hitSlop={6}>
+                <Body size="xs" style={styles.sizeChart}>
+                  Size chart →
+                </Body>
+              </TouchableOpacity>
+            )}
           </View>
           <View style={styles.sizeGrid}>
             {sizesForColor.map((s) => {
               const isActive = selectedSize === s;
-              const soldOut = isSizeSoldOut(s);
+              const stock = getVariantStock(s);
+              const soldOut = stock <= 0;
+              const isLow = !soldOut && stock <= 3;
               return (
                 <TouchableOpacity
                   key={s}
@@ -123,10 +129,29 @@ export function VariantSelector({
                   >
                     {s}
                   </Body>
+                  {isLow && !isActive && (
+                    <View style={styles.chipLowDot} />
+                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
+
+          {/* Low-stock urgency warning for selected size */}
+          {selectedSize && (() => {
+            const stock = getVariantStock(selectedSize);
+            if (stock > 0 && stock <= 3) {
+              return (
+                <View style={styles.lowStockBanner}>
+                  <View style={styles.lowStockDot} />
+                  <Body size="xs" style={styles.lowStockText}>
+                    Only {stock} {stock === 1 ? "item" : "items"} left in size {selectedSize}
+                  </Body>
+                </View>
+              );
+            }
+            return null;
+          })()}
         </View>
       )}
     </View>
@@ -242,5 +267,36 @@ const styles = StyleSheet.create({
   sizeTextSoldOut: {
     textDecorationLine: "line-through",
     color: colors.light.mutedForeground,
+  },
+  chipLowDot: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.accent2.rust,
+  },
+  lowStockBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    backgroundColor: `${colors.accent2.rust}12`,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1.5],
+    borderRadius: radii.md,
+    alignSelf: "flex-start",
+    marginTop: 2,
+  },
+  lowStockDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent2.rust,
+  },
+  lowStockText: {
+    color: colors.accent2.rust,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
   },
 });

@@ -23,6 +23,7 @@ import { getEligibleReviewOrders } from "@/lib/api";
 import type { EligibleReviewOrder } from "@/lib/types";
 import { friendlyReviewError, formatReviewDate } from "@/lib/review-error";
 import { addReviewBackend } from "@/lib/api/backend";
+import { uuidv4 } from "@/lib/utils";
 
 interface ReviewFormProps {
   visible: boolean;
@@ -50,7 +51,7 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
   const [selectedOrderItemId, setSelectedOrderItemId] = useState<string | null>(null);
   // Stable tmp id for upload path; the real review row id may differ
   // after insert, but the file still lands in the user's prefix.
-  const tmpReviewIdRef = useRef<string>(crypto.randomUUID());
+  const tmpReviewIdRef = useRef<string>(uuidv4());
 
   // Tracks whether the component is still mounted. setState after unmount
   // warns in dev and is wasted work in prod. Set false in the cleanup.

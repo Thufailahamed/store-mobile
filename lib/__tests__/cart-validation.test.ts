@@ -152,8 +152,14 @@ describe("cart-validation", () => {
     });
   });
 
-  it("removes out-of-stock items", () => {
-    const item = makeItem();
+  it("flags out-of-stock items (not removed)", () => {
+    // Enterprise UX: OOS items stay in the bag so the UI can show a yellow
+    // banner; the checkout gate is what blocks them. Reconciliation puts
+    // them in `outOfStock`, not `remove`.
+    const item = makeItem({
+      size: "M",
+      color: "Black",
+    });
     const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
       items,
@@ -163,6 +169,9 @@ describe("cart-validation", () => {
             {
               id: "var-1",
               product_id: "prod-1",
+              size: "M",
+              color: "Black",
+              price: 2500,
               position: 0,
               is_active: true,
               stock: 0,
@@ -173,10 +182,12 @@ describe("cart-validation", () => {
       visibleStores,
     );
 
-    expect(reconciliation.remove[0].reason).toBe("out_of_stock");
+    expect(reconciliation.remove).toHaveLength(0);
+    expect(reconciliation.outOfStock).toHaveLength(1);
+    expect(reconciliation.outOfStock[0].reason).toBe("out_of_stock");
   });
 
-  it("treats fully reserved inventory as out of stock", () => {
+  it("treats fully reserved inventory as out of stock (flagged, not removed)", () => {
     const item = makeItem({ stock: 5, quantity: 1 });
     const items = { [lineKey(item)]: item };
     const reconciliation = buildCartReconciliation(
@@ -201,7 +212,8 @@ describe("cart-validation", () => {
       visibleStores,
     );
 
-    expect(reconciliation.remove).toHaveLength(1);
-    expect(reconciliation.remove[0].reason).toBe("out_of_stock");
+    expect(reconciliation.remove).toHaveLength(0);
+    expect(reconciliation.outOfStock).toHaveLength(1);
+    expect(reconciliation.outOfStock[0].reason).toBe("out_of_stock");
   });
 });

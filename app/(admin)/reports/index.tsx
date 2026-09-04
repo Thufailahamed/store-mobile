@@ -1,12 +1,13 @@
-import React from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from "react-native";
+import React, { useState } from "react";
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Card } from "@/components/ui";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { generateAdminReport, shareAdminReportCsv, type AdminReportKey } from "@/lib/admin/generate-report";
 
 interface Report {
-  key: string;
+  key: AdminReportKey;
   title: string;
   description: string;
   format: "csv" | "pdf";
@@ -20,35 +21,56 @@ const REPORTS: Report[] = [
   { key: "stores", title: "Seller roster", description: "Stores + approval status", format: "csv", icon: "storefront-outline" },
   { key: "customers", title: "Customer list", description: "PII-safe export", format: "csv", icon: "people-outline" },
   { key: "payouts", title: "Payouts queue", description: "Pending seller payouts", format: "csv", icon: "wallet-outline" },
-  { key: "tax", title: "Tax summary", description: "Quarterly tax filing export", format: "pdf", icon: "document-text-outline" },
-  { key: "finance", title: "Finance pack", description: "Revenue, fees, refunds", format: "pdf", icon: "briefcase-outline" },
+  { key: "tax", title: "Tax summary", description: "Quarterly tax filing export", format: "csv", icon: "document-text-outline" },
+  { key: "finance", title: "Finance pack", description: "Revenue, fees, refunds", format: "csv", icon: "briefcase-outline" },
 ];
 
 export default function AdminReports() {
-  const onPress = (r: Report) => Alert.alert("Generate report", `${r.title} will be prepared and emailed to your admin address.`, [{ text: "OK" }]);
+  const [busyKey, setBusyKey] = useState<AdminReportKey | null>(null);
+
+  const onPress = async (r: Report) => {
+    if (busyKey) return;
+    setBusyKey(r.key);
+    const result = await generateAdminReport(r.key);
+    setBusyKey(null);
+    if (!result.ok) {
+      Alert.alert("Couldn't generate report", result.error);
+      return;
+    }
+    try {
+      await shareAdminReportCsv(result.title, result.csv);
+    } catch {
+      Alert.alert("Share cancelled");
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.eyebrow}>EXPORT</Text>
         <Text style={styles.title}>Reports</Text>
-        <Text style={styles.sub}>{REPORTS.length} templates · CSV & PDF</Text>
+        <Text style={styles.sub}>{REPORTS.length} templates · CSV export</Text>
       </View>
 
       <View style={styles.list}>
         {REPORTS.map((r, i) => (
-          <Pressable key={r.key} onPress={() => onPress(r)}>
+          <Pressable key={r.key} onPress={() => onPress(r)} disabled={busyKey !== null}>
             <Card style={styles.card}>
               <View style={styles.row}>
                 <Text style={styles.index}>{String(i + 1).padStart(2, "0")}</Text>
                 <View style={[styles.iconWrap, { backgroundColor: r.format === "pdf" ? "#fdf3d7" : "#dde4d6" }]}>
-                  <Ionicons name={r.icon} size={18} color={colors.light.foreground} />
+                  {busyKey === r.key ? (
+                    <ActivityIndicator size="small" color={colors.light.foreground} />
+                  ) : (
+                    <Ionicons name={r.icon} size={18} color={colors.light.foreground} />
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>{r.title}</Text>
                   <Text style={styles.cardDesc}>{r.description}</Text>
                 </View>
-                <View style={[styles.formatPill, { backgroundColor: r.format === "pdf" ? colors.light.foreground : colors.light.primary }]}>
-                  <Text style={[styles.formatText, { color: r.format === "pdf" ? colors.light.card : "#fff" }]}>{r.format.toUpperCase()}</Text>
+                <View style={[styles.formatPill, { backgroundColor: colors.light.primary }]}>
+                  <Text style={[styles.formatText, { color: "#fff" }]}>CSV</Text>
                 </View>
               </View>
             </Card>

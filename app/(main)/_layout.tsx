@@ -28,6 +28,7 @@ export default function MainLayout() {
         <Tabs.Screen name="index" options={{ title: "Home" }} />
         <Tabs.Screen name="products/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="search/index" options={{ title: "Search" }} />
+        <Tabs.Screen name="search/image-results" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="wishlist/index" options={{ title: "Wishlist" }} />
         <Tabs.Screen name="account" options={{ title: "Account", headerShown: false }} />
 
@@ -50,6 +51,12 @@ export default function MainLayout() {
         <Tabs.Screen name="account/returns/[id]" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/notifications/preferences" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/loyalty" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/referrals" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/influencer-status" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="ai/search" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="ai/outfit" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="ai/trends" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="orders/guest-lookup" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
       </Tabs>
     </TabBarVisibilityProvider>
   );

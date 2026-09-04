@@ -6,6 +6,7 @@ import {
   RefreshControl,
   Share,
   Pressable,
+  Animated,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,7 +17,7 @@ import { Display, Body } from "@/components/ui/Typography";
 import { Ionicons } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/lib/supabase/auth";
-import { StorePageHeader } from "@/components/store";
+import { StorePageHeader, StoreHero } from "@/components/store";
 import {
   getStoreBySlug,
   getStoreProducts,
@@ -72,6 +73,7 @@ export default function StoreScreen() {
   const [ratingBreakdown, setRatingBreakdown] = useState<Record<number, number>>({
     5: 0, 4: 0, 3: 0, 2: 0, 1: 0,
   });
+  const scrollY = React.useRef(new Animated.Value(0)).current;
 
   const store = ctx.store;
 
@@ -171,6 +173,8 @@ export default function StoreScreen() {
       <StoreViewTracker id={store?.id ?? null} />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing || published.isFetching}
@@ -181,6 +185,16 @@ export default function StoreScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         {/* Seller-customised sections (real-time on publish) */}
+        {store ? (
+          <StoreHero
+            bannerUrl={store.banner_url}
+            logoUrl={store.logo_url}
+            storeName={store.name}
+            scrollY={scrollY}
+            onBack={handleBack}
+            onShare={handleShare}
+          />
+        ) : null}
         {isLoadingConfig ? (
           <View style={styles.skeletonWrap}>
             <Skeleton height={300} borderRadius={0} />

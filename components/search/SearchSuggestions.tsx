@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   FlatList,
+  ScrollView,
   type ListRenderItem,
 } from "react-native";
 import { Image } from "expo-image";
@@ -13,11 +14,18 @@ import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, discountPct } from "@/lib/utils";
 import { expandQueryTerms } from "@/lib/utils/search-utils";
+import {
+  getDepartmentIntentChips,
+  POPULAR_SEARCH_TAGS,
+  POPULAR_DEPARTMENTS,
+  type DepartmentChip,
+} from "@/lib/search/suggestion-engine";
 
 const INK = "#1b1c1c";
-const MUTED = "#5e5e5d";
+const MUTED = "#686866";
+const LIGHT_BG = "#fbfaf7";
 
 interface SearchSuggestionsProps {
   draft: string;
@@ -35,10 +43,15 @@ interface SearchSuggestionsProps {
 
 type Row =
   | { type: "search"; label: string }
+  | { type: "chips"; chips: DepartmentChip[] }
   | { type: "intent"; label: string; canonical: string }
-  | { type: "suggestion"; item: V2Suggestion }
+  | { type: "sectionHeader"; title: string; count?: number }
+  | { type: "category"; item: V2Suggestion }
+  | { type: "keyword"; item: V2Suggestion }
+  | { type: "product"; item: V2Suggestion }
+  | { type: "store"; item: V2Suggestion }
   | { type: "loading" }
-  | { type: "empty" };
+  | { type: "emptyFallback"; term: string };
 
 function highlightMatch(label: string, query: string, styleMatch?: object, styleRegular?: object) {
   const term = query.trim();
@@ -72,6 +85,9 @@ export function SearchSuggestions({
   onSearchDraftWith,
   onPriceDropPress,
 }: SearchSuggestionsProps) {
+  const term = draft.trim();
+
+  // Deduplicate and prioritize suggestions
   const merged = useMemo(() => {
     const seen = new Set<string>();
     const items: V2Suggestion[] = [];
@@ -84,151 +100,373 @@ export function SearchSuggestions({
     return items;
   }, [localSuggestions, suggestions]);
 
-  // Smart-search intent chip: when the user's draft has a known
-  // demographic + garment mapping, surface a "Shop X Y" suggestion
-  // at the top of the typeahead.
-  const expanded = useMemo(() => expandQueryTerms(draft.trim()), [draft]);
+  // Demographic & garment intent mapping
+  const expanded = useMemo(() => expandQueryTerms(term), [term]);
+  const departmentChips = useMemo(() => getDepartmentIntentChips(term), [term]);
 
-  const term = draft.trim();
   if (term.length < 1) return null;
 
-  const rows: Row[] = [{ type: "search", label: term }];
-  if (expanded.gender && expanded.garment) {
-    rows.push({
-      type: "intent",
-      label: `Shop ${expanded.gender} ${expanded.garment}`,
-      canonical: `${expanded.gender} ${expanded.garment}`,
-    });
-  } else if (expanded.gender) {
-    rows.push({
-      type: "intent",
-      label: `Shop ${expanded.gender}`,
-      canonical: expanded.gender,
-    });
-  }
-  if (loading && merged.length === 0) {
-    rows.push({ type: "loading" });
-  } else if (!loading && merged.length === 0) {
-    rows.push({ type: "empty" });
-  } else {
-    for (const item of merged) {
-      rows.push({ type: "suggestion", item });
+  // Build organized rows
+  const rows = useMemo<Row[]>(() => {
+    const list: Row[] = [];
+
+    // 1. Primary "Search for ..." action row
+    list.push({ type: "search", label: term });
+
+    // 2. Department quick filter chips (All, Men's, Women's, Sale)
+    if (departmentChips.length > 0) {
+      list.push({ type: "chips", chips: departmentChips });
     }
-  }
+
+    // 3. Smart intent if detected from query expansion
+    if (expanded.gender && expanded.garment) {
+      list.push({
+        type: "intent",
+        label: `Shop ${expanded.gender} ${expanded.garment}`,
+        canonical: `${expanded.gender} ${expanded.garment}`,
+      });
+    }
+
+    // 4. If loading with 0 results
+    if (loading && merged.length === 0) {
+      list.push({ type: "loading" });
+      return list;
+    }
+
+    // 5. If zero results after loading, show rich fallback instead of blank void
+    if (!loading && merged.length === 0) {
+      list.push({ type: "emptyFallback", term });
+      return list;
+    }
+
+    // 6. Partition suggestions into organized sections
+    const categories = merged.filter((item) => item.kind === "category");
+    const keywords = merged.filter((item) => item.kind === "keyword");
+    const products = merged.filter((item) => item.kind === "product");
+    const stores = merged.filter((item) => item.kind === "store" || item.kind === "brand");
+
+    // Categories first for quick navigation
+    if (categories.length > 0) {
+      list.push({ type: "sectionHeader", title: "CATEGORIES", count: categories.length });
+      categories.forEach((item) => list.push({ type: "category", item }));
+    }
+
+    // Keywords / auto-completions
+    if (keywords.length > 0) {
+      list.push({ type: "sectionHeader", title: "SUGGESTED SEARCHES" });
+      keywords.forEach((item) => list.push({ type: "keyword", item }));
+    }
+
+    // Products (instant product preview)
+    if (products.length > 0) {
+      list.push({ type: "sectionHeader", title: "PRODUCTS IN THE ATELIER", count: products.length });
+      products.forEach((item) => list.push({ type: "product", item }));
+    }
+
+    // Brands / stores
+    if (stores.length > 0) {
+      list.push({ type: "sectionHeader", title: "DESIGNERS & ATELIERS" });
+      stores.forEach((item) => list.push({ type: "store", item }));
+    }
+
+    return list;
+  }, [term, departmentChips, expanded, loading, merged]);
 
   const renderItem: ListRenderItem<Row> = ({ item: row }) => {
+    // ── Primary Search Row ──
     if (row.type === "search") {
       return (
-        <TouchableOpacity style={styles.item} activeOpacity={0.7} onPress={onSearchDraft}>
-          <View style={styles.searchIconWrap}>
-            <Ionicons name="search" size={18} color={colors.light.primary} />
+        <TouchableOpacity
+          style={styles.primarySearchRow}
+          activeOpacity={0.7}
+          onPress={onSearchDraft}
+        >
+          <View style={styles.primarySearchIconWrap}>
+            <Ionicons name="search" size={17} color="#fff" />
           </View>
-          <Text style={styles.searchDraftText}>
-            Search for <Text style={styles.searchDraftTerm}>“{row.label}”</Text>
-          </Text>
-          <Ionicons name="arrow-forward" size={16} color={MUTED} />
+          <View style={styles.primarySearchCopy}>
+            <Text style={styles.primarySearchAction}>Search for</Text>
+            <Text style={styles.primarySearchTerm} numberOfLines={1}>“{row.label}”</Text>
+          </View>
+          <View style={styles.arrowWrap}>
+            <Ionicons name="arrow-forward" size={16} color={INK} />
+          </View>
         </TouchableOpacity>
       );
     }
 
+    // ── Horizontal Department Quick Chips ──
+    if (row.type === "chips") {
+      return (
+        <View style={styles.chipsRowContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={styles.chipsScrollContent}
+          >
+            {row.chips.map((chip) => (
+              <TouchableOpacity
+                key={chip.key}
+                style={styles.chipButton}
+                activeOpacity={0.75}
+                onPress={() => onSearchDraftWith?.(chip.query)}
+              >
+                <Text style={styles.chipText}>{chip.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      );
+    }
+
+    // ── Smart Intent Row ──
     if (row.type === "intent") {
       return (
         <TouchableOpacity
-          style={[styles.item, styles.intentItem]}
+          style={styles.intentItem}
           activeOpacity={0.7}
           onPress={() => onSearchDraftWith?.(row.canonical)}
         >
-          <View style={[styles.searchIconWrap, styles.intentIconWrap]}>
-            <Ionicons name="sparkles" size={16} color={colors.light.primary} />
+          <View style={styles.intentIconWrap}>
+            <Ionicons name="sparkles" size={15} color={colors.accent2.rust} />
           </View>
-          <Text style={[styles.searchDraftText, styles.intentText]}>{row.label}</Text>
-          <Ionicons name="arrow-forward" size={16} color={colors.light.primary} />
+          <Text style={styles.intentText}>{row.label}</Text>
+          <Ionicons name="arrow-forward" size={15} color={colors.accent2.rust} />
         </TouchableOpacity>
       );
     }
 
+    // ── Section Header ──
+    if (row.type === "sectionHeader") {
+      return (
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionHeaderText}>{row.title}</Text>
+          {row.count !== undefined && row.count > 0 ? (
+            <Text style={styles.sectionHeaderCount}>{row.count}</Text>
+          ) : null}
+        </View>
+      );
+    }
+
+    // ── Category Row ──
+    if (row.type === "category") {
+      return (
+        <TouchableOpacity
+          style={styles.categoryItem}
+          activeOpacity={0.7}
+          onPress={() => onSelect(row.item)}
+        >
+          <View style={styles.categoryIconWrap}>
+            <Ionicons name="grid-outline" size={16} color={INK} />
+          </View>
+          <View style={styles.itemCopy}>
+            {highlightMatch(row.item.label, term)}
+          </View>
+          <View style={styles.badgeWrap}>
+            <Text style={styles.badgeText}>Category</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={15} color={MUTED} />
+        </TouchableOpacity>
+      );
+    }
+
+    // ── Keyword / Auto-completion Row ──
+    if (row.type === "keyword") {
+      return (
+        <TouchableOpacity
+          style={styles.keywordItem}
+          activeOpacity={0.7}
+          onPress={() => onSelect(row.item)}
+        >
+          <View style={styles.keywordIconWrap}>
+            <Ionicons name="search-outline" size={15} color={MUTED} />
+          </View>
+          <View style={styles.itemCopy}>
+            {highlightMatch(row.item.label, term)}
+          </View>
+          <TouchableOpacity
+            style={styles.completeArrowWrap}
+            hitSlop={8}
+            onPress={() => onSearchDraftWith?.(row.item.label)}
+          >
+            <Ionicons name="arrow-up-outline" size={15} color={MUTED} style={{ transform: [{ rotate: "45deg" }] }} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    }
+
+    // ── Instant Product Preview Row ──
+    if (row.type === "product") {
+      const discount =
+        row.item.price && row.item.mrp && row.item.mrp > row.item.price
+          ? discountPct(row.item.mrp, row.item.price)
+          : 0;
+
+      return (
+        <TouchableOpacity
+          style={styles.productItem}
+          activeOpacity={0.7}
+          onPress={() => onSelect(row.item)}
+        >
+          {row.item.logo_url ? (
+            <Image
+              source={{ uri: row.item.logo_url }}
+              style={styles.productImage}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={styles.productImageFallback}>
+              <Ionicons name="cube-outline" size={20} color={MUTED} />
+            </View>
+          )}
+
+          <View style={styles.productCopy}>
+            {row.item.brand ? (
+              <Text style={styles.productBrand} numberOfLines={1}>
+                {row.item.brand.toUpperCase()}
+              </Text>
+            ) : null}
+            {highlightMatch(row.item.label, term, styles.productNameMatch, styles.productName)}
+
+            {row.item.price ? (
+              <View style={styles.productPriceRow}>
+                <Text style={styles.productPrice}>{formatPrice(row.item.price)}</Text>
+                {row.item.mrp && row.item.mrp > row.item.price ? (
+                  <Text style={styles.productOldPrice}>{formatPrice(row.item.mrp)}</Text>
+                ) : null}
+                {discount > 0 ? (
+                  <View style={styles.productDiscountBadge}>
+                    <Text style={styles.productDiscountText}>{discount}% OFF</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          <Ionicons name="chevron-forward" size={16} color={MUTED} />
+        </TouchableOpacity>
+      );
+    }
+
+    // ── Store / Designer Row ──
+    if (row.type === "store") {
+      return (
+        <TouchableOpacity
+          style={styles.storeItem}
+          activeOpacity={0.7}
+          onPress={() => onSelect(row.item)}
+        >
+          {row.item.logo_url ? (
+            <Image source={{ uri: row.item.logo_url }} style={styles.avatar} contentFit="cover" />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarFallbackText}>
+                {row.item.label.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.itemCopy}>
+            <View style={styles.titleRow}>
+              {highlightMatch(row.item.label, term, styles.storeMatch, styles.storeRegular)}
+              {row.item.is_verified ? (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={14}
+                  color={colors.accent2.rust}
+                  style={styles.verifiedIcon}
+                />
+              ) : null}
+            </View>
+            <Text style={styles.followersText}>
+              {(row.item.followers ?? 0) > 0
+                ? `${(row.item.followers ?? 0).toLocaleString()} followers`
+                : row.item.kind === "brand"
+                ? "Atelier Designer"
+                : "Verified Store"}
+            </Text>
+          </View>
+
+          <View style={styles.badgeWrap}>
+            <Text style={styles.badgeText}>
+              {row.item.kind === "brand" ? "Atelier" : "Store"}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={15} color={MUTED} />
+        </TouchableOpacity>
+      );
+    }
+
+    // ── Loading Indicator ──
     if (row.type === "loading") {
       return (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={colors.light.primary} />
-          <Text style={styles.loadingText}>Finding matches…</Text>
+          <ActivityIndicator size="small" color={INK} />
+          <Text style={styles.loadingText}>Searching the atelier…</Text>
         </View>
       );
     }
 
-    if (row.type === "empty") {
+    // ── Rich Empty Fallback State (Never a dead-end blank space) ──
+    if (row.type === "emptyFallback") {
       return (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>No suggestions — press search to see all results</Text>
+        <View style={styles.fallbackContainer}>
+          <TouchableOpacity
+            style={styles.fallbackSearchBtn}
+            activeOpacity={0.8}
+            onPress={onSearchDraft}
+          >
+            <View style={styles.fallbackSearchIconWrap}>
+              <Ionicons name="sparkles" size={16} color={colors.accent2.rust} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.fallbackSearchTitle}>Search full catalogue</Text>
+              <Text style={styles.fallbackSearchSubtitle}>
+                Browse all products and collections for “{row.term}”
+              </Text>
+            </View>
+            <Ionicons name="arrow-forward" size={16} color={INK} />
+          </TouchableOpacity>
+
+          <View style={styles.fallbackSection}>
+            <Text style={styles.fallbackSectionTitle}>POPULAR SEARCHES</Text>
+            <View style={styles.fallbackTagCloud}>
+              {POPULAR_SEARCH_TAGS.map((tag) => (
+                <TouchableOpacity
+                  key={tag}
+                  style={styles.fallbackTag}
+                  activeOpacity={0.7}
+                  onPress={() => onSearchDraftWith?.(tag)}
+                >
+                  <Ionicons name="trending-up" size={12} color={colors.accent2.rust} />
+                  <Text style={styles.fallbackTagText}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.fallbackSection}>
+            <Text style={styles.fallbackSectionTitle}>BROWSE DEPARTMENTS</Text>
+            <View style={styles.fallbackDeptsRow}>
+              {POPULAR_DEPARTMENTS.map((dept) => (
+                <TouchableOpacity
+                  key={dept.label}
+                  style={styles.fallbackDeptChip}
+                  activeOpacity={0.7}
+                  onPress={() => onSearchDraftWith?.(dept.label)}
+                >
+                  <Text style={styles.fallbackDeptText}>{dept.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
         </View>
       );
     }
 
-    const item = row.item;
-    const isStore = item.kind === "store" || item.kind === "brand";
-    const isCategory = item.kind === "category";
-    const isProduct = item.kind === "product";
-
-    return (
-      <TouchableOpacity
-        style={styles.item}
-        activeOpacity={0.7}
-        onPress={() => onSelect(item)}
-      >
-        {isStore ? (
-          item.logo_url ? (
-            <Image source={{ uri: item.logo_url }} style={styles.avatar} contentFit="cover" />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarFallbackText}>{item.label.charAt(0).toUpperCase()}</Text>
-            </View>
-          )
-        ) : isProduct && item.logo_url ? (
-          <Image source={{ uri: item.logo_url }} style={styles.avatar} contentFit="cover" />
-        ) : (
-          <View style={styles.searchIconWrap}>
-            <Ionicons
-              name={isProduct ? "cube-outline" : isCategory ? "grid-outline" : "search-outline"}
-              size={16}
-              color={colors.light.mutedForeground}
-            />
-          </View>
-        )}
-
-        <View style={styles.itemCopy}>
-          {isStore ? (
-            <>
-              <View style={styles.titleRow}>
-                {highlightMatch(item.label, term, styles.storeMatch, styles.storeRegular)}
-                {item.is_verified ? (
-                  <Ionicons name="checkmark-circle" size={14} color={colors.accent2.rust} style={styles.verifiedIcon} />
-                ) : null}
-              </View>
-              <Text style={styles.followersText}>
-                {(item.followers ?? 0).toLocaleString()} followers
-              </Text>
-            </>
-          ) : isCategory ? (
-            <>
-              {highlightMatch(item.label, term)}
-              <Text style={styles.kindTag}>Category</Text>
-            </>
-          ) : isProduct ? (
-            <>
-              {highlightMatch(item.label, term)}
-              <Text style={styles.kindTag}>Product</Text>
-            </>
-          ) : (
-            highlightMatch(item.label, term)
-          )}
-        </View>
-
-        {item.count !== undefined && item.count > 0 ? (
-          <Text style={styles.countText}>{item.count.toLocaleString()}</Text>
-        ) : null}
-        <Ionicons name="chevron-forward" size={16} color={MUTED} />
-      </TouchableOpacity>
-    );
+    return null;
   };
 
   return (
@@ -271,11 +509,13 @@ export function SearchSuggestions({
       <FlatList
         data={rows}
         keyExtractor={(row, index) => {
-          if (row.type === "search") return "search";
-          if (row.type === "intent") return `intent-${row.canonical}`;
-          if (row.type === "loading") return "loading";
-          if (row.type === "empty") return "empty";
-          return `s-${row.item.kind}-${row.item.label}-${index}`;
+          if (row.type === "search") return "row-search";
+          if (row.type === "chips") return "row-chips";
+          if (row.type === "intent") return `row-intent-${row.canonical}`;
+          if (row.type === "sectionHeader") return `row-header-${row.title}`;
+          if (row.type === "loading") return "row-loading";
+          if (row.type === "emptyFallback") return "row-empty-fallback";
+          return `row-${row.type}-${row.item.kind}-${row.item.label}-${index}`;
         }}
         renderItem={renderItem}
         keyboardShouldPersistTaps="always"
@@ -293,63 +533,248 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   listContent: {
-    paddingBottom: spacing[8],
+    paddingBottom: spacing[10],
   },
-  loadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[2],
-    paddingVertical: spacing[6],
-  },
-  loadingText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: MUTED,
-  },
-  item: {
+  // ── Primary Search Row ──
+  primarySearchRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3.5],
+    backgroundColor: LIGHT_BG,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#ececec",
-    gap: spacing[2],
+    borderBottomColor: "#ebe9e4",
+    gap: spacing[3],
   },
-  searchIconWrap: {
+  primarySearchIconWrap: {
     width: 32,
-    alignItems: "center",
-  },
-  intentItem: {
-    backgroundColor: "rgba(27,28,28,0.04)",
-  },
-  intentIconWrap: {
-    backgroundColor: "rgba(27,28,28,0.08)",
+    height: 32,
     borderRadius: 16,
-    paddingVertical: 4,
+    backgroundColor: INK,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  intentText: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: INK,
-  },
-  searchDraftText: {
+  primarySearchCopy: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  primarySearchAction: {
     fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
+    color: MUTED,
+  },
+  primarySearchTerm: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 15,
     color: INK,
   },
-  searchDraftTerm: {
+  arrowWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#ebe9e4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // ── Department Quick Chips ──
+  chipsRowContainer: {
+    paddingVertical: spacing[2.5],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f0eeea",
+    backgroundColor: "#ffffff",
+  },
+  chipsScrollContent: {
+    paddingHorizontal: spacing[4],
+    gap: spacing[2],
+  },
+  chipButton: {
+    paddingHorizontal: spacing[3],
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: LIGHT_BG,
+    borderWidth: 1,
+    borderColor: "#e6e4df",
+  },
+  chipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: INK,
+  },
+  // ── Intent Item ──
+  intentItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    backgroundColor: "rgba(196,112,79,0.06)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(196,112,79,0.15)",
+    gap: spacing[3],
+  },
+  intentIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(196,112,79,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  intentText: {
+    flex: 1,
     fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.accent2.rust,
+  },
+  // ── Section Header ──
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[1.5],
+    backgroundColor: "#ffffff",
+  },
+  sectionHeaderText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: "#8a8987",
+    textTransform: "uppercase",
+  },
+  sectionHeaderCount: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: MUTED,
+  },
+  // ── Category Item ──
+  categoryItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f3f2ef",
+    gap: spacing[3],
+  },
+  categoryIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.md,
+    backgroundColor: LIGHT_BG,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // ── Keyword Item ──
+  keywordItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f3f2ef",
+    gap: spacing[3],
+  },
+  keywordIconWrap: {
+    width: 32,
+    alignItems: "center",
+  },
+  completeArrowWrap: {
+    padding: 6,
+  },
+  // ── Product Item ──
+  productItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2.5],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f3f2ef",
+    gap: spacing[3],
+  },
+  productImage: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.md,
+    backgroundColor: "#f5f5f5",
+  },
+  productImageFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.md,
+    backgroundColor: LIGHT_BG,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  productCopy: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  productBrand: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: MUTED,
+    marginBottom: 2,
+  },
+  productName: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14,
+    color: INK,
+  },
+  productNameMatch: {
+    fontFamily: fontFamilies.sans.bold,
+    color: INK,
+  },
+  productPriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 3,
+  },
+  productPrice: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: INK,
+  },
+  productOldPrice: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: MUTED,
+    textDecorationLine: "line-through",
+  },
+  productDiscountBadge: {
+    backgroundColor: "rgba(196,112,79,0.1)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radii.sm,
+  },
+  productDiscountText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10,
+    color: colors.accent2.rust,
+  },
+  // ── Store Item ──
+  storeItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f3f2ef",
+    gap: spacing[3],
   },
   avatar: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: radii.md,
     backgroundColor: "#f5f5f5",
   },
   avatarFallback: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: radii.md,
     backgroundColor: colors.olive[100],
     alignItems: "center",
@@ -357,7 +782,7 @@ const styles = StyleSheet.create({
   },
   avatarFallbackText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.light.primary,
   },
   itemCopy: {
@@ -375,18 +800,26 @@ const styles = StyleSheet.create({
   followersText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
-    color: colors.light.mutedForeground,
+    color: MUTED,
   },
-  kindTag: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    marginTop: 1,
+  badgeWrap: {
+    backgroundColor: LIGHT_BG,
+    borderWidth: 1,
+    borderColor: "#e8e6e1",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.sm,
+    marginRight: 4,
+  },
+  badgeText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    color: MUTED,
   },
   itemLabel: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 15,
-    color: "#4a4a4a",
+    fontSize: 14,
+    color: "#383838",
   },
   itemLabelMatch: {
     fontFamily: fontFamilies.sans.bold,
@@ -395,7 +828,7 @@ const styles = StyleSheet.create({
   storeRegular: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 14,
-    color: colors.light.mutedForeground,
+    color: MUTED,
     textTransform: "uppercase",
   },
   storeMatch: {
@@ -403,28 +836,109 @@ const styles = StyleSheet.create({
     color: INK,
     textTransform: "uppercase",
   },
-  countText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-  },
-  empty: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[6],
+  // ── Loading ──
+  loadingContainer: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    paddingVertical: spacing[8],
   },
-  emptyText: {
+  loadingText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     color: MUTED,
-    textAlign: "center",
   },
+  // ── Empty Fallback ──
+  fallbackContainer: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    gap: spacing[5],
+  },
+  fallbackSearchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing[3.5],
+    backgroundColor: LIGHT_BG,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "#e8e6e1",
+    gap: spacing[3],
+  },
+  fallbackSearchIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(196,112,79,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fallbackSearchTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: INK,
+  },
+  fallbackSearchSubtitle: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: MUTED,
+    marginTop: 2,
+  },
+  fallbackSection: {
+    gap: spacing[2],
+  },
+  fallbackSectionTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: "#8a8987",
+  },
+  fallbackTagCloud: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2],
+  },
+  fallbackTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing[3],
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: LIGHT_BG,
+    borderWidth: 1,
+    borderColor: "#e8e6e1",
+  },
+  fallbackTagText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: INK,
+  },
+  fallbackDeptsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2],
+  },
+  fallbackDeptChip: {
+    paddingHorizontal: spacing[3.5],
+    paddingVertical: 8,
+    borderRadius: radii.md,
+    backgroundColor: LIGHT_BG,
+    borderWidth: 1,
+    borderColor: "#e8e6e1",
+  },
+  fallbackDeptText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: INK,
+  },
+  // ── Wishlist Price Drops ──
   dropsWrap: {
-    backgroundColor: "rgba(27,28,28,0.04)",
+    backgroundColor: LIGHT_BG,
     paddingTop: spacing[3],
     paddingBottom: spacing[3],
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#ececec",
+    borderBottomColor: "#ebe9e4",
   },
   dropsHeader: {
     fontFamily: fontFamilies.sans.semibold,

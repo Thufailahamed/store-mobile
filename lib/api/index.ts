@@ -17,7 +17,7 @@ export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } fr
 import * as B from "@/lib/api/backend";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
-import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows } from "@/lib/api/product-mapper";
+import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows, mapFlatProductRow } from "@/lib/api/product-mapper";
 import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
 import {
   tokenizeQuery,
@@ -369,19 +369,34 @@ export async function getHeroMeta(): Promise<Result<HeroMeta | null>> {
   return ok((res.data.hero as HeroMeta | undefined) ?? null);
 }
 
-export async function getFlashSaleProducts(limit = 5): Promise<Result<Product[]>> {
+export async function getFlashSaleRail(limit = 5): Promise<Result<{ products: Product[]; endsAt: string }>> {
+  const fallbackEnds = () => new Date(Date.now() + 6 * 3600_000).toISOString();
   const res = await B.getHomepageBackend();
   if (!res.ok) return fail(res.error);
-  const drops = (res.data.drops ?? []) as Array<{ product: any }>;
+  const drops = (res.data.drops ?? []) as Array<{ product: any; ends_at?: string | null }>;
   const products = drops
     .map((d) => d.product)
     .filter(Boolean)
     .map(mapProduct);
-  return ok(products.slice(0, limit));
+  const times = drops
+    .map((d) => d.ends_at)
+    .filter((t): t is string => typeof t === "string" && t.length > 0)
+    .sort();
+  return ok({
+    products: products.slice(0, limit),
+    endsAt: times[0] ?? fallbackEnds(),
+  });
+}
+
+export async function getFlashSaleProducts(limit = 5): Promise<Result<Product[]>> {
+  const res = await getFlashSaleRail(limit);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.products);
 }
 
 export async function getFlashSaleEndsAt(): Promise<string> {
-  // No dedicated endpoint; fall back to a safe default 6h ahead.
+  const res = await getFlashSaleRail(1);
+  if (res.ok) return res.data.endsAt;
   return new Date(Date.now() + 6 * 3600_000).toISOString();
 }
 
@@ -679,6 +694,36 @@ export async function markAllNotificationsRead(_userId: string): Promise<Result<
   const res = await B.markAllNotificationsReadBackend();
   if (!res.ok) return fail(res.error);
   return ok(undefined);
+}
+
+export async function deleteNotification(id: string): Promise<Result<void>> {
+  const res = await B.deleteNotificationBackend(id);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
+export async function clearAllNotifications(): Promise<Result<void>> {
+  const res = await B.clearAllNotificationsBackend();
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
+export async function getReferralInfo(): Promise<Result<B.ReferralInfo>> {
+  const res = await B.getReferralInfoBackend();
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
+
+export async function listProductQuestions(productId: string): Promise<Result<B.Question[]>> {
+  const res = await B.listQuestionsBackend(productId);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.questions ?? []);
+}
+
+export async function addProductQuestion(productId: string, question: string): Promise<Result<B.Question>> {
+  const res = await B.addQuestionBackend(productId, question);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.question);
 }
 
 // ============================================================================
@@ -1041,8 +1086,8 @@ export async function transitionOrderStatus(
   return ok({ status: res.data.order?.status ?? status });
 }
 
-export async function cancelOrder(orderId: string): Promise<Result<{ status: string }>> {
-  const res = await B.cancelOrderBackend(orderId);
+export async function cancelOrder(orderId: string, reason?: string): Promise<Result<{ status: string }>> {
+  const res = await B.cancelOrderBackend(orderId, reason);
   if (!res.ok) return fail(res.error);
   return ok({ status: res.data.order?.status ?? "cancelled" });
 }
@@ -1475,13 +1520,25 @@ export async function getAdminStats(): Promise<Result<{
   pendingStores: number;
   pendingProducts: number;
 }>> {
-  const res = await B.getAdminStatsBackend();
-  if (!res.ok) return fail(res.error);
+  const res = await getAdminOverviewStats();
+  if (res.ok && res.data) {
+    return ok({
+      totalUsers: res.data.users,
+      totalStores: res.data.stores,
+      totalProducts: res.data.products,
+      totalOrders: res.data.orders,
+      totalRevenue: res.data.revenue,
+      pendingStores: res.data.pendingStores,
+      pendingProducts: res.data.pendingProducts,
+    });
+  }
+  const backendRes = await B.getAdminStatsBackend();
+  if (!backendRes.ok) return fail(backendRes.error);
   return ok({
-    totalUsers: (res.data as { users?: number }).users ?? 0,
-    totalStores: (res.data as { stores?: number }).stores ?? 0,
-    totalProducts: (res.data as { products?: number }).products ?? 0,
-    totalOrders: (res.data as { orders?: number }).orders ?? 0,
+    totalUsers: (backendRes.data as { users?: number }).users ?? 0,
+    totalStores: (backendRes.data as { stores?: number }).stores ?? 0,
+    totalProducts: (backendRes.data as { products?: number }).products ?? 0,
+    totalOrders: (backendRes.data as { orders?: number }).orders ?? 0,
     totalRevenue: 0,
     pendingStores: 0,
     pendingProducts: 0,
@@ -1494,15 +1551,61 @@ export async function getAdminUsers(opts: {
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<{ users: User[]; total: number }>> {
-  const res = await B.getAdminUsersBackend(opts);
-  if (!res.ok) return fail(res.error);
-  return ok({ users: loose<User[]>(res.data.users ?? []), total: res.data.total ?? 0 });
+  const cleanOpts = { ...opts };
+  if (cleanOpts.role === "all") delete cleanOpts.role;
+
+  try {
+    const res = await B.getAdminUsersBackend(cleanOpts);
+    if (res.ok && res.data && Array.isArray(res.data.users)) {
+      return ok({
+        users: loose<User[]>(res.data.users),
+        total: res.data.total ?? res.data.users.length,
+      });
+    }
+  } catch (_e) {}
+
+  try {
+    let q = supabase
+      .from("users")
+      .select("id, email, full_name, role, is_suspended, is_verified, created_at", { count: "exact" });
+
+    if (cleanOpts.role && cleanOpts.role !== "all") {
+      q = q.eq("role", cleanOpts.role);
+    }
+    if (cleanOpts.search && cleanOpts.search.trim()) {
+      const s = `%${cleanOpts.search.trim()}%`;
+      q = q.or(`full_name.ilike.${s},email.ilike.${s}`);
+    }
+
+    const limit = cleanOpts.limit ?? 50;
+    const offset = cleanOpts.offset ?? 0;
+    const { data, count, error } = await q
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) return fail(error.message);
+    return ok({
+      users: loose<User[]>((data ?? []) as unknown as User[]),
+      total: count ?? (data?.length ?? 0),
+    });
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch users");
+  }
 }
 
 export async function updateUserRole(userId: string, role: string): Promise<Result<void>> {
-  const res = await B.updateUserRoleBackend(userId, role);
-  if (!res.ok) return fail(res.error);
-  return ok(undefined);
+  try {
+    const res = await B.updateUserRoleBackend(userId, role);
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  try {
+    const { error } = await supabase.from("users").update({ role }).eq("id", userId);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to update user role");
+  }
 }
 
 export async function getAdminStores(opts: {
@@ -1511,18 +1614,52 @@ export async function getAdminStores(opts: {
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<{ stores: (Store & { complianceGaps: string[] })[]; total: number }>> {
-  const res = await B.getAdminStoresBackend(opts);
-  if (!res.ok) return fail(res.error);
-  const stores = (res.data.stores as (Store & { complianceGaps?: string[] })[]).map((s) => ({
-    ...s,
-    complianceGaps: s.complianceGaps ?? [],
-  }));
-  return ok({ stores, total: res.data.total ?? stores.length });
+  const cleanOpts = { ...opts };
+  if (cleanOpts.status === "all") delete cleanOpts.status;
+
+  try {
+    const res = await B.getAdminStoresBackend(cleanOpts);
+    if (res.ok && res.data && Array.isArray(res.data.stores)) {
+      const stores = (res.data.stores as (Store & { complianceGaps?: string[] })[]).map((s) => ({
+        ...s,
+        complianceGaps: s.complianceGaps ?? [],
+      }));
+      return ok({ stores, total: res.data.total ?? stores.length });
+    }
+  } catch (_e) {}
+
+  try {
+    const { status, search, limit = 50, offset = 0 } = opts;
+    let q = supabase
+      .from("stores")
+      .select("id, name, slug, owner_id, is_verified, is_suspended, status, logo_url, created_at", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status && status !== "all") q = q.eq("status", status);
+    if (search && search.trim()) q = q.ilike("name", `%${search.trim()}%`);
+
+    const { data, count, error } = await q;
+    if (error) return fail(error.message);
+    const rows = ((data ?? []) as unknown as Store[]).map((s) => ({ ...s, complianceGaps: [] }));
+    return ok({ stores: rows as (Store & { complianceGaps: string[] })[], total: count ?? rows.length });
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch stores");
+  }
 }
 
 export async function approveStore(storeId: string, status: "approved" | "rejected"): Promise<Result<void>> {
-  const res = await B.approveStoreBackend(storeId, status === "approved" ? "approved" : "rejected");
-  if (!res.ok) return fail(res.error);
+  try {
+    const res = await B.approveStoreBackend(storeId, status === "approved" ? "approved" : "rejected");
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  const patch = {
+    status,
+    ...(status === "approved" ? { approved_at: new Date().toISOString() } : {}),
+  };
+  const { error } = await supabase.from("stores").update(patch).eq("id", storeId);
+  if (error) return fail(error.message);
   return ok(undefined);
 }
 
@@ -1556,9 +1693,51 @@ export async function getAdminOrders(opts: {
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<Order[]>> {
-  const res = await B.getAdminOrdersBackend(opts);
-  if (!res.ok) return fail(res.error);
-  return ok(loose<Order[]>(res.data.orders ?? []));
+  const cleanOpts = { ...opts };
+  if (cleanOpts.status === "all") delete cleanOpts.status;
+
+  try {
+    const res = await B.getAdminOrdersBackend(cleanOpts);
+    if (res.ok && res.data && Array.isArray(res.data.orders)) {
+      return ok(loose<Order[]>(res.data.orders));
+    }
+  } catch (_e) {
+    // fall through to direct Supabase
+  }
+
+  try {
+    const { status, search, limit = 50, offset = 0 } = opts;
+    let q = supabase
+      .from("orders")
+      .select(
+        "id, order_number, user_id, status, payment_status, payment_method, subtotal, discount, shipping_fee, tax, total, currency, placed_at, delivered_at, created_at, user:users!orders_user_id_fkey(id, full_name, email), order_items:order_items(id, product_id, quantity, unit_price, total, product:products(name, slug))",
+      )
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status && status !== "all") {
+      q = q.eq("status", status);
+    }
+    if (search && search.trim()) {
+      q = q.or(`order_number.ilike.%${search.trim()}%,id.ilike.%${search.trim()}%`);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+      const fallbackQ = await supabase
+        .from("orders")
+        .select(
+          "id, order_number, user_id, status, payment_status, payment_method, subtotal, discount, shipping_fee, tax, total, currency, placed_at, delivered_at, created_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (fallbackQ.data) return ok(loose<Order[]>(fallbackQ.data));
+      return fail(error.message);
+    }
+    return ok(loose<Order[]>(data ?? []));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch orders");
+  }
 }
 
 export async function getAdminProducts(opts: {
@@ -1567,9 +1746,48 @@ export async function getAdminProducts(opts: {
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<{ products: Product[]; total: number }>> {
-  const res = await B.getAdminProductsBackend(opts);
-  if (!res.ok) return fail(res.error);
-  return ok({ products: (res.data.products as Product[]) ?? [], total: res.data.total ?? 0 });
+  try {
+    const res = await B.getAdminProductsBackend(opts);
+    if (res.ok && res.data && Array.isArray(res.data.products)) {
+      return ok({
+        products: mapProducts(res.data.products as unknown[]) ?? (res.data.products as Product[]) ?? [],
+        total: res.data.total ?? res.data.products.length,
+      });
+    }
+  } catch (_e) {
+    // fall through to direct Supabase
+  }
+
+  // Resilient fallback to direct Supabase query
+  try {
+    const { status, search, limit = 50, offset = 0 } = opts;
+    let q = supabase
+      .from("products")
+      .select(
+        "id, name, slug, price, mrp, currency, discount_pct, status, is_active, is_featured, stock, total_sales, created_at, category_id, brand_id, store_id, " +
+        "images:product_images(url, is_primary, position), " +
+        "store:stores!products_store_id_fkey(id, name, slug, logo_url), " +
+        "brand:brands(id, name, slug, logo_url), " +
+        "category:categories(id, name, slug)",
+        { count: "exact" },
+      );
+
+    if (status && status !== "all") {
+      q = q.eq("status", status);
+    }
+    if (search && search.trim()) {
+      q = q.ilike("name", `%${search.trim()}%`);
+    }
+
+    q = q.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+
+    const { data, count, error } = await q;
+    if (error) return fail(error.message);
+    const mapped = mapProducts((data ?? []) as unknown[]) ?? [];
+    return ok({ products: mapped, total: count ?? mapped.length });
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to fetch admin products");
+  }
 }
 
 export async function getAdminBrands(opts: {
@@ -1578,32 +1796,87 @@ export async function getAdminBrands(opts: {
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<{ brands: Brand[]; total: number }>> {
-  const res = await B.getAdminBrandsBackend(opts);
-  if (!res.ok) return fail(res.error);
-  return ok({ brands: loose<Brand[]>(res.data.brands ?? []), total: res.data.total ?? 0 });
+  const cleanOpts = { ...opts };
+  if (cleanOpts.status === "all") delete cleanOpts.status;
+
+  try {
+    const res = await B.getAdminBrandsBackend(cleanOpts);
+    if (res.ok && res.data && Array.isArray(res.data.brands)) {
+      return ok({ brands: loose<Brand[]>(res.data.brands), total: res.data.total ?? res.data.brands.length });
+    }
+  } catch (_e) {}
+
+  try {
+    const { status, search, limit = 50, offset = 0 } = opts;
+    let q = supabase
+      .from("brands")
+      .select("id, name, slug, logo_url, banner_url, status, is_verified, is_featured, created_at", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status && status !== "all") q = q.eq("status", status);
+    if (search && search.trim()) q = q.ilike("name", `%${search.trim()}%`);
+
+    const { data, count, error } = await q;
+    if (error) return fail(error.message);
+    return ok({ brands: loose<Brand[]>(data ?? []), total: count ?? (data?.length ?? 0) });
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch brands");
+  }
 }
 
 export async function approveBrand(brandId: string, status: "approved" | "rejected"): Promise<Result<void>> {
-  const res = await B.approveBrandBackend(brandId, status);
-  if (!res.ok) return fail(res.error);
+  try {
+    const res = await B.approveBrandBackend(brandId, status);
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  const patch = {
+    status,
+    ...(status === "approved" ? { approved_at: new Date().toISOString() } : {}),
+  };
+  const { error } = await supabase.from("brands").update(patch).eq("id", brandId);
+  if (error) return fail(error.message);
   return ok(undefined);
 }
 
 export async function approveProduct(productId: string, status: "active" | "rejected" | "archived"): Promise<Result<void>> {
-  const res = await B.approveProductBackend(productId, status);
-  if (!res.ok) return fail(res.error);
+  try {
+    const res = await B.approveProductBackend(productId, status);
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  const patch: Record<string, unknown> = { status };
+  if (status === "active") {
+    patch.is_active = true;
+    patch.approved_at = new Date().toISOString();
+  } else if (status === "archived") {
+    patch.is_active = false;
+  }
+  const { error } = await supabase.from("products").update(patch).eq("id", productId);
+  if (error) return fail(error.message);
   return ok(undefined);
 }
 
 export async function setProductFeatured(productId: string, isFeatured: boolean): Promise<Result<void>> {
-  const res = await B.setProductFeaturedBackend(productId, isFeatured);
-  if (!res.ok) return fail(res.error);
+  try {
+    const res = await B.setProductFeaturedBackend(productId, isFeatured);
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  const { error } = await supabase.from("products").update({ is_featured: isFeatured }).eq("id", productId);
+  if (error) return fail(error.message);
   return ok(undefined);
 }
 
 export async function setProductActive(productId: string, isActive: boolean): Promise<Result<void>> {
-  const res = await B.setProductActiveBackend(productId, isActive);
-  if (!res.ok) return fail(res.error);
+  try {
+    const res = await B.setProductActiveBackend(productId, isActive);
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  const { error } = await supabase.from("products").update({ is_active: isActive }).eq("id", productId);
+  if (error) return fail(error.message);
   return ok(undefined);
 }
 
@@ -1628,27 +1901,68 @@ export {
 } from "./category-admin";
 
 export async function getAdminBanners(): Promise<Result<Banner[]>> {
-  const res = await B.getAdminBannersBackend();
-  if (!res.ok) return fail(res.error);
-  return ok(loose<Banner[]>(res.data.banners ?? []));
+  try {
+    const res = await B.getAdminBannersBackend();
+    if (res.ok && res.data && Array.isArray(res.data.banners)) {
+      return ok(loose<Banner[]>(res.data.banners));
+    }
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("banners")
+      .select("*")
+      .order("position", { ascending: true });
+    if (error) return fail(error.message);
+    return ok(loose<Banner[]>((data ?? []) as unknown as Banner[]));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch banners");
+  }
 }
 
 export async function createBanner(b: Partial<Banner>): Promise<Result<Banner>> {
-  const res = await B.createBannerBackend(b);
-  if (!res.ok) return fail(res.error);
-  return ok(loose<Banner>(res.data.banner));
+  try {
+    const res = await B.createBannerBackend(b);
+    if (res.ok && res.data?.banner) return ok(loose<Banner>(res.data.banner));
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase.from("banners").insert(b).select("*").single();
+    if (error) return fail(error.message);
+    return ok(loose<Banner>(data as unknown as Banner));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to create banner");
+  }
 }
 
 export async function updateBanner(id: string, patch: Partial<Banner>): Promise<Result<Banner>> {
-  const res = await B.updateBannerBackend(id, patch);
-  if (!res.ok) return fail(res.error);
-  return ok(loose<Banner>(res.data.banner));
+  try {
+    const res = await B.updateBannerBackend(id, patch);
+    if (res.ok && res.data?.banner) return ok(loose<Banner>(res.data.banner));
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase.from("banners").update(patch).eq("id", id).select("*").single();
+    if (error) return fail(error.message);
+    return ok(loose<Banner>(data as unknown as Banner));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to update banner");
+  }
 }
 
 export async function deleteBanner(id: string): Promise<Result<void>> {
-  const res = await B.deleteBannerBackend(id);
-  if (!res.ok) return fail(res.error);
-  return ok(undefined);
+  try {
+    const res = await B.deleteBannerBackend(id);
+    if (res.ok) return ok(undefined);
+  } catch (_e) {}
+
+  try {
+    const { error } = await supabase.from("banners").delete().eq("id", id);
+    if (error) return fail(error.message);
+    return ok(undefined);
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to delete banner");
+  }
 }
 
 export interface AdminCoupon {
@@ -1833,9 +2147,32 @@ export interface AuditEntry {
 }
 
 export async function getAdminAuditLog(limit = 50): Promise<Result<AuditEntry[]>> {
-  const res = await B.getAdminAuditLogBackend(limit);
-  if (!res.ok) return fail(res.error);
-  return ok((res.data.entries as AuditEntry[]) ?? []);
+  try {
+    const res = await B.getAdminAuditLogBackend(limit);
+    if (res.ok && res.data && Array.isArray(res.data.entries)) {
+      return ok((res.data.entries as AuditEntry[]));
+    }
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("admin_audit_log")
+      .select("id, actor_id, action, target_type, target_id, diff, created_at, actor:users!admin_audit_log_actor_id_fkey(id, full_name, email)")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) {
+      const fallback = await supabase
+        .from("admin_audit_log")
+        .select("id, actor_id, action, target_type, target_id, diff, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (fallback.data) return ok((fallback.data as unknown as AuditEntry[]));
+      return fail(error.message);
+    }
+    return ok((data as unknown as AuditEntry[]) ?? []);
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch audit log");
+  }
 }
 
 export interface AdminBlogPost {
@@ -2146,9 +2483,32 @@ export interface LowStockItem {
 }
 
 export async function getAdminLowStock(limit = 10): Promise<Result<LowStockItem[]>> {
-  const res = await B.getAdminLowStockBackend(limit);
-  if (!res.ok) return fail(res.error);
-  return ok(loose<LowStockItem[]>(res.data.items ?? []));
+  try {
+    const res = await B.getAdminLowStockBackend(limit);
+    if (res.ok && res.data && Array.isArray(res.data.items)) {
+      return ok(loose<LowStockItem[]>(res.data.items));
+    }
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, sku, name, stock")
+      .lte("stock", 10)
+      .order("stock", { ascending: true })
+      .limit(limit);
+    if (error) return fail(error.message);
+    const items: LowStockItem[] = (data ?? []).map((p: any) => ({
+      id: p.id,
+      variant_id: p.id,
+      product_name: p.name,
+      quantity: p.stock ?? 0,
+      low_stock_threshold: 10,
+    }));
+    return ok(items);
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch low stock");
+  }
 }
 
 export interface PlatformSetting {
@@ -2186,21 +2546,97 @@ export interface AdminOverviewStats {
 }
 
 export async function getAdminOverviewStats(): Promise<Result<AdminOverviewStats>> {
-  const res = await B.getAdminOverviewStatsBackend();
-  if (!res.ok) return fail(res.error);
-  return ok(res.data as unknown as AdminOverviewStats);
+  try {
+    const res = await B.getAdminOverviewStatsBackend();
+    if (res.ok && res.data) return ok(res.data as unknown as AdminOverviewStats);
+  } catch (_e) {}
+
+  try {
+    const [
+      ordersRes,
+      productsRes,
+      usersRes,
+      customersRes,
+      storesRes,
+      activeStoresRes,
+      brandsRes,
+      pendingStoresRes,
+      pendingBrandsRes,
+      pendingProductsRes,
+    ] = await Promise.all([
+      supabase.from("orders").select("id, total, status"),
+      supabase.from("products").select("id", { count: "exact", head: true }),
+      supabase.from("users").select("id", { count: "exact", head: true }),
+      supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "buyer"),
+      supabase.from("stores").select("id", { count: "exact", head: true }),
+      supabase.from("stores").select("id", { count: "exact", head: true }).eq("status", "approved"),
+      supabase.from("brands").select("id", { count: "exact", head: true }),
+      supabase.from("stores").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("brands").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("products").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    ]);
+
+    const orders = (ordersRes.data ?? []) as Array<{ id: string; total: number; status: string }>;
+    const paidOrders = orders.filter((o) => o.status !== "cancelled" && o.status !== "returned");
+    const revenue = paidOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const totalOrders = orders.length;
+    const aov = paidOrders.length > 0 ? Math.round(revenue / paidOrders.length) : 0;
+
+    return ok({
+      users: usersRes.count ?? 0,
+      customers: customersRes.count ?? (usersRes.count ?? 0),
+      stores: storesRes.count ?? 0,
+      activeStores: activeStoresRes.count ?? 0,
+      brands: brandsRes.count ?? 0,
+      products: productsRes.count ?? 0,
+      orders: totalOrders,
+      revenue,
+      pendingStores: pendingStoresRes.count ?? 0,
+      pendingBrands: pendingBrandsRes.count ?? 0,
+      pendingProducts: pendingProductsRes.count ?? 0,
+      aov,
+    });
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch overview stats");
+  }
 }
 
 export async function getAdminRecentSignups(limit = 8): Promise<Result<User[]>> {
-  const res = await B.getAdminRecentSignupsBackend(limit);
-  if (!res.ok) return fail(res.error);
-  return ok((res.data.users as User[]) ?? []);
+  try {
+    const res = await B.getAdminRecentSignupsBackend(limit);
+    if (res.ok && res.data?.users) return ok((res.data.users as User[]) ?? []);
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id, email, full_name, role, is_verified, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return fail(error.message);
+    return ok((data ?? []) as User[]);
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch recent signups");
+  }
 }
 
 export async function getAdminRecentOrders(limit = 6): Promise<Result<Order[]>> {
-  const res = await B.getAdminRecentOrdersBackend(limit);
-  if (!res.ok) return fail(res.error);
-  return ok(loose<Order[]>(res.data.orders ?? []));
+  try {
+    const res = await B.getAdminRecentOrdersBackend(limit);
+    if (res.ok && res.data?.orders) return ok(loose<Order[]>(res.data.orders ?? []));
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, order_number, total, currency, status, created_at, user:users(id, full_name, email)")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return fail(error.message);
+    return ok(loose<Order[]>((data ?? []) as unknown as Order[]));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch recent orders");
+  }
 }
 
 export interface AdminApproval {
@@ -2217,9 +2653,25 @@ export interface AdminApprovals {
 }
 
 export async function getAdminPendingApprovals(_limit = 20): Promise<Result<AdminApprovals>> {
-  const res = await B.getAdminPendingApprovalsBackend();
-  if (!res.ok) return fail(res.error);
-  return ok(res.data as unknown as AdminApprovals);
+  try {
+    const res = await B.getAdminPendingApprovalsBackend();
+    if (res.ok && res.data) return ok(res.data as unknown as AdminApprovals);
+  } catch (_e) {}
+
+  try {
+    const [storesRes, brandsRes, productsRes] = await Promise.all([
+      supabase.from("stores").select("id, name, created_at, status").eq("status", "pending").limit(_limit),
+      supabase.from("brands").select("id, name, created_at, status").eq("status", "pending").limit(_limit),
+      supabase.from("products").select("id, name, created_at, status").eq("status", "pending").limit(_limit),
+    ]);
+    return ok({
+      stores: (storesRes.data ?? []) as AdminApproval[],
+      brands: (brandsRes.data ?? []) as AdminApproval[],
+      products: (productsRes.data ?? []) as AdminApproval[],
+    });
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch pending approvals");
+  }
 }
 
 export async function getStoreById(id: string): Promise<Result<Store | null>> {
@@ -2550,7 +3002,7 @@ export async function replyToReviewBackend(
  */
 export async function voteReviewHelpfulBackend(
   reviewId: string,
-): Promise<Result<{ voted: boolean; helpful_count: number }>> {
+): Promise<Result<{ helpful_count: number }>> {
   const res = await B.voteReviewHelpfulBackend(reviewId);
   if (!res.ok) return fail(res.error);
   return ok(res.data);
@@ -2793,6 +3245,9 @@ export type V2Suggestion = {
   followers?: number;
   is_verified?: boolean;
   trend_pct?: number;
+  price?: number;
+  mrp?: number;
+  brand?: string;
 };
 
 export async function getSearchSuggestionsV2(term: string): Promise<Result<V2Suggestion[]>> {
@@ -2802,7 +3257,18 @@ export async function getSearchSuggestionsV2(term: string): Promise<Result<V2Sug
   const res = await B.getSearchSuggestionsBackend(cleanTerm);
   if (!res.ok) return fail(res.error);
   const shaped: V2Suggestion[] = (res.data.suggestions as unknown[]).map((s) => {
-    const row = s as { type: string; label: string; slug?: string; count?: number; image_url?: string | null; followers?: number; is_verified?: boolean };
+    const row = s as {
+      type: string;
+      label: string;
+      slug?: string;
+      count?: number;
+      image_url?: string | null;
+      followers?: number;
+      is_verified?: boolean;
+      price?: number;
+      mrp?: number;
+      brand?: string;
+    };
     const kind: V2Suggestion["kind"] =
       row.type === "store" || row.type === "brand" || row.type === "category" || row.type === "product"
         ? row.type
@@ -2816,6 +3282,9 @@ export async function getSearchSuggestionsV2(term: string): Promise<Result<V2Sug
       followers: row.followers,
       is_verified: row.is_verified,
       trend_pct: 0,
+      price: row.price,
+      mrp: row.mrp,
+      brand: row.brand,
     };
   });
   return ok(shaped);
@@ -2904,6 +3373,24 @@ export async function reverseImageMatch(path: string): Promise<Result<ScanMatch>
     slug: first.slug,
     confidence: first.score ?? 0,
   });
+}
+
+/** Full catalogue grid for camera / gallery image search (batch C). */
+export async function reverseImageSearch(imageUrl: string, limit = 12): Promise<Result<Product[]>> {
+  const res = await B.imageSearchBackend(imageUrl, limit);
+  if (!res.ok) return fail(res.error);
+  const matches = res.data.matches ?? [];
+  return ok(
+    matches.map((m) =>
+      mapFlatProductRow({
+        id: m.id,
+        name: m.name,
+        slug: m.slug,
+        price: m.price,
+        image_url: m.image_url ?? m.images?.find((i) => i.is_primary)?.url ?? m.images?.[0]?.url,
+      }),
+    ),
+  );
 }
 
 // Re-export helper for call-sites needing direct access.

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getOrderById, transitionOrderStatus } from "@/lib/api";
@@ -27,10 +27,15 @@ export default function AdminOrderDetail() {
 
   const transitionMutation = useMutation({
     mutationFn: (status: string) => transitionOrderStatus(id!, status, { skipClientGuard: true, adminOverride: true }),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Couldn't update status", res.error);
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["admin-order", id] });
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
     },
+    onError: (e) => Alert.alert("Couldn't update status", e instanceof Error ? e.message : "Try again."),
   });
 
   const order = orderQuery.data;
@@ -108,7 +113,16 @@ export default function AdminOrderDetail() {
 
       {nextStatus && (
         <Button
-          onPress={() => transitionMutation.mutate(nextStatus)}
+          onPress={() =>
+            Alert.alert(
+              `Mark as ${nextStatus}?`,
+              "This force-overrides the order status.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: `Mark ${nextStatus}`, onPress: () => transitionMutation.mutate(nextStatus) },
+              ],
+            )
+          }
           disabled={transitionMutation.isPending}
           style={styles.actionBtn}
         >

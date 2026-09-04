@@ -14,13 +14,11 @@ import { Ionicons } from "@/components/ui/Icon";
 import * as api from "@/lib/api";
 import { pickImage, takePhoto } from "@/lib/upload";
 import { useTrackEvent } from "@/lib/recommender";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { Body, Display, Label } from "@/components/ui/Typography";
-import { Button } from "@/components/ui";
 
 const INK = "#1b1c1c";
-const MUTED = "#5e5e5d";
 
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
@@ -28,7 +26,6 @@ export default function ScanScreen() {
   const tracker = useTrackEvent();
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ kind: string; slug?: string; confidence: number } | null>(null);
 
   const handleScan = useCallback(
     async (source: "library" | "camera") => {
@@ -55,21 +52,9 @@ export default function ScanScreen() {
           setBusy(false);
           return;
         }
-        const match = await api.reverseImageMatch(upload.data.path);
-        if (!match.ok) {
-          Alert.alert("Match failed", match.error);
-          setBusy(false);
-          return;
-        }
-        if (match.data.kind === "none") {
-          setResult({ kind: "none", confidence: 0 });
-          setBusy(false);
-          return;
-        }
-        setResult({
-          kind: match.data.kind,
-          slug: match.data.slug,
-          confidence: match.data.confidence,
+        router.replace({
+          pathname: "/(main)/search/image-results",
+          params: { url: upload.data.url, preview: uri },
         });
       } catch (e: any) {
         Alert.alert("Scan error", e?.message ?? "Something went wrong");
@@ -77,24 +62,8 @@ export default function ScanScreen() {
         setBusy(false);
       }
     },
-    [busy, tracker],
+    [busy, tracker, router],
   );
-
-  const viewResult = useCallback(() => {
-    if (!result?.slug) return;
-    // L-05 AUDIT: Validate slug before building navigation path. Only allow
-    // alphanumeric characters and hyphens (max 120 chars) to prevent path injection.
-    const SAFE_SLUG = /^[a-z0-9-]{1,120}$/i;
-    if (!SAFE_SLUG.test(result.slug)) {
-      console.warn("[scan] rejected unsafe slug:", result.slug);
-      return;
-    }
-    if (result.kind === "product") {
-      router.replace(`/(main)/products/${result.slug}`);
-    } else if (result.kind === "store") {
-      router.replace(`/(main)/stores/${result.slug}`);
-    }
-  }, [result, router]);
 
   return (
     <>
@@ -127,35 +96,10 @@ export default function ScanScreen() {
               <Display size="lg">Find it with your camera</Display>
               <Body muted style={styles.introCopy}>
                 Snap a photo of any product or pick one from your library. We&apos;ll match it against our catalogue
-                and take you straight to the listing.
+                and show similar listings.
               </Body>
             </View>
           )}
-
-          {result && !busy ? (
-            <View style={styles.resultCard}>
-              {result.kind === "none" ? (
-                <>
-                  <Ionicons name="search-outline" size={32} color={MUTED} />
-                  <Body style={styles.resultTitle}>No close matches</Body>
-                  <Body muted size="sm" style={styles.resultCopy}>
-                    Try a clearer photo or browse the catalogue instead.
-                  </Body>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={32} color={colors.olive[600]} />
-                  <Body style={styles.resultTitle}>
-                    Matched a {result.kind}
-                  </Body>
-                  <Body muted size="sm" style={styles.resultCopy}>
-                    Confidence {Math.round((result.confidence ?? 0) * 100)}%
-                  </Body>
-                  <Button onPress={viewResult}>View result</Button>
-                </>
-              )}
-            </View>
-          ) : null}
         </View>
 
         <View style={[styles.actions, { paddingBottom: insets.bottom + spacing[4] }]}>

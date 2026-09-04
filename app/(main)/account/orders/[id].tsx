@@ -14,7 +14,10 @@ import { ScreenHeader } from "@/components/layout";
 import { Avatar, Badge, Button, useToast } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
+import * as Linking from "expo-linking";
 import { getOrderById, cancelOrder as cancelOrderRpc, cancelOrderItems as cancelOrderItemsRpc } from "@/lib/api";
+import { getOrderInvoiceBackend, resendOrderReceiptBackend } from "@/lib/api/backend";
+import { useCart } from "@/lib/stores/cart-store";
 import { canBuyerCancelInWindow, CUSTOMER_STATUS_STEPS, isTrackableStatus } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -85,24 +88,47 @@ export default function OrderDetailScreen() {
 
   const handleCancelOrder = async () => {
     if (!order) return;
-    Alert.alert("Cancel order", "Are you sure you want to cancel this order? This cannot be undone.", [
+    Alert.alert("Cancel order", "Why are you cancelling?", [
       { text: "Keep order", style: "cancel" },
-      {
-        text: "Cancel order",
-        style: "destructive",
-        onPress: async () => {
-          setCancelling(true);
-          const res = await cancelOrderRpc(order.id);
-          setCancelling(false);
-          if (!res.ok) {
-            toast(res.error, "error");
-            return;
-          }
-          setOrder({ ...order, status: "cancelled" });
-          toast("Order cancelled", "success");
-        },
-      },
+      { text: "Changed my mind", onPress: () => submitCancel("changed_mind") },
+      { text: "Ordered by mistake", onPress: () => submitCancel("ordered_by_mistake") },
+      { text: "Found cheaper", onPress: () => submitCancel("found_cheaper") },
+      { text: "Other", onPress: () => submitCancel("other") },
     ]);
+  };
+
+  const submitCancel = async (reason: string) => {
+    if (!order) return;
+    setCancelling(true);
+    const res = await cancelOrderRpc(order.id, reason);
+    setCancelling(false);
+    if (!res.ok) {
+      toast(res.error, "error");
+      return;
+    }
+    setOrder({ ...order, status: "cancelled" });
+    toast("Order cancelled", "success");
+  };
+
+  const handleReorder = () => {
+    if (!order?.items?.length) return;
+    const addItem = useCart.getState().addItem;
+    for (const item of order.items) {
+      if ((item as { status?: string }).status === "cancelled") continue;
+      addItem({
+        productId: item.product_id,
+        variantId: item.variant_id ?? null,
+        storeId: item.store_id,
+        name: item.product_name,
+        variantLabel: item.variant_label,
+        price: item.unit_price,
+        image: item.product?.images?.find((i) => i.is_primary)?.url ?? item.product?.images?.[0]?.url,
+        quantity: item.quantity,
+        stock: null,
+      });
+    }
+    toast("Items added to cart", "success");
+    router.push("/(main)/cart" as never);
   };
 
   /**
@@ -153,6 +179,28 @@ export default function OrderDetailScreen() {
         message: `LUXE order #${order.order_number} · ${formatPrice(order.total, order.currency)} · ${order.items?.length ?? 0} items`,
       });
     } catch {}
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!order) return;
+    const res = await getOrderInvoiceBackend(order.id);
+    const url = res.ok ? res.data.invoice?.invoice_url : null;
+    if (url) {
+      await Linking.openURL(url);
+      return;
+    }
+    toast(res.ok ? "Invoice isn't ready yet — sharing a summary instead" : res.error, "info");
+    await shareOrder();
+  };
+
+  const handleResendReceipt = async () => {
+    if (!order) return;
+    const res = await resendOrderReceiptBackend(order.id);
+    if (!res.ok) {
+      toast(res.error, "error");
+      return;
+    }
+    toast("Receipt queued — check your inbox", "success");
   };
 
   if (loading || !order) {
@@ -272,7 +320,13 @@ export default function OrderDetailScreen() {
               }
             />
           )}
-          <ActionChip icon="document-text-outline" label="Invoice" onPress={shareOrder} />
+          <ActionChip icon="document-text-outline" label="Invoice" onPress={handleDownloadInvoice} />
+          {["confirmed", "packed", "shipped", "delivered", "processing", "out_for_delivery"].includes(order.status) ? (
+            <ActionChip icon="mail-outline" label="Resend receipt" onPress={handleResendReceipt} />
+          ) : null}
+          {order.status === "delivered" || order.status === "cancelled" ? (
+            <ActionChip icon="repeat-outline" label="Reorder" onPress={handleReorder} />
+          ) : null}
           {canCancel && (
             <ActionChip icon="close-circle-outline" label="Cancel" danger onPress={handleCancelOrder} />
           )}
@@ -301,6 +355,9 @@ export default function OrderDetailScreen() {
                   </Body>
                   {item.variant_label && <Body muted size="xs">{item.variant_label}</Body>}
                   <Body muted size="xs">Qty {item.quantity} · Unit {formatPrice(item.unit_price, order.currency)}</Body>
+                  {item.is_gift ? (
+                    <Body muted size="xs">Gift wrap{item.gift_message ? ` · ${item.gift_message}` : ""}</Body>
+                  ) : null}
                   {canItemCancel && (
                     <TouchableOpacity
                       style={styles.itemCancelBtn}

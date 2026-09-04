@@ -8,6 +8,14 @@
 
 import { vi } from "vitest";
 
+// app.config.js loads .env.local for Expo runtime; in vitest there is no
+// Expo bundler, so we provide the minimal set of EXPO_PUBLIC_* vars that
+// the API façade expects. Tests that need different values can override
+// `process.env.EXPO_PUBLIC_STORE_API_URL` in their own beforeEach.
+if (!process.env.EXPO_PUBLIC_STORE_API_URL) {
+  process.env.EXPO_PUBLIC_STORE_API_URL = "https://store-api.test.invalid";
+}
+
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
     getItem: vi.fn(async () => null),

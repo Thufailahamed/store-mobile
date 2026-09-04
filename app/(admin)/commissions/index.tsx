@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl } from "react-native";
+import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl, Alert } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminCommissions, updateCommissionTier } from "@/lib/api";
 import { Card, EmptyState, Skeleton, Input, Button } from "@/components/ui";
@@ -52,7 +52,24 @@ function TierRow({ tier, index, onSave }: { tier: any; index: number; onSave: (p
         <View style={styles.editRow}>
           <Input value={rate} onChangeText={setRate} keyboardType="numeric" containerStyle={{ width: 80 }} />
           <Text style={styles.pct}>%</Text>
-          <Pressable onPress={() => onSave({ rate_pct: Number(rate) })} style={styles.saveBtn}>
+          <Pressable
+            onPress={() => {
+              const n = Number(rate);
+              if (!Number.isFinite(n) || n < 0 || n > 100) {
+                Alert.alert("Invalid rate", "Enter a commission between 0 and 100.");
+                return;
+              }
+              Alert.alert(
+                "Update commission?",
+                `Set ${tier.name} to ${n}%? This applies to future seller orders.`,
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Save", onPress: () => onSave({ rate_pct: n }) },
+                ],
+              );
+            }}
+            style={styles.saveBtn}
+          >
             <Text style={styles.saveText}>Save</Text>
           </Pressable>
         </View>

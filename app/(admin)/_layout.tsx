@@ -44,28 +44,36 @@ export default function AdminLayout() {
           },
           tabBarLabelStyle: {
             fontSize: 10,
-            fontFamily: fontFamilies.mono.medium,
-            letterSpacing: typography.letterSpacing.wide,
+            fontFamily: fontFamilies.sans.semibold,
+            letterSpacing: 0.3,
             textTransform: "uppercase",
           },
           tabBarItemStyle: {
             paddingTop: 4,
+            paddingHorizontal: 0,
           },
+          tabBarHideOnKeyboard: true,
         }}
       >
         <Tabs.Screen
           name="index"
           options={{
             title: "Overview",
-            tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" size={size} color={color} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "grid" : "grid-outline"} size={size} color={color} />
+            ),
           }}
         />
         <Tabs.Screen
           name="approvals/index"
           options={{
             title: "Approvals",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="checkmark-done-circle-outline" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? "checkmark-done-circle" : "checkmark-done-circle-outline"}
+                size={size}
+                color={color}
+              />
             ),
           }}
         />
@@ -73,23 +81,31 @@ export default function AdminLayout() {
           name="orders/index"
           options={{
             title: "Orders",
-            tabBarIcon: ({ color, size }) => <Ionicons name="receipt-outline" size={size} color={color} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "receipt" : "receipt-outline"} size={size} color={color} />
+            ),
           }}
         />
         <Tabs.Screen
           name="catalogue/index"
           options={{
             title: "Catalogue",
-            tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "cube" : "cube-outline"} size={size} color={color} />
+            ),
           }}
         />
         <Tabs.Screen
           name="more/index"
           options={{
             title: "More",
-            tabBarIcon: ({ color, size }) => <Ionicons name="menu-outline" size={size} color={color} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? "menu" : "menu-outline"} size={size} color={color} />
+            ),
           }}
         />
+        <Tabs.Screen name="courier" options={{ href: null }} />
+        <Tabs.Screen name="delivery" options={{ href: null }} />
         <Tabs.Screen name="users/index" options={{ href: null }} />
         <Tabs.Screen name="stores/index" options={{ href: null }} />
         <Tabs.Screen name="settings/index" options={{ href: null }} />
@@ -115,6 +131,7 @@ export default function AdminLayout() {
         <Tabs.Screen name="products/[id]" options={{ href: null }} />
         <Tabs.Screen name="reports/index" options={{ href: null }} />
         <Tabs.Screen name="stores/[id]" options={{ href: null }} />
+        <Tabs.Screen name="courier/index" options={{ href: null }} />
       </Tabs>
     </View>
   );

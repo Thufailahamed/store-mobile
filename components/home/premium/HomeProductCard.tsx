@@ -89,9 +89,9 @@ function HomeProductCardInner({
           />
         </TouchableOpacity>
         {showSaleBadge && onSale ? (
-          <View style={styles.saleStamp}>
-            <Text style={styles.saleStampText}>
-              {discount > 0 ? `${discount}%\nOFF` : "SALE"}
+          <View style={styles.saleBadge}>
+            <Text style={styles.saleBadgeText}>
+              {discount > 0 ? `-${discount}%` : "SALE"}
             </Text>
           </View>
         ) : null}
@@ -208,27 +208,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  saleStamp: {
+  saleBadge: {
     position: "absolute",
     left: 8,
     top: 8,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1.5,
-    borderColor: colors.accent2.rust,
-    backgroundColor: "rgba(250, 248, 241, 0.88)",
+    backgroundColor: colors.accent2.rust,
+    paddingHorizontal: 7.5,
+    paddingVertical: 3.5,
+    borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ rotate: "-9deg" }],
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.18,
+    shadowRadius: 2.5,
+    elevation: 3,
   },
-  saleStampText: {
+  saleBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    lineHeight: 9,
-    color: colors.accent2.rust,
-    textAlign: "center",
-    letterSpacing: 0.2,
+    fontSize: 9.5,
+    lineHeight: 12,
+    color: "#ffffff",
+    letterSpacing: 0.4,
+    fontWeight: "600",
   },
   disclosureBadge: {
     position: "absolute",

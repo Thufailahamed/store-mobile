@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -8,6 +8,8 @@ import { colors, spacing, radii, shadows, typography } from "@/lib/theme/tokens"
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Product, Review } from "@/lib/types";
 import { HelpfulButton } from "@/components/reviews/HelpfulButton";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { listProductQuestions, addProductQuestion } from "@/lib/api";
 
 type Tab = "description" | "specs" | "reviews" | "qa";
 
@@ -100,7 +102,7 @@ export function ProductDetails({ product, reviews, onWriteReview }: ProductDetai
           />
         )}
         {tab === "qa" && (
-          <QATab />
+          <QATab productId={product.id} />
         )}
       </View>
     </View>
@@ -298,15 +300,68 @@ function ReviewsTab({
 }
 
 /* ─── Q&A Tab ─── */
-function QATab() {
+function QATab({ productId }: { productId: string }) {
+  const [question, setQuestion] = useState("");
+  const [busy, setBusy] = useState(false);
+  const q = useQuery({
+    queryKey: ["product-qa", productId],
+    queryFn: async () => {
+      const r = await listProductQuestions(productId);
+      return r.ok ? r.data : [];
+    },
+    enabled: !!productId,
+  });
+  const qc = useQueryClient();
+
+  const submit = async () => {
+    const text = question.trim();
+    if (text.length < 4 || busy) return;
+    setBusy(true);
+    const r = await addProductQuestion(productId, text);
+    setBusy(false);
+    if (!r.ok) {
+      Alert.alert("Couldn't post question", r.error);
+      return;
+    }
+    setQuestion("");
+    void qc.invalidateQueries({ queryKey: ["product-qa", productId] });
+  };
+
+  const items = q.data ?? [];
+
   return (
-    <View style={styles.emptyReviews}>
-      <Ionicons name="help-circle-outline" size={40} color={colors.light.mutedForeground} />
-      <Display size="lg">No questions yet</Display>
-      <Body muted size="sm">Have a question about this product? Ask away.</Body>
-      <Button variant="outline" size="sm">
-        Ask a question
-      </Button>
+    <View style={{ paddingHorizontal: spacing[5], gap: spacing[3] }}>
+      {q.isLoading ? <Body muted size="sm">Loading questions…</Body> : null}
+      {items.length === 0 && !q.isLoading ? (
+        <View style={styles.emptyReviews}>
+          <Ionicons name="help-circle-outline" size={40} color={colors.light.mutedForeground} />
+          <Display size="lg">No questions yet</Display>
+          <Body muted size="sm">Have a question about this product? Ask away.</Body>
+        </View>
+      ) : (
+        items.map((item) => (
+          <View key={item.id} style={styles.reviewCard}>
+            <Body size="sm" style={styles.reviewTitle}>{item.question}</Body>
+            {item.answer ? (
+              <Body muted size="sm" style={styles.reviewContent}>{item.answer}</Body>
+            ) : (
+              <Body muted size="xs">Awaiting an answer from the seller</Body>
+            )}
+          </View>
+        ))
+      )}
+      <View style={{ gap: spacing[2] }}>
+        <TextInput
+          value={question}
+          onChangeText={setQuestion}
+          placeholder="Ask a question"
+          multiline
+          style={styles.qaInput}
+        />
+        <Button variant="outline" size="sm" onPress={submit} disabled={busy || question.trim().length < 4}>
+          {busy ? "Posting…" : "Ask a question"}
+        </Button>
+      </View>
     </View>
   );
 }
@@ -560,5 +615,15 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     borderColor: `${colors.light.primary}20`,
     borderRadius: radii.xl,
+  },
+  qaInput: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.md,
+    padding: spacing[3],
+    minHeight: 72,
+    textAlignVertical: "top",
+    fontFamily: fontFamilies.sans.regular,
+    color: colors.light.foreground,
   },
 });

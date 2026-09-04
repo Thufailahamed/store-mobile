@@ -25,11 +25,17 @@ describe("mobile coupon API — input validation", () => {
   const api = readFileSync(join(root, "lib/api/index.ts"), "utf8");
 
   it("createStoreCoupon validates via Zod before inserting", () => {
-    expect(api).toMatch(/createStoreCoupon[\s\S]{0,300}CouponCreateSchema\.safeParse/);
+    // createStoreCoupon remaps seller-form fields before parsing; allow a
+    // generous window so the assertion survives minor refactors.
+    expect(api).toMatch(
+      /function createStoreCoupon[\s\S]{0,1500}CouponCreateSchema\.safeParse/,
+    );
   });
 
   it("createCoupon validates via Zod before inserting", () => {
-    expect(api).toMatch(/createCoupon[\s\S]{0,300}CouponCreateSchema\.safeParse/);
+    expect(api).toMatch(
+      /function createCoupon[\s\S]{0,300}CouponCreateSchema\.safeParse/,
+    );
   });
 
   it("rejects percentage > 100", () => {

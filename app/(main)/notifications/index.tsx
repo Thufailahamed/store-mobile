@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback } from "react";
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -19,6 +20,8 @@ import {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteNotification,
+  clearAllNotifications,
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
 import { Skeleton, useToast } from "@/components/ui";
@@ -141,6 +144,23 @@ export default function NotificationsScreen() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: () => toast("Couldn't delete that notification.", "error"),
+  });
+
+  const clearAllMutation = useMutation({
+    mutationFn: clearAllNotifications,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      toast("Inbox cleared", "success");
+    },
+    onError: () => toast("Couldn't clear notifications.", "error"),
+  });
+
   // Live-refresh: a new server-side notification arrives → invalidate
   // the inbox query so the list + unread badge update without waiting
   // for a manual pull-to-refresh.
@@ -240,6 +260,28 @@ export default function NotificationsScreen() {
         <Text style={[styles.headerTitle, { color: theme.colors.foreground }]}>
           Notifications
         </Text>
+        <TouchableOpacity
+          onPress={() =>
+            Alert.alert("Clear all notifications?", "This removes every notification from your inbox.", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Clear all", style: "destructive", onPress: () => clearAllMutation.mutate() },
+            ])
+          }
+          style={styles.headerBtn}
+          disabled={notifications.length === 0}
+          hitSlop={8}
+          accessibilityLabel="Clear all notifications"
+        >
+          <Ionicons
+            name="trash-outline"
+            size={20}
+            color={
+              notifications.length > 0
+                ? theme.colors.foreground
+                : theme.colors.mutedForeground
+            }
+          />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => unreadByFilter.all > 0 && markAllMutation.mutate()}
           style={styles.headerBtn}
@@ -385,6 +427,12 @@ export default function NotificationsScreen() {
             <NotificationRow
               item={item}
               onPress={() => handlePress(item)}
+              onDelete={() =>
+                Alert.alert("Delete notification?", undefined, [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(item.id) },
+                ])
+              }
               accent={accent}
             />
           )}
@@ -397,10 +445,12 @@ export default function NotificationsScreen() {
 function NotificationRow({
   item,
   onPress,
+  onDelete,
   accent,
 }: {
   item: Notification;
   onPress: () => void;
+  onDelete: () => void;
   accent: string;
 }) {
   const theme = useTheme();
@@ -482,6 +532,14 @@ function NotificationRow({
           />
         </View>
       )}
+      <TouchableOpacity
+        onPress={onDelete}
+        hitSlop={8}
+        accessibilityLabel="Delete notification"
+        style={{ padding: 4 }}
+      >
+        <Ionicons name="close" size={16} color={theme.colors.mutedForeground} />
+      </TouchableOpacity>
     </Pressable>
   );
 }

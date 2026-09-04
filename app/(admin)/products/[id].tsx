@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
@@ -23,8 +23,28 @@ export default function AdminProductDetail() {
     enabled: !!id,
   });
 
-  const approve = useMutation({ mutationFn: () => approveProduct(id!, "active"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-product", id] }) });
-  const reject = useMutation({ mutationFn: () => approveProduct(id!, "rejected"), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-product", id] }) });
+  const approve = useMutation({
+    mutationFn: () => approveProduct(id!, "active"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Approve failed", res.error);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["admin-product", id] });
+    },
+    onError: (e) => Alert.alert("Approve failed", e instanceof Error ? e.message : "Try again."),
+  });
+  const reject = useMutation({
+    mutationFn: () => approveProduct(id!, "rejected"),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        Alert.alert("Reject failed", res.error);
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ["admin-product", id] });
+    },
+    onError: (e) => Alert.alert("Reject failed", e instanceof Error ? e.message : "Try again."),
+  });
 
   if (q.isLoading) return <View style={styles.container}><Skeleton height={200} /></View>;
   const p: any = q.data;
@@ -62,10 +82,26 @@ export default function AdminProductDetail() {
 
       {p.status === "pending" && (
         <View style={styles.approvalRow}>
-          <Pressable onPress={() => approve.mutate()} style={styles.approve}>
+          <Pressable
+            onPress={() =>
+              Alert.alert("Approve product?", "This product will go live in the catalogue.", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Approve", onPress: () => approve.mutate() },
+              ])
+            }
+            style={styles.approve}
+          >
             <Text style={styles.approveText}>Approve</Text>
           </Pressable>
-          <Pressable onPress={() => reject.mutate()} style={styles.reject}>
+          <Pressable
+            onPress={() =>
+              Alert.alert("Reject product?", "The seller will see this as rejected.", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Reject", style: "destructive", onPress: () => reject.mutate() },
+              ])
+            }
+            style={styles.reject}
+          >
             <Text style={styles.rejectText}>Reject</Text>
           </Pressable>
         </View>
