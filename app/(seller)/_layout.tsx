@@ -60,7 +60,6 @@ export default function SellerLayout() {
   );
 
   const isSettingsRoute = (segments as string[]).includes("settings");
-
   useEffect(() => {
     if (loading || roleLoading || storeLoading) return;
     if (role !== "store_owner") {
@@ -199,35 +198,9 @@ export default function SellerLayout() {
       <Tabs.Screen name="orders/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="returns/index" options={{ href: null }} />
       <Tabs.Screen name="returns/[id]/index" options={{ href: null }} />
-      <Tabs.Screen name="analytics/index" options={{ href: null }} />
       <Tabs.Screen name="reviews/index" options={{ href: null }} />
       <Tabs.Screen name="coupons/index" options={{ href: null }} />
       <Tabs.Screen name="notifications/index" options={{ href: null }} />
-      <Tabs.Screen name="bulk-upload/index" options={{ href: null }} />
-      <Tabs.Screen
-        name="storefront/index"
-        options={{
-          title: "Storefront",
-          href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="storefront-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen name="storefront/[templateId]/edit" options={{ href: null }} />
-      <Tabs.Screen name="storefront/[templateId]/preview" options={{ href: null }} />
-      <Tabs.Screen name="storefront/[templateId]/publish" options={{ href: null }} />
-      <Tabs.Screen
-        name="ai-studio/index"
-        options={{
-          title: "AI Studio",
-          href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="sparkles-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen name="ai-studio/generate" options={{ href: null }} />
-      <Tabs.Screen name="ai-studio/history" options={{ href: null }} />
-      <Tabs.Screen name="ai-studio/library" options={{ href: null }} />
-      <Tabs.Screen name="ai-studio/pricing" options={{ href: null }} />
-      <Tabs.Screen name="ai-studio/[jobId]" options={{ href: null }} />
       <Tabs.Screen
         name="payouts/index"
         options={{
@@ -238,8 +211,9 @@ export default function SellerLayout() {
       />
       <Tabs.Screen name="payouts/settings" options={{ href: null }} />
       <Tabs.Screen name="payouts/withdraw" options={{ href: null }} />
+      <Tabs.Screen name="payouts/connect-return" options={{ href: null }} />
       <Tabs.Screen name="payouts/stripe-return" options={{ href: null }} />
-      <Tabs.Screen name="payouts/[id]" options={{ href: null }} />
+      <Tabs.Screen name="payouts/[payoutId]" options={{ href: null }} />
     </Tabs>
   );
 }
