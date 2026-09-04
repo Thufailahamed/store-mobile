@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
 import { getPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
-import { placeOrderGroupBackend, abandonOrderGroupBackend } from "@/lib/api/backend";
+import { placeOrderGroupBackend, abandonOrderGroupBackend, getCheckoutOptionsBackend } from "@/lib/api/backend";
 import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
@@ -73,10 +73,18 @@ function parsePlacedOrder(data: unknown): { id: string; order_number?: string } 
 }
 
 /** Parse the place_order_group RPC response into a flat list of sub-orders. */
-function parseGroupOrders(data: unknown): Array<{ id: string; order_number?: string; store_id?: string; total?: number }> | null {
-  if (!data || typeof data !== "object") return null;
-  const row = data as { orders?: unknown; group_id?: string };
-  const ordersRaw = Array.isArray(row.orders) ? row.orders : [];
+function parseGroupOrders(data: unknown): {
+  orders: Array<{ id: string; order_number?: string; store_id?: string; total?: number }>;
+  groupId: string | null;
+} {
+  if (!data || typeof data !== "object") return { orders: [], groupId: null };
+  const row = data as { orders?: unknown; group?: { orders?: unknown; group_id?: string }; group_id?: string };
+  const nested = row.group && typeof row.group === "object" ? row.group : null;
+  const ordersRaw = Array.isArray(row.orders)
+    ? row.orders
+    : Array.isArray(nested?.orders)
+      ? nested.orders
+      : [];
   const out: Array<{ id: string; order_number?: string; store_id?: string; total?: number }> = [];
   for (const o of ordersRaw) {
     if (!o || typeof o !== "object") continue;
@@ -90,7 +98,13 @@ function parseGroupOrders(data: unknown): Array<{ id: string; order_number?: str
       total: typeof sub.total === "number" ? sub.total : undefined,
     });
   }
-  return out;
+  const groupId =
+    typeof row.group_id === "string"
+      ? row.group_id
+      : typeof nested?.group_id === "string"
+        ? nested.group_id
+        : null;
+  return { orders: out, groupId };
 }
 
 /** Round to 2dp without floating-point drift. */
@@ -153,8 +167,9 @@ export default function CheckoutScreen() {
   const [couponId, setCouponId] = useState<string | null>(null);
   const [freeShippingCoupon, setFreeShippingCoupon] = useState(false);
   const [giftCardCode, setGiftCardCode] = useState<string | null>(null);
-  const [giftCardCredit, setGiftCardCredit] = useState(0);
+  const [giftCardBalance, setGiftCardBalance] = useState(0);
   const [giftCardCurrency, setGiftCardCurrency] = useState("LKR");
+  const [codAllowed, setCodAllowed] = useState<boolean | null>(null);
 
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name || "");
   const [phone, setPhone] = useState("");
@@ -194,8 +209,9 @@ export default function CheckoutScreen() {
         couponDiscount,
         pointsValue: pointsToUse,
         freeShippingCoupon,
+        giftCardCredit: giftCardBalance,
       }),
-    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon],
+    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance],
   );
   const sub = checkoutTotals.sub;
   const shippingFee = checkoutTotals.shipping;
@@ -203,6 +219,7 @@ export default function CheckoutScreen() {
   const pointsValue = pointsToUse;
   const tax = checkoutTotals.tax;
   const total = checkoutTotals.total;
+  const giftApplied = checkoutTotals.giftApplied;
 
   // Fire checkout_started once when the user reaches the address step with a
   // non-empty bag. Mirrors web's behaviour.
@@ -234,6 +251,37 @@ export default function CheckoutScreen() {
       cancelled = true;
     };
   }, [authLoading, user, items, router, toast]);
+
+  const storeIds = useMemo(
+    () => Array.from(new Set(Object.values(items).map((item) => item.storeId))),
+    [items],
+  );
+  const storeIdsKey = storeIds.join("|");
+  useEffect(() => {
+    if (!user || storeIds.length === 0) {
+      setCodAllowed(true);
+      return;
+    }
+    let cancelled = false;
+    setCodAllowed(null);
+    void getCheckoutOptionsBackend(storeIds).then((res) => {
+      if (cancelled) return;
+      if (!res.ok) {
+        setCodAllowed(false);
+        return;
+      }
+      setCodAllowed(!!res.data.cod_allowed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, storeIdsKey]);
+
+  useEffect(() => {
+    if (codAllowed === false && paymentMethod === "cod") {
+      setPaymentMethod("payhere");
+    }
+  }, [codAllowed, paymentMethod]);
 
   useFocusEffect(
     useCallback(() => {
@@ -432,6 +480,16 @@ export default function CheckoutScreen() {
       }
     }
 
+    if (paymentMethod === "cod" && codAllowed === false) {
+      toast("Cash on delivery is not available for this bag", "error");
+      setStep(3);
+      return;
+    }
+    if (paymentMethod === "cod" && codAllowed === null) {
+      toast("Verifying cash-on-delivery availability…", "error");
+      return;
+    }
+
     const checkoutValidation = await validateCartForCheckout();
     if (!checkoutValidation.ok) {
       toast(checkoutValidation.error, "error");
@@ -577,22 +635,17 @@ export default function CheckoutScreen() {
 
       const { data: groupData, error: groupErr } = await (async () => {
         const res = await placeOrderGroupBackend({
-          cart_groups: ordersPayload.map((row) => ({
-            store_id: row.store_id,
-            items: row.items
-              .map((i) => ({
-                product_id: i.product_id,
-                variant_id: i.variant_id ?? null,
-                quantity: i.quantity,
-              })),
-          })),
-          address_id: addressId ?? "",
+          orders: ordersPayload,
+          address_id: addressId,
+          shipping_address: shippingAddress,
           payment_method: paymentMethod,
+          coupon_id: couponId,
           coupon_code: couponInput.trim() || null,
           gift_card_code: giftCardCode || null,
           currency: "LKR",
           shipping_method: shippingKey,
-          points_redeemed: freshPointsToUse,
+          loyalty_points_redeemed: freshPointsToUse,
+          group_id: groupId,
         });
         if (!res.ok) return { data: null, error: { message: res.error } };
         return { data: res.data, error: null };
@@ -601,7 +654,9 @@ export default function CheckoutScreen() {
       if (groupErr) {
         throw new Error(groupErr.message);
       }
-      const subOrders = parseGroupOrders(groupData);
+      const parsedGroup = parseGroupOrders(groupData);
+      const subOrders = parsedGroup.orders;
+      const placedGroupId = parsedGroup.groupId ?? groupId;
       if (!subOrders || subOrders.length === 0) {
         throw new Error("Order group created but no sub-orders returned");
       }
@@ -612,9 +667,9 @@ export default function CheckoutScreen() {
 
       if (paymentMethod === "payhere") {
         pendingLoyaltyPointsRef.current = freshPointsToUse;
-        const session = await getPayHereSession(firstOrderId, { groupId });
+        const session = await getPayHereSession(firstOrderId, { groupId: placedGroupId });
         if (!session.ok) {
-          await abandonOrderGroupBackend(groupId);
+          await abandonOrderGroupBackend(placedGroupId);
           orderPlaced = false;
           throw new Error(session.error);
         }
@@ -830,10 +885,15 @@ export default function CheckoutScreen() {
         {step === 3 && (
           <View style={styles.panel}>
             <SectionHeader kicker="Step 03" title="Payment" />
-            {[
+            {codAllowed === false && (
+              <Body muted size="xs" style={{ marginBottom: 8 }}>
+                Cash on delivery is unavailable for one or more stores in this bag.
+              </Body>
+            )}
+            {([
               { key: "cod" as const, label: "Cash on delivery", desc: "Pay when you receive", icon: "cash-outline" as const },
               { key: "payhere" as const, label: "Card via PayHere", desc: "Visa · Mastercard · Amex", icon: "card-outline" as const },
-            ].map((m) => (
+            ] as const).filter((m) => !(m.key === "cod" && codAllowed === false)).map((m) => (
               <TouchableOpacity
                 key={m.key}
                 style={[styles.optionCard, paymentMethod === m.key && styles.optionCardActive]}
@@ -966,7 +1026,7 @@ export default function CheckoutScreen() {
 
             <GiftCardBlock
               appliedCode={giftCardCode}
-              appliedBalance={giftCardCredit}
+              appliedBalance={giftApplied}
               appliedCurrency={giftCardCurrency}
               onApply={async (code) => {
                 const { validateGiftCardRedemption } = await import("@/lib/api");
@@ -980,13 +1040,13 @@ export default function CheckoutScreen() {
                   return;
                 }
                 setGiftCardCode(code);
-                setGiftCardCredit(Math.min(res.data.current_balance ?? 0, Math.max(0, sub - couponDiscount)));
+                setGiftCardBalance(res.data.current_balance ?? 0);
                 setGiftCardCurrency(res.data.card_currency ?? "LKR");
                 toast("Gift card applied", "success");
               }}
               onRemove={() => {
                 setGiftCardCode(null);
-                setGiftCardCredit(0);
+                setGiftCardBalance(0);
               }}
             />
 
@@ -999,6 +1059,9 @@ export default function CheckoutScreen() {
               )}
               {pointsValue > 0 && (
                 <SummaryLine label="Loyalty points" value={`-${formatPrice(pointsValue)}`} accent />
+              )}
+              {giftApplied > 0 && (
+                <SummaryLine label="Gift card" value={`-${formatPrice(giftApplied, giftCardCurrency)}`} accent />
               )}
               <SummaryLine
                 label="Shipping"

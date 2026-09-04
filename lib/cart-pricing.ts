@@ -46,6 +46,7 @@ export function computeCartTotals(params: {
   couponDiscount?: number;
   pointsValue?: number;
   freeShippingCoupon?: boolean;
+  giftCardCredit?: number;
 }) {
   const sub = params.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
   const shipping = computeOrderShipping(params.lines, params.shippingKey ?? "standard", {
@@ -57,8 +58,10 @@ export function computeCartTotals(params: {
   // the same pre-checkout total (the backend computes the authoritative
   // final total either way).
   const tax = afterPoints * TAX_RATE;
-  const total = afterPoints + shipping + tax;
-  return { sub, shipping, tax, total, afterCoupon, afterPoints };
+  const due = afterPoints + shipping + tax;
+  const giftApplied = Math.min(Math.max(0, params.giftCardCredit ?? 0), Math.max(0, due));
+  const total = Math.max(0, due - giftApplied);
+  return { sub, shipping, tax, total, afterCoupon, afterPoints, giftApplied };
 }
 
 export function countStoresInCart(lines: CartPricingLine[]): number {

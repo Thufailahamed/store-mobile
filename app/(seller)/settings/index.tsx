@@ -384,6 +384,21 @@ export default function SellerSettings() {
         </View>
       </View>
 
+      {/* Storefront */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Storefront</Text>
+        <Text style={styles.switchHint}>
+          Public-facing header, footer, contact and social handles.
+        </Text>
+        <TouchableOpacity
+          style={styles.navRow}
+          onPress={() => router.push("/(seller)/settings/store-meta" as any)}
+        >
+          <Text style={styles.navLabel}>Header & footer</Text>
+          <Text style={styles.navChevron}>›</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Sign Out */}
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
@@ -574,5 +589,27 @@ const styles = StyleSheet.create({
     color: "#dc2626",
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  navRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: colors.light.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    marginTop: 8,
+  },
+  navLabel: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.foreground,
+    fontWeight: typography.fontWeights.medium as any,
+  },
+  navChevron: {
+    fontSize: 22,
+    color: colors.light.mutedForeground,
   },
 });

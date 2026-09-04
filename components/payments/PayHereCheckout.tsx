@@ -29,26 +29,35 @@ function isPayHereHost(url: string): boolean {
   }
 }
 
-function isPayHereSuccessReturn(url: string, orderId: string): boolean {
-  // Require an exact match on the order_id query param — substring checks
-  // on the raw URL are unsafe (an attacker could craft a URL containing
-  // "order_id=<other>" + the target orderId).
+function isPaymentSuccessReturn(url: string, orderId: string): boolean {
   try {
     const parsed = new URL(url);
-    if (!isPayHereHost(url)) return false;
     if (parsed.searchParams.get("success") !== "true") return false;
-    return parsed.searchParams.get("order_id") === orderId;
+    if (isPayHereHost(url)) {
+      return parsed.searchParams.get("order_id") === orderId;
+    }
+    return (
+      parsed.pathname.includes("/account/orders") ||
+      parsed.searchParams.get("pm") === "payhere" ||
+      parsed.pathname.includes(orderId)
+    );
   } catch {
     return false;
   }
 }
 
-function isPayHereCancelReturn(url: string, orderId: string): boolean {
+function isPaymentCancelReturn(url: string, orderId: string): boolean {
   try {
     const parsed = new URL(url);
-    if (!isPayHereHost(url)) return false;
     if (parsed.searchParams.get("cancelled") !== "true") return false;
-    return parsed.searchParams.get("order_id") === orderId;
+    if (isPayHereHost(url)) {
+      return parsed.searchParams.get("order_id") === orderId;
+    }
+    return (
+      parsed.pathname.includes("/account/orders") ||
+      parsed.searchParams.get("pm") === "payhere" ||
+      parsed.pathname.includes(orderId)
+    );
   } catch {
     return false;
   }
@@ -106,22 +115,31 @@ export function PayHereCheckout({
       ) : (
         <WebView
           source={{ html }}
-          originWhitelist={["https://*.payhere.lk"]}
+          originWhitelist={["*"]}
           javaScriptCanOpenWindowsAutomatically={false}
           setSupportMultipleWindows={false}
           onShouldStartLoadWithRequest={(req) => {
-            // Only let the WebView navigate to PayHere origins. Anything
-            // else (tel:, mailto:, javascript:, etc.) is dropped.
-            return isPayHereHost(req.url) || req.url === "about:blank";
+            if (handledRef.current) return false;
+            if (isPaymentCancelReturn(req.url, orderId)) {
+              handledRef.current = true;
+              onClose();
+              return false;
+            }
+            if (isPaymentSuccessReturn(req.url, orderId)) {
+              handledRef.current = true;
+              onReturnFromGateway();
+              return false;
+            }
+            return isPayHereHost(req.url) || req.url === "about:blank" || req.url.startsWith("about:");
           }}
           onNavigationStateChange={(nav) => {
             if (handledRef.current) return;
-            if (isPayHereCancelReturn(nav.url, orderId)) {
+            if (isPaymentCancelReturn(nav.url, orderId)) {
               handledRef.current = true;
               onClose();
               return;
             }
-            if (isPayHereSuccessReturn(nav.url, orderId)) {
+            if (isPaymentSuccessReturn(nav.url, orderId)) {
               handledRef.current = true;
               onReturnFromGateway();
             }

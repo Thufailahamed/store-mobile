@@ -135,8 +135,23 @@ export async function getPayHereSession(
       body: JSON.stringify(body),
     });
     const json = await res.json();
-    if (!res.ok) return { ok: false, error: json.error ?? "Payment session failed" };
-    return { ok: true, data: { action: json.action, fields: json.fields } };
+    if (!res.ok) {
+      const err = (json as { error?: unknown }).error;
+      const message =
+        typeof err === "string"
+          ? err
+          : err && typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message?: unknown }).message)
+            : "Payment session failed";
+      return { ok: false, error: message };
+    }
+    const payload = (json && typeof json === "object" && "data" in json
+      ? (json as { data: PayHereSession }).data
+      : json) as PayHereSession;
+    if (!payload?.action || !payload?.fields) {
+      return { ok: false, error: "Payment session was missing checkout fields" };
+    }
+    return { ok: true, data: { action: payload.action, fields: payload.fields } };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "Network error" };
   }

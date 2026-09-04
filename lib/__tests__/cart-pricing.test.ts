@@ -24,5 +24,16 @@ describe("cart-pricing", () => {
     expect(totals.shipping).toBe(0);
     expect(totals.tax).toBe(400);
     expect(totals.total).toBe(5400);
+    expect(totals.giftApplied).toBe(0);
+  });
+
+  it("subtracts gift card credit from the payable total", () => {
+    const totals = computeCartTotals({
+      lines: [{ storeId: "s1", quantity: 2, unitPrice: 2500 }],
+      shippingKey: "standard",
+      giftCardCredit: 1000,
+    });
+    expect(totals.giftApplied).toBe(1000);
+    expect(totals.total).toBe(4400);
   });
 });

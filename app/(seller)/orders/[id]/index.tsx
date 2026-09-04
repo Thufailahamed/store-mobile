@@ -6,6 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -50,6 +54,8 @@ export default function SellerOrderDetail() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
 
   useEffect(() => {
     if (!id || !user) return;
@@ -90,6 +96,38 @@ export default function SellerOrderDetail() {
     );
   };
 
+  /**
+   * Issue a refund for a delivered/processing order. Mirrors web's admin
+   * force_refund flow: seller transitions the order to `refunded` via the
+   * existing /api/orders/:id/transition endpoint with a reason. The
+   * backend's transition_order_status RPC + ORDER_STATUS_EDGES allow
+   * delivered→refunded and (admin) processing→refunded.
+   */
+  const openRefundDialog = () => setRefundModalOpen(true);
+  const closeRefundDialog = () => {
+    setRefundModalOpen(false);
+    setRefundReason("");
+  };
+
+  const submitRefund = async () => {
+    if (!order) return;
+    const reason = refundReason.trim() || "Seller refund";
+    setUpdating(true);
+    const res = await transitionOrderStatus(order.id, "refunded", { reason });
+    setUpdating(false);
+    closeRefundDialog();
+    if (res.ok) {
+      setOrder({ ...order, status: res.data.status as OrderStatus });
+      Alert.alert("Refunded", "The order has been marked as refunded.");
+    } else {
+      Alert.alert("Refund failed", res.error);
+    }
+  };
+
+  // Refund is shown when the order is in a state the seller can transition
+  // out of (delivered, or processing under admin override per
+  // ORDER_STATUS_EDGES).
+
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
@@ -105,6 +143,8 @@ export default function SellerOrderDetail() {
       </SafeAreaView>
     );
   }
+
+  const canRefund = order.status === "delivered" || order.status === "processing";
 
   const nextStatus = getSellerNextStatus(order.status);
   const sc = STATUS_COLORS[order.status] ?? STATUS_COLORS.pending;
@@ -193,6 +233,20 @@ export default function SellerOrderDetail() {
         </TouchableOpacity>
       )}
 
+      {/* Refund — destructive secondary action, shown for delivered/processing */}
+      {canRefund && (
+        <TouchableOpacity
+          style={[styles.refundButton, updating && { opacity: 0.6 }]}
+          onPress={openRefundDialog}
+          disabled={updating}
+          accessibilityLabel="Refund order"
+        >
+          <Text style={styles.refundButtonText}>
+            {updating ? "Updating..." : "Refund order"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Items */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Items ({itemsCount})</Text>
@@ -247,6 +301,52 @@ export default function SellerOrderDetail() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+
+    {/* Refund modal — cross-platform reason input + confirm */}
+    <Modal
+      visible={refundModalOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={closeRefundDialog}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.modalOverlay}
+      >
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Refund order</Text>
+          <Text style={styles.modalBody}>
+            This marks the order as refunded and notifies the buyer. Add an optional reason for the audit log:
+          </Text>
+          <TextInput
+            style={styles.modalInput}
+            value={refundReason}
+            onChangeText={setRefundReason}
+            placeholder="e.g. Customer reported defect"
+            placeholderTextColor={colors.light.mutedForeground}
+            multiline
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnCancel]}
+              onPress={closeRefundDialog}
+              disabled={updating}
+            >
+              <Text style={styles.modalBtnCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnConfirm, updating && { opacity: 0.6 }]}
+              onPress={submitRefund}
+              disabled={updating}
+            >
+              <Text style={styles.modalBtnConfirmText}>
+                {updating ? "Refunding..." : "Refund"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
     </SafeAreaView>
   );
 }
@@ -370,13 +470,83 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: radii.lg,
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 12,
   },
   actionButtonText: {
     color: colors.light.card,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.bold as any,
     textTransform: "capitalize",
+  },
+
+  refundButton: {
+    backgroundColor: "#fef2f2",
+    padding: 14,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    marginBottom: 20,
+  },
+  refundButtonText: {
+    color: "#dc2626",
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii.lg,
+    padding: 18,
+  },
+  modalTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold as any,
+    color: colors.light.foreground,
+    marginBottom: 6,
+  },
+  modalBody: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  modalInput: {
+    minHeight: 70,
+    textAlignVertical: "top",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 14,
+  },
+  modalBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+  },
+  modalBtnCancel: {
+    backgroundColor: colors.light.muted,
+  },
+  modalBtnCancelText: {
+    color: colors.light.foreground,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium as any,
+  },
+  modalBtnConfirm: {
+    backgroundColor: "#dc2626",
+  },
+  modalBtnConfirmText: {
+    color: "#fff",
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
   },
 
   section: { marginBottom: 20 },
