@@ -20,9 +20,9 @@ const REPORTS: Report[] = [
   { key: "products", title: "Catalogue snapshot", description: "All products with stock", format: "csv", icon: "cube-outline" },
   { key: "stores", title: "Seller roster", description: "Stores + approval status", format: "csv", icon: "storefront-outline" },
   { key: "customers", title: "Customer list", description: "PII-safe export", format: "csv", icon: "people-outline" },
-  { key: "payouts", title: "Payouts queue", description: "Pending seller payouts", format: "csv", icon: "wallet-outline" },
-  { key: "tax", title: "Tax summary", description: "Quarterly tax filing export", format: "csv", icon: "document-text-outline" },
-  { key: "finance", title: "Finance pack", description: "Revenue, fees, refunds", format: "csv", icon: "briefcase-outline" },
+  { key: "payouts", title: "Payouts basis", description: "Paid orders payouts are computed from", format: "csv", icon: "wallet-outline" },
+  { key: "tax", title: "Tax basis", description: "Gross sales per order", format: "csv", icon: "document-text-outline" },
+  { key: "finance", title: "Finance pack", description: "Revenue grouped by status", format: "csv", icon: "briefcase-outline" },
 ];
 
 export default function AdminReports() {

@@ -266,11 +266,21 @@ export default function AdminAnalytics() {
               <Text style={styles.signalTag}>RECOVERABLE</Text>
             </View>
             <Text style={styles.signalNumber}>
-              {abandonedQ.isLoading ? "—" : (abandonedQ.data?.active ?? 0).toLocaleString()}
+              {abandonedQ.isLoading
+                ? "—"
+                : Number(
+                    abandonedQ.data?.carts_with_activity ??
+                      abandonedQ.data?.total_carts ??
+                      abandonedQ.data?.active ??
+                      0,
+                  ).toLocaleString()}
             </Text>
             <Text style={styles.signalTitle}>Abandoned Carts</Text>
             <Text style={styles.signalDetail}>
-              {(abandonedQ.data?.notified ?? 0).toLocaleString()} nudges dispatched
+              {Number(
+                abandonedQ.data?.total_notified ?? abandonedQ.data?.carts_notified ?? abandonedQ.data?.notified ?? 0,
+              ).toLocaleString()}{" "}
+              nudges dispatched
             </Text>
           </View>
 
@@ -282,11 +292,19 @@ export default function AdminAnalytics() {
               <Text style={styles.signalTag}>WISHLIST</Text>
             </View>
             <Text style={styles.signalNumber}>
-              {priceQ.isLoading ? "—" : (priceQ.data?.active ?? 0).toLocaleString()}
+              {priceQ.isLoading
+                ? "—"
+                : Number(priceQ.data?.active_alerts ?? priceQ.data?.active ?? 0).toLocaleString()}
             </Text>
             <Text style={styles.signalTitle}>Price Alerts</Text>
             <Text style={styles.signalDetail}>
-              {(priceQ.data?.cancelled ?? 0).toLocaleString()} alerts executed
+              {Number(
+                priceQ.data?.notifications_in_window ??
+                  priceQ.data?.cancelled_alerts ??
+                  priceQ.data?.cancelled ??
+                  0,
+              ).toLocaleString()}{" "}
+              alerts executed
             </Text>
           </View>
         </View>

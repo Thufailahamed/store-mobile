@@ -31,13 +31,13 @@ describe("decideSellerReturn", () => {
     decideMock.mockResolvedValue({ ok: true, data: { return: { id: "rt1", status: "approved" } } });
     const res = await decideSellerReturn("u1", "rt1", "approve");
     expect(res.ok).toBe(true);
-    expect(decideMock).toHaveBeenCalledWith("rt1", "approve", undefined);
+    expect(decideMock).toHaveBeenCalledWith("rt1", "approve", undefined, undefined);
   });
 
   it("reject sends action: reject with note", async () => {
     decideMock.mockResolvedValue({ ok: true, data: { return: { id: "rt2", status: "rejected" } } });
     await decideSellerReturn("u1", "rt2", "reject", { note: "damaged" });
-    expect(decideMock).toHaveBeenCalledWith("rt2", "reject", "damaged");
+    expect(decideMock).toHaveBeenCalledWith("rt2", "reject", "damaged", undefined);
   });
 
   it("propagates failure", async () => {

@@ -1,24 +1,17 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { formatPrice } from "@/lib/utils";
-import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPayoutStatus } from "@/lib/payouts/ledger";
 import type { Payout } from "@/lib/api/backend";
 
-const STATUS_COLORS: Record<Payout["status"], string> = {
-  pending: colors.light.mutedForeground,
-  processing: colors.light.primary,
-  paid: "#16A34A",
-  failed: colors.light.destructive,
-  cancelled: colors.light.mutedForeground,
-};
-
-const STATUS_LABEL: Record<Payout["status"], string> = {
-  pending: "Pending",
-  processing: "Processing",
-  paid: "Paid",
-  failed: "Failed",
-  cancelled: "Cancelled",
+const STATUS_TONE: Record<Payout["status"], { bg: string; text: string }> = {
+  pending: { bg: "rgba(200,164,74,0.18)", text: "#8a6a2a" },
+  processing: { bg: "rgba(83,94,44,0.12)", text: colors.olive[800] },
+  paid: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
+  failed: { bg: "rgba(184,92,58,0.12)", text: colors.accent2.rust },
+  cancelled: { bg: colors.light.muted, text: colors.light.mutedForeground },
 };
 
 interface Props {
@@ -27,24 +20,43 @@ interface Props {
 }
 
 export function PayoutRow({ payout, onPress }: Props) {
-  const tone = STATUS_COLORS[payout.status];
+  const tone = STATUS_TONE[payout.status] ?? STATUS_TONE.pending;
+  const label = formatPayoutStatus(payout.status);
   return (
-    <Pressable accessibilityLabel={`Payout ${STATUS_LABEL[payout.status]} ${formatPrice(payout.amount, payout.currency)}`} accessibilityRole="button" onPress={onPress} style={styles.row}>
+    <Pressable
+      accessibilityLabel={`Payout ${label} ${formatPrice(payout.amount, payout.currency)}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={styles.row}
+    >
       <View style={{ flex: 1 }}>
         <Text style={styles.amount}>{formatPrice(payout.amount, payout.currency)}</Text>
-        <Text style={styles.meta}>{payout.method ?? "bank"} • {new Date(payout.created_at).toLocaleDateString()}</Text>
+        <Text style={styles.meta}>
+          {payout.method ?? "Bank"} · {new Date(payout.created_at).toLocaleDateString("en-LK", { day: "numeric", month: "short" })}
+        </Text>
       </View>
-      <View style={[styles.badge, { backgroundColor: tone + "22" }]}>
-        <Text style={[styles.badgeText, { color: tone }]}>{STATUS_LABEL[payout.status]}</Text>
+      <View style={[styles.badge, { backgroundColor: tone.bg }]}>
+        <Text style={[styles.badgeText, { color: tone.text }]}>{label}</Text>
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingHorizontal: spacing[4], paddingVertical: spacing[3], marginHorizontal: spacing[4], marginVertical: spacing[1], backgroundColor: colors.light.card, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.light.border },
-  amount: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.md, color: colors.light.foreground },
-  meta: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 2 },
-  badge: { paddingHorizontal: spacing[3], paddingVertical: spacing[1], borderRadius: radii.full },
-  badgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xs },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 10,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+  },
+  amount: { fontFamily: fontFamilies.display.semibold, fontSize: 16, color: colors.olive[950] },
+  meta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.olive[800], marginTop: 2, textTransform: "capitalize" },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
+  badgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11 },
 });

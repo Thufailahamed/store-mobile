@@ -57,8 +57,44 @@ describe("payouts wrappers", () => {
   });
 
   it("getPayoutDetailBackend hits /api/seller/payouts/:id with encoded id", async () => {
-    fetchJsonMock.mockResolvedValueOnce({ ok: true, data: { payout: { id: "p1", amount: 100 } } });
-    await getPayoutDetailBackend("p1");
-    expect(fetchJsonMock).toHaveBeenCalledWith("/api/seller/payouts/p1");
+    fetchJsonMock.mockResolvedValueOnce({ ok: true, data: { payout: { id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", amount: 100 } } });
+    await getPayoutDetailBackend("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/seller/payouts/a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+  });
+
+  it("getPayoutDetailBackend does not call the API for reserved paths", async () => {
+    const res = await getPayoutDetailBackend("balance");
+    expect(res.ok).toBe(false);
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("seller payout settings wrappers", () => {
+  it("getSellerPayoutSettingsBackend reads GET /api/seller/payouts (not /settings)", async () => {
+    const { getSellerPayoutSettingsBackend } = await import("@/lib/api/backend");
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { payouts: [], payout: { method: "bank", kyc_status: "approved" } },
+    });
+    const res = await getSellerPayoutSettingsBackend();
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/seller/payouts");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.settings).toMatchObject({ method: "bank", kyc_status: "approved" });
+    }
+  });
+
+  it("upsertSellerPayoutSettingsBackend PATCHes /api/seller/payouts", async () => {
+    const { upsertSellerPayoutSettingsBackend } = await import("@/lib/api/backend");
+    fetchJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { payout: { method: "upi", upi: "a@b" } },
+    });
+    const res = await upsertSellerPayoutSettingsBackend({ method: "upi", upi: "a@b" });
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/seller/payouts", {
+      method: "PATCH",
+      body: { method: "upi", upi: "a@b" },
+    });
+    expect(res.ok).toBe(true);
   });
 });

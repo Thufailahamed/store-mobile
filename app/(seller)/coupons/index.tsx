@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
@@ -21,8 +22,7 @@ import {
   createStoreCoupon,
   updateStoreCoupon,
   deleteStoreCoupon,
-  toggleCoupon,
-  searchProductsBackend,
+  getSellerProducts,
 } from "@/lib/api";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -57,8 +57,10 @@ function typeBadgeLabel(coupon: AdminCoupon) {
 export default function SellerCoupons() {
   const { user } = useAuth();
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
+  const [storeId, setStoreId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<AdminCoupon | null>(null);
 
@@ -89,12 +91,25 @@ export default function SellerCoupons() {
   >([]);
   const [pickerSearching, setPickerSearching] = useState(false);
 
+  /** Only percentage and fixed coupons carry a flat discount value. */
+  const needsValue = type === "percentage" || type === "fixed";
+
   const fetchData = useCallback(async () => {
     if (!user) return;
     const storeRes = await getSellerStore(user.id);
-    if (storeRes.ok && storeRes.data) {
-      const res = await getStoreCoupons(storeRes.data.id);
-      if (res.ok) setCoupons(res.data);
+    if (!storeRes.ok || !storeRes.data) {
+      setLoadError(storeRes.ok ? "No store found" : storeRes.error);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setStoreId(storeRes.data.id);
+    const res = await getStoreCoupons(storeRes.data.id);
+    if (res.ok) {
+      setCoupons(res.data);
+      setLoadError(null);
+    } else {
+      setLoadError(res.error);
     }
     setLoading(false);
     setRefreshing(false);
@@ -108,11 +123,13 @@ export default function SellerCoupons() {
   }, [fetchData]);
 
   const handleToggle = async (coupon: AdminCoupon) => {
-    const res = await toggleCoupon(coupon.id, !coupon.is_active);
+    const res = await updateStoreCoupon(coupon.id, { is_active: !coupon.is_active });
     if (res.ok) {
       setCoupons((prev) =>
         prev.map((c) => (c.id === coupon.id ? { ...c, is_active: !c.is_active } : c))
       );
+    } else {
+      Alert.alert("Update failed", res.error);
     }
   };
 
@@ -164,9 +181,17 @@ export default function SellerCoupons() {
       Alert.alert("Error", "Coupon code is required");
       return;
     }
-    if (!value || Number(value) <= 0) {
-      Alert.alert("Error", "Enter a valid discount value");
-      return;
+    // Free shipping and BXGY carry no flat discount value — free shipping is
+    // the discount, and BXGY is priced by `bxgy_get_discount_pct`.
+    if (needsValue) {
+      if (!value || Number(value) <= 0) {
+        Alert.alert("Error", "Enter a valid discount value");
+        return;
+      }
+      if (type === "percentage" && Number(value) > 100) {
+        Alert.alert("Error", "Percentage coupons cannot exceed 100%");
+        return;
+      }
     }
     if (minOrder.trim() && (!Number.isFinite(Number(minOrder)) || Number(minOrder) < 0)) {
       Alert.alert("Error", "Minimum order total must be a valid, non-negative number");
@@ -200,7 +225,7 @@ export default function SellerCoupons() {
     const coupon: Partial<AdminCoupon> = {
       code: code.trim().toUpperCase(),
       type: type as any,
-      value: Number(value),
+      value: needsValue ? Number(value) : 0,
       min_order_total: minOrder ? Number(minOrder) : undefined,
       max_uses: maxUses ? Number(maxUses) : undefined,
       current_uses: 0,
@@ -235,6 +260,16 @@ export default function SellerCoupons() {
       Alert.alert("Error", "Coupon code is required");
       return;
     }
+    if (needsValue) {
+      if (!value || Number(value) <= 0) {
+        Alert.alert("Error", "Enter a valid discount value");
+        return;
+      }
+      if (type === "percentage" && Number(value) > 100) {
+        Alert.alert("Error", "Percentage coupons cannot exceed 100%");
+        return;
+      }
+    }
     setSaving(true);
     const patch: Partial<AdminCoupon> = {
       code: code.trim().toUpperCase(),
@@ -251,7 +286,9 @@ export default function SellerCoupons() {
           }
         : {}),
     };
-    if (type !== "bxgy" && value) patch.value = Number(value);
+    // Switching an existing coupon to free shipping / BXGY must clear any
+    // stale flat discount, otherwise the old value keeps applying.
+    patch.value = needsValue ? Number(value) : 0;
     const res = await updateStoreCoupon(editing.id, patch);
     setSaving(false);
     if (res.ok) {
@@ -275,28 +312,29 @@ export default function SellerCoupons() {
     setBxgyGetDiscountPct("100");
   };
 
-  // Product picker — debounced server-side search via /api/catalog/search
+  // Product picker — seller catalogue only (this maison), not the public storefront search
   const runProductSearch = useCallback(async (term: string) => {
     setPickerQuery(term);
     if (term.trim().length < 2) {
       setPickerResults([]);
       return;
     }
+    if (!storeId) return;
     setPickerSearching(true);
-    const res = await searchProductsBackend({ q: term, limit: 10 });
+    const res = await getSellerProducts(storeId, { search: term, limit: 10 });
     setPickerSearching(false);
     if (res.ok) {
       setPickerResults(
-        (res.data.products ?? []).map((p: { id: string; name: string; slug: string; price: number; image: string | null }) => ({
+        res.data.products.map((p) => ({
           id: p.id,
           name: p.name,
           slug: p.slug,
           price: p.price,
-          image_url: p.image,
+          image_url: p.images?.find((img) => img.is_primary)?.url ?? p.images?.[0]?.url ?? null,
         })),
       );
     }
-  }, []);
+  }, [storeId]);
 
   const togglePickerProduct = (productId: string) => {
     if (!pickerOpen) return;
@@ -331,12 +369,25 @@ export default function SellerCoupons() {
       <View style={s.header}>
         <View style={s.heroBg} />
         <View style={s.heroContent}>
+          <TouchableOpacity
+            style={s.backBtn}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={22} color="#fff" />
+          </TouchableOpacity>
           <View style={s.heroRow}>
             <View>
               <Text style={s.kicker}>PROMOTIONS</Text>
               <Text style={s.heroTitle}>Coupons</Text>
             </View>
-            <TouchableOpacity style={s.addBtn} onPress={() => setShowCreate(true)}>
+            <TouchableOpacity
+              style={s.addBtn}
+              onPress={() => setShowCreate(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Create coupon"
+            >
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -368,11 +419,15 @@ export default function SellerCoupons() {
         {coupons.length === 0 ? (
           <View style={s.emptyCard}>
             <Ionicons name="pricetag-outline" size={32} color={colors.light.mutedForeground} />
-            <Text style={s.emptyTitle}>No coupons yet</Text>
-            <Text style={s.emptySub}>Create your first coupon to attract customers</Text>
-            <TouchableOpacity style={s.emptyBtn} onPress={() => setShowCreate(true)}>
-              <Text style={s.emptyBtnText}>Create Coupon</Text>
-            </TouchableOpacity>
+            <Text style={s.emptyTitle}>{loadError ? "Couldn’t load coupons" : "No coupons yet"}</Text>
+            <Text style={s.emptySub}>
+              {loadError ?? "Create your first coupon to attract customers"}
+            </Text>
+            {!loadError ? (
+              <TouchableOpacity style={s.emptyBtn} onPress={() => setShowCreate(true)}>
+                <Text style={s.emptyBtnText}>Create Coupon</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           coupons.map((coupon) => (
@@ -497,18 +552,26 @@ export default function SellerCoupons() {
                 autoCorrect={false}
               />
 
-              {/* Value */}
-              <Text style={s.fieldLabel}>
-                {type === "percentage" ? "Discount Percentage" : type === "fixed" ? "Discount Amount (Rs.)" : "Value"}
-              </Text>
-              <TextInput
-                style={s.input}
-                value={value}
-                onChangeText={setValue}
-                placeholder={type === "percentage" ? "25" : "500"}
-                placeholderTextColor={colors.light.mutedForeground}
-                keyboardType="numeric"
-              />
+              {/* Value — not applicable to free shipping or BXGY */}
+              {needsValue ? (
+                <>
+                  <Text style={s.fieldLabel}>
+                    {type === "percentage" ? "Discount Percentage" : "Discount Amount (Rs.)"}
+                  </Text>
+                  <TextInput
+                    style={s.input}
+                    value={value}
+                    onChangeText={setValue}
+                    placeholder={type === "percentage" ? "25" : "500"}
+                    placeholderTextColor={colors.light.mutedForeground}
+                    keyboardType="numeric"
+                  />
+                </>
+              ) : type === "free_shipping" ? (
+                <Text style={s.fieldHint}>
+                  Free shipping coupons waive the delivery fee — no discount value needed.
+                </Text>
+              ) : null}
 
               {/* Min Order */}
               <Text style={s.fieldLabel}>Minimum Order Total (Rs.)</Text>
@@ -653,10 +716,10 @@ export default function SellerCoupons() {
                 autoCorrect={false}
               />
 
-              {type !== "bxgy" && (
+              {needsValue ? (
                 <>
                   <Text style={s.fieldLabel}>
-                    {type === "percentage" ? "Discount Percentage" : type === "fixed" ? "Discount Amount (Rs.)" : "Value"}
+                    {type === "percentage" ? "Discount Percentage" : "Discount Amount (Rs.)"}
                   </Text>
                   <TextInput
                     style={s.input}
@@ -667,7 +730,11 @@ export default function SellerCoupons() {
                     keyboardType="numeric"
                   />
                 </>
-              )}
+              ) : type === "free_shipping" ? (
+                <Text style={s.fieldHint}>
+                  Free shipping coupons waive the delivery fee — no discount value needed.
+                </Text>
+              ) : null}
 
               <Text style={s.fieldLabel}>Minimum Order Total (Rs.)</Text>
               <TextInput
@@ -843,6 +910,12 @@ const s = StyleSheet.create({
     borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
   },
   heroContent: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 20 },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center", alignItems: "center",
+    marginBottom: 10,
+  },
   heroRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
@@ -1038,6 +1111,12 @@ const s = StyleSheet.create({
     fontWeight: typography.fontWeights.medium as any,
     color: colors.light.foreground,
     marginTop: 16, marginBottom: 8,
+  },
+  fieldHint: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    lineHeight: 19,
+    marginTop: 16,
   },
   input: {
     backgroundColor: colors.light.card,

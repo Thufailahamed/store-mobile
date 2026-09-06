@@ -12,7 +12,12 @@ import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { pickImage } from "@/lib/upload";
 import { colors, radii, typography } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 import type { ProductImage } from "@/lib/types";
+
+const CREAM = colors.paper.cream;
+const GOLD = colors.accent2.ochre;
+const INK = colors.olive[950];
 
 export type PendingProductImage = {
   key: string;
@@ -72,9 +77,10 @@ export function ProductMediaSection({
   return (
     <View style={styles.section}>
       <View style={styles.header}>
+        <Text style={styles.kicker}>Lookbook</Text>
         <Text style={styles.title}>Photos</Text>
         <Text style={styles.subtitle}>
-          {total === 0 ? "Add at least one product photo" : `${total} photo${total === 1 ? "" : "s"}`}
+          {total === 0 ? "Add at least one photo of this piece" : `${total} photo${total === 1 ? "" : "s"}`}
         </Text>
       </View>
 
@@ -84,7 +90,7 @@ export function ProductMediaSection({
             <ActivityIndicator color={colors.light.primary} />
           ) : (
             <>
-              <Ionicons name="camera-outline" size={22} color={colors.light.primary} />
+              <Ionicons name="camera-outline" size={22} color={colors.olive[800]} />
               <Text style={styles.addText}>Add</Text>
             </>
           )}
@@ -108,8 +114,10 @@ export function ProductMediaSection({
             <TouchableOpacity
               style={styles.removeBtn}
               onPress={() => confirmRemove("This photo will be removed from the product.", () => onRemoveExisting(img.id))}
+              hitSlop={6}
+              accessibilityLabel="Remove photo"
             >
-              <Ionicons name="close" size={14} color="#fff" />
+              <Ionicons name="close" size={14} color={CREAM} />
             </TouchableOpacity>
             {onMoveExisting && existing.length > 1 ? (
               <View style={styles.reorderCol}>
@@ -152,8 +160,10 @@ export function ProductMediaSection({
             <TouchableOpacity
               style={styles.removeBtn}
               onPress={() => onRemovePending(img.key)}
+              hitSlop={6}
+              accessibilityLabel="Remove photo"
             >
-              <Ionicons name="close" size={14} color="#fff" />
+              <Ionicons name="close" size={14} color={CREAM} />
             </TouchableOpacity>
           </View>
         ))}
@@ -162,82 +172,92 @@ export function ProductMediaSection({
   );
 }
 
-const TILE = 108;
+const TILE_W = 96;
+const TILE_H = 128;
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 20 },
-  header: { marginBottom: 10, gap: 2 },
+  section: { marginBottom: 22 },
+  header: { marginBottom: 12, gap: 2 },
+  kicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+  },
   title: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: INK,
   },
   subtitle: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
   },
   row: { gap: 10, paddingRight: 4 },
   addTile: {
-    width: TILE,
-    height: TILE,
-    borderRadius: radii.lg,
+    width: TILE_W,
+    height: TILE_H,
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderStyle: "dashed",
-    backgroundColor: colors.light.card,
+    borderColor: "rgba(83,94,44,0.18)",
+    backgroundColor: CREAM,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 6,
   },
   addText: {
     fontSize: typography.fontSizes.xs,
-    color: colors.light.primary,
-    fontWeight: typography.fontWeights.medium as any,
+    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.medium,
   },
   tile: {
-    width: TILE,
-    height: TILE,
-    borderRadius: radii.lg,
+    width: TILE_W,
+    height: TILE_H,
+    borderRadius: radii.xl,
     overflow: "hidden",
-    backgroundColor: colors.light.muted,
+    backgroundColor: colors.paper.warm,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
   },
   image: { width: "100%", height: "100%" },
   primaryBadge: {
     position: "absolute",
     left: 6,
     bottom: 6,
-    backgroundColor: colors.light.primary,
+    backgroundColor: GOLD,
     borderRadius: radii.full,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   primaryText: {
     fontSize: 10,
-    color: colors.light.primaryForeground,
-    fontWeight: typography.fontWeights.semibold as any,
+    color: INK,
+    fontFamily: fontFamilies.sans.semibold,
   },
   coverBtn: {
     position: "absolute",
     left: 6,
     bottom: 6,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(22,26,10,0.62)",
     borderRadius: radii.full,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   coverBtnText: {
     fontSize: 10,
-    color: "#fff",
-    fontWeight: typography.fontWeights.medium as any,
+    color: CREAM,
+    fontFamily: fontFamilies.sans.medium,
   },
   removeBtn: {
     position: "absolute",
     top: 6,
     right: 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(22,26,10,0.62)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -248,10 +268,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   reorderBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(22,26,10,0.62)",
     alignItems: "center",
     justifyContent: "center",
   },

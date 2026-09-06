@@ -55,8 +55,8 @@ describe("createStoreCoupon facade", () => {
       expect.objectContaining({
         code: "WELCOME10",
         discount_type: "percent",
-        min_order_amount: 500,
-        max_uses: 100,
+        min_order_value: 500,
+        usage_limit: 100,
       }),
     );
   });
@@ -82,5 +82,30 @@ describe("createStoreCoupon facade", () => {
     const res = await createStoreCoupon(baseCoupon);
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.data.id).toBe("c2");
+  });
+
+  it("does not turn the discount into a minimum order requirement", async () => {
+    createBackendMock.mockResolvedValue({ ok: true, data: { coupon: { id: "c3" } } });
+    // "Rs.500 off" with no stated minimum must not become "spend Rs.500".
+    const res = await createStoreCoupon({ code: "FLAT500", type: "fixed", value: 500 });
+    expect(res.ok).toBe(true);
+    expect(createBackendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ discount_type: "fixed", discount_value: 500, min_order_value: 0 }),
+    );
+  });
+
+  it("accepts a free_shipping coupon with no discount value", async () => {
+    createBackendMock.mockResolvedValue({ ok: true, data: { coupon: { id: "c4" } } });
+    const res = await createStoreCoupon({ code: "FREESHIP", type: "free_shipping", value: 0 });
+    expect(res.ok).toBe(true);
+    expect(createBackendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ discount_type: "free_shipping", discount_value: 0 }),
+    );
+  });
+
+  it("rejects a percentage coupon above 100%", async () => {
+    const res = await createStoreCoupon({ code: "TOOMUCH", type: "percentage", value: 150 });
+    expect(res.ok).toBe(false);
+    expect(createBackendMock).not.toHaveBeenCalled();
   });
 });

@@ -1,120 +1,256 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
   RefreshControl,
+  StatusBar,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { Image } from "expo-image";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getSellerOrders } from "@/lib/api";
-import { colors, typography, radii } from "@/lib/theme/tokens";
-import type { Order, OrderStatus } from "@/lib/types";
+import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  SellerScreenHeader,
+  SellerSearchField,
+  SellerFilterTab,
+  SellerStateView,
+  SellerStatusPill,
+  SELLER_CREAM,
+  SELLER_INK,
+  SELLER_RUST,
+  sellerBorder,
+} from "@/components/seller/chrome";
+import {
+  countOrderUnits,
+  countOrdersByStatus,
+  filterSellerOrders,
+  firstLineItem,
+  formatCheckoutPayment,
+  formatOrderStatusLabel,
+  formatPaymentStatus,
+  readShippingContact,
+} from "@/lib/orders/seller-list";
+import { orderStatusTone } from "@/lib/seller/status-tones";
+import type { Order } from "@/lib/types";
 
-const STATUS_TABS: { key: string; label: string; accent?: string }[] = [
+const RUST = SELLER_RUST;
+const CREAM = SELLER_CREAM;
+const INK = SELLER_INK;
+
+const STATUS_TABS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "pending", label: "Pending", accent: "#f59e0b" },
-  { key: "confirmed", label: "Confirmed", accent: "#3b82f6" },
-  { key: "processing", label: "Packing", accent: "#6366f1" },
-  { key: "shipped", label: "Shipped", accent: "#f59e0b" },
-  { key: "delivered", label: "Delivered", accent: "#10b981" },
-  { key: "cancelled", label: "Cancelled", accent: "#9ca3af" },
+  { key: "pending", label: "Pending" },
+  { key: "confirmed", label: "Confirmed" },
+  { key: "processing", label: "Packing" },
+  { key: "shipped", label: "Shipped" },
+  { key: "delivered", label: "Delivered" },
+  { key: "cancelled", label: "Cancelled" },
 ];
-
-function formatPrice(n: number) {
-  return `Rs. ${n.toLocaleString("en-LK")}`;
-}
 
 function formatRelative(dateStr: string) {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "—";
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString("en-LK", { day: "numeric", month: "short" });
 }
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  pending: { bg: "#fef3c7", text: "#92400e" },
-  confirmed: { bg: "#dbeafe", text: "#1e40af" },
-  processing: { bg: "#e0e7ff", text: "#3730a3" },
-  shipped: { bg: "#fef3c7", text: "#92400e" },
-  out_for_delivery: { bg: "#f3e8ff", text: "#7c3aed" },
-  delivered: { bg: "#dcfce7", text: "#166534" },
-  cancelled: { bg: "#f3f4f6", text: "#6b7280" },
-  returned: { bg: "#f3e8ff", text: "#7c3aed" },
-  refunded: { bg: "#fce7f3", text: "#be185d" },
-};
+function orderMoney(order: Order): string {
+  if (!Number.isFinite(order.total)) return "—";
+  return formatPrice(order.total, order.currency || "LKR");
+}
+
+function OrdersSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
+      {[0, 1, 2, 3].map((i) => (
+        <View key={i} style={styles.skelCard}>
+          <Skeleton width={56} height={56} borderRadius={16} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Skeleton width="55%" height={14} />
+            <Skeleton width="80%" height={12} />
+            <Skeleton width="40%" height={12} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function SellerOrders() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ search?: string }>();
   const { user } = useAuth();
   const [storeId, setStoreId] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [listedTotal, setListedTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState("");
+  const incomingSearch = typeof params.search === "string" ? params.search : "";
+  const [searchInput, setSearchInput] = useState(incomingSearch);
+  const [search, setSearch] = useState(incomingSearch);
   const [statusTab, setStatusTab] = useState("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!incomingSearch) return;
+    setSearchInput(incomingSearch);
+    setSearch(incomingSearch.trim());
+  }, [incomingSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const fetchOrders = useCallback(async () => {
     if (!user) return;
-    if (!storeId) {
+    let sid = storeId;
+    if (!sid) {
       const storeRes = await getSellerStore(user.id);
-      if (storeRes.ok && storeRes.data) {
-        setStoreId(storeRes.data.id);
-        const res = await getSellerOrders(storeRes.data.id, { status: statusTab, search });
-        if (res.ok) setOrders(res.data);
+      if (!storeRes.ok || !storeRes.data) {
+        setLoadError(storeRes.ok ? "No store found" : storeRes.error);
+        setOrders([]);
+        setListedTotal(null);
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
+      sid = storeRes.data.id;
+      setStoreId(sid);
+    }
+    const res = await getSellerOrders(sid, { limit: 200 });
+    if (res.ok) {
+      setOrders(res.data.orders);
+      setListedTotal(res.data.total);
+      setLoadError(null);
     } else {
-      const res = await getSellerOrders(storeId, { status: statusTab, search });
-      if (res.ok) setOrders(res.data);
+      setLoadError(res.error);
+      setOrders([]);
+      setListedTotal(null);
     }
     setLoading(false);
     setRefreshing(false);
-  }, [user, storeId, statusTab, search]);
+  }, [user, storeId]);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  useEffect(() => {
+    void fetchOrders();
+  }, [fetchOrders]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!storeId || !mountedRef.current) {
+        mountedRef.current = true;
+        return;
+      }
+      void fetchOrders();
+    }, [storeId, fetchOrders]),
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchOrders();
+    void fetchOrders();
   }, [fetchOrders]);
 
+  const counts = useMemo(() => countOrdersByStatus(orders), [orders]);
+  const visible = useMemo(
+    () => filterSellerOrders(orders, { status: statusTab, search }),
+    [orders, statusTab, search],
+  );
+
+  const headerCount = useMemo(() => {
+    if (loadError) return "—";
+    if (search) return `${visible.length} match${visible.length === 1 ? "" : "es"}`;
+    if (statusTab !== "all") {
+      const label = STATUS_TABS.find((t) => t.key === statusTab)?.label.toLowerCase() ?? "";
+      return `${visible.length} ${label}`;
+    }
+    if (listedTotal != null) return `${listedTotal} total`;
+    return `${orders.length} total`;
+  }, [loadError, search, statusTab, visible.length, listedTotal, orders.length]);
+
   const renderOrder = ({ item }: { item: Order }) => {
-    const sc = STATUS_COLORS[item.status] ?? STATUS_COLORS.pending;
-    const itemsCount = item.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-    const ship = item.shipping_address;
+    const tone = orderStatusTone(item.status);
+    const units = countOrderUnits(item.items);
+    const ship = readShippingContact(item);
+    const line = firstLineItem(item.items);
+    const method = formatCheckoutPayment(item.payment_method);
+    const payStatus = formatPaymentStatus(item.payment_status);
+    const codUnpaid = item.payment_method === "cod" && item.payment_status !== "paid";
+    const extraUnits = units != null && units > 1 ? units - 1 : 0;
+
+    const metaBits = [
+      formatRelative(item.placed_at),
+      units != null ? `${units} item${units === 1 ? "" : "s"}` : null,
+      ship.name,
+      ship.place,
+    ].filter(Boolean);
 
     return (
       <TouchableOpacity
-        style={styles.orderCard}
-        onPress={() => router.push(`/(seller)/orders/${item.id}` as any)}
+        style={[styles.orderCard, codUnpaid && styles.orderCardUnpaid]}
+        onPress={() => router.push(`/(seller)/orders/${item.id}` as const)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.order_number}, ${formatOrderStatusLabel(item.status)}, ${orderMoney(item)}`}
       >
-        <View style={styles.orderHeader}>
-          <View>
-            <Text style={styles.orderNumber}>{item.order_number}</Text>
-            <Text style={styles.orderMeta}>{formatRelative(item.placed_at)} · {itemsCount} item{itemsCount === 1 ? "" : "s"}</Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-            <Text style={[styles.statusText, { color: sc.text }]}>{item.status}</Text>
-          </View>
+        <View style={styles.thumbWrap}>
+          {line?.imageUrl ? (
+            <Image source={{ uri: line.imageUrl }} style={styles.thumb} contentFit="cover" />
+          ) : (
+            <View style={[styles.thumb, styles.thumbEmpty]}>
+              <Ionicons name="bag-outline" size={20} color={colors.olive[700]} />
+            </View>
+          )}
+          {extraUnits > 0 ? (
+            <View style={styles.thumbBadge}>
+              <Text style={styles.thumbBadgeText}>+{extraUnits}</Text>
+            </View>
+          ) : null}
         </View>
-        {ship && (
-          <Text style={styles.orderCustomer} numberOfLines={1}>
-            {ship.full_name}{ship.city ? ` · ${ship.city}` : ""}
+
+        <View style={styles.orderBody}>
+          <View style={styles.orderHeader}>
+            <Text style={styles.orderNumber} numberOfLines={1}>
+              {item.order_number || "—"}
+            </Text>
+            <SellerStatusPill
+              label={formatOrderStatusLabel(item.status)}
+              bg={tone.bg}
+              color={tone.text}
+              dotted={item.status === "pending" || item.status === "processing"}
+            />
+          </View>
+          <Text style={styles.itemName} numberOfLines={1}>
+            {line?.name ?? "Order items"}
+            {line?.variant ? ` · ${line.variant}` : ""}
           </Text>
-        )}
-        <View style={styles.orderFooter}>
-          <Text style={styles.orderTotal}>{formatPrice(item.total)}</Text>
-          <Text style={styles.orderPayment}>
-            {item.payment_method?.toUpperCase() ?? "—"} · {item.payment_status}
+          <Text style={styles.orderMeta} numberOfLines={1}>
+            {metaBits.join(" · ") || "—"}
           </Text>
+          <View style={styles.orderFooter}>
+            <Text style={styles.orderTotal}>{orderMoney(item)}</Text>
+            <Text style={[styles.orderPayment, codUnpaid && styles.orderPaymentWarn]}>
+              {method} · {payStatus}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -122,221 +258,169 @@ export default function SellerOrders() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Orders</Text>
-        <Text style={styles.count}>{orders.length} total</Text>
-      </View>
+      <StatusBar barStyle="dark-content" />
+      <SellerScreenHeader kicker="Fulfillment" title="Orders" meta={headerCount} />
 
-      {/* Search */}
       <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by order number..."
-          value={search}
-          onChangeText={setSearch}
-          placeholderTextColor={colors.light.mutedForeground}
+        <SellerSearchField
+          value={searchInput}
+          onChangeText={setSearchInput}
+          placeholder="Search order, customer, city…"
+          accessibilityLabel="Search orders"
         />
       </View>
 
-      {/* Status Tabs */}
       <View style={styles.tabsContainer}>
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
           data={STATUS_TABS}
           keyExtractor={(item) => item.key}
-          renderItem={({ item: tab }) => {
-            const count = tab.key === "all"
-              ? orders.length
-              : orders.filter((o) => o.status === tab.key).length;
-            return (
-              <TouchableOpacity
-                style={[styles.tab, statusTab === tab.key && styles.tabActive]}
-                onPress={() => setStatusTab(tab.key)}
-              >
-                {tab.accent && statusTab !== tab.key && (
-                  <View style={[styles.tabDot, { backgroundColor: tab.accent }]} />
-                )}
-                <Text style={[styles.tabText, statusTab === tab.key && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-                {count > 0 && (
-                  <View style={[styles.tabCount, statusTab === tab.key && styles.tabCountActive]}>
-                    <Text style={[styles.tabCountText, statusTab === tab.key && styles.tabCountTextActive]}>
-                      {count}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item: tab }) => (
+            <SellerFilterTab
+              label={tab.label}
+              count={counts[tab.key] ?? 0}
+              active={statusTab === tab.key}
+              onPress={() => setStatusTab(tab.key)}
+            />
+          )}
           contentContainerStyle={styles.tabsContent}
         />
       </View>
 
-      {/* Orders List */}
-      <FlatList
-        data={orders}
-        keyExtractor={(item) => item.id}
-        renderItem={renderOrder}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>🛒</Text>
-            <Text style={styles.emptyTitle}>No orders here</Text>
-            <Text style={styles.emptySub}>Orders will appear in real-time</Text>
-          </View>
-        }
-      />
+      {loading && orders.length === 0 ? (
+        <OrdersSkeleton />
+      ) : (
+        <FlatList
+          data={visible}
+          keyExtractor={(item) => item.id}
+          renderItem={renderOrder}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[800]} />
+          }
+          contentContainerStyle={[styles.listContent, { paddingBottom: 24 + insets.bottom }]}
+          ListEmptyComponent={
+            <SellerStateView
+              variant={loadError ? "error" : "empty"}
+              icon={loadError ? "cloud-offline-outline" : "receipt-outline"}
+              title={loadError ? "Couldn’t load orders" : "No orders here"}
+              description={
+                loadError ??
+                (search
+                  ? "Nothing matches that search."
+                  : "Orders from this store will appear here.")
+              }
+              actionLabel={loadError ? "Try again" : undefined}
+              onAction={loadError ? () => void fetchOrders() : undefined}
+              style={{ marginTop: 24 }}
+            />
+          }
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingBottom: 8,
-  },
-  title: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
-  },
-  count: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-  },
-
-  searchContainer: { paddingHorizontal: 16, marginBottom: 8 },
-  searchInput: {
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    padding: 12,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
-  },
-
+  searchContainer: { paddingHorizontal: spacing[5], marginBottom: spacing[3], marginTop: spacing[1] },
   tabsContainer: { marginBottom: 8 },
-  tabsContent: { paddingHorizontal: 16, gap: 8 },
-  tab: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: 4,
-  },
-  tabActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
-  },
-  tabDot: { width: 6, height: 6, borderRadius: 3 },
-  tabText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    fontWeight: typography.fontWeights.medium as any,
-  },
-  tabTextActive: { color: colors.light.card },
-  tabCount: {
-    backgroundColor: colors.light.muted,
-    borderRadius: radii.full,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    minWidth: 20,
-    alignItems: "center",
-  },
-  tabCountActive: { backgroundColor: "rgba(255,255,255,0.2)" },
-  tabCountText: {
-    fontSize: 10,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.mutedForeground,
-  },
-  tabCountTextActive: { color: colors.light.card },
-
-  listContent: { padding: 16, paddingTop: 8 },
-
+  tabsContent: { paddingHorizontal: spacing[5], gap: 8 },
+  listContent: { paddingHorizontal: spacing[5], paddingTop: 8 },
   orderCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.lg,
+    flexDirection: "row",
+    gap: 12,
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: sellerBorder,
     padding: 14,
     marginBottom: 10,
   },
+  orderCardUnpaid: {
+    borderColor: "rgba(184,92,58,0.35)",
+    backgroundColor: "rgba(184,92,58,0.04)",
+  },
+  thumbWrap: { width: 58, height: 58 },
+  thumb: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: colors.olive[50],
+  },
+  thumbEmpty: { alignItems: "center", justifyContent: "center" },
+  thumbBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    backgroundColor: INK,
+    borderRadius: radii.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 2,
+    borderColor: CREAM,
+  },
+  thumbBadgeText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    color: CREAM,
+  },
+  orderBody: { flex: 1, minWidth: 0 },
   orderHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: 8,
   },
   orderNumber: {
+    flex: 1,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
-    fontFamily: "monospace",
+    color: INK,
+  },
+  itemName: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    color: INK,
+    marginTop: 5,
   },
   orderMeta: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: typography.fontWeights.semibold as any,
-    textTransform: "capitalize",
-  },
-  orderCustomer: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 6,
+    marginTop: 3,
   },
   orderFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
+    alignItems: "baseline",
+    marginTop: 11,
+    paddingTop: 11,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: sellerBorder,
+    gap: 8,
   },
   orderTotal: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: INK,
+    letterSpacing: -0.3,
   },
   orderPayment: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    textTransform: "capitalize",
+    color: colors.olive[700],
+    flexShrink: 1,
+    textAlign: "right",
   },
-
-  emptyContainer: { alignItems: "center", paddingVertical: 48 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-    marginTop: 12,
-  },
-  emptySub: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
+  orderPaymentWarn: { color: RUST, fontFamily: fontFamilies.sans.semibold },
+  skelCard: {
+    flexDirection: "row",
+    gap: 12,
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: sellerBorder,
+    padding: 14,
   },
 });

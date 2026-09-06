@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,32 +10,31 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { getSellerStore, getSellerOrderById, transitionOrderStatus } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice } from "@/lib/utils";
 import { CUSTOMER_STATUS_STEPS, getSellerNextStatus } from "@/lib/order-lifecycle";
+import { formatCheckoutPayment, formatOrderStatusLabel, formatPaymentStatus } from "@/lib/orders/seller-list";
+import { orderStatusTone } from "@/lib/seller/status-tones";
+import { SellerBackButton } from "@/components/seller/SellerBackButton";
+import {
+  SellerStickyBar,
+  SellerPrimaryButton,
+  SellerGhostButton,
+  SellerStatusPill,
+} from "@/components/seller/chrome";
+import { Skeleton, SkeletonListRow } from "@/components/ui/Skeleton";
 import type { Order, OrderStatus } from "@/lib/types";
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  pending: { bg: "#fef3c7", text: "#92400e" },
-  confirmed: { bg: "#dbeafe", text: "#1e40af" },
-  processing: { bg: "#e0e7ff", text: "#3730a3" },
-  shipped: { bg: "#fef3c7", text: "#92400e" },
-  out_for_delivery: { bg: "#f3e8ff", text: "#7c3aed" },
-  delivered: { bg: "#dcfce7", text: "#166534" },
-  cancelled: { bg: "#f3f4f6", text: "#6b7280" },
-  returned: { bg: "#f3e8ff", text: "#7c3aed" },
-  refunded: { bg: "#fce7f3", text: "#be185d" },
-};
-
 const STATUSES: OrderStatus[] = CUSTOMER_STATUS_STEPS;
-
-function formatPrice(n: number) {
-  return `Rs. ${n.toLocaleString("en-LK")}`;
-}
+const CREAM = colors.paper.cream;
+const INK = colors.olive[950];
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-LK", {
@@ -48,28 +47,48 @@ function formatDate(dateStr: string) {
 }
 
 export default function SellerOrderDetail() {
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [refundReason, setRefundReason] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!id || !user) return;
-    (async () => {
-      const storeRes = await getSellerStore(user.id);
-      if (!storeRes.ok || !storeRes.data) {
-        setLoading(false);
-        return;
-      }
-      const res = await getSellerOrderById(id, storeRes.data.id);
-      if (res.ok && res.data) setOrder(res.data);
+    const storeRes = await getSellerStore(user.id);
+    if (!storeRes.ok || !storeRes.data) {
+      setLoadError(storeRes.ok ? "No store found" : storeRes.error);
       setLoading(false);
-    })();
+      setRefreshing(false);
+      return;
+    }
+    const res = await getSellerOrderById(id, storeRes.data.id);
+    if (res.ok && res.data) {
+      setOrder(res.data);
+      setLoadError(null);
+    } else {
+      setLoadError(res.ok ? "Order not found" : res.error);
+    }
+    setLoading(false);
+    setRefreshing(false);
   }, [id, user]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load();
+  }, [load]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    load();
+  }, [load]);
 
   const handleTransition = async (nextStatus: OrderStatus) => {
     if (!order) return;
@@ -130,16 +149,57 @@ export default function SellerOrderDetail() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
-        <Text style={styles.loadingText}>Loading order...</Text>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.content}>
+          <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
+          <View style={styles.skeletonHeader}>
+            <Skeleton width="48%" height={28} borderRadius={8} />
+            <Skeleton width="32%" height={14} borderRadius={6} />
+            <Skeleton width={88} height={28} borderRadius={radii.full} style={{ marginTop: 4 }} />
+          </View>
+          <View style={styles.skeletonCard}>
+            <Skeleton width="40%" height={12} />
+            <Skeleton width="70%" height={18} style={{ marginTop: 10 }} />
+            <Skeleton width="55%" height={14} style={{ marginTop: 8 }} />
+          </View>
+          <View style={styles.skeletonCard}>
+            <Skeleton width="100%" height={44} borderRadius={radii.lg} />
+          </View>
+          <SkeletonListRow />
+          <SkeletonListRow />
+          <SkeletonListRow />
+        </View>
       </SafeAreaView>
     );
   }
 
   if (!order) {
+    const friendlyError =
+      !loadError
+        ? "Order not found"
+        : /more than one relationship|upstream:|PGRST/i.test(loadError)
+          ? "Something went wrong loading this order. Please try again."
+          : loadError;
     return (
-      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
-        <Text style={styles.loadingText}>Order not found</Text>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.content}>
+          <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
+          <View style={styles.errorPanel}>
+            <View style={styles.errorIcon}>
+              <Text style={styles.errorIconText}>!</Text>
+            </View>
+            <Text style={styles.errorTitle}>Couldn’t load this order</Text>
+            <Text style={styles.errorBody}>{friendlyError}</Text>
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={retry}
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+            >
+              <Text style={styles.retryLabel}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
@@ -147,105 +207,107 @@ export default function SellerOrderDetail() {
   const canRefund = order.status === "delivered" || order.status === "processing";
 
   const nextStatus = getSellerNextStatus(order.status);
-  const sc = STATUS_COLORS[order.status] ?? STATUS_COLORS.pending;
+  const sc = orderStatusTone(order.status);
   const itemsCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const ship = order.shipping_address;
   const statusIndex = STATUSES.indexOf(order.status as OrderStatus);
+  // cancelled / refunded / returned are not points on the fulfilment
+  // track, so a step bar with nothing highlighted would just look broken.
+  const isTerminal = statusIndex < 0;
+  const completedCount = statusIndex >= 0 ? statusIndex : 0;
+  const nextOnTrack =
+    statusIndex >= 0 && statusIndex < STATUSES.length - 1
+      ? STATUSES[statusIndex + 1]
+      : null;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: nextStatus || canRefund ? 120 : 32 },
+      ]}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />
+      }
+    >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>← Back</Text>
-        </TouchableOpacity>
+        <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
         <View style={styles.headerRow}>
-          <View>
+          <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={styles.orderNumber}>{order.order_number}</Text>
             <Text style={styles.orderDate}>{formatDate(order.placed_at)}</Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-            <Text style={[styles.statusText, { color: sc.text }]}>{order.status}</Text>
-          </View>
+          <SellerStatusPill
+            label={formatOrderStatusLabel(order.status)}
+            bg={sc.bg}
+            color={sc.text}
+            dotted={order.status === "pending" || order.status === "processing"}
+          />
         </View>
       </View>
 
-      {/* Progress Bar */}
-      <View style={styles.progressSection}>
-        <View style={styles.progressTrack}>
-          {STATUSES.map((s, i) => {
-            const isActive = i <= statusIndex && statusIndex >= 0;
-            return (
-              <View
-                key={s}
-                style={[
-                  styles.progressDot,
-                  isActive && styles.progressDotActive,
-                  i === statusIndex && styles.progressDotCurrent,
-                ]}
-              />
-            );
-          })}
+      {/* Compact vertical stepper — current + next only */}
+      {isTerminal ? (
+        <View style={[styles.terminalNotice, { backgroundColor: sc.bg }]}>
+          <Text style={[styles.terminalNoticeText, { color: sc.text }]}>
+            This order is {formatOrderStatusLabel(order.status).toLowerCase()} — fulfilment has
+            stopped.
+          </Text>
         </View>
-        <View style={styles.progressLabels}>
-          {STATUSES.map((s, i) => (
-            <Text
-              key={s}
-              style={[
-                styles.progressLabel,
-                i <= statusIndex && statusIndex >= 0 && styles.progressLabelActive,
-              ]}
-              numberOfLines={1}
-            >
-              {s.replace(/_/g, " ")}
-            </Text>
-          ))}
+      ) : (
+        <View style={styles.stepperCard}>
+          <Text style={styles.stepperMeta}>
+            {completedCount} of {STATUSES.length} steps complete
+          </Text>
+          <View style={styles.stepperRow}>
+            <View style={styles.stepperRail}>
+              <View style={[styles.stepDot, styles.stepDotCurrent]} />
+              {nextOnTrack ? <View style={styles.stepConnector} /> : null}
+              {nextOnTrack ? <View style={styles.stepDot} /> : null}
+            </View>
+            <View style={styles.stepperLabels}>
+              <View style={styles.stepLabelBlock}>
+                <Text style={styles.stepLabelKicker}>Current</Text>
+                <Text style={styles.stepLabelCurrent}>
+                  {formatOrderStatusLabel(order.status)}
+                </Text>
+              </View>
+              {nextOnTrack ? (
+                <View style={styles.stepLabelBlock}>
+                  <Text style={styles.stepLabelKicker}>Next</Text>
+                  <Text style={styles.stepLabelNext}>
+                    {formatOrderStatusLabel(nextOnTrack)}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.stepLabelBlock}>
+                  <Text style={styles.stepLabelKicker}>Next</Text>
+                  <Text style={styles.stepLabelNext}>Fulfilment complete</Text>
+                </View>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Status Banner */}
       <View style={styles.banner}>
         <View style={styles.bannerRow}>
           <View>
-            <Text style={styles.bannerStatus}>{order.status.replace(/_/g, " ")}</Text>
+            <Text style={styles.bannerStatus}>{formatOrderStatusLabel(order.status)}</Text>
             <Text style={styles.bannerPayment}>
-              {order.payment_status === "paid" ? "✅ Paid" : "⏳ Payment pending"}
+              {formatPaymentStatus(order.payment_status)}
             </Text>
           </View>
           <View style={styles.bannerRight}>
             <Text style={styles.bannerTotal}>{formatPrice(order.total)}</Text>
-            <Text style={styles.bannerMethod}>{order.payment_method?.toUpperCase() ?? "—"}</Text>
+            <Text style={styles.bannerMethod}>{formatCheckoutPayment(order.payment_method)}</Text>
           </View>
         </View>
       </View>
-
-      {/* Next Action */}
-      {nextStatus && (
-        <TouchableOpacity
-          style={[styles.actionButton, updating && { opacity: 0.6 }]}
-          onPress={() => handleTransition(nextStatus)}
-          disabled={updating}
-        >
-          <Text style={styles.actionButtonText}>
-            {updating ? "Updating..." : `Mark as ${nextStatus.replace(/_/g, " ")}`}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Refund — destructive secondary action, shown for delivered/processing */}
-      {canRefund && (
-        <TouchableOpacity
-          style={[styles.refundButton, updating && { opacity: 0.6 }]}
-          onPress={openRefundDialog}
-          disabled={updating}
-          accessibilityLabel="Refund order"
-        >
-          <Text style={styles.refundButtonText}>
-            {updating ? "Updating..." : "Refund order"}
-          </Text>
-        </TouchableOpacity>
-      )}
 
       {/* Items */}
       <View style={styles.section}>
@@ -347,6 +409,36 @@ export default function SellerOrderDetail() {
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    {(nextStatus || canRefund) && (
+      <SellerStickyBar>
+        {canRefund && !nextStatus ? (
+          <SellerGhostButton
+            label={updating ? "Working…" : "Refund order"}
+            onPress={openRefundDialog}
+            disabled={updating}
+            danger
+            style={{ flex: 1 }}
+          />
+        ) : null}
+        {canRefund && nextStatus ? (
+          <SellerGhostButton
+            label="Refund"
+            onPress={openRefundDialog}
+            disabled={updating}
+            danger
+            style={{ minWidth: 96 }}
+          />
+        ) : null}
+        {nextStatus ? (
+          <SellerPrimaryButton
+            label={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+            onPress={() => handleTransition(nextStatus)}
+            disabled={updating}
+            loading={updating}
+          />
+        ) : null}
+      </SellerStickyBar>
+    )}
     </SafeAreaView>
   );
 }
@@ -361,33 +453,106 @@ function SummaryRow({ label, value, bold }: { label: string; value: string; bold
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
   content: { padding: 16 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: colors.light.mutedForeground },
+
+  skeletonHeader: { gap: 10, marginTop: 8, marginBottom: 16 },
+  skeletonCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.1)",
+    padding: 16,
+    marginBottom: 12,
+  },
+
+  errorPanel: {
+    marginTop: 24,
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    paddingVertical: 36,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    gap: 8,
+  },
+  errorIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  errorIconText: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    color: colors.olive[700],
+  },
+  errorTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: typography.fontSizes.lg,
+    color: INK,
+    textAlign: "center",
+  },
+  errorBody: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  retryBtn: {
+    marginTop: 12,
+    minHeight: 44,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[700],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: CREAM,
+    fontSize: typography.fontSizes.sm,
+  },
+
+  terminalNotice: {
+    padding: 14,
+    borderRadius: radii.lg,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.08)",
+  },
+  terminalNoticeText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 20,
+  },
 
   header: { marginBottom: 16 },
-  backButton: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.primary,
-    fontWeight: typography.fontWeights.medium as any,
-    marginBottom: 8,
-  },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    marginTop: 4,
   },
   orderNumber: {
-    fontSize: 24,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
-    fontFamily: "monospace",
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 22,
+    color: INK,
+    letterSpacing: -0.3,
   },
   orderDate: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
-    marginTop: 2,
+    marginTop: 4,
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -395,103 +560,142 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
   },
   statusText: {
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold as any,
     textTransform: "capitalize",
   },
 
-  progressSection: { marginBottom: 20 },
-  progressTrack: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
+  stepperCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    padding: 16,
+    marginBottom: 16,
   },
-  progressDot: {
+  stepperMeta: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    color: colors.olive[700],
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    marginBottom: 14,
+  },
+  stepperRow: { flexDirection: "row", gap: 14 },
+  stepperRail: { alignItems: "center", width: 16, paddingTop: 4 },
+  stepDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.light.muted,
+    backgroundColor: "rgba(83,94,44,0.18)",
+    borderWidth: 1.5,
+    borderColor: "rgba(83,94,44,0.22)",
   },
-  progressDotActive: { backgroundColor: colors.light.primary },
-  progressDotCurrent: {
-    backgroundColor: colors.light.primary,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    marginTop: -2,
+  stepDotCurrent: {
+    backgroundColor: colors.olive[700],
+    borderColor: colors.olive[700],
+    width: 14,
+    height: 14,
+    borderRadius: 7,
   },
-  progressLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  stepConnector: {
+    width: 2,
+    flex: 1,
+    minHeight: 28,
+    backgroundColor: "rgba(83,94,44,0.18)",
+    marginVertical: 4,
   },
-  progressLabel: {
-    fontSize: 8,
+  stepperLabels: { flex: 1, gap: 18 },
+  stepLabelBlock: { minHeight: 36, justifyContent: "center" },
+  stepLabelKicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    color: colors.olive[700],
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  stepLabelCurrent: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: typography.fontSizes.base,
+    color: INK,
+    textTransform: "capitalize",
+  },
+  stepLabelNext: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
     textTransform: "capitalize",
-    width: 52,
-    textAlign: "center",
   },
-  progressLabelActive: { color: colors.light.primary, fontWeight: typography.fontWeights.semibold as any },
 
   banner: {
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     padding: 16,
     marginBottom: 12,
   },
   bannerRow: { flexDirection: "row", justifyContent: "space-between" },
   bannerStatus: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    color: INK,
     textTransform: "capitalize",
   },
   bannerPayment: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
   bannerRight: { alignItems: "flex-end" },
   bannerTotal: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: 24,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    color: INK,
+    letterSpacing: -0.4,
   },
   bannerMethod: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
 
   actionButton: {
-    backgroundColor: colors.light.primary,
-    padding: 14,
+    backgroundColor: colors.olive[700],
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderRadius: radii.lg,
     alignItems: "center",
+    justifyContent: "center",
     marginBottom: 12,
   },
   actionButtonText: {
-    color: colors.light.card,
+    fontFamily: fontFamilies.sans.bold,
+    color: CREAM,
     fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.bold as any,
     textTransform: "capitalize",
   },
 
   refundButton: {
-    backgroundColor: "#fef2f2",
-    padding: 14,
+    backgroundColor: "rgba(184,92,58,0.08)",
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: radii.lg,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#fecaca",
+    borderColor: "rgba(184,92,58,0.28)",
     marginBottom: 20,
   },
   refundButtonText: {
-    color: "#dc2626",
+    fontFamily: fontFamilies.sans.semibold,
+    color: colors.accent2.rust,
     fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
   },
 
   modalOverlay: {
@@ -501,17 +705,20 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalCard: {
-    backgroundColor: colors.light.card,
+    backgroundColor: colors.paper.DEFAULT,
     borderRadius: radii.lg,
     padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.1)",
   },
   modalTitle: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    color: INK,
     marginBottom: 6,
   },
   modalBody: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
     marginBottom: 12,
@@ -520,6 +727,14 @@ const styles = StyleSheet.create({
   modalInput: {
     minHeight: 70,
     textAlignVertical: "top",
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: INK,
+    backgroundColor: CREAM,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    padding: 12,
   },
   modalActions: {
     flexDirection: "row",
@@ -528,72 +743,77 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   modalBtn: {
+    minHeight: 44,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalBtnCancel: {
-    backgroundColor: colors.light.muted,
+    backgroundColor: colors.olive[50],
   },
   modalBtnCancelText: {
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.medium,
+    color: INK,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
   },
   modalBtnConfirm: {
-    backgroundColor: "#dc2626",
+    backgroundColor: colors.accent2.rust,
   },
   modalBtnConfirmText: {
+    fontFamily: fontFamilies.sans.semibold,
     color: "#fff",
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
   },
 
   section: { marginBottom: 20 },
   sectionTitle: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    color: INK,
     marginBottom: 10,
   },
 
   itemCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     padding: 12,
     marginBottom: 8,
   },
   itemName: {
+    fontFamily: fontFamilies.sans.medium,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
+    color: INK,
   },
   itemVariant: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
     marginTop: 2,
     textTransform: "capitalize",
   },
   itemQty: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
   itemPrice: {
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    color: INK,
   },
 
   summaryCard: {
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     padding: 14,
   },
   summaryRow: {
@@ -601,49 +821,60 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 4,
   },
-  summaryLabel: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
-  summaryLabelBold: { fontWeight: typography.fontWeights.bold as any, color: colors.light.foreground },
-  summaryValue: { fontSize: typography.fontSizes.sm, color: colors.light.foreground },
-  summaryValueBold: { fontWeight: typography.fontWeights.bold as any },
-  summaryDivider: {
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
-    marginVertical: 8,
+  summaryLabel: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+  },
+  summaryLabelBold: {
+    fontFamily: fontFamilies.sans.bold,
+    color: INK,
+  },
+  summaryValue: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: INK,
+  },
+  summaryValueBold: {
+    fontFamily: fontFamilies.mono.semibold,
   },
 
   addressCard: {
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     padding: 14,
   },
   addressName: {
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    color: INK,
   },
   addressPhone: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
   addressLine: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
+    color: INK,
     marginTop: 4,
   },
 
   notesCard: {
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     padding: 14,
   },
   notesText: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
+    color: INK,
     lineHeight: 20,
   },
 });

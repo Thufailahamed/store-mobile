@@ -9,6 +9,7 @@
  */
 
 import { fetchJson, type ApiResult } from "./_fetch";
+import { isPayoutId } from "../payouts/ledger";
 export type { ApiResult } from "./_fetch";
 export { fetchJson, getAccessToken, hasStoreApi, getStoreApiUrl } from "./_fetch";
 
@@ -442,6 +443,7 @@ export type Notification = {
   title: string;
   body?: string;
   data?: Record<string, unknown>;
+  status?: string;
   read_at?: string | null;
   created_at: string;
 };
@@ -910,14 +912,19 @@ export async function answerQuestionBackend(questionId: string, answer: string):
 export type Coupon = {
   id: string;
   code: string;
-  discount_type: "percent" | "fixed" | "free_shipping" | "bxgy";
-  discount_value: number;
-  scope: "brand" | "store" | "category" | "global";
+  /** API/DB may use either naming — prefer discount_* when present. */
+  discount_type?: "percent" | "percentage" | "fixed" | "free_shipping" | "bxgy";
+  discount_value?: number;
+  type?: "percent" | "percentage" | "fixed" | "free_shipping" | "bxgy";
+  value?: number;
+  scope: "brand" | "store" | "category" | "global" | "platform";
   scope_id?: string | null;
   expires_at?: string | null;
   is_active: boolean;
   min_order_amount?: number;
+  min_order_value?: number;
   max_uses?: number | null;
+  usage_limit?: number | null;
   used_count?: number;
   // BXGY (migration 0291 + CouponSchema extension). All optional because
   // non-bxgy coupons never set them.
@@ -1110,8 +1117,12 @@ export async function deleteSellerProductBackend(id: string): Promise<ApiResult<
   return fetchJson(`/api/seller/products/${id}`, { method: "DELETE" });
 }
 
-export async function getSellerOrdersBackend(opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ orders: Order[]; total?: number }>> {
+export async function getSellerOrdersBackend(opts: { limit?: number; offset?: number; status?: string; search?: string } = {}): Promise<ApiResult<{ orders: Order[]; total?: number }>> {
   return fetchJson("/api/seller/orders", { query: { ...opts } });
+}
+
+export async function getSellerOrderByIdBackend(id: string): Promise<ApiResult<{ order: Order }>> {
+  return fetchJson(`/api/seller/orders/${encodeURIComponent(id)}`);
 }
 
 export async function transitionOrderBackend(orderId: string, toStatus: string, note?: string): Promise<ApiResult<{ order: Order }>> {
@@ -1122,7 +1133,7 @@ export async function transitionOrderBackend(orderId: string, toStatus: string, 
   return fetchJson(`/api/orders/${orderId}/transition`, { method: "POST", body: { to_status: toStatus, reason: note } });
 }
 
-export async function getSellerInventoryBackend(): Promise<ApiResult<{ inventory: Array<{ id: string; sku: string; size?: string; color?: string; price: number; product: { id: string; name: string; status: string }; inventory: { quantity: number; reserved: number } }> }>> {
+export async function getSellerInventoryBackend(): Promise<ApiResult<{ inventory: Array<{ id: string; sku: string; size?: string; color?: string; price: number; product: { id: string; name: string; status: string }; inventory: { quantity: number; reserved: number } | Array<{ quantity: number; reserved: number }> }> }>> {
   return fetchJson("/api/seller/inventory");
 }
 
@@ -1223,22 +1234,116 @@ export async function preflightModerationBackend(input: {
   return fetchJson("/api/seller/products/preflight-moderation", { method: "POST", body: input });
 }
 
-export async function getSellerReturnsBackend(): Promise<ApiResult<{ returns: Array<ReturnRequest & { order?: Order; items?: unknown[] }> }>> {
-  return fetchJson("/api/seller/returns");
+export async function getSellerReturnsBackend(opts: { status?: string; search?: string } = {}): Promise<ApiResult<{ returns: Array<ReturnRequest & { order?: Order; items?: unknown[] }> }>> {
+  return fetchJson("/api/seller/returns", { query: { ...opts } });
 }
 
-export async function decideSellerReturnBackend(returnId: string, action: "approve" | "reject" | "receive" | "refund", note?: string): Promise<ApiResult<{ return: ReturnRequest }>> {
-  return fetchJson(`/api/seller/returns/${returnId}/decide`, { method: "POST", body: { action, note } });
+export async function listSellerNotificationsBackend(): Promise<ApiResult<{ notifications: Notification[] }>> {
+  return fetchJson("/api/seller/notifications");
 }
 
-export type SellerKPIs = { revenue: number; orders: number; aov: number; pending: number; returns: number; topProducts?: Array<{ id: string; name: string; revenue: number }> };
-
-export async function getSellerKPIsBackend(): Promise<ApiResult<SellerKPIs>> {
-  return fetchJson("/api/seller/analytics/summary");
+export async function markSellerNotificationReadBackend(id: string): Promise<ApiResult<{ updated: string }>> {
+  return fetchJson("/api/seller/notifications", { method: "PATCH", body: { id } });
 }
 
-export async function getSellerAnalyticsBackend(range: "7d" | "30d" | "90d" = "30d"): Promise<ApiResult<{ series: unknown[]; totals: Record<string, number> }>> {
+export async function markAllSellerNotificationsReadBackend(): Promise<ApiResult<{ updated: string }>> {
+  return fetchJson("/api/seller/notifications", { method: "PATCH", body: { all: true } });
+}
+
+export async function decideSellerReturnBackend(
+  returnId: string,
+  action: "approve" | "reject" | "receive" | "refund",
+  note?: string,
+  refundAmount?: number,
+): Promise<ApiResult<{ return?: ReturnRequest; updated?: boolean; received?: boolean }>> {
+  if (action === "receive") {
+    return fetchJson(`/api/seller/returns/${returnId}/receive`, { method: "POST" });
+  }
+  const status =
+    action === "approve" ? "approved" : action === "reject" ? "rejected" : "refunded";
+  return fetchJson("/api/seller/returns", {
+    method: "PATCH",
+    body: {
+      id: returnId,
+      status,
+      ...(note ? { note } : {}),
+      ...(refundAmount != null ? { refund_amount: refundAmount } : {}),
+    },
+  });
+}
+
+export type SellerAnalyticsRange = "7d" | "30d" | "90d" | "1y";
+
+export type SellerAnalyticsPoint = { date: string; revenue: number; orders: number };
+
+/** Raw shape of `GET /api/seller/analytics`. */
+export type SellerAnalytics = {
+  store_id?: string;
+  kpi?: { revenue?: number; orders?: number; aov?: number; refund_rate?: number };
+  deltas?: { revenue?: number; orders?: number; aov?: number; refund?: number };
+  series?: SellerAnalyticsPoint[];
+  top_products?: Array<{ id: string; name: string; total_sales?: number }>;
+  traffic?: Array<{ source: string; share: number }>;
+};
+
+export type SellerKPIs = {
+  revenue: number;
+  orders: number;
+  aov: number;
+  refundRate: number;
+  deltas: { revenue: number; orders: number; aov: number; refund: number };
+  series: SellerAnalyticsPoint[];
+  topProducts: Array<{ id: string; name: string; revenue: number }>;
+};
+
+export async function getSellerAnalyticsBackend(
+  range: SellerAnalyticsRange = "30d",
+): Promise<ApiResult<SellerAnalytics>> {
   return fetchJson("/api/seller/analytics", { query: { range } });
+}
+
+function num(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Normalised dashboard KPIs.
+ *
+ * The backend exposes a single `GET /api/seller/analytics` (there is no
+ * `/analytics/summary` route), so reshape that payload here rather than
+ * making every caller deal with its snake_case nesting.
+ */
+export async function getSellerKPIsBackend(
+  range: SellerAnalyticsRange = "30d",
+): Promise<ApiResult<SellerKPIs>> {
+  const res = await getSellerAnalyticsBackend(range);
+  if (!res.ok) return res;
+  const kpi = res.data?.kpi ?? {};
+  const deltas = res.data?.deltas ?? {};
+  return {
+    ok: true,
+    data: {
+      revenue: num(kpi.revenue),
+      orders: num(kpi.orders),
+      aov: num(kpi.aov),
+      refundRate: num(kpi.refund_rate),
+      deltas: {
+        revenue: num(deltas.revenue),
+        orders: num(deltas.orders),
+        aov: num(deltas.aov),
+        refund: num(deltas.refund),
+      },
+      series: (Array.isArray(res.data?.series) ? res.data.series : []).map((p) => ({
+        date: String(p?.date ?? ""),
+        revenue: num(p?.revenue),
+        orders: num(p?.orders),
+      })),
+      topProducts: (Array.isArray(res.data?.top_products) ? res.data.top_products : [])
+        .filter((p) => p && typeof p.id === "string")
+        .map((p) => ({ id: p.id, name: String(p.name ?? "Untitled"), revenue: num(p.total_sales) })),
+    },
+  };
 }
 
 export async function getSellerPayoutsBackend(): Promise<ApiResult<{ payouts: Array<{ id: string; amount: number; currency: string; status: string; created_at: string; paid_at?: string | null }> }>> {
@@ -1246,11 +1351,19 @@ export async function getSellerPayoutsBackend(): Promise<ApiResult<{ payouts: Ar
 }
 
 export async function getSellerPayoutSettingsBackend(): Promise<ApiResult<{ settings: Record<string, unknown> }>> {
-  return fetchJson("/api/seller/payouts/settings");
+  // Backend has GET /api/seller/payouts (returns { payouts, payout }), not /settings.
+  const res = await fetchJson<{ payouts: unknown[]; payout: Record<string, unknown> | null }>("/api/seller/payouts");
+  if (!res.ok) return res;
+  return { ok: true, data: { settings: (res.data.payout as Record<string, unknown> | null) ?? {} } };
 }
 
 export async function upsertSellerPayoutSettingsBackend(settings: Record<string, unknown>): Promise<ApiResult<{ settings: Record<string, unknown> }>> {
-  return fetchJson("/api/seller/payouts/settings", { method: "PUT", body: settings });
+  const res = await fetchJson<{ payout: Record<string, unknown> }>("/api/seller/payouts", {
+    method: "PATCH",
+    body: settings,
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: { settings: (res.data.payout as Record<string, unknown>) ?? settings } };
 }
 
 export async function getSellerComplianceDocsBackend(): Promise<ApiResult<{ documents: unknown[] }>> {
@@ -1375,8 +1488,25 @@ export async function updateStoreMetaBackend(patch: StoreMetaPatch): Promise<Api
   };
 }
 
-export async function getStoreReviewsBackend(storeId: string, opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ reviews: Review[]; avg_rating?: number; total?: number }>> {
-  return fetchJson(`/api/seller/reviews`, { query: { store_id: storeId, ...opts } });
+export async function getStoreReviewsBackend(storeId: string, opts: { limit?: number; offset?: number; status?: string; rating?: number } = {}): Promise<ApiResult<{ reviews: Review[]; avg_rating?: number; total?: number }>> {
+  return fetchJson(`/api/seller/reviews`, { query: { store_id: storeId || undefined, ...opts } });
+}
+
+/**
+ * Seller reply to a review on one of their own products.
+ *
+ * Distinct from `replyToReviewBackend`: this writes the `seller_reply` /
+ * `seller_replied_at` columns the seller reviews list reads back, and is
+ * scoped to the caller's store.
+ */
+export async function replySellerReviewBackend(
+  reviewId: string,
+  reply: string,
+): Promise<ApiResult<{ review: Review | null }>> {
+  return fetchJson(`/api/seller/reviews/${reviewId}/reply`, {
+    method: "POST",
+    body: { reply },
+  });
 }
 
 // =========================================================================
@@ -1723,6 +1853,17 @@ export async function reviewComplianceDocumentBackend(
 
 export async function getAdminDeliveryCompaniesBackend(opts: { status?: string; search?: string } = {}): Promise<ApiResult<{ companies: Array<Record<string, unknown>> }>> {
   return fetchJson("/api/admin/delivery-companies", { query: { ...opts } });
+}
+
+export async function getAdminDeliveryCompanyBackend(id: string): Promise<ApiResult<{ company: Record<string, unknown> }>> {
+  return fetchJson(`/api/admin/delivery-companies/${id}`);
+}
+
+export async function updateAdminDeliveryCompanyBackend(
+  id: string,
+  patch: { is_approved: boolean; is_active?: boolean },
+): Promise<ApiResult<{ company: Record<string, unknown> }>> {
+  return fetchJson(`/api/admin/delivery-companies/${id}`, { method: "PATCH", body: patch });
 }
 
 export async function approveProductBackend(id: string, status: "active" | "rejected" | "archived"): Promise<ApiResult<{ product: CatalogProduct }>> {
@@ -2533,6 +2674,9 @@ export async function getPayoutsBackend(): Promise<ApiResult<{ payouts: Payout[]
 }
 
 export async function getPayoutDetailBackend(id: string): Promise<ApiResult<{ payout: Payout }>> {
+  if (!isPayoutId(id)) {
+    return { ok: false, error: "Payout not found" };
+  }
   return fetchJson(`/api/seller/payouts/${encodeURIComponent(id)}`);
 }
 
@@ -2544,8 +2688,14 @@ export async function getPayoutBalanceBackend(): Promise<ApiResult<PayoutBalance
   return fetchJson("/api/seller/payouts/balance");
 }
 
-export async function createStripeConnectLinkBackend(): Promise<ApiResult<StripeConnectResponse>> {
-  return fetchJson("/api/seller/payouts/connect", { method: "POST" });
+export async function createStripeConnectLinkBackend(input?: {
+  return_url?: string;
+  refresh_url?: string;
+}): Promise<ApiResult<StripeConnectResponse>> {
+  return fetchJson("/api/seller/payouts/connect", {
+    method: "POST",
+    ...(input ? { body: input } : {}),
+  });
 }
 
 export async function withdrawPayoutBackend(input: { amount: number; idempotencyKey: string }): Promise<ApiResult<WithdrawResponse>> {

@@ -56,3 +56,16 @@ export function discountPct(mrp: number, price: number) {
   if (!mrp || mrp <= price) return 0;
   return Math.round(((mrp - price) / mrp) * 100);
 }
+
+/** Stored tax_rate is a 0–1 fraction. Values > 1 are treated as a legacy percent. */
+export function taxRateToPercent(rate: number): number {
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  const pct = rate <= 1 ? rate * 100 : rate;
+  return Math.round(pct * 10) / 10;
+}
+
+/** Convert a 0–100 percent field into the stored 0–1 tax_rate. */
+export function percentToTaxRate(percent: number): number {
+  if (!Number.isFinite(percent) || percent <= 0) return 0;
+  return Math.min(1, Math.max(0, percent / 100));
+}

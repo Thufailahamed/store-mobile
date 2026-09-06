@@ -113,16 +113,41 @@ async function attemptRequest(
   }
 }
 
+function readFailureMessage(json: unknown): { message: string; code?: string } | null {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  const rec = json as Record<string, unknown>;
+  const err = rec.error;
+  const nested =
+    err && typeof err === "object"
+      ? (err as { message?: unknown; code?: unknown })
+      : null;
+  const code =
+    typeof rec.code === "string"
+      ? rec.code
+      : typeof nested?.code === "string"
+        ? nested.code
+        : undefined;
+  const message =
+    typeof err === "string"
+      ? err
+      : typeof nested?.message === "string"
+        ? nested.message
+        : typeof rec.message === "string"
+          ? rec.message
+          : undefined;
+  if (!message && !code) return null;
+  return { message: message ?? code ?? "Request failed", code };
+}
+
 function toResult<T>(status: number, json: Record<string, unknown> | unknown[]): ApiResult<T> {
   if (status < 200 || status >= 300) {
-    const err = (json as { error?: unknown }).error;
-    const message =
-      typeof err === "string"
-        ? err
-        : err && typeof err === "object" && "message" in err
-          ? String((err as { message?: unknown }).message)
-          : `Request failed (${status})`;
-    return { ok: false, error: message };
+    const parsed = readFailureMessage(json);
+    if (!parsed) return { ok: false, error: `Request failed (${status})` };
+    const error =
+      parsed.code && parsed.message !== parsed.code
+        ? `${parsed.code}: ${parsed.message}`
+        : parsed.message;
+    return { ok: false, error };
   }
   // Envelope v2: { ok:true, data, version:2 }
   if (json && typeof json === "object" && "ok" in (json as Record<string, unknown>)) {

@@ -61,6 +61,8 @@ export interface Store {
   account_name?: string | null;
   account_number_last4?: string | null;
   is_online?: boolean;
+  contact_phone?: string | null;
+  contact_email?: string | null;
 }
 
 export interface Brand {
@@ -168,6 +170,9 @@ export interface Review {
   helpful_count: number;
   status: ApprovalStatus;
   created_at: string;
+  /** Seller's public reply, set via POST /api/seller/reviews/:id/reply. */
+  seller_reply?: string | null;
+  seller_replied_at?: string | null;
   user?: Pick<User, "id" | "full_name" | "avatar_url">;
 }
 
@@ -275,6 +280,7 @@ export interface OrderItem {
   status: OrderStatus;
   is_gift?: boolean;
   gift_message?: string | null;
+  image_url?: string | null;
   product?: Product;
 }
 
@@ -401,6 +407,7 @@ export interface Notification {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  status?: string;
   read_at?: string | null;
   created_at: string;
 }

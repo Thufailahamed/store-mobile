@@ -6,6 +6,8 @@ export interface SellerPayoutCompliance {
   account_number_last4?: string | null;
   tax_form_submitted?: boolean;
   kyc_status?: string | null;
+  method?: string | null;
+  stripe_account_id?: string | null;
 }
 
 export type ComplianceDocType = "business_registration" | "tax_certificate";
@@ -139,4 +141,89 @@ export function getSellerComplianceGaps(
 ): string[] {
   if (!store) return [];
   return collectOptionalComplianceGaps({ ...store, status: "approved" }, payout, docs);
+}
+
+function firstNonEmpty(...vals: unknown[]): string | null {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+/** Storefront contact lives as `phone`/`email` on the seller store row. */
+export function readStorefrontContact(
+  store: StoreLike | null | undefined
+): { phone: string | null; email: string | null } {
+  if (!store) return { phone: null, email: null };
+  const nested =
+    store.contact && typeof store.contact === "object"
+      ? (store.contact as Record<string, unknown>)
+      : {};
+  return {
+    phone: firstNonEmpty(store.contact_phone, store.phone, nested.phone),
+    email: firstNonEmpty(store.contact_email, store.email, nested.email),
+  };
+}
+
+export type PayoutKycTone = "ok" | "warn" | "bad" | "muted";
+
+export interface PayoutProfileView {
+  loaded: boolean;
+  kycLabel: string | null;
+  kycTone: PayoutKycTone;
+  method: string | null;
+  bankSummary: string | null;
+  stripeConnected: boolean;
+  missing: string[];
+}
+
+/**
+ * Payout facts for the maison settings page.
+ * KYC label is only shown when the API sent `kyc_status` — bank fields
+ * alone must not be treated as verified.
+ */
+export function describePayoutProfile(
+  payout: SellerPayoutCompliance | null,
+  loaded: boolean
+): PayoutProfileView {
+  if (!loaded) {
+    return {
+      loaded: false,
+      kycLabel: null,
+      kycTone: "muted",
+      method: null,
+      bankSummary: null,
+      stripeConnected: false,
+      missing: [],
+    };
+  }
+
+  const missing = BANK_FIELDS.filter((field) => !hasValue(payout?.[field.key])).map((field) => field.label);
+  const last4 = firstNonEmpty(payout?.account_number_last4);
+  const bankName = firstNonEmpty(payout?.bank_name);
+  const bankSummary = bankName && last4 ? `${bankName} · ••••${last4}` : bankName ?? (last4 ? `••••${last4}` : null);
+
+  const raw = String(payout?.kyc_status ?? "").toLowerCase().trim();
+  let kycLabel: string | null = null;
+  let kycTone: PayoutKycTone = "muted";
+  if (raw === "approved" || raw === "verified") {
+    kycLabel = "Verified";
+    kycTone = "ok";
+  } else if (raw === "pending" || raw === "in_review" || raw === "submitted") {
+    kycLabel = "In review";
+    kycTone = "warn";
+  } else if (raw === "rejected" || raw === "failed") {
+    kycLabel = "Rejected";
+    kycTone = "bad";
+  }
+
+  return {
+    loaded: true,
+    kycLabel,
+    kycTone,
+    method: firstNonEmpty(payout?.method),
+    bankSummary,
+    stripeConnected: Boolean(firstNonEmpty(payout?.stripe_account_id)),
+    missing,
+  };
 }

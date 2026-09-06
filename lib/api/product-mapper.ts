@@ -33,8 +33,13 @@ export function mapProduct(p: any): Product {
   }));
 
   const variants = p.variants?.map((v: any) => {
-    const stock = getVariantAvailableStock(v, v.stock ?? 0);
-    return { ...v, stock };
+    const hasStock =
+      (v?.stock != null && v.stock !== "" && Number.isFinite(Number(v.stock))) ||
+      (Array.isArray(v?.inventory) &&
+        v.inventory.some((row: any) => row && (row.quantity != null || row.on_hand != null))) ||
+      (v?.inventory && !Array.isArray(v.inventory) && (v.inventory.quantity != null || v.inventory.on_hand != null));
+    if (!hasStock) return { ...v, stock: v.stock ?? undefined };
+    return { ...v, stock: getVariantAvailableStock(v, v.stock ?? 0) };
   });
 
   return {

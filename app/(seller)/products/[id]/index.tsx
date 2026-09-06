@@ -9,9 +9,12 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   getSellerStore,
@@ -29,7 +32,7 @@ import {
   type SellerVariantInput,
 } from "@/lib/api";
 import { uploadProductImage } from "@/lib/upload";
-import { coerceSellerProductStatus } from "@/lib/seller-product-status";
+import { coerceSellerProductStatus, statusToIsActive } from "@/lib/seller-product-status";
 import { validateStoreSkus } from "@/lib/product-sku";
 import {
   ProductMediaSection,
@@ -44,8 +47,16 @@ import {
   ModerationResultBanner,
   type ModerationResult,
 } from "@/components/seller/ModerationResultBanner";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { discountPct as computeDiscountPct, percentToTaxRate, taxRateToPercent } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/Skeleton";
 import type { Product, ProductImage, ProductVariant, Category, Brand } from "@/lib/types";
+
+const GOLD = colors.accent2.ochre;
+const RUST = colors.accent2.rust;
+const CREAM = colors.paper.cream;
+const INK = colors.olive[950];
 
 // Carries how far the pending-image upload loop got before failing, so the
 // caller can report a specific "product created but incomplete" message
@@ -66,7 +77,8 @@ export default function SellerProductEdit() {
   const { user } = useAuth();
   const isNew = id === "new";
 
-  const [loading, setLoading] = useState(!isNew);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [storeId, setStoreId] = useState<string | null>(null);
@@ -84,7 +96,6 @@ export default function SellerProductEdit() {
   const [careInstructions, setCareInstructions] = useState("");
   const [mrp, setMrp] = useState("");
   const [price, setPrice] = useState("");
-  const [discountPct, setDiscountPct] = useState("0");
   const [taxRate, setTaxRate] = useState("0");
   const [gender, setGender] = useState<string>("unisex");
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -94,7 +105,6 @@ export default function SellerProductEdit() {
   const [status, setStatus] = useState<string>("draft");
   const [initialStatus, setInitialStatus] = useState<string>("draft");
   const [tags, setTags] = useState("");
-  const [isActive, setIsActive] = useState(true);
   const [isFeatured, setIsFeatured] = useState(false);
 
   const [preflight, setPreflight] = useState<{
@@ -122,6 +132,7 @@ export default function SellerProductEdit() {
     setPendingImages([]);
     setRemovedImageIds([]);
     setRemovedVariantIds([]);
+    setLoadError(null);
 
     (async () => {
       if (!user) return;
@@ -140,52 +151,53 @@ export default function SellerProductEdit() {
 
       if (!isNew && id) {
         const productRes = await getSellerProductById(id);
-        if (productRes.ok && productRes.data) {
-          const p = productRes.data;
-          setName(p.name);
-          setSku(p.sku ?? "");
-          setDescription(p.description ?? "");
-          setShortDescription(p.short_description ?? "");
-          setMaterial(p.material ?? "");
-          setPattern((p as Product).pattern ?? "");
-          setFit((p as Product).fit ?? "");
-          setSleeve((p as Product).sleeve ?? "");
-          setOccasion((p as Product).occasion ?? "");
-          setSeason((p as Product).season ?? "");
-          setCareInstructions((p as Product).care_instructions ?? "");
-          setMrp(String(p.mrp));
-          setPrice(String(p.price));
-          setDiscountPct(String(p.discount_pct));
-          setTaxRate(String(p.tax_rate ?? 0));
-          setGender(p.gender ?? "unisex");
-          setCategoryId(p.category_id ?? null);
-          setBrandId((p as Product).brand_id ?? null);
-          setStatus(p.status);
-          setInitialStatus(p.status);
-          setTags(p.tags?.join(", ") ?? "");
-          setIsActive(p.is_active !== false);
-          setIsFeatured(Boolean(p.is_featured));
-          setExistingImages(p.images ?? []);
-
-          const loadedVariants =
-            p.variants && p.variants.length > 0
-              ? p.variants.map((v) => ({
-                  key: v.id,
-                  id: v.id,
-                  sku: v.sku ?? "",
-                  size: v.size ?? "",
-                  color: v.color ?? "",
-                  colorHex: (v as ProductVariant).color_hex ?? "",
-                  material: (v as ProductVariant).material ?? "",
-                  pattern: (v as ProductVariant).pattern ?? "",
-                  fit: (v as ProductVariant).fit ?? "",
-                  price: v.price != null ? String(v.price) : "",
-                  stock: String(v.stock ?? 0),
-                }))
-              : [createEmptyVariant()];
-          setVariants(loadedVariants);
-          setInitialVariantIds(loadedVariants.map((v) => v.id).filter(Boolean) as string[]);
+        if (!productRes.ok || !productRes.data) {
+          setLoadError(!productRes.ok ? productRes.error : "This piece could not be found.");
+          setLoading(false);
+          return;
         }
+        const p = productRes.data;
+        setName(p.name);
+        setSku(p.sku ?? "");
+        setDescription(p.description ?? "");
+        setShortDescription(p.short_description ?? "");
+        setMaterial(p.material ?? "");
+        setPattern((p as Product).pattern ?? "");
+        setFit((p as Product).fit ?? "");
+        setSleeve((p as Product).sleeve ?? "");
+        setOccasion((p as Product).occasion ?? "");
+        setSeason((p as Product).season ?? "");
+        setCareInstructions((p as Product).care_instructions ?? "");
+        setMrp(p.mrp != null ? String(p.mrp) : "");
+        setPrice(p.price != null ? String(p.price) : "");
+        setTaxRate(String(taxRateToPercent(Number(p.tax_rate ?? 0))));
+        setGender(p.gender ?? "unisex");
+        setCategoryId(p.category_id ?? null);
+        setBrandId((p as Product).brand_id ?? null);
+        setStatus(p.status);
+        setInitialStatus(p.status);
+        setTags(p.tags?.join(", ") ?? "");
+        setIsFeatured(Boolean(p.is_featured));
+        setExistingImages(p.images ?? []);
+
+        const loadedVariants =
+          p.variants && p.variants.length > 0
+            ? p.variants.map((v) => ({
+                key: v.id,
+                id: v.id,
+                sku: v.sku ?? "",
+                size: v.size ?? "",
+                color: v.color ?? "",
+                colorHex: (v as ProductVariant).color_hex ?? "",
+                material: (v as ProductVariant).material ?? "",
+                pattern: (v as ProductVariant).pattern ?? "",
+                fit: (v as ProductVariant).fit ?? "",
+                price: v.price != null ? String(v.price) : "",
+                stock: v.stock != null ? String(v.stock) : "",
+              }))
+            : [createEmptyVariant()];
+        setVariants(loadedVariants);
+        setInitialVariantIds(loadedVariants.map((v) => v.id).filter(Boolean) as string[]);
       }
       setLoading(false);
     })();
@@ -331,7 +343,7 @@ export default function SellerProductEdit() {
     const mrpNum = Number(mrp);
     const priceNum = Number(price);
     if (mrpNum > 0 && priceNum > mrpNum) {
-      Alert.alert("Error", "Price must be less than or equal to MRP");
+      Alert.alert("Check prices", "Selling price must be less than or equal to list price");
       return;
     }
     if (!storeId) {
@@ -362,7 +374,13 @@ export default function SellerProductEdit() {
 
     setSaving(true);
     let productId: string | undefined = isNew ? undefined : id;
+    let nextModeration: ModerationResult = null;
     try {
+      const mrpValue = Number(mrp) || priceNum;
+      const nextStatus = coerceSellerProductStatus(
+        status as Product["status"],
+        initialStatus as Product["status"],
+      );
       const productData: Partial<Product> = {
         name: name.trim(),
         sku: sku.trim() || undefined,
@@ -375,20 +393,17 @@ export default function SellerProductEdit() {
         occasion: occasion.trim() || undefined,
         season: season.trim() || undefined,
         care_instructions: careInstructions.trim() || undefined,
-        mrp: Number(mrp) || Number(price),
-        price: Number(price),
-        discount_pct: Number(discountPct) || 0,
-        tax_rate: Number(taxRate) || 0,
+        mrp: mrpValue,
+        price: priceNum,
+        discount_pct: computeDiscountPct(mrpValue, priceNum),
+        tax_rate: percentToTaxRate(Number(taxRate) || 0),
         gender: gender as Product["gender"],
         category_id: categoryId ?? undefined,
         brand_id: brandId ?? undefined,
-        // M-03 AUDIT: Sellers cannot self-publish. coerceSellerProductStatus
+        // Sellers cannot self-publish. coerceSellerProductStatus
         // downgrades "active" → "pending" unless the product is already live.
-        status: coerceSellerProductStatus(
-          status as Product["status"],
-          initialStatus as Product["status"],
-        ),
-        is_active: isActive,
+        status: nextStatus,
+        is_active: statusToIsActive(nextStatus),
         is_featured: isFeatured,
         tags: tags
           ? tags
@@ -404,12 +419,14 @@ export default function SellerProductEdit() {
         const res = await createSellerProduct(productData);
         if (!res.ok) throw new Error(res.error);
         productId = res.data.product.id;
-        setModeration(res.data.moderation);
+        nextModeration = res.data.moderation;
+        setModeration(nextModeration);
       } else {
         const res = await updateSellerProduct(id!, productData);
         if (!res.ok) throw new Error(res.error);
         productId = res.data.product.id;
-        setModeration(res.data.moderation);
+        nextModeration = res.data.moderation;
+        setModeration(nextModeration);
       }
 
       if (!productId) throw new Error("Product could not be saved");
@@ -430,10 +447,13 @@ export default function SellerProductEdit() {
       );
       if (!variantRes.ok) throw new Error(variantRes.error);
 
-      let banner = isNew ? "Product created" : "Product updated";
-      if (moderation) {
-        if (moderation.auto_approved) banner = `Auto-approved · score ${moderation.score}/${moderation.threshold} — live now`;
-        else if (moderation.flagged) banner = `Pending review · score ${moderation.score}/${moderation.threshold}`;
+      let banner = isNew ? "Piece saved" : "Piece updated";
+      if (nextModeration) {
+        if (nextModeration.auto_approved) {
+          banner = `Auto-approved · score ${nextModeration.score}/${nextModeration.threshold} — live now`;
+        } else if (nextModeration.flagged) {
+          banner = `Pending review · score ${nextModeration.score}/${nextModeration.threshold}`;
+        }
       }
       Alert.alert("Saved", banner, [
         { text: "OK", onPress: () => router.back() },
@@ -472,9 +492,15 @@ export default function SellerProductEdit() {
     setVariants(next);
   };
 
-  const genders = ["men", "women", "kids", "unisex"];
-  const statuses = ["draft", "active", "archived"];
+  const genders = ["men", "women", "kids", "unisex"] as const;
   const isLive = initialStatus === "active";
+  const statuses = [
+    { key: "draft", label: "Draft" },
+    { key: "active", label: isLive ? "Live" : "Submit" },
+    { key: "archived", label: "Archive" },
+  ] as const;
+  const computedDiscount = computeDiscountPct(Number(mrp) || 0, Number(price) || 0);
+  const priceAheadOfMrp = Number(mrp) > 0 && Number(price) > Number(mrp);
 
   // Live moderation preflight (debounced)
   useEffect(() => {
@@ -524,25 +550,60 @@ export default function SellerProductEdit() {
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <StatusBar barStyle="dark-content" />
+        <View style={{ width: "100%", padding: spacing[5], gap: 14 }}>
+          <Skeleton width={72} height={10} />
+          <Skeleton width="55%" height={28} />
+          <Skeleton height={120} borderRadius={radii.xl} style={{ marginTop: 8 }} />
+          <Skeleton height={48} borderRadius={radii.lg} />
+          <Skeleton height={48} borderRadius={radii.lg} />
+          <Skeleton height={48} borderRadius={radii.lg} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
+        <StatusBar barStyle="dark-content" />
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.olive[700]} />
+        <Text style={styles.errorTitle}>Couldn’t open this piece</Text>
+        <Text style={styles.errorSub}>{loadError}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => router.back()}>
+          <Text style={styles.retryBtnText}>Back to collection</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+    <StatusBar barStyle="dark-content" />
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backButton}>← Back</Text>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            accessibilityLabel="Back"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.olive[800]} />
+            <Text style={styles.backButton}>Back</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>{isNew ? "New Product" : "Edit Product"}</Text>
-          <Text style={styles.subtitle}>Photos, variants, and listing details</Text>
+          <Text style={styles.kicker}>Atelier</Text>
+          <Text style={styles.title}>{isNew ? "New piece" : "Edit piece"}</Text>
+          <Text style={styles.subtitle}>Lookbook, stock, and listing details</Text>
         </View>
+        <View style={styles.goldRule} />
         {moderation ? <ModerationResultBanner result={moderation} isNew={isNew} /> : null}
 
         <ProductMediaSection
@@ -558,12 +619,12 @@ export default function SellerProductEdit() {
         />
 
         <View style={styles.field}>
-          <Text style={styles.label}>Product Name *</Text>
+          <Text style={styles.label}>Name</Text>
           <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="e.g. Classic Cotton T-Shirt"
+            placeholder="e.g. Classic cotton tee"
             placeholderTextColor={colors.light.mutedForeground}
           />
         </View>
@@ -571,7 +632,7 @@ export default function SellerProductEdit() {
         <View style={styles.field}>
           <Text style={styles.label}>SKU</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.monoInput]}
             value={sku}
             onChangeText={setSku}
             placeholder="e.g. LUXE-TS-001"
@@ -582,9 +643,9 @@ export default function SellerProductEdit() {
 
         <View style={styles.row}>
           <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>MRP (Rs.)</Text>
+            <Text style={styles.label}>List price (LKR)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, styles.monoInput]}
               value={mrp}
               onChangeText={setMrp}
               placeholder="0"
@@ -594,9 +655,9 @@ export default function SellerProductEdit() {
           </View>
           <View style={{ width: 12 }} />
           <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>Selling Price (Rs.) *</Text>
+            <Text style={styles.label}>Selling price (LKR)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, styles.monoInput, priceAheadOfMrp && styles.inputWarn]}
               value={price}
               onChangeText={setPrice}
               placeholder="0"
@@ -605,48 +666,25 @@ export default function SellerProductEdit() {
             />
           </View>
         </View>
+        {priceAheadOfMrp ? (
+          <Text style={styles.fieldHintWarn}>Selling price cannot exceed list price.</Text>
+        ) : computedDiscount > 0 ? (
+          <Text style={styles.fieldHint}>{computedDiscount}% off list price</Text>
+        ) : (
+          <Text style={styles.fieldHint}>Discount is calculated from list vs selling price.</Text>
+        )}
 
         <View style={styles.field}>
-          <Text style={styles.label}>Discount %</Text>
+          <Text style={styles.label}>Tax</Text>
           <TextInput
-            style={styles.input}
-            value={discountPct}
-            onChangeText={setDiscountPct}
-            placeholder="0"
-            keyboardType="numeric"
-            placeholderTextColor={colors.light.mutedForeground}
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Tax rate (0-1)</Text>
-          <TextInput
-            style={styles.input}
+            style={[styles.input, styles.monoInput]}
             value={taxRate}
             onChangeText={setTaxRate}
             placeholder="0"
             keyboardType="numeric"
             placeholderTextColor={colors.light.mutedForeground}
           />
-        </View>
-
-        <View style={styles.row}>
-          <TouchableOpacity
-            style={[styles.toggleRow, isActive && styles.toggleRowActive]}
-            onPress={() => setIsActive((v) => !v)}
-          >
-            <Text style={[styles.toggleText, isActive && styles.toggleTextActive]}>
-              {isActive ? "✓ Active" : "Inactive"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleRow, isFeatured && styles.toggleRowActive]}
-            onPress={() => setIsFeatured((v) => !v)}
-          >
-            <Text style={[styles.toggleText, isFeatured && styles.toggleTextActive]}>
-              {isFeatured ? "★ Featured" : "Not featured"}
-            </Text>
-          </TouchableOpacity>
+          <Text style={[styles.fieldHint, { marginBottom: 0 }]}>Percent, e.g. 15 for 15% VAT.</Text>
         </View>
 
         <ProductVariantsSection
@@ -836,48 +874,57 @@ export default function SellerProductEdit() {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Listing status</Text>
+          <Text style={styles.label}>Listing</Text>
           {isLive ? (
             <Text style={styles.liveStatusNote}>
-              This product is live. Switching to Active resubmits to moderation. Archived hides from shoppers.
+              This piece is live. Submit again to re-run moderation. Archive hides it from shoppers.
             </Text>
           ) : (
             <Text style={styles.liveStatusNote}>
-              Choose Active to submit for review (auto-approves when score is high enough). Archived hides the product.
+              Submit sends it for review. Archive keeps it out of the shop.
             </Text>
           )}
           <View style={styles.chipRow}>
             {statuses.map((s) => (
               <TouchableOpacity
-                key={s}
-                style={[styles.chip, status === s && styles.chipActive]}
-                onPress={() => setStatus(s)}
+                key={s.key}
+                style={[styles.chip, status === s.key && styles.chipActive]}
+                onPress={() => setStatus(s.key)}
               >
-                <Text style={[styles.chipText, status === s && styles.chipTextActive]}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                <Text style={[styles.chipText, status === s.key && styles.chipTextActive]}>
+                  {s.label}
                 </Text>
               </TouchableOpacity>
             ))}
-            {isLive && status !== "active" ? (
-              <View style={[styles.chip, styles.chipLive]}>
-                <Text style={[styles.chipText, styles.chipTextActive]}>Active</Text>
-              </View>
-            ) : null}
           </View>
+          <TouchableOpacity
+            style={[styles.featureRow, isFeatured && styles.featureRowOn]}
+            onPress={() => setIsFeatured((v) => !v)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: isFeatured }}
+          >
+            <Ionicons
+              name={isFeatured ? "star" : "star-outline"}
+              size={16}
+              color={isFeatured ? GOLD : colors.olive[800]}
+            />
+            <Text style={[styles.featureText, isFeatured && styles.featureTextOn]}>
+              {isFeatured ? "Featured in the lookbook" : "Not featured"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Tags (comma separated)</Text>
+          <Text style={styles.label}>Tags</Text>
           <TextInput
             style={styles.input}
             value={tags}
             onChangeText={setTags}
-            placeholder="e.g. cotton, casual, summer"
+            placeholder="cotton, casual, summer"
             placeholderTextColor={colors.light.mutedForeground}
           />
         </View>
 
-        {/* Live moderation preflight */}
         <View style={[styles.preflightCard, preflight ? (
           preflight.flagged ? styles.preflightFlagged : preflight.auto_approved ? styles.preflightApproved : styles.preflightPending
         ) : styles.preflightIdle]}>
@@ -900,7 +947,7 @@ export default function SellerProductEdit() {
             <View style={{ marginTop: 6 }}>
               {preflight.reasons.slice(0, 3).map((r, i) => (
                 <Text key={i} style={styles.preflightReason}>
-                  • {r.message}
+                  {r.message}
                 </Text>
               ))}
             </View>
@@ -910,30 +957,29 @@ export default function SellerProductEdit() {
           </Text>
         </View>
 
+        {!isNew ? (
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProduct}>
+            <Text style={styles.deleteButtonText}>Remove from the collection</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <View style={{ height: 24 }} />
+      </ScrollView>
+      <View style={styles.saveBar}>
         <TouchableOpacity
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
           onPress={handleSave}
           disabled={saving}
         >
-          <Text style={styles.saveButtonText}>
-            {saving
-              ? uploadingImages
-                ? "Uploading photos..."
-                : "Saving..."
-              : isNew
-                ? "Create Product"
-                : "Save Changes"}
-          </Text>
+          {saving ? (
+            <ActivityIndicator color={CREAM} />
+          ) : (
+            <Text style={styles.saveButtonText}>
+              {isNew ? "Add to collection" : "Save piece"}
+            </Text>
+          )}
         </TouchableOpacity>
-
-        {!isNew ? (
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProduct}>
-            <Text style={styles.deleteButtonText}>Delete product</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -941,161 +987,252 @@ export default function SellerProductEdit() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { padding: 16 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText: { color: colors.light.mutedForeground },
+  content: { paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: spacing[4] },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.light.background,
+    paddingHorizontal: 32,
+    gap: 8,
+  },
+  errorTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    color: INK,
+    marginTop: 12,
+    textAlign: "center",
+  },
+  errorSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: colors.olive[800],
+    paddingHorizontal: 18,
+    minHeight: 44,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryBtnText: {
+    color: CREAM,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+  },
 
-  header: { marginBottom: 20 },
+  header: { marginBottom: spacing[3] },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    minHeight: 44,
+    marginLeft: -8,
+    marginBottom: 4,
+  },
   backButton: {
     fontSize: typography.fontSizes.sm,
-    color: colors.light.primary,
-    fontWeight: typography.fontWeights.medium as any,
-    marginBottom: 8,
+    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.medium,
+  },
+  kicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+    marginBottom: 2,
   },
   title: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    color: INK,
+    letterSpacing: -0.4,
   },
   subtitle: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
     marginTop: 4,
   },
+  goldRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(200,164,74,0.55)",
+    marginBottom: spacing[4],
+  },
 
   field: { marginBottom: 16 },
   label: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.olive[800],
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
     marginBottom: 6,
   },
   input: {
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    padding: 12,
+    borderColor: "rgba(83,94,44,0.14)",
+    borderRadius: radii.xl,
+    paddingHorizontal: 14,
+    minHeight: 48,
     fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.regular,
+    color: INK,
+  },
+  monoInput: {
+    fontFamily: fontFamilies.mono.regular,
+  },
+  inputWarn: {
+    borderColor: "rgba(184,92,58,0.45)",
+  },
+  fieldHint: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  fieldHintWarn: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: RUST,
+    marginTop: 6,
+    marginBottom: 14,
   },
   textArea: {
     minHeight: 100,
+    paddingTop: 12,
     textAlignVertical: "top",
   },
 
-  row: { flexDirection: "row", gap: 8, marginBottom: 16 },
-
-  toggleRow: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    backgroundColor: colors.light.card,
-  },
-  toggleRowActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
-  },
-  toggleText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
-    fontWeight: "500",
-  },
-  toggleTextActive: {
-    color: colors.light.primaryForeground,
-  },
+  row: { flexDirection: "row" },
 
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: "center",
     borderRadius: radii.full,
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.14)",
   },
   chipActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
+    backgroundColor: colors.olive[800],
+    borderColor: colors.olive[800],
   },
   chipText: {
     fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.olive[800],
   },
-  chipTextActive: { color: colors.light.card },
-  chipLive: {
-    backgroundColor: "#dcfce7",
-    borderColor: "#166534",
-  },
+  chipTextActive: { color: CREAM },
   liveStatusNote: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
     marginBottom: 8,
     lineHeight: 18,
   },
-
-  saveButton: {
-    backgroundColor: colors.light.primary,
-    padding: 16,
-    borderRadius: radii.lg,
+  featureRow: {
+    marginTop: 12,
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: radii.xl,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+  },
+  featureRowOn: {
+    borderColor: "rgba(200,164,74,0.55)",
+    backgroundColor: "#f7f1de",
+  },
+  featureText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    color: colors.olive[800],
+  },
+  featureTextOn: { color: INK },
+
+  saveBar: {
+    paddingHorizontal: spacing[5],
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: colors.light.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(200,164,74,0.35)",
+  },
+  saveButton: {
+    backgroundColor: colors.olive[800],
+    minHeight: 48,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
   },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: {
-    color: colors.light.card,
+    color: CREAM,
     fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.bold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
   deleteButton: {
-    marginTop: 12,
-    padding: 14,
-    borderRadius: radii.lg,
+    marginTop: 8,
+    minHeight: 44,
+    borderRadius: radii.full,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
+    borderColor: "rgba(184,92,58,0.35)",
+    backgroundColor: "#f4e6df",
   },
   deleteButtonText: {
-    color: "#dc2626",
+    color: RUST,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
 
   preflightCard: {
     marginTop: 8,
     marginBottom: 16,
-    padding: 12,
-    borderRadius: radii.lg,
+    padding: 14,
+    borderRadius: radii.xl,
     borderWidth: 1,
+    backgroundColor: CREAM,
   },
-  preflightIdle: { backgroundColor: colors.light.muted, borderColor: colors.light.border },
-  preflightApproved: { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" },
-  preflightPending: { backgroundColor: "#fffbeb", borderColor: "#fde68a" },
-  preflightFlagged: { backgroundColor: "#fff1f2", borderColor: "#fecdd3" },
+  preflightIdle: { borderColor: "rgba(83,94,44,0.14)" },
+  preflightApproved: { borderColor: "rgba(83,94,44,0.35)", backgroundColor: colors.olive[50] },
+  preflightPending: { borderColor: "rgba(200,164,74,0.45)", backgroundColor: "#f3efe2" },
+  preflightFlagged: { borderColor: "rgba(184,92,58,0.35)", backgroundColor: "#f4e6df" },
   preflightHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   preflightTitle: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    color: INK,
   },
   preflightScore: {
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
-    fontFamily: "monospace",
+    fontFamily: fontFamilies.mono.medium,
   },
   preflightReason: {
     fontSize: 11,
+    fontFamily: fontFamilies.sans.regular,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
   preflightHint: {
     fontSize: 10,
+    fontFamily: fontFamilies.sans.regular,
     color: colors.light.mutedForeground,
     marginTop: 6,
-    fontStyle: "italic",
   },
 });

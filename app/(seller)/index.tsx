@@ -16,32 +16,66 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerKPIs, getSellerProducts, getNotifications, createSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
+import { getSellerStore, getSellerKPIs, getSellerProducts, getSellerNotifications, createSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
 import { getSellerAccessState } from "@/lib/seller-access";
 import { colors, typography, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, pluralize } from "@/lib/utils";
+import { formatNotificationBody, isNotificationUnread } from "@/lib/notifications/seller-inbox";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RevenueChart } from "@/components/seller/RevenueChart";
+import {
+  SellerShortcutGrid,
+  SellerStatusPill,
+  SELLER_GOLD,
+  SELLER_RUST,
+  SELLER_INK,
+  SELLER_CREAM,
+} from "@/components/seller/chrome";
+import { orderStatusTone } from "@/lib/seller/status-tones";
+import { formatOrderStatusLabel } from "@/lib/orders/seller-list";
 import type { Store, Order, Product, Notification } from "@/lib/types";
 
-const GOLD = colors.accent2.ochre;
-const RUST = colors.accent2.rust;
-const INK = colors.olive[950];
-const CREAM = colors.paper.cream;
+const GOLD = SELLER_GOLD;
+const RUST = SELLER_RUST;
+const INK = SELLER_INK;
+const CREAM = SELLER_CREAM;
 
 interface KPIData {
   totalRevenue: number;
   totalOrders: number;
   totalProducts: number;
   pendingOrders: number;
+  returnsCount: number;
   lowStockVariants: number;
   outOfStockVariants: number;
   totalSkus: number;
   recentOrders: Order[];
+  topProducts: Array<{ id: string; name: string; revenue: number }>;
+  revenueSeries: Array<{ date: string; revenue: number; orders: number }>;
+  revenueDelta: number;
+  aov: number;
   analyticsReady: boolean;
   inventoryReady: boolean;
   productsReady: boolean;
   ordersReady: boolean;
+  pendingReady: boolean;
+  returnsReady: boolean;
+}
+
+function pickLookbook(
+  products: Product[],
+  analyticsTop: Array<{ id: string; name: string; revenue: number }>,
+): Product[] {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  const fromAnalytics = analyticsTop
+    .map((t) => byId.get(t.id))
+    .filter((p): p is Product => Boolean(p));
+  if (fromAnalytics.length > 0) return fromAnalytics.slice(0, 5);
+  return [...products]
+    .sort((a, b) => (b.total_sales ?? 0) - (a.total_sales ?? 0))
+    .slice(0, 5);
 }
 
 function formatRelative(dateStr: string) {
@@ -96,27 +130,24 @@ function describeStock(out: number, low: number, healthy: number, total: number)
 }
 
 const QUICK_ACTIONS = [
-  { label: "Orders", icon: "receipt-outline" as const, route: "/(seller)/orders", badgeKey: "orders" as const },
-  { label: "Collection", icon: "cube-outline" as const, route: "/(seller)/products" },
-  { label: "Inventory", icon: "layers-outline" as const, route: "/(seller)/inventory", badgeKey: "inventory" as const },
-  { label: "Returns", icon: "return-down-back-outline" as const, route: "/(seller)/returns" },
+  { label: "Returns", icon: "return-down-back-outline" as const, route: "/(seller)/returns", badgeKey: "returns" as const },
   { label: "Payouts", icon: "wallet-outline" as const, route: "/(seller)/payouts" },
-  { label: "Reviews", icon: "star-outline" as const, route: "/(seller)/reviews" },
-  { label: "Coupons", icon: "pricetag-outline" as const, route: "/(seller)/coupons" },
-  { label: "Atelier notes", icon: "notifications-outline" as const, route: "/(seller)/notifications", badgeKey: "alerts" as const },
+  { label: "Analytics", icon: "bar-chart-outline" as const, route: "/(seller)/analytics" },
+  { label: "Alerts", icon: "notifications-outline" as const, route: "/(seller)/notifications", badgeKey: "alerts" as const },
 ];
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  pending: { bg: "#f3efe2", text: "#8a6a2a" },
-  confirmed: { bg: colors.olive[50], text: colors.olive[800] },
-  processing: { bg: colors.olive[100], text: colors.olive[800] },
-  shipped: { bg: "#f3efe2", text: "#8a6a2a" },
-  delivered: { bg: colors.olive[50], text: colors.olive[700] },
-  cancelled: { bg: colors.paper.warm, text: colors.ink.mute },
-};
-
-function GoldRule({ light = false }: { light?: boolean }) {
-  return <View style={[styles.goldRule, light && styles.goldRuleLight]} />;
+function formatHeroRevenue(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    const millions = value / 1_000_000;
+    const digits = millions >= 10 ? 1 : 2;
+    return `LKR ${millions.toFixed(digits)}M`;
+  }
+  if (abs >= 100_000) {
+    return `LKR ${(value / 1_000).toFixed(0)}K`;
+  }
+  return formatPrice(value);
 }
 
 export default function SellerDashboard() {
@@ -165,8 +196,8 @@ export default function SellerDashboard() {
       setStore(storeRes.data);
       const [kpiRes, prodRes, notifRes] = await Promise.all([
         getSellerKPIs(storeRes.data.id),
-        getSellerProducts(storeRes.data.id, { status: "active" }),
-        getNotifications(user.id, 10),
+        getSellerProducts(storeRes.data.id, { sort: "sales_desc", limit: 8 }),
+        getSellerNotifications(50),
       ]);
       if (kpiRes.ok) setKpis(kpiRes.data);
       if (prodRes.ok) setProducts(prodRes.data.products);
@@ -250,18 +281,29 @@ export default function SellerDashboard() {
   const healthyCount = Math.max(0, totalSkus - lowStockCount - outOfStockCount);
   const inventoryIssues = inventoryReady ? outOfStockCount + lowStockCount : 0;
   const stock = describeStock(outOfStockCount, lowStockCount, healthyCount, totalSkus);
-  const pendingOrders = kpis?.analyticsReady ? kpis.pendingOrders : 0;
-  const ordersNeedWork = analyticsReady && pendingOrders > 0;
+  // Pending orders and returns come from their own endpoints, so they must
+  // not be hidden just because the analytics call failed. Show "—" (null)
+  // when those subcalls failed — never fake a zero.
+  const pendingOrders = kpis?.pendingReady ? kpis.pendingOrders : null;
+  const returnsCount = kpis?.returnsReady ? kpis.returnsCount : null;
+  const ordersNeedWork = pendingOrders != null && pendingOrders > 0;
   const totalOrders = analyticsReady ? kpis!.totalOrders : null;
   const totalRevenue = analyticsReady ? kpis!.totalRevenue : null;
+  // The analytics endpoint reports a percentage change against the
+  // preceding window of equal length.
+  const revenueDelta = analyticsReady ? kpis!.revenueDelta : 0;
+  const revenueTrend =
+    analyticsReady && Number.isFinite(revenueDelta) && Math.abs(revenueDelta) >= 0.5
+      ? `${revenueDelta > 0 ? "+" : ""}${revenueDelta.toFixed(0)}%`
+      : null;
   const totalProducts = productsReady ? kpis!.totalProducts : (products.length > 0 ? products.length : null);
   const storeIsLive = store?.is_online === true;
 
-  const topProducts = [...products]
-    .sort((a, b) => b.total_sales - a.total_sales)
-    .slice(0, 5);
-  const hasSales = topProducts.some((p) => (p.total_sales ?? 0) > 0);
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const topProducts = pickLookbook(products, kpis?.topProducts ?? []);
+  const hasSales =
+    (kpis?.topProducts ?? []).some((p) => (p.revenue ?? 0) > 0) ||
+    topProducts.some((p) => (p.total_sales ?? 0) > 0);
+  const unreadCount = notifications.filter(isNotificationUnread).length;
   const storeName = store?.name ?? user?.user_metadata?.full_name?.split(" ")[0] ?? "Partner";
   const monogram = (store?.name ?? user?.user_metadata?.full_name ?? "S")[0].toUpperCase();
 
@@ -376,9 +418,9 @@ export default function SellerDashboard() {
           <Text style={styles.onboardingSub}>{accessBlocked}</Text>
           <TouchableOpacity
             style={styles.onboardingButton}
-            onPress={() => router.push("/(seller)/settings")}
+            onPress={() => router.push("/(seller)/more" as any)}
           >
-            <Text style={styles.onboardingButtonText}>Complete store settings</Text>
+            <Text style={styles.onboardingButtonText}>Open store settings</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -394,36 +436,37 @@ export default function SellerDashboard() {
     >
       <View style={styles.hero}>
         <LinearGradient
-          colors={[INK, "#1c2413", "#2a3218"]}
+          colors={["#12160c", INK, "#243018"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
         <LinearGradient
-          colors={["rgba(200,164,74,0.12)", "transparent", "rgba(22,26,10,0.35)"]}
-          start={{ x: 0.1, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          colors={["rgba(200,164,74,0.18)", "transparent", "rgba(22,26,10,0.45)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.85, y: 1 }}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
         />
 
-        <View style={[styles.heroContent, { paddingTop: Math.max(insets.top, 24) + 6 }]}>
+        <View style={[styles.heroContent, { paddingTop: Math.max(insets.top, 20) + 4 }]}>
           <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
           <View style={styles.heroTop}>
             <View style={styles.heroHeaderLeft}>
               <Text style={styles.heroDate}>{today.toUpperCase()}</Text>
-              <Text style={styles.heroKicker}>Maison · Seller atelier</Text>
             </View>
             <View style={styles.heroHeaderRight}>
-              <View
+              <TouchableOpacity
                 style={[styles.liveTag, !storeIsLive && styles.liveTagOff]}
-                accessibilityRole="text"
-                accessibilityLabel={storeIsLive ? "Store is live" : "Store is offline"}
+                onPress={() => router.push("/(seller)/settings" as any)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={storeIsLive ? "Store is live. Open settings" : "Store is offline. Open settings"}
               >
                 <View style={[styles.liveDot, !storeIsLive && styles.liveDotOff]} />
                 <Text style={styles.liveText}>{storeIsLive ? "Live" : "Offline"}</Text>
-              </View>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.notifBtn}
                 onPress={() => router.push("/(seller)/notifications" as any)}
@@ -453,29 +496,52 @@ export default function SellerDashboard() {
             )}
             <View style={styles.greetingWrap}>
               <Text style={styles.heroGreeting}>{greeting}</Text>
-              <Text style={styles.heroName} numberOfLines={1}>{storeName}</Text>
+              <Text style={styles.heroName} numberOfLines={1}>
+                {storeName}
+              </Text>
             </View>
           </View>
 
-          <GoldRule light />
-
           <TouchableOpacity
-            style={styles.ledgerHero}
-            onPress={() => router.push("/(seller)/payouts" as any)}
-            activeOpacity={0.8}
+            style={styles.ledgerCard}
+            onPress={() => router.push("/(seller)/analytics" as any)}
+            activeOpacity={0.88}
             accessibilityRole="button"
             accessibilityLabel={`Revenue ${totalRevenue == null ? "unavailable" : formatPrice(totalRevenue)}`}
           >
-            <Text style={styles.ledgerKicker}>Lifetime earnings</Text>
-            <Text style={styles.ledgerValue} numberOfLines={1}>
-              {totalRevenue == null ? "—" : formatPrice(totalRevenue)}
-            </Text>
-            <Text style={styles.ledgerHint}>
+            <View style={styles.ledgerCardTop}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                <Text style={styles.ledgerKicker}>Revenue · 30 days</Text>
+                <Text
+                  style={styles.ledgerValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {formatHeroRevenue(totalRevenue)}
+                </Text>
+              </View>
+              {analyticsReady && (kpis?.revenueSeries?.length ?? 0) > 1 ? (
+                <RevenueChart
+                  compact
+                  height={48}
+                  points={kpis!.revenueSeries}
+                  style={styles.ledgerSpark}
+                />
+              ) : (
+                <View style={styles.ledgerSparkPlaceholder}>
+                  <Ionicons name="trending-up" size={18} color={GOLD} />
+                </View>
+              )}
+            </View>
+            <Text style={styles.ledgerHint} numberOfLines={2}>
               {!analyticsReady
-                ? "Analytics still loading"
+                ? "Analytics unavailable — pull to refresh"
                 : (totalRevenue ?? 0) > 0
-                ? "Payouts & statements"
-                : "Your first sale will appear here"}
+                  ? revenueTrend
+                    ? `${revenueTrend} vs prior period · Insights`
+                    : "Open full analytics"
+                  : "Your first sale will appear here"}
             </Text>
           </TouchableOpacity>
 
@@ -533,7 +599,7 @@ export default function SellerDashboard() {
                 >
                   <Text style={styles.heroBtnPrimaryText}>Process orders</Text>
                   <View style={styles.heroBtnCount}>
-                    <Text style={styles.heroBtnCountText}>{formatBadgeCount(pendingOrders)}</Text>
+                    <Text style={styles.heroBtnCountText}>{formatBadgeCount(pendingOrders ?? 0)}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -543,7 +609,7 @@ export default function SellerDashboard() {
                   accessibilityRole="button"
                   accessibilityLabel="Add product"
                 >
-                  <Text style={styles.heroBtnGhostText}>Add a piece</Text>
+                  <Text style={styles.heroBtnGhostText}>Add product</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -555,7 +621,7 @@ export default function SellerDashboard() {
                   accessibilityRole="button"
                   accessibilityLabel="Add product"
                 >
-                  <Text style={styles.heroBtnPrimaryText}>Add a piece</Text>
+                  <Text style={styles.heroBtnPrimaryText}>Add product</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.heroBtnGhost}
@@ -570,9 +636,9 @@ export default function SellerDashboard() {
             )}
           </View>
         </View>
-        <View style={styles.heroGoldEdge} />
       </View>
 
+      <View style={styles.bodySheet}>
       {inventoryIssues > 0 && (
         <TouchableOpacity
           style={styles.alertRibbon}
@@ -587,9 +653,9 @@ export default function SellerDashboard() {
         >
           <View style={styles.alertAccent} />
           <View style={styles.alertContent}>
-            <Text style={styles.alertKicker}>Atelier notice</Text>
+            <Text style={styles.alertKicker}>Stock alert</Text>
             <Text style={styles.alertTitle}>
-              {outOfStockCount > 0 ? "The collection needs restocking" : "A few pieces are running low"}
+              {outOfStockCount > 0 ? "Collection needs restocking" : "A few SKUs are running low"}
             </Text>
             <Text style={styles.alertSub}>
               {outOfStockCount > 0 && `${outOfStockCount} ${pluralize(outOfStockCount, "SKU")} out of stock`}
@@ -601,58 +667,56 @@ export default function SellerDashboard() {
         </TouchableOpacity>
       )}
 
-      <View style={[styles.section, inventoryIssues === 0 && styles.bodyStart]}>
+      {(returnsCount ?? 0) > 0 && (
+        <TouchableOpacity
+          style={[styles.alertRibbon, inventoryIssues > 0 && styles.alertRibbonFollow]}
+          onPress={() => router.push("/(seller)/returns" as any)}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`${returnsCount} returns awaiting decision`}
+        >
+          <View style={[styles.alertAccent, { backgroundColor: RUST }]} />
+          <View style={styles.alertContent}>
+            <Text style={styles.alertKicker}>Returns</Text>
+            <Text style={styles.alertTitle}>
+              {returnsCount} {pluralize(returnsCount ?? 0, "return")} waiting
+            </Text>
+            <Text style={styles.alertSub}>Approve, receive, or refund</Text>
+          </View>
+          <Text style={styles.alertLink}>Review</Text>
+        </TouchableOpacity>
+      )}
+
+      <View style={[styles.section, inventoryIssues === 0 && (returnsCount ?? 0) === 0 && styles.bodyStart]}>
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>The house</Text>
-            <Text style={styles.sectionTitle}>Atelier</Text>
+            <Text style={styles.sectionKicker}>Tools</Text>
+            <Text style={styles.sectionTitle}>Quick actions</Text>
           </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.opsRail}
-        >
-          {QUICK_ACTIONS.map((a) => {
+        <SellerShortcutGrid
+          items={QUICK_ACTIONS.map((a) => {
             const hasAlertBadge = a.badgeKey === "alerts" && unreadCount > 0;
-            const hasOrderBadge = a.badgeKey === "orders" && pendingOrders > 0;
-            const hasStockBadge = a.badgeKey === "inventory" && inventoryIssues > 0;
-            const showBadge = hasAlertBadge || hasOrderBadge || hasStockBadge;
-            const badgeCount = hasAlertBadge
-              ? unreadCount
-              : hasOrderBadge
-              ? pendingOrders
-              : inventoryIssues;
-
-            return (
-              <TouchableOpacity
-                key={a.label}
-                style={styles.opsPill}
-                onPress={() => router.push(a.route as any)}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel={a.label}
-              >
-                <Ionicons name={a.icon} size={16} color={colors.olive[800]} />
-                <Text style={styles.opsPillLabel}>{a.label}</Text>
-                {showBadge && (
-                  <View style={styles.opsPillBadge}>
-                    <Text style={styles.opsPillBadgeText}>{formatBadgeCount(badgeCount)}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
+            const hasReturnsBadge = a.badgeKey === "returns" && (returnsCount ?? 0) > 0;
+            return {
+              key: a.label,
+              label: a.label,
+              icon: a.icon,
+              onPress: () => router.push(a.route as any),
+              badge: hasAlertBadge ? unreadCount : hasReturnsBadge ? returnsCount : null,
+              tone: hasAlertBadge ? ("critical" as const) : hasReturnsBadge ? ("warn" as const) : ("default" as const),
+            };
           })}
-        </ScrollView>
+        />
       </View>
 
-      {totalSkus > 0 && (
+      {totalSkus > 0 && inventoryIssues > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionKicker}>Stock room</Text>
-              <Text style={styles.sectionTitle}>Inventory</Text>
+              <Text style={styles.sectionTitle}>Needs restock</Text>
             </View>
             <TouchableOpacity
               onPress={() => router.push("/(seller)/inventory" as any)}
@@ -664,18 +728,12 @@ export default function SellerDashboard() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.panel}>
+          <TouchableOpacity
+            style={styles.panel}
+            onPress={() => router.push("/(seller)/inventory" as any)}
+            activeOpacity={0.85}
+          >
             <View style={styles.stockStats}>
-              <View style={styles.stockStat}>
-                <Text style={styles.stockStatValue}>{totalSkus}</Text>
-                <Text style={styles.stockStatLabel}>SKUs</Text>
-              </View>
-              <View style={styles.panelRule} />
-              <View style={styles.stockStat}>
-                <Text style={[styles.stockStatValue, { color: colors.olive[700] }]}>{healthyCount}</Text>
-                <Text style={styles.stockStatLabel}>Ready</Text>
-              </View>
-              <View style={styles.panelRule} />
               <View style={styles.stockStat}>
                 <Text style={[styles.stockStatValue, { color: "#9a6b1f" }]}>{lowStockCount}</Text>
                 <Text style={styles.stockStatLabel}>Low</Text>
@@ -685,34 +743,13 @@ export default function SellerDashboard() {
                 <Text style={[styles.stockStatValue, { color: RUST }]}>{outOfStockCount}</Text>
                 <Text style={styles.stockStatLabel}>Out</Text>
               </View>
-            </View>
-
-            <View style={styles.stockBar}>
-              {healthyCount > 0 ? (
-                <View style={[styles.stockBarFill, { flex: healthyCount, backgroundColor: colors.olive[600] }]} />
-              ) : null}
-              {lowStockCount > 0 ? (
-                <View style={[styles.stockBarFill, { flex: lowStockCount, backgroundColor: GOLD }]} />
-              ) : null}
-              {outOfStockCount > 0 ? (
-                <View style={[styles.stockBarFill, { flex: outOfStockCount, backgroundColor: RUST }]} />
-              ) : null}
-            </View>
-            <View style={styles.stockLegend}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: colors.olive[600] }]} />
-                <Text style={styles.legendLabel}>Ready</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: GOLD }]} />
-                <Text style={styles.legendLabel}>Low</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: RUST }]} />
-                <Text style={styles.legendLabel}>Out</Text>
+              <View style={styles.panelRule} />
+              <View style={styles.stockStat}>
+                <Text style={styles.stockStatValue}>{totalSkus}</Text>
+                <Text style={styles.stockStatLabel}>SKUs</Text>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -735,6 +772,15 @@ export default function SellerDashboard() {
             {topProducts.map((p, i) => {
               const img = p.images?.find((image) => image.is_primary)?.url || p.images?.[0]?.url;
               const last = i === topProducts.length - 1;
+              const analyticsHit = (kpis?.topProducts ?? []).find((t) => t.id === p.id);
+              const sold = p.total_sales ?? 0;
+              const meta = analyticsHit && analyticsHit.revenue > 0
+                ? formatPrice(analyticsHit.revenue)
+                : sold > 0
+                ? `${sold} sold`
+                : typeof p.price === "number" && p.price > 0
+                ? formatPrice(p.price)
+                : "—";
               return (
                 <TouchableOpacity
                   key={p.id}
@@ -754,10 +800,7 @@ export default function SellerDashboard() {
                   </View>
                   <View style={styles.lookInfo}>
                     <Text style={styles.lookName} numberOfLines={1}>{p.name}</Text>
-                    <Text style={styles.lookMeta}>
-                      {p.total_sales} sold
-                      {typeof p.price === "number" && p.price > 0 ? `  ·  ${formatPrice(p.price)}` : ""}
-                    </Text>
+                    <Text style={styles.lookMeta}>{meta}</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -787,7 +830,7 @@ export default function SellerDashboard() {
         {kpis?.ordersReady && kpis.recentOrders.length > 0 ? (
           <View style={styles.panel}>
             {kpis.recentOrders.map((o, i) => {
-              const sc = STATUS_COLORS[o.status] ?? STATUS_COLORS.pending;
+              const sc = orderStatusTone(o.status);
               const itemsCount = o.items?.reduce((s, item) => s + item.quantity, 0) ?? 0;
               const last = i === kpis.recentOrders.length - 1;
               return (
@@ -802,9 +845,12 @@ export default function SellerDashboard() {
                   <View style={styles.orderInfo}>
                     <View style={styles.orderNumberRow}>
                       <Text style={styles.orderNumber}>{o.order_number}</Text>
-                      <View style={[styles.orderStatus, { backgroundColor: sc.bg }]}>
-                        <Text style={[styles.orderStatusText, { color: sc.text }]}>{o.status}</Text>
-                      </View>
+                      <SellerStatusPill
+                        label={formatOrderStatusLabel(o.status)}
+                        bg={sc.bg}
+                        color={sc.text}
+                        dotted={o.status === "pending"}
+                      />
                     </View>
                     <Text style={styles.orderMeta}>
                       {itemsCount} {pluralize(itemsCount, "item")}  ·  {formatRelative(o.placed_at)}
@@ -816,13 +862,11 @@ export default function SellerDashboard() {
             })}
           </View>
         ) : kpis?.ordersReady ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyKicker}>Awaiting the first client</Text>
-            <Text style={styles.emptyTitle}>No orders yet</Text>
-            <Text style={styles.emptySub}>
-              New commissions will appear here the moment a customer checks out.
-            </Text>
-          </View>
+          <EmptyState
+            icon="bag-handle-outline"
+            title="No orders yet"
+            description="New commissions will appear here the moment a customer checks out."
+          />
         ) : null}
       </View>
 
@@ -834,9 +878,15 @@ export default function SellerDashboard() {
               <Text style={styles.sectionTitle}>Activity</Text>
             </View>
             {unreadCount > 0 ? (
-              <View style={styles.unreadBadge}>
+              <TouchableOpacity
+                style={styles.unreadBadge}
+                onPress={() => router.push("/(seller)/notifications" as any)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`${unreadCount} new notifications`}
+              >
                 <Text style={styles.unreadBadgeText}>{unreadCount} new</Text>
-              </View>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={() => router.push("/(seller)/notifications" as any)}
@@ -848,8 +898,9 @@ export default function SellerDashboard() {
           </View>
           <View style={styles.panel}>
             {notifications.slice(0, 5).map((n, i) => {
-              const isUnread = !n.read_at;
+              const isUnread = isNotificationUnread(n);
               const last = i === Math.min(notifications.length, 5) - 1;
+              const preview = formatNotificationBody(n.body, n.data);
               return (
                 <TouchableOpacity
                   key={n.id}
@@ -864,8 +915,8 @@ export default function SellerDashboard() {
                     <Text style={[styles.notifTitle, isUnread && styles.notifTitleUnread]} numberOfLines={1}>
                       {n.title}
                     </Text>
-                    {n.body ? (
-                      <Text style={styles.notifBody} numberOfLines={1}>{n.body}</Text>
+                    {preview ? (
+                      <Text style={styles.notifBody} numberOfLines={2}>{preview}</Text>
                     ) : null}
                     <Text style={styles.notifTime}>{formatRelative(n.created_at)}</Text>
                   </View>
@@ -877,6 +928,7 @@ export default function SellerDashboard() {
       )}
 
       <View style={{ height: 48 }} />
+      </View>
     </ScrollView>
   );
 }
@@ -960,7 +1012,7 @@ const styles = StyleSheet.create({
   heroContent: {
     position: "relative",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[7],
+    paddingBottom: spacing[8],
   },
   loadingHero: {
     paddingHorizontal: spacing[5],
@@ -976,15 +1028,15 @@ const styles = StyleSheet.create({
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: spacing[6],
+    alignItems: "center",
+    marginBottom: spacing[5],
   },
-  heroHeaderLeft: { gap: 6 },
+  heroHeaderLeft: { gap: 4, flex: 1, paddingRight: 12 },
   heroDate: {
     fontSize: 11,
-    color: "rgba(250,248,241,0.62)",
+    color: "rgba(250,248,241,0.55)",
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1.6,
+    letterSpacing: 1.4,
   },
   heroKicker: {
     fontSize: 11,
@@ -1059,20 +1111,20 @@ const styles = StyleSheet.create({
   storeBrandingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[4],
+    gap: spacing[3],
     marginBottom: spacing[5],
   },
   storeLogo: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     borderWidth: 1.5,
-    borderColor: GOLD,
+    borderColor: "rgba(200,164,74,0.55)",
   },
   storeMonogram: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: CREAM,
     alignItems: "center",
     justifyContent: "center",
@@ -1080,92 +1132,120 @@ const styles = StyleSheet.create({
     borderColor: GOLD,
   },
   storeMonogramText: {
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: fontFamilies.display.semibold,
     color: colors.olive[800],
   },
-  greetingWrap: { flex: 1 },
+  greetingWrap: { flex: 1, minWidth: 0 },
   heroGreeting: {
-    fontSize: 15,
-    color: "rgba(250,248,241,0.7)",
+    fontSize: 14,
+    color: "rgba(250,248,241,0.62)",
     fontFamily: fontFamilies.display.italic,
   },
   heroName: {
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 28,
+    lineHeight: 34,
     fontFamily: fontFamilies.display.semibold,
     color: CREAM,
-    marginTop: 2,
+    marginTop: 1,
+    letterSpacing: -0.4,
   },
-  ledgerHero: {
-    marginBottom: spacing[5],
+  ledgerCard: {
+    backgroundColor: "rgba(250,248,241,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(200,164,74,0.22)",
+    borderRadius: radii["2xl"],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
+    marginBottom: spacing[4],
+  },
+  ledgerCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  ledgerSpark: {
+    opacity: 0.95,
+  },
+  ledgerSparkPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "rgba(200,164,74,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   ledgerKicker: {
-    fontSize: 11,
+    fontSize: 10,
     color: GOLD,
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1.8,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   ledgerValue: {
-    fontSize: 36,
-    lineHeight: 42,
+    fontSize: 34,
+    lineHeight: 40,
     fontFamily: fontFamilies.display.semibold,
     color: CREAM,
+    letterSpacing: -0.6,
   },
   ledgerHint: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "rgba(250,248,241,0.58)",
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "rgba(250,248,241,0.55)",
     fontFamily: fontFamilies.sans.regular,
   },
   heroMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing[6],
+    marginBottom: spacing[5],
     paddingVertical: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(200,164,74,0.28)",
+    borderRadius: radii.xl,
+    backgroundColor: "rgba(250,248,241,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(200,164,74,0.14)",
   },
   heroMetaItem: {
     flex: 1,
     alignItems: "center",
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: "center",
   },
   heroMetaValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: fontFamilies.display.semibold,
     color: CREAM,
+    letterSpacing: -0.3,
   },
   heroMetaLabel: {
     marginTop: 3,
-    fontSize: 11,
-    color: "rgba(250,248,241,0.58)",
+    fontSize: 10,
+    color: "rgba(250,248,241,0.52)",
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
     textTransform: "uppercase",
   },
   heroMetaRule: {
     width: StyleSheet.hairlineWidth,
     height: 28,
-    backgroundColor: "rgba(200,164,74,0.35)",
+    backgroundColor: "rgba(200,164,74,0.28)",
   },
   heroActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[4],
+    gap: spacing[3],
   },
   heroBtnPrimary: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     backgroundColor: CREAM,
-    minHeight: 48,
-    paddingHorizontal: 22,
+    minHeight: 50,
+    paddingHorizontal: 18,
     borderRadius: radii.full,
     ...shadows.soft,
   },
@@ -1173,16 +1253,16 @@ const styles = StyleSheet.create({
     color: colors.olive[900],
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.semibold,
-    letterSpacing: 0.2,
+    letterSpacing: 0.15,
   },
   heroBtnCount: {
     backgroundColor: colors.olive[800],
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
   },
   heroBtnCountText: {
     color: CREAM,
@@ -1190,21 +1270,31 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono.semibold,
   },
   heroBtnGhost: {
-    minHeight: 48,
+    minHeight: 50,
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(250,248,241,0.22)",
+    backgroundColor: "rgba(250,248,241,0.06)",
   },
   heroBtnGhostText: {
     color: CREAM,
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.medium,
-    letterSpacing: 0.3,
-    textDecorationLine: "underline",
-    textDecorationColor: "rgba(200,164,74,0.7)",
+    letterSpacing: 0.2,
   },
   heroGoldEdge: {
     height: 2,
     backgroundColor: GOLD,
+  },
+  bodySheet: {
+    backgroundColor: colors.paper.DEFAULT,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -18,
+    paddingTop: spacing[2],
+    minHeight: 120,
   },
 
   alertRibbon: {
@@ -1213,12 +1303,15 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing[5],
     marginTop: spacing[5],
     backgroundColor: CREAM,
-    borderRadius: radii.xl,
+    borderRadius: radii["2xl"],
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(184,92,58,0.22)",
-    minHeight: 72,
+    borderColor: "rgba(184,92,58,0.18)",
+    minHeight: 76,
     ...shadows.soft,
+  },
+  alertRibbonFollow: {
+    marginTop: spacing[3],
   },
   alertAccent: {
     width: 3,
@@ -1242,6 +1335,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fontFamilies.display.semibold,
     color: colors.ink.DEFAULT,
+    letterSpacing: -0.2,
   },
   alertSub: {
     fontSize: 13,
@@ -1258,42 +1352,83 @@ const styles = StyleSheet.create({
 
   section: {
     paddingLeft: spacing[5],
-    marginTop: spacing[7],
+    marginTop: spacing[6],
   },
   bodyStart: {
-    marginTop: spacing[6],
+    marginTop: spacing[5],
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginBottom: spacing[4],
+    marginBottom: spacing[3],
     paddingRight: spacing[5],
   },
   sectionKicker: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.olive[600],
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 2,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   sectionTitle: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: fontFamilies.display.semibold,
     color: colors.ink.DEFAULT,
-    fontFamily: fontFamilies.display.regular,
+    letterSpacing: -0.3,
   },
   sectionLink: {
-    fontSize: 13,
-    color: colors.olive[700],
-    fontFamily: fontFamilies.sans.medium,
-    letterSpacing: 0.3,
+    fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.sans.semibold,
+    color: colors.olive[800],
   },
 
   opsRail: {
+    gap: 10,
     paddingRight: spacing[5],
-    gap: spacing[2],
+    paddingBottom: 4,
+  },
+  opsTile: {
+    width: 84,
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.1)",
+    minHeight: 88,
+  },
+  opsIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  opsTileBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: colors.olive[800],
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: CREAM,
+  },
+  opsTileLabel: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.olive[900],
+    textAlign: "center",
   },
   opsPill: {
     flexDirection: "row",

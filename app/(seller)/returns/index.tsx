@@ -1,61 +1,111 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
   RefreshControl,
+  StatusBar,
+  ScrollView,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getSellerReturns, type SellerReturnRequest } from "@/lib/api";
-import { colors, typography, radii } from "@/lib/theme/tokens";
-import type { ReturnStatus } from "@/lib/account-local";
+import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { SellerBackButton } from "@/components/seller/SellerBackButton";
+import {
+  SellerSearchField,
+  SellerFilterTab,
+  SellerStateView,
+  SellerStatusPill,
+} from "@/components/seller/chrome";
+import {
+  countReturnsByStatus,
+  filterSellerReturns,
+  formatReturnStatusLabel,
+  returnRefundAmount,
+} from "@/lib/returns/seller-list";
 
-const STATUS_TABS: { key: string; label: string; accent?: string }[] = [
+const RUST = colors.accent2.rust;
+const CREAM = colors.paper.cream;
+const INK = colors.olive[950];
+
+const STATUS_TABS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "requested", label: "Pending", accent: "#f59e0b" },
-  { key: "approved", label: "Approved", accent: "#3b82f6" },
-  { key: "received", label: "Received", accent: "#6366f1" },
-  { key: "refunded", label: "Refunded", accent: "#10b981" },
-  { key: "rejected", label: "Rejected", accent: "#ef4444" },
+  { key: "requested", label: "Requested" },
+  { key: "approved", label: "Approved" },
+  { key: "received", label: "Received" },
+  { key: "refunded", label: "Refunded" },
+  { key: "rejected", label: "Rejected" },
 ];
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  requested: { bg: "#fef3c7", text: "#92400e" },
-  approved: { bg: "#dbeafe", text: "#1e40af" },
-  received: { bg: "#e0e7ff", text: "#3730a3" },
-  refunded: { bg: "#dcfce7", text: "#166534" },
-  rejected: { bg: "#fee2e2", text: "#b91c1c" },
+const STATUS_TONE: Record<string, { bg: string; text: string }> = {
+  requested: { bg: "rgba(200,164,74,0.18)", text: "#8a6a2a" },
+  approved: { bg: "rgba(83,94,44,0.12)", text: colors.olive[800] },
+  received: { bg: "rgba(83,94,44,0.16)", text: colors.olive[900] },
+  refunded: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
+  rejected: { bg: "rgba(184,92,58,0.12)", text: RUST },
 };
-
-function formatPrice(n: number, currency = "LKR") {
-  return `${currency} ${n.toLocaleString("en-LK")}`;
-}
 
 function formatRelative(dateStr: string) {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "—";
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString("en-LK", { day: "numeric", month: "short" });
+}
+
+function refundMoney(row: SellerReturnRequest): string {
+  const amount = returnRefundAmount(row);
+  if (amount == null) return "—";
+  return formatPrice(amount, row.currency || "LKR");
+}
+
+function ReturnsSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={styles.skelCard}>
+          <Skeleton width="40%" height={14} />
+          <Skeleton width="80%" height={12} />
+          <Skeleton width="50%" height={12} />
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export default function SellerReturns() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [storeId, setStoreId] = useState<string | null>(null);
   const [returns, setReturns] = useState<SellerReturnRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const fetchReturns = useCallback(async () => {
     if (!user) return;
@@ -63,6 +113,7 @@ export default function SellerReturns() {
     if (!sid) {
       const storeRes = await getSellerStore(user.id);
       if (!storeRes.ok || !storeRes.data) {
+        setLoadError(storeRes.ok ? "No store found for this account." : storeRes.error);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -70,56 +121,84 @@ export default function SellerReturns() {
       sid = storeRes.data.id;
       setStoreId(sid);
     }
-    const res = await getSellerReturns(sid, { status: statusTab, search });
-    if (res.ok) setReturns(res.data);
+    const res = await getSellerReturns(sid);
+    if (res.ok) {
+      setReturns(res.data);
+      setLoadError(null);
+    } else {
+      setLoadError(res.error);
+    }
     setLoading(false);
     setRefreshing(false);
-  }, [user, storeId, statusTab, search]);
+  }, [user, storeId]);
 
   useEffect(() => {
-    fetchReturns();
+    void fetchReturns();
   }, [fetchReturns]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!mountedRef.current) {
+        mountedRef.current = true;
+        return;
+      }
+      void fetchReturns();
+    }, [fetchReturns]),
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchReturns();
+    void fetchReturns();
   }, [fetchReturns]);
 
-  const pendingCount = returns.filter((r) => r.status === "requested").length;
+  const counts = useMemo(() => countReturnsByStatus(returns), [returns]);
+  const visible = useMemo(
+    () => filterSellerReturns(returns, { status: statusTab, search }),
+    [returns, statusTab, search],
+  );
+
+  const headerCount = loadError && returns.length === 0
+    ? "Unavailable"
+    : search || statusTab !== "all"
+      ? `${visible.length} match${visible.length === 1 ? "" : "es"}`
+      : returns.length === 0
+        ? "None"
+        : `${returns.length} total`;
 
   const renderReturn = ({ item }: { item: SellerReturnRequest }) => {
-    const sc = STATUS_COLORS[item.status] ?? STATUS_COLORS.requested;
-    const itemCount = item.items.reduce((s, i) => s + i.quantity, 0);
-
+    const tone = STATUS_TONE[item.status] ?? STATUS_TONE.requested;
+    const product = item.product_name ?? item.items[0]?.product_name;
+    const variant = item.variant_label ?? item.items[0]?.variant_label;
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => router.push(`/(seller)/returns/${item.return_group_id}` as any)}
+        onPress={() => router.push(`/(seller)/returns/${item.id}` as const)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.order_number || "Return"}, ${formatReturnStatusLabel(item.status)}`}
       >
         <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.returnNumber}>{item.return_number}</Text>
-            <Text style={styles.meta}>
-              {formatRelative(item.created_at)} · Order {item.order_number}
-            </Text>
-          </View>
-          <View style={[styles.badge, { backgroundColor: sc.bg }]}>
-            <Text style={[styles.badgeText, { color: sc.text }]}>{item.status}</Text>
-          </View>
+          <Text style={styles.orderNumber} numberOfLines={1}>
+            {item.order_number || item.return_number || "—"}
+          </Text>
+          <SellerStatusPill
+            label={formatReturnStatusLabel(item.status)}
+            bg={tone.bg}
+            color={tone.text}
+            dotted={item.status === "requested"}
+          />
         </View>
-        {item.buyer_name ? (
-          <Text style={styles.buyer} numberOfLines={1}>
-            {item.buyer_name}
+        {product ? (
+          <Text style={styles.product} numberOfLines={2}>
+            {product}
+            {variant ? ` · ${variant}` : ""}
           </Text>
         ) : null}
-        <Text style={styles.reason} numberOfLines={1}>
-          {item.reason}
+        <Text style={styles.meta} numberOfLines={2}>
+          {[formatRelative(item.created_at), item.buyer_name, item.reason].filter(Boolean).join(" · ") || "—"}
         </Text>
         <View style={styles.footer}>
-          <Text style={styles.items}>
-            {itemCount} item{itemCount === 1 ? "" : "s"}
-          </Text>
-          <Text style={styles.refund}>{formatPrice(item.refund_amount, item.currency)}</Text>
+          <Text style={styles.refund}>{refundMoney(item)}</Text>
+          <Text style={styles.action}>Review</Text>
         </View>
       </TouchableOpacity>
     );
@@ -127,215 +206,293 @@ export default function SellerReturns() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Returns</Text>
-        <Text style={styles.count}>
-          {pendingCount > 0 ? `${pendingCount} pending · ` : ""}
-          {returns.length} total
-        </Text>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+        <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 4 }} />
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kicker}>Atelier</Text>
+            <Text style={styles.title}>Returns</Text>
+          </View>
+          <Text style={styles.count}>{headerCount}</Text>
+        </View>
       </View>
+      <View style={styles.goldRule} />
 
       <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search return #, order, buyer..."
-          value={search}
-          onChangeText={setSearch}
-          placeholderTextColor={colors.light.mutedForeground}
+        <SellerSearchField
+          value={searchInput}
+          onChangeText={setSearchInput}
+          placeholder="Search order, piece, buyer…"
+          accessibilityLabel="Search returns"
         />
       </View>
 
-      <View style={styles.tabsContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsContent}
+        style={styles.tabsContainer}
+      >
+        {STATUS_TABS.map((tab) => (
+          <SellerFilterTab
+            key={tab.key}
+            label={tab.label}
+            count={counts[tab.key as keyof typeof counts] ?? 0}
+            active={statusTab === tab.key}
+            onPress={() => setStatusTab(tab.key)}
+          />
+        ))}
+      </ScrollView>
+
+      {loading && returns.length === 0 ? (
+        <ReturnsSkeleton />
+      ) : (
         <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={STATUS_TABS}
-          keyExtractor={(item) => item.key}
-          renderItem={({ item: tab }) => {
-            const count =
-              tab.key === "all"
-                ? returns.length
-                : returns.filter((r) => r.status === (tab.key as ReturnStatus)).length;
-            return (
-              <TouchableOpacity
-                style={[styles.tab, statusTab === tab.key && styles.tabActive]}
-                onPress={() => setStatusTab(tab.key)}
-              >
-                {tab.accent && statusTab !== tab.key ? (
-                  <View style={[styles.tabDot, { backgroundColor: tab.accent }]} />
-                ) : null}
-                <Text style={[styles.tabText, statusTab === tab.key && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-                {count > 0 ? (
-                  <View style={[styles.tabCount, statusTab === tab.key && styles.tabCountActive]}>
-                    <Text
-                      style={[
-                        styles.tabCountText,
-                        statusTab === tab.key && styles.tabCountTextActive,
-                      ]}
-                    >
-                      {count}
-                    </Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            );
-          }}
-          contentContainerStyle={styles.tabsContent}
+          data={visible}
+          keyExtractor={(item) => item.id}
+          renderItem={renderReturn}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[800]} />
+          }
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <SellerStateView
+              variant={loadError ? "error" : "empty"}
+              icon={loadError ? "cloud-offline-outline" : "return-down-back-outline"}
+              title={loadError ? "Couldn’t load returns" : search ? "Nothing matches" : "No returns"}
+              description={
+                loadError ??
+                (search
+                  ? "Try a different order number or buyer name."
+                  : "Buyer return requests for this store will appear here.")
+              }
+              actionLabel={loadError ? "Try again" : undefined}
+              onAction={loadError ? onRefresh : undefined}
+              style={{ marginTop: 24 }}
+            />
+          }
         />
-      </View>
-
-      <FlatList
-        data={returns}
-        keyExtractor={(item) => item.return_group_id}
-        renderItem={renderReturn}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />
-        }
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>↩️</Text>
-              <Text style={styles.emptyTitle}>No returns here</Text>
-              <Text style={styles.emptySub}>Buyer return requests will show up here</Text>
-            </View>
-          ) : null
-        }
-      />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
   header: {
-    paddingTop: 56,
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-    backgroundColor: colors.light.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 12,
+  },
+  kicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+    marginBottom: 2,
   },
   title: {
-    fontSize: typography.fontSizes["2xl"],
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    color: INK,
+    letterSpacing: -0.4,
   },
   count: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    color: colors.olive[700],
+    paddingBottom: 6,
   },
-  searchContainer: { paddingHorizontal: 24, paddingVertical: 12 },
-  searchInput: {
-    backgroundColor: colors.light.card,
+  goldRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(200,164,74,0.55)",
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[3],
+  },
+  searchContainer: { paddingHorizontal: spacing[5], marginBottom: spacing[3] },
+  searchInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 44,
+    paddingHorizontal: 14,
+    gap: 8,
+    backgroundColor: CREAM,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: typography.fontSizes.base,
-    color: colors.light.foreground,
+    borderColor: "rgba(83,94,44,0.16)",
   },
-  tabsContainer: { marginBottom: 8 },
-  tabsContent: { paddingHorizontal: 24, gap: 8 },
+  searchInput: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: INK,
+    paddingVertical: 10,
+  },
+  tabsContainer: { marginBottom: 8, flexGrow: 0 },
+  tabsContent: { paddingHorizontal: spacing[5], gap: 8, paddingBottom: 4 },
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    minHeight: 36,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
-    marginRight: 8,
-  },
-  tabActive: { backgroundColor: colors.light.primary },
-  tabDot: { width: 6, height: 6, borderRadius: 3 },
-  tabText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    fontWeight: typography.fontWeights.medium as any,
-  },
-  tabTextActive: { color: colors.light.primaryForeground },
-  tabCount: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  tabCountActive: { backgroundColor: "rgba(255,255,255,0.25)" },
-  tabCountText: {
-    fontSize: 11,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.mutedForeground,
-  },
-  tabCountTextActive: { color: colors.light.primaryForeground },
-  listContent: { paddingHorizontal: 24, paddingBottom: 32 },
-  card: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 16,
-    marginBottom: 12,
+    borderColor: "rgba(83,94,44,0.16)",
+    gap: 6,
+  },
+  tabActive: {
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
+  },
+  tabText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    color: colors.olive[800],
+  },
+  tabTextActive: { color: CREAM, fontFamily: fontFamilies.sans.semibold },
+  tabCount: {
+    backgroundColor: "rgba(83,94,44,0.1)",
+    borderRadius: radii.full,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    minWidth: 20,
+    alignItems: "center",
+  },
+  tabCountActive: { backgroundColor: "rgba(250,248,241,0.18)" },
+  tabCountText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.olive[800],
+  },
+  tabCountTextActive: { color: CREAM },
+  listContent: { paddingHorizontal: spacing[5], paddingTop: 8, paddingBottom: 48 },
+  card: {
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    padding: 14,
+    marginBottom: 10,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 8,
+    alignItems: "center",
+    gap: 8,
   },
-  returnNumber: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+  orderNumber: {
+    flex: 1,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 13,
+    color: INK,
+    letterSpacing: 0.2,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  badgeText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+  },
+  product: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15,
+    color: INK,
+    marginTop: 8,
   },
   meta: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
-  badgeText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold as any,
-    textTransform: "capitalize",
-  },
-  buyer: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
-    marginBottom: 4,
-  },
-  reason: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    marginBottom: 10,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.olive[800],
+    marginTop: 4,
+    lineHeight: 18,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
-    paddingTop: 10,
+    marginTop: 12,
   },
-  items: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
   refund: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
+    color: INK,
   },
-  emptyContainer: { alignItems: "center", paddingTop: 60, gap: 8 },
-  emptyIcon: { fontSize: 40 },
+  action: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.olive[800],
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingTop: 48,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
   emptyTitle: {
-    fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: INK,
+    textAlign: "center",
   },
-  emptySub: { fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground },
+  emptySub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.olive[700],
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: -6,
+    marginBottom: 2,
+  },
+  retryBtn: {
+    marginTop: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[700],
+  },
+  retryLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    color: CREAM,
+  },
+  skelCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.08)",
+    gap: 10,
+  },
 });

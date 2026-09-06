@@ -185,6 +185,15 @@ export default function AdminStoreDetail() {
     }),
   ];
 
+  const products = s.products ?? [];
+  const activeProducts = products.filter((p) => p.status === "active").length;
+  const catalogueHealth =
+    products.length > 0 ? Math.round((activeProducts / products.length) * 100) : null;
+  const complianceOkCount = complianceItems.filter((item) => item.ok).length;
+  const complianceHealth =
+    complianceItems.length > 0
+      ? Math.round((complianceOkCount / complianceItems.length) * 100)
+      : null;
   const isPending = s.status === "pending" || s.status === "draft";
   const isActive = s.status === "approved" || s.status === "active";
   const isSuspended = s.status === "suspended" || s.status === "banned";
@@ -380,8 +389,16 @@ export default function AdminStoreDetail() {
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>Health</Text>
         <View style={{ marginTop: 12, gap: 12 }}>
-          <Health label="Fulfilment" value="95%" progress={95} />
-          <Health label="On-time delivery" value="88%" progress={88} />
+          <Health
+            label="Catalogue active"
+            value={catalogueHealth == null ? "—" : `${catalogueHealth}%`}
+            progress={catalogueHealth ?? 0}
+          />
+          <Health
+            label="Compliance complete"
+            value={complianceHealth == null ? "—" : `${complianceHealth}%`}
+            progress={complianceHealth ?? 0}
+          />
         </View>
       </Card>
 

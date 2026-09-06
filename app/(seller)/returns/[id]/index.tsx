@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -20,18 +22,20 @@ import {
   type SellerReturnAction,
 } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
-import type { ReturnStatus } from "@/lib/account-local";
+import { formatPrice } from "@/lib/utils";
+import { formatReturnStatusLabel, returnRefundAmount } from "@/lib/returns/seller-list";
 
-const STATUS_COLORS: Record<ReturnStatus, { bg: string; text: string }> = {
-  requested: { bg: "#fef3c7", text: "#92400e" },
-  approved: { bg: "#dbeafe", text: "#1e40af" },
-  received: { bg: "#e0e7ff", text: "#3730a3" },
-  refunded: { bg: "#dcfce7", text: "#166534" },
-  rejected: { bg: "#fee2e2", text: "#b91c1c" },
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  requested: { bg: "rgba(200,164,74,0.18)", text: "#8a6a2a" },
+  approved: { bg: "rgba(83,94,44,0.12)", text: colors.olive[800] },
+  received: { bg: "rgba(83,94,44,0.16)", text: colors.olive[900] },
+  refunded: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
+  rejected: { bg: "rgba(184,92,58,0.12)", text: colors.accent2.rust },
 };
 
-function formatPrice(n: number, currency = "LKR") {
-  return `${currency} ${n.toLocaleString("en-LK")}`;
+function money(n: number | null | undefined, currency = "LKR") {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return formatPrice(n, currency);
 }
 
 function formatDate(dateStr: string) {
@@ -51,27 +55,53 @@ export default function SellerReturnDetail() {
   const [storeId, setStoreId] = useState<string | null>(null);
   const [returnReq, setReturnReq] = useState<SellerReturnRequest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [note, setNote] = useState("");
 
+  // Held in a ref as well as state: keeping `storeId` out of `load`'s deps
+  // stops the resolved store from retriggering the effect and double-fetching.
+  const storeIdRef = useRef<string | null>(null);
+
   const load = useCallback(async () => {
     if (!id || !user) return;
-    let sid = storeId;
+    let sid = storeIdRef.current;
     if (!sid) {
       const storeRes = await getSellerStore(user.id);
       if (!storeRes.ok || !storeRes.data) {
+        setLoadError(storeRes.ok ? "No store found" : storeRes.error);
         setLoading(false);
+        setRefreshing(false);
         return;
       }
       sid = storeRes.data.id;
+      storeIdRef.current = sid;
       setStoreId(sid);
     }
     const res = await getSellerReturnByGroupId(sid, id);
-    if (res.ok && res.data) setReturnReq(res.data);
+    if (res.ok && res.data) {
+      setReturnReq(res.data);
+      setLoadError(null);
+    } else {
+      setLoadError(res.ok ? "Return not found" : res.error);
+    }
     setLoading(false);
-  }, [id, user, storeId]);
+    setRefreshing(false);
+  }, [id, user]);
 
   useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load();
+  }, [load]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     load();
   }, [load]);
 
@@ -82,7 +112,7 @@ export default function SellerReturnDetail() {
       action === "reject"
         ? "The buyer will be notified. They can contact support if needed."
         : action === "refund"
-          ? `Refund ${formatPrice(returnReq.refund_amount, returnReq.currency)} to the buyer?`
+          ? `Refund ${money(returnReq.refund_amount, returnReq.currency)} to the buyer?`
           : `Mark this return as "${label}"?`;
 
     Alert.alert(`${label} return?`, confirmCopy, [
@@ -98,7 +128,9 @@ export default function SellerReturnDetail() {
           setActing(false);
           if (res.ok) {
             setNote("");
-            setLoading(true);
+            // Refresh in place — a full-screen loading flash after every
+            // decision made the screen feel like it had reset.
+            setRefreshing(true);
             load();
           } else {
             Alert.alert("Error", res.error);
@@ -110,57 +142,72 @@ export default function SellerReturnDetail() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
         <ActivityIndicator size="large" color={colors.light.primary} />
         <Text style={styles.loadingText}>Loading return...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!returnReq) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Return not found</Text>
-        <TouchableOpacity onPress={() => router.back()}>
+      <SafeAreaView style={styles.loadingContainer} edges={["top"]}>
+        <Text style={styles.errorTitle}>Couldn’t load this return</Text>
+        <Text style={styles.loadingText}>{loadError ?? "Return not found"}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={retry} accessibilityRole="button">
+          <Text style={styles.retryLabel}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.backLink}>← Go back</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
-  const sc = STATUS_COLORS[returnReq.status];
+  const sc = STATUS_COLORS[returnReq.status] ?? STATUS_COLORS.requested;
   const canApprove = returnReq.status === "requested";
   const canReject = returnReq.status === "requested";
   const canReceive = returnReq.status === "approved";
   const canRefund = returnReq.status === "approved" || returnReq.status === "received";
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />
+      }
+    >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.returnNumber}>{returnReq.return_number}</Text>
+            <Text style={styles.returnNumber}>{returnReq.order_number || returnReq.return_number || "Return"}</Text>
             <Text style={styles.date}>{formatDate(returnReq.created_at)}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-            <Text style={[styles.statusText, { color: sc.text }]}>{returnReq.status}</Text>
+            <Text style={[styles.statusText, { color: sc.text }]}>{formatReturnStatusLabel(returnReq.status)}</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Order</Text>
-        <TouchableOpacity
-          style={styles.orderLink}
-          onPress={() => router.push(`/(seller)/orders/${returnReq.order_id}` as any)}
-        >
-          <Ionicons name="receipt-outline" size={18} color={colors.olive[600]} />
-          <Text style={styles.orderLinkText}>{returnReq.order_number}</Text>
-          <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
-        </TouchableOpacity>
+        {returnReq.order_id ? (
+          <TouchableOpacity
+            style={styles.orderLink}
+            onPress={() => router.push(`/(seller)/orders/${returnReq.order_id}` as const)}
+          >
+            <Ionicons name="receipt-outline" size={18} color={colors.olive[600]} />
+            <Text style={styles.orderLinkText}>{returnReq.order_number || "—"}</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.orderLinkText}>{returnReq.order_number || "—"}</Text>
+        )}
         {returnReq.buyer_name ? (
           <Text style={styles.buyer}>Buyer: {returnReq.buyer_name}</Text>
         ) : null}
@@ -181,18 +228,18 @@ export default function SellerReturnDetail() {
                 <Text style={styles.itemVariant}>{item.variant_label}</Text>
               ) : null}
               <Text style={styles.itemQty}>
-                Qty {item.quantity} · {formatPrice(item.unit_price, returnReq.currency)} each
+                Qty {item.quantity} · {money(item.unit_price, returnReq.currency)} each
               </Text>
             </View>
             <Text style={styles.itemRefund}>
-              {formatPrice(item.refund_amount, returnReq.currency)}
+              {money(item.refund_amount, returnReq.currency)}
             </Text>
           </View>
         ))}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Refund total</Text>
           <Text style={styles.totalValue}>
-            {formatPrice(returnReq.refund_amount, returnReq.currency)}
+            {money(returnRefundAmount(returnReq), returnReq.currency)}
           </Text>
         </View>
       </View>
@@ -268,6 +315,7 @@ export default function SellerReturnDetail() {
         </View>
       ) : null}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -283,8 +331,25 @@ const styles = StyleSheet.create({
   },
   loadingText: { fontSize: typography.fontSizes.base, color: colors.light.mutedForeground },
   backLink: { fontSize: typography.fontSizes.base, color: colors.light.primary },
+  errorTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.light.foreground,
+  },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[600],
+  },
+  retryLabel: {
+    color: "#fff",
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
   header: {
-    paddingTop: 56,
+    // Top inset comes from SafeAreaView, not a hardcoded notch guess.
+    paddingTop: 16,
     paddingHorizontal: 24,
     paddingBottom: 20,
     backgroundColor: colors.light.card,

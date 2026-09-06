@@ -34,6 +34,21 @@ export type VariantWithInventory = {
   inventory?: InventoryRow[] | InventoryRow | null;
 };
 
+/** True when the payload actually sent a stock figure — 0 is a value, missing is not. */
+export function variantHasStockSignal(variant: VariantWithInventory | null | undefined): boolean {
+  if (!variant) return false;
+  if (firstFiniteNumber(variant.stock) != null) return true;
+  if (Array.isArray(variant.inventory)) {
+    return variant.inventory.some(
+      (row) => row && firstFiniteNumber(row.quantity, row.on_hand) != null,
+    );
+  }
+  if (variant.inventory) {
+    return firstFiniteNumber(variant.inventory.quantity, variant.inventory.on_hand) != null;
+  }
+  return false;
+}
+
 /** Available units for a variant (prefers joined inventory row over cached stock). */
 export function getVariantAvailableStock(
   variant: VariantWithInventory | null | undefined,
@@ -63,6 +78,23 @@ export function getVariantAvailableStock(
   return fallback;
 }
 
+/**
+ * Sellable units for a catalogue product. Returns null when the payload has
+ * no stock signal so callers can show "—" instead of inventing 0 in stock.
+ */
+export function getProductAvailableStock(
+  product: { variants?: VariantWithInventory[] | null; stock?: number | null } | null | undefined,
+): number | null {
+  if (!product) return null;
+  const variants = product.variants ?? [];
+  if (variants.length > 0) {
+    const signaled = variants.filter(variantHasStockSignal);
+    if (signaled.length === 0) return null;
+    return signaled.reduce((sum, v) => sum + getVariantAvailableStock(v, 0), 0);
+  }
+  return firstFiniteNumber(product.stock);
+}
+
 export type InventoryHealthRow = {
   product?: { status?: string | null } | null;
   inventory?: InventoryRow | InventoryRow[] | null;
@@ -76,13 +108,28 @@ export type InventoryHealthRow = {
 };
 
 function nestedInventory(row: InventoryHealthRow): InventoryRow | null {
-  if (!row.inventory || Array.isArray(row.inventory)) return null;
+  if (!row.inventory) return null;
+  if (Array.isArray(row.inventory)) {
+    let quantity = 0;
+    let reserved = 0;
+    let sawQty = false;
+    for (const item of row.inventory) {
+      if (!item) continue;
+      const q = firstFiniteNumber(item.quantity, item.on_hand);
+      if (q != null) {
+        quantity += Math.max(0, q);
+        sawQty = true;
+      }
+      reserved += Math.max(0, firstFiniteNumber(item.reserved) ?? 0);
+    }
+    if (!sawQty) return null;
+    return { quantity, reserved, on_hand: quantity };
+  }
   return row.inventory;
 }
 
 function rowHasStockSignal(row: InventoryHealthRow): boolean {
   const nested = nestedInventory(row);
-  if (Array.isArray(row.inventory) && row.inventory.length > 0) return true;
   return firstFiniteNumber(
     row.available,
     row.available_quantity,
@@ -93,6 +140,40 @@ function rowHasStockSignal(row: InventoryHealthRow): boolean {
     nested?.quantity,
     nested?.on_hand,
   ) != null;
+}
+
+export type InventoryQuantities = {
+  quantity: number | null;
+  reserved: number;
+  available: number | null;
+};
+
+/**
+ * Read sellable quantities from a live inventory payload. Missing stock
+ * fields stay null so callers can show "—" instead of inventing 0 / Out.
+ */
+export function readInventoryQuantities(row: InventoryHealthRow): InventoryQuantities {
+  const nested = nestedInventory(row);
+  const reserved = Math.max(0, firstFiniteNumber(row.reserved, nested?.reserved) ?? 0);
+  if (!rowHasStockSignal(row)) {
+    return { quantity: null, reserved, available: null };
+  }
+  const availableDirect = firstFiniteNumber(row.available, row.available_quantity);
+  const quantity = firstFiniteNumber(
+    row.quantity,
+    row.on_hand,
+    row.qty,
+    nested?.quantity,
+    nested?.on_hand,
+    row.stock,
+  );
+  const available =
+    availableDirect ?? (quantity != null ? Math.max(0, quantity - reserved) : null);
+  return {
+    quantity: quantity != null ? Math.max(0, quantity) : null,
+    reserved,
+    available: available != null ? Math.max(0, available) : null,
+  };
 }
 
 export type InventoryHealth = {

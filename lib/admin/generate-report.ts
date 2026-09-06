@@ -72,17 +72,43 @@ export async function generateAdminReport(key: AdminReportKey): Promise<{ ok: tr
       );
       return { ok: true, csv, title: "Sales by day" };
     }
+    if (key === "payouts") {
+      // No dedicated seller-payout ledger endpoint exists on the backend;
+      // export the settled (paid) order basis that payouts are computed from.
+      const settled = orders.filter((o) => o.payment_status === "paid");
+      const csv = toCsv(
+        ["id", "order_number", "status", "total", "placed_at"],
+        settled.map((o) => [o.id, o.order_number, o.status, o.total, o.placed_at]),
+      );
+      return { ok: true, csv, title: "Payouts basis — paid orders" };
+    }
+    if (key === "tax") {
+      // Orders carry no separate tax column; export gross totals per order
+      // as the taxable basis instead of implying per-line tax data.
+      const csv = toCsv(
+        ["id", "order_number", "total", "payment_status", "placed_at"],
+        orders.map((o) => [o.id, o.order_number, o.total, o.payment_status, o.placed_at]),
+      );
+      return { ok: true, csv, title: "Tax basis — gross sales" };
+    }
+    if (key === "finance") {
+      const byStatus = new Map<string, { count: number; total: number }>();
+      for (const o of orders) {
+        const k = `${o.status ?? "unknown"} / ${o.payment_status ?? "unknown"}`;
+        const prev = byStatus.get(k) ?? { count: 0, total: 0 };
+        byStatus.set(k, { count: prev.count + 1, total: prev.total + (o.total ?? 0) });
+      }
+      const csv = toCsv(
+        ["status", "orders", "gross"],
+        [...byStatus.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([status, v]) => [status, v.count, v.total]),
+      );
+      return { ok: true, csv, title: "Finance pack — by status" };
+    }
     const csv = toCsv(
       ["id", "order_number", "status", "payment_status", "total", "placed_at"],
       orders.map((o) => [o.id, o.order_number, o.status, o.payment_status, o.total, o.placed_at]),
     );
-    const titles: Record<string, string> = {
-      orders: "Order ledger",
-      payouts: "Payouts queue",
-      tax: "Tax summary",
-      finance: "Finance pack",
-    };
-    return { ok: true, csv, title: titles[key] ?? "Orders" };
+    return { ok: true, csv, title: "Order ledger" };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to generate report" };
   }

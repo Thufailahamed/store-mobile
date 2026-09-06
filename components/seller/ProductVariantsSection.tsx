@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, typography } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 
 export interface VariantDraft {
   key: string;
@@ -61,11 +62,12 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
     <View style={styles.section}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Variants & stock</Text>
-          <Text style={styles.subtitle}>Size, color, SKU, and quantity per SKU</Text>
+          <Text style={styles.kicker}>Stock room</Text>
+          <Text style={styles.title}>Variants</Text>
+          <Text style={styles.subtitle}>Size, colour, SKU, and quantity</Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={addVariant} activeOpacity={0.85}>
-          <Ionicons name="add" size={16} color={colors.light.primaryForeground} />
+          <Ionicons name="add" size={16} color={colors.paper.cream} />
           <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
@@ -163,7 +165,7 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
             <View style={[styles.field, { flex: 1 }]}>
               <Text style={styles.label}>SKU</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.mono]}
                 value={variant.sku}
                 onChangeText={(sku) => updateVariant(variant.key, { sku })}
                 placeholder="Optional"
@@ -175,7 +177,7 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
             <View style={[styles.field, { flex: 0.7 }]}>
               <Text style={styles.label}>Stock</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.mono]}
                 value={variant.stock}
                 onChangeText={(stock) => updateVariant(variant.key, { stock })}
                 placeholder="0"
@@ -186,12 +188,12 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Variant price (optional)</Text>
+            <Text style={styles.label}>SKU price (optional)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, styles.mono]}
               value={variant.price}
               onChangeText={(price) => updateVariant(variant.key, { price })}
-              placeholder={basePrice ? `Defaults to Rs. ${basePrice}` : "Uses product price"}
+              placeholder={basePrice ? `Defaults to LKR ${basePrice}` : "Uses selling price"}
               keyboardType="numeric"
               placeholderTextColor={colors.light.mutedForeground}
             />
@@ -202,21 +204,32 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
   );
 }
 
+const CREAM = colors.paper.cream;
+const INK = colors.olive[950];
+
 const styles = StyleSheet.create({
-  section: { marginBottom: 20 },
+  section: { marginBottom: 22 },
   header: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 12,
     gap: 12,
   },
+  kicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+  },
   title: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: INK,
   },
   subtitle: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
     marginTop: 2,
@@ -225,22 +238,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.light.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: colors.olive[800],
+    paddingHorizontal: 14,
+    minHeight: 36,
     borderRadius: radii.full,
   },
   addBtnText: {
     fontSize: typography.fontSizes.xs,
-    color: colors.light.primaryForeground,
-    fontWeight: typography.fontWeights.semibold as any,
+    color: CREAM,
+    fontFamily: fontFamilies.sans.semibold,
   },
   card: {
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    padding: 12,
+    borderColor: "rgba(83,94,44,0.12)",
+    borderRadius: radii.xl,
+    padding: 14,
     marginBottom: 10,
   },
   cardHeader: {
@@ -251,33 +264,37 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    color: INK,
   },
   row: { flexDirection: "row" },
   field: { marginBottom: 10 },
   label: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
+    fontSize: 10,
+    color: colors.olive[800],
     marginBottom: 4,
-    fontWeight: typography.fontWeights.medium as any,
+    fontFamily: fontFamilies.sans.medium,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
   },
   input: {
     backgroundColor: colors.light.background,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.md,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    borderColor: "rgba(83,94,44,0.14)",
+    borderRadius: radii.lg,
+    paddingHorizontal: 12,
+    minHeight: 44,
     fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.regular,
+    color: INK,
   },
+  mono: { fontFamily: fontFamilies.mono.regular },
   colorRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   colorSwatch: {
     width: 22,
     height: 22,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.18)",
   },
 });

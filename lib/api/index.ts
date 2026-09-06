@@ -50,9 +50,12 @@ import {
   isReassignAvailable,
   reassignDelivery,
 } from "@/lib/api/delivery-api";
-import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
+import { getSellerAccessState, getSellerComplianceGaps, readStorefrontContact, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
 import { getBrowsableStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
-import { getAvailableStock, summarizeInventoryHealth } from "@/lib/inventory";
+import { summarizeInventoryHealth, readInventoryQuantities } from "@/lib/inventory";
+import { mapSellerOrderRow, isAmbiguousRelationshipError, SELLER_ORDERS_LIST_SELECT } from "@/lib/orders/seller-list";
+import { mapSellerReturnRow } from "@/lib/returns/seller-list";
+import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import {
   getAdminCategoriesEnriched,
   getCategoryDeleteImpact,
@@ -684,6 +687,24 @@ export async function getNotifications(_userId: string, limit = 30): Promise<Res
   return ok(loose<Notification[]>(res.data.notifications ?? []));
 }
 
+export async function getSellerNotifications(_limit = 50): Promise<Result<Notification[]>> {
+  const res = await B.listSellerNotificationsBackend();
+  if (!res.ok) return fail(res.error);
+  return ok(loose<Notification[]>(res.data.notifications ?? []));
+}
+
+export async function markSellerNotificationRead(id: string): Promise<Result<void>> {
+  const res = await B.markSellerNotificationReadBackend(id);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
+export async function markAllSellerNotificationsRead(): Promise<Result<void>> {
+  const res = await B.markAllSellerNotificationsReadBackend();
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
 export async function markNotificationRead(id: string): Promise<Result<void>> {
   const res = await B.markNotificationReadBackend(id);
   if (!res.ok) return fail(res.error);
@@ -757,7 +778,24 @@ function scopeOrderToStore(order: Order, storeId: string): Order | null {
 export async function getSellerStore(_ownerId: string): Promise<Result<Store | null>> {
   const res = await B.getSellerStoreBackend();
   if (!res.ok) return fail(res.error);
-  return ok(loose<Store | null>(res.data.store ?? null));
+  const raw = res.data.store as (Store & Record<string, unknown>) | null;
+  if (!raw) return ok(null);
+  const mapped = mapStore(raw);
+  const contact = readStorefrontContact(mapped as Store & Record<string, unknown>);
+  const online =
+    typeof mapped.is_online === "boolean"
+      ? mapped.is_online
+      : typeof (mapped as Store & { is_active?: boolean }).is_active === "boolean"
+      ? Boolean((mapped as Store & { is_active?: boolean }).is_active)
+      : mapped.is_online;
+  return ok(
+    loose<Store>({
+      ...mapped,
+      contact_phone: contact.phone,
+      contact_email: contact.email,
+      is_online: online,
+    }),
+  );
 }
 
 export async function createSellerStore(
@@ -778,7 +816,16 @@ export async function createSellerStore(
 export async function updateSellerStore(id: string, patch: Partial<Store>): Promise<Result<Store>> {
   const res = await B.updateSellerStoreBackend(patch);
   if (!res.ok) return fail(res.error);
-  return ok(loose<Store>(res.data.store));
+  const mapped = mapStore(res.data.store as Store & Record<string, unknown>);
+  const contact = readStorefrontContact(mapped as Store & Record<string, unknown>);
+  void id;
+  return ok(
+    loose<Store>({
+      ...mapped,
+      contact_phone: contact.phone,
+      contact_email: contact.email,
+    }),
+  );
 }
 
 export async function getSellerPayoutSettings(_storeId: string): Promise<Result<SellerPayoutCompliance | null>> {
@@ -868,7 +915,7 @@ export async function getSellerProducts(storeId: string, opts: {
   sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "sales_desc" | "name_asc";
   limit?: number;
   offset?: number;
-} = {}): Promise<Result<{ products: Product[]; total: number }>> {
+} = {}): Promise<Result<{ products: Product[]; total: number; stats?: Record<string, number> }>> {
   const res = await B.getSellerProductsBackend({
     limit: opts.limit,
     offset: opts.offset,
@@ -879,7 +926,8 @@ export async function getSellerProducts(storeId: string, opts: {
   if (!res.ok) return fail(res.error);
   void storeId;
   const products = (res.data.products as unknown[]).map((p) => mapProduct(p));
-  return ok({ products: products ?? [], total: res.data.total ?? products.length });
+  const stats = res.data.stats && typeof res.data.stats === "object" ? res.data.stats : undefined;
+  return ok({ products: products ?? [], total: res.data.total ?? products.length, stats });
 }
 
 export async function createSellerProduct(product: Partial<Product>): Promise<Result<{ product: Product; moderation: B.SellerModerationBlock }>> {
@@ -1054,22 +1102,109 @@ export async function getSellerOrders(storeId: string, opts: {
   search?: string;
   limit?: number;
   offset?: number;
-} = {}): Promise<Result<Order[]>> {
+} = {}): Promise<Result<{ orders: Order[]; total: number }>> {
+  const limit = opts.limit ?? 100;
+  const offset = opts.offset ?? 0;
   const res = await B.getSellerOrdersBackend({
-    limit: opts.limit,
-    offset: opts.offset,
-    status: opts.status && opts.status !== "all" ? opts.status : undefined,
+    limit,
+    offset,
+    status: opts.status,
+    search: opts.search,
   });
-  if (!res.ok) return fail(res.error);
-  void storeId;
-  return ok(loose<Order[]>(res.data.orders ?? []));
+  if (res.ok) {
+    const orders = (res.data.orders ?? []).map((row) => mapSellerOrderRow(row));
+    const totalRaw = res.data.total;
+    const total = typeof totalRaw === "number" && Number.isFinite(totalRaw) ? totalRaw : orders.length;
+    return ok({ orders, total });
+  }
+  if (!isAmbiguousRelationshipError(res.error)) return fail(res.error);
+  return loadSellerOrdersDirect(storeId, limit, offset, opts.status, opts.search);
+}
+
+async function loadSellerOrdersDirect(
+  storeId: string,
+  limit: number,
+  offset: number,
+  status?: string,
+  search?: string,
+): Promise<Result<{ orders: Order[]; total: number }>> {
+  let itemQuery = supabase
+    .from("order_items")
+    .select("order_id, orders!inner(id, status, order_number)")
+    .eq("store_id", storeId)
+    .order("order_id", { ascending: false })
+    .limit(Math.min(limit + offset + 500, 2000));
+  if (status) itemQuery = itemQuery.eq("orders.status", status);
+  const { data: itemRows, error: itemErr } = await itemQuery;
+  if (itemErr) return fail(itemErr.message);
+  const seen = new Set<string>();
+  const orderIds: string[] = [];
+  const searchLower = (search ?? "").trim().toLowerCase();
+  for (const row of itemRows ?? []) {
+    const oid = (row as { order_id?: string }).order_id;
+    if (!oid || seen.has(oid)) continue;
+    if (searchLower) {
+      const ord = (row as { orders?: { order_number?: string } | null }).orders;
+      const num = String(ord?.order_number ?? "").toLowerCase();
+      if (!num.includes(searchLower) && !oid.toLowerCase().includes(searchLower)) continue;
+    }
+    seen.add(oid);
+    orderIds.push(oid);
+  }
+  const pageIds = orderIds.slice(offset, offset + limit);
+  if (pageIds.length === 0) return ok({ orders: [], total: orderIds.length });
+  const { data, error } = await supabase
+    .from("orders")
+    .select(SELLER_ORDERS_LIST_SELECT)
+    .in("id", pageIds)
+    .order("placed_at", { ascending: false });
+  if (error) return fail(error.message);
+  return ok({
+    orders: (data ?? []).map((row) => mapSellerOrderRow(row)),
+    total: orderIds.length,
+  });
 }
 
 export async function getSellerOrderById(orderId: string, storeId: string): Promise<Result<Order | null>> {
-  const res = await B.getOrderByIdBackend(orderId);
-  if (!res.ok) return fail(res.error);
-  if (!res.data.order) return ok(null);
-  return ok(scopeOrderToStore(loose<Order>(res.data.order), storeId));
+  const seller = await B.getSellerOrderByIdBackend(orderId);
+  let raw: unknown = null;
+  if (seller.ok) {
+    const payload = seller.data as { order?: unknown } & Record<string, unknown>;
+    raw = payload.order ?? (typeof payload.id === "string" ? payload : null);
+  }
+  // Never embed users here — orders has 3 FKs to users and PostgREST rejects
+  // unqualified embeds. Seller UI reads buyer contact from shipping_address.
+  const safeDetailSelect =
+    "id, order_number, status, payment_status, payment_method, subtotal, discount, shipping_fee, tax, total, currency, placed_at, updated_at, delivered_at, user_id, notes, shipping_address, delivery_person_id, delivery_otp, courier_mode, address_id, metadata, " +
+    "items:order_items!order_items_order_id_fkey!inner(" +
+    "id, order_id, product_id, variant_id, store_id, product_name, variant_label, sku, quantity, unit_price, total, status, " +
+    "product:products!order_items_product_id_fkey(name, images:product_images!product_images_product_id_fkey(url, is_primary))" +
+    "), " +
+    "address:addresses!address_id(*)";
+
+  if (!raw && !seller.ok) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(safeDetailSelect)
+      .eq("id", orderId)
+      .eq("items.store_id", storeId)
+      .maybeSingle();
+    if (!error && data) raw = data;
+  }
+  if (!raw) {
+    const res = await B.getOrderByIdBackend(orderId);
+    if (!res.ok) {
+      const msg = seller.ok
+        ? "Order not found"
+        : isAmbiguousRelationshipError(seller.error)
+          ? "Couldn’t load this order. Pull to refresh, or try again in a moment."
+          : seller.error;
+      return fail(msg);
+    }
+    raw = res.data.order;
+  }
+  if (!raw) return ok(null);
+  return ok(scopeOrderToStore(loose<Order>(raw), storeId));
 }
 
 export async function transitionOrderStatus(
@@ -1104,7 +1239,7 @@ export async function cancelOrderItems(
 
 export async function getSellerInventory(_storeId: string): Promise<Result<{
   product: Product;
-  variants: (ProductVariant & { quantity: number; reserved: number; available: number; stock: number })[];
+  variants: (ProductVariant & { quantity: number | null; reserved: number; available: number | null; stock: number | null })[];
 }[]>> {
   const res = await B.getSellerInventoryBackend();
   if (!res.ok) return fail(res.error);
@@ -1116,40 +1251,63 @@ export async function getSellerInventory(_storeId: string): Promise<Result<{
       size?: string;
       color?: string;
       color_hex?: string;
-      price: number;
+      price?: number;
+      mrp?: number;
       quantity?: number;
       reserved?: number;
       stock?: number;
       on_hand?: number;
       available?: number;
-      product?: { id: string; name: string; status: string };
-      inventory?: { quantity?: number; reserved?: number; on_hand?: number };
+      image?: string;
+      image_url?: string;
+      product?: {
+        id: string;
+        name: string;
+        status?: string;
+        price?: number;
+        image_url?: string;
+        image?: string;
+        images?: { url: string; is_primary?: boolean }[];
+      };
+      inventory?: { quantity?: number; reserved?: number; on_hand?: number } | Array<{ quantity?: number; reserved?: number; on_hand?: number }>;
     };
-    const nested = r.inventory ?? {};
-    const quantity = Math.max(
-      0,
-      Number(nested.quantity ?? nested.on_hand ?? r.quantity ?? r.on_hand ?? r.stock ?? 0),
-    );
-    const reserved = Math.max(0, Number(nested.reserved ?? r.reserved ?? 0));
-    const available = getAvailableStock(
-      { quantity, reserved },
-      Number.isFinite(Number(r.available)) ? Number(r.available) : quantity - reserved,
-    );
-    const variant: ProductVariant & { quantity: number; reserved: number; available: number; stock: number } = {
+    const qty = readInventoryQuantities({
+      quantity: r.quantity,
+      reserved: r.reserved,
+      stock: r.stock,
+      on_hand: r.on_hand,
+      available: r.available,
+      inventory: r.inventory,
+      product: r.product,
+    });
+    const priceRaw = r.price ?? r.product?.price ?? r.mrp;
+    const price = typeof priceRaw === "number" ? priceRaw : Number(priceRaw);
+    const imgs = r.product?.images;
+    const fromImgs = Array.isArray(imgs)
+      ? (imgs.find((i) => i?.is_primary)?.url || imgs[0]?.url)
+      : undefined;
+    const imageRaw = fromImgs || r.product?.image_url || r.product?.image || r.image_url || r.image;
+    const image = imageRaw ? resolveImageUrl(String(imageRaw)) : undefined;
+    const variant: ProductVariant & { quantity: number | null; reserved: number; available: number | null; stock: number | null } = {
       id: r.variant_id ?? r.id ?? r.sku,
       sku: r.sku,
       size: r.size,
       color: r.color,
       color_hex: r.color_hex,
-      price: r.price,
-      quantity,
-      reserved,
-      available,
-      stock: quantity,
+      price: Number.isFinite(price) ? price : undefined,
+      quantity: qty.quantity,
+      reserved: qty.reserved,
+      available: qty.available,
+      stock: qty.quantity,
       is_active: true,
-    } as unknown as ProductVariant & { quantity: number; reserved: number; available: number; stock: number };
+    } as ProductVariant & { quantity: number | null; reserved: number; available: number | null; stock: number | null };
     return {
-      product: { id: r.product?.id ?? "", name: r.product?.name ?? r.sku } as unknown as Product,
+      product: {
+        id: r.product?.id ?? "",
+        name: r.product?.name ?? r.sku,
+        status: r.product?.status,
+        images: image ? [{ url: image, is_primary: true, position: 0 }] : [],
+      } as unknown as Product,
       variants: [variant],
     };
   });
@@ -1162,25 +1320,46 @@ export async function updateVariantStock(productId: string, variantId: string, s
   return ok(undefined);
 }
 
+function firstFiniteNumber(...vals: unknown[]): number | null {
+  for (const v of vals) {
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 export async function getSellerKPIs(_storeId: string): Promise<Result<{
   totalRevenue: number;
   totalOrders: number;
   totalProducts: number;
   pendingOrders: number;
+  returnsCount: number;
   lowStockVariants: number;
   outOfStockVariants: number;
   totalSkus: number;
   recentOrders: Order[];
+  topProducts: Array<{ id: string; name: string; revenue: number }>;
+  revenueSeries: Array<{ date: string; revenue: number; orders: number }>;
+  revenueDelta: number;
+  ordersDelta: number;
+  aov: number;
+  refundRate: number;
   analyticsReady: boolean;
   inventoryReady: boolean;
   productsReady: boolean;
   ordersReady: boolean;
+  pendingReady: boolean;
+  returnsReady: boolean;
 }>> {
-  const [kpis, orders, products, inventory] = await Promise.all([
+  const [kpis, orders, products, inventory, pending, returns] = await Promise.all([
     B.getSellerKPIsBackend(),
     B.getSellerOrdersBackend({ limit: 5 }),
     B.getSellerProductsBackend({ limit: 1 }),
     B.getSellerInventoryBackend(),
+    // `pending` and `returns` are not part of the analytics payload, so
+    // count them off their own endpoints instead of reporting zero.
+    B.getSellerOrdersBackend({ status: "pending", limit: 1 }),
+    B.getSellerReturnsBackend({ status: "requested" }),
   ]);
 
   if (!kpis.ok && !orders.ok && !products.ok && !inventory.ok) {
@@ -1189,30 +1368,44 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
 
   const recentOrders = orders.ok ? loose<Order[]>(orders.data.orders ?? []).slice(0, 5) : [];
 
-  const totalProducts = products.ok
-    ? typeof products.data.total === "number"
-      ? products.data.total
-      : products.data.products?.length ?? 0
-    : 0;
+  const stats = products.ok && products.data.stats && typeof products.data.stats === "object"
+    ? products.data.stats
+    : undefined;
+  const listedCount = products.ok
+    ? firstFiniteNumber(products.data.total, stats?.all, stats?.total)
+    : null;
 
   const health = inventory.ok
     ? summarizeInventoryHealth(inventory.data.inventory ?? [])
     : { totalSkus: 0, healthyCount: 0, lowStockVariants: 0, outOfStockVariants: 0 };
   const kpiData = kpis.ok ? kpis.data : null;
+  const pendingCount = pending.ok
+    ? (firstFiniteNumber(pending.data.total) ?? (pending.data.orders ?? []).length)
+    : 0;
+  const returnsCount = returns.ok ? (returns.data.returns ?? []).length : 0;
 
   return ok({
     totalRevenue: Number(kpiData?.revenue ?? 0),
     totalOrders: Number(kpiData?.orders ?? 0),
-    totalProducts,
-    pendingOrders: Number(kpiData?.pending ?? 0),
+    totalProducts: listedCount ?? 0,
+    pendingOrders: pendingCount,
+    returnsCount,
     lowStockVariants: health.lowStockVariants,
     outOfStockVariants: health.outOfStockVariants,
     totalSkus: health.totalSkus,
     recentOrders,
+    topProducts: kpiData?.topProducts ?? [],
+    revenueSeries: kpiData?.series ?? [],
+    revenueDelta: kpiData?.deltas.revenue ?? 0,
+    ordersDelta: kpiData?.deltas.orders ?? 0,
+    aov: Number(kpiData?.aov ?? 0),
+    refundRate: Number(kpiData?.refundRate ?? 0),
     analyticsReady: kpis.ok,
     inventoryReady: inventory.ok,
-    productsReady: products.ok,
+    productsReady: products.ok && listedCount != null,
     ordersReady: orders.ok,
+    pendingReady: pending.ok,
+    returnsReady: returns.ok,
   });
 }
 
@@ -1700,10 +1893,78 @@ export interface AdminStoreDetail {
 }
 
 export async function getAdminStoreDetail(id: string): Promise<Result<AdminStoreDetail | null>> {
-  const res = await B.getAdminStoreDetailBackend(id);
-  if (!res.ok) return fail(res.error);
-  void res; // unused in shim
-  return ok(null);
+  // Backend-first: GET /api/admin/stores/:id returns { store, owner, products }.
+  // There is no admin payout endpoint, so payout stays null (the detail
+  // screen already renders payout rows as missing). Compliance docs are
+  // best-effort via Supabase; failures degrade to an empty list, never null.
+  try {
+    const res = await B.getAdminStoreDetailBackend(id);
+    if (res.ok && res.data) {
+      const raw = res.data as {
+        store?: Record<string, unknown>;
+        owner?: AdminStoreDetail["store"]["owner"];
+        products?: AdminStoreDetail["store"]["products"];
+      };
+      if (raw.store && typeof raw.store === "object") {
+        let documents: SellerComplianceDocument[] = [];
+        try {
+          const { data } = await supabase
+            .from("compliance_documents")
+            .select("id, doc_type, file_url, file_name, status")
+            .eq("store_id", id);
+          if (Array.isArray(data)) documents = data as unknown as SellerComplianceDocument[];
+        } catch (_e) {}
+        const store = {
+          ...(raw.store as unknown as Store),
+          owner: raw.owner ?? null,
+          products: raw.products ?? [],
+        } as AdminStoreDetail["store"];
+        return ok({
+          store,
+          payout: null,
+          documents,
+          complianceGaps: getSellerComplianceGaps(
+            store as unknown as Store & Record<string, unknown>,
+            null,
+            documents,
+          ),
+        });
+      }
+    }
+  } catch (_e) {}
+
+  // Supabase fallback for environments where the detail route is unavailable.
+  try {
+    const [{ data: storeRow }, { data: ownerRow }, { data: productRows }, { data: docRows }] = await Promise.all([
+      supabase.from("stores").select("*").eq("id", id).maybeSingle(),
+      supabase.from("stores").select("owner_id").eq("id", id).maybeSingle().then(async (s) => {
+        const ownerId = (s.data as { owner_id?: string } | null)?.owner_id;
+        if (!ownerId) return { data: null };
+        return supabase.from("users").select("id, full_name, email, phone").eq("id", ownerId).maybeSingle();
+      }),
+      supabase.from("products").select("id, name, status, total_sales").eq("store_id", id).limit(100),
+      supabase.from("compliance_documents").select("id, doc_type, file_url, file_name, status").eq("store_id", id),
+    ]);
+    if (!storeRow) return ok(null);
+    const documents = (Array.isArray(docRows) ? docRows : []) as unknown as SellerComplianceDocument[];
+    const store = {
+      ...(storeRow as unknown as Store),
+      owner: (ownerRow as AdminStoreDetail["store"]["owner"]) ?? null,
+      products: ((Array.isArray(productRows) ? productRows : []) as AdminStoreDetail["store"]["products"]) ?? [],
+    } as AdminStoreDetail["store"];
+    return ok({
+      store,
+      payout: null,
+      documents,
+      complianceGaps: getSellerComplianceGaps(
+        store as unknown as Store & Record<string, unknown>,
+        null,
+        documents,
+      ),
+    });
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch store detail");
+  }
 }
 
 export async function getAdminOrders(opts: {
@@ -2307,13 +2568,98 @@ export interface AdminDeliveryCompanyDetail {
   audit: Array<{ id: string; action: string; created_at: string; actor?: { id: string; full_name?: string | null; avatar_url?: string | null } | null }>;
 }
 
-export async function getAdminDeliveryCompanyDetail(_id: string): Promise<Result<AdminDeliveryCompanyDetail>> {
-  // Skipped — out of scope per user.
-  return fail("Delivery company admin skipped");
+function normalizeDeliveryCompanyStatus(row: Record<string, unknown>): ApprovalStatus {
+  const approved = row.is_approved;
+  const active = row.is_active;
+  if (typeof row.status === "string" && row.status.trim()) return row.status as ApprovalStatus;
+  if (approved === true) return active === false ? "suspended" : "active";
+  if (approved === false) return active === false ? "rejected" : "pending";
+  return "pending";
 }
 
-export async function updateAdminDeliveryCompanyStatus(_id: string, _status: "pending" | "active" | "suspended" | "rejected"): Promise<Result<DeliveryCompany>> {
-  return fail("Delivery company admin skipped");
+function normalizeDeliveryCompany(row: Record<string, unknown>): DeliveryCompany {
+  return { ...(row as unknown as DeliveryCompany), status: normalizeDeliveryCompanyStatus(row) };
+}
+
+function deliveryStatusToFlags(status: "pending" | "active" | "suspended" | "rejected"): {
+  is_approved: boolean;
+  is_active?: boolean;
+} {
+  switch (status) {
+    case "active":
+      return { is_approved: true, is_active: true };
+    case "suspended":
+      return { is_approved: true, is_active: false };
+    case "rejected":
+      return { is_approved: false, is_active: false };
+    case "pending":
+    default:
+      return { is_approved: false, is_active: true };
+  }
+}
+
+export async function getAdminDeliveryCompanyDetail(id: string): Promise<Result<AdminDeliveryCompanyDetail>> {
+  const emptyDetail = (company: DeliveryCompany): AdminDeliveryCompanyDetail => ({
+    company,
+    members: [],
+    warehouses: [],
+    routes: [],
+    audit: [],
+  });
+
+  // Backend-first: single-resource route when available.
+  try {
+    const res = await B.getAdminDeliveryCompanyBackend(id);
+    if (res.ok && res.data?.company) {
+      return ok(emptyDetail(normalizeDeliveryCompany(res.data.company)));
+    }
+  } catch (_e) {}
+
+  // Fallback: list endpoint (exists in backend) + find by id. Members,
+  // warehouses, routes, and audit have no admin read endpoints, so they
+  // honestly resolve to empty lists with empty-state UI downstream.
+  try {
+    const res = await B.getAdminDeliveryCompaniesBackend({});
+    if (res.ok && Array.isArray(res.data.companies)) {
+      const found = (res.data.companies as Record<string, unknown>[]).find((c) => c.id === id);
+      if (found) return ok(emptyDetail(normalizeDeliveryCompany(found)));
+    }
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("delivery_companies")
+      .select("id, name, slug, contact_email, contact_phone, coverage_areas, rating, total_deliveries, created_at, is_approved, is_active, status")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) return fail(error.message);
+    if (!data) return fail("Company not found");
+    return ok(emptyDetail(normalizeDeliveryCompany(data as Record<string, unknown>)));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to fetch delivery company");
+  }
+}
+
+export async function updateAdminDeliveryCompanyStatus(id: string, status: "pending" | "active" | "suspended" | "rejected"): Promise<Result<DeliveryCompany>> {
+  const patch = deliveryStatusToFlags(status);
+  try {
+    const res = await B.updateAdminDeliveryCompanyBackend(id, patch);
+    if (res.ok && res.data?.company) return ok(normalizeDeliveryCompany(res.data.company));
+  } catch (_e) {}
+
+  try {
+    const { data, error } = await supabase
+      .from("delivery_companies")
+      .update(patch)
+      .eq("id", id)
+      .select("id, name, slug, contact_email, contact_phone, coverage_areas, rating, total_deliveries, created_at, is_approved, is_active, status")
+      .maybeSingle();
+    if (error) return fail(error.message);
+    if (!data) return fail("Company not found");
+    return ok(normalizeDeliveryCompany(data as Record<string, unknown>));
+  } catch (err: any) {
+    return fail(err?.message ?? "Failed to update delivery company");
+  }
 }
 
 export interface CommissionTier {
@@ -2882,7 +3228,12 @@ export type MobileReturnRequest = {
   }[];
 };
 
-export type SellerReturnRequest = MobileReturnRequest & { buyer_name: string | null };
+export type SellerReturnRequest = Omit<MobileReturnRequest, "refund_amount"> & {
+  buyer_name: string | null;
+  product_name: string | null;
+  variant_label: string | null;
+  refund_amount: number | null;
+};
 
 export async function getReturns(_userId: string): Promise<Result<MobileReturnRequest[]>> {
   const res = await B.listReturnsBackend();
@@ -2940,16 +3291,38 @@ export async function createReturnRequest(_userId: string, input: CreateReturnIn
 
 export type SellerReturnAction = "approve" | "reject" | "receive" | "refund";
 
-export async function getSellerReturns(_storeId: string, _opts: { status?: string; search?: string } = {}): Promise<Result<SellerReturnRequest[]>> {
-  const res = await B.getSellerReturnsBackend();
+function mapSellerReturn(row: unknown): SellerReturnRequest {
+  const mapped = mapSellerReturnRow(row);
+  return mapped as SellerReturnRequest;
+}
+
+export async function getSellerReturns(_storeId: string, opts: { status?: string; search?: string } = {}): Promise<Result<SellerReturnRequest[]>> {
+  const q = opts.search?.trim();
+  const status = opts.status && opts.status !== "all" ? opts.status : undefined;
+  const res = await B.getSellerReturnsBackend({ status, search: q });
   if (!res.ok) return fail(res.error);
-  return ok((res.data.returns as unknown[] as SellerReturnRequest[]) ?? []);
+  let list = ((res.data.returns as unknown[]) ?? []).map(mapSellerReturn);
+  // Keep client-side filters as a safety net when the backend ignores params.
+  if (status) list = list.filter((r) => r.status === status);
+  if (q) {
+    const needle = q.toLowerCase();
+    list = list.filter((r) =>
+      [r.return_number, r.order_number, r.buyer_name, r.product_name, r.variant_label, r.reason]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }
+  return ok(list);
 }
 
 export async function getSellerReturnByGroupId(storeId: string, returnGroupId: string): Promise<Result<SellerReturnRequest | null>> {
   const res = await getSellerReturns(storeId);
   if (!res.ok) return res;
-  return ok(res.data.find((r) => r.return_group_id === returnGroupId) ?? null);
+  return ok(
+    res.data.find((r) => r.id === returnGroupId || r.return_group_id === returnGroupId) ?? null,
+  );
 }
 
 export async function decideSellerReturn(
@@ -2958,7 +3331,7 @@ export async function decideSellerReturn(
   action: SellerReturnAction,
   opts: { note?: string; refundAmount?: number } = {},
 ): Promise<Result<{ refund_id?: string }>> {
-  const res = await B.decideSellerReturnBackend(returnId, action, opts.note);
+  const res = await B.decideSellerReturnBackend(returnId, action, opts.note, opts.refundAmount);
   if (!res.ok) return fail(res.error);
   return ok({ refund_id: (res.data.return as { refund_id?: string })?.refund_id });
 }
@@ -3003,20 +3376,27 @@ export async function deleteReview(reviewId: string, _userId: string): Promise<R
 }
 
 /**
- * Reply to a review (seller or brand). Mirrors POST /api/reviews/:id/reply
- * from the v2 backend. Used by the seller reviews screen's ReplyModal.
+ * Seller reply to a review on one of their products. Mirrors POST
+ * /api/seller/reviews/:id/reply. Used by the seller reviews ReplyModal.
+ *
+ * Returns the updated review so callers can render the persisted reply
+ * without refetching the whole list.
  */
-export async function replyToReviewBackend(
+export async function replyToSellerReview(
   reviewId: string,
   body: string,
-): Promise<
-  Result<{
-    reply: { review_id: string; body: string; created_at: string; editable_until?: string | null };
-  }>
-> {
-  const res = await B.replyToReviewBackend(reviewId, body);
+): Promise<Result<{ review: Review | null; reply: { body: string; created_at: string } }>> {
+  const res = await B.replySellerReviewBackend(reviewId, body);
   if (!res.ok) return fail(res.error);
-  return ok(res.data);
+  const review = (res.data?.review ?? null) as Review | null;
+  const replied = review as (Review & { seller_reply?: string; seller_replied_at?: string }) | null;
+  return ok({
+    review,
+    reply: {
+      body: replied?.seller_reply ?? body,
+      created_at: replied?.seller_replied_at ?? new Date().toISOString(),
+    },
+  });
 }
 
 /**
@@ -3032,20 +3412,36 @@ export async function voteReviewHelpfulBackend(
   return ok(res.data);
 }
 
-export async function getStoreReviews(_storeId: string, opts: {
+export async function getStoreReviews(storeId: string, opts: {
   rating?: number;
   search?: string;
   limit?: number;
   offset?: number;
 } = {}): Promise<Result<{ reviews: Review[]; total: number; avgRating: number; ratingBreakdown: Record<number, number> }>> {
-  const res = await B.getStoreReviewsBackend("", opts);
+  const res = await B.getStoreReviewsBackend(storeId, {
+    limit: opts.limit ?? 100,
+    offset: opts.offset,
+  });
   if (!res.ok) return fail(res.error);
-  const reviews = loose<Review[]>(res.data.reviews ?? []);
-  const total = res.data.total ?? reviews.length;
-  const ratings = reviews.map((r) => r.rating ?? 0);
-  const avgRating = ratings.length ? ratings.reduce((s, r) => s + r, 0) / ratings.length : 0;
+  const all = loose<Review[]>(res.data.reviews ?? []);
+  const total = firstFiniteNumber(res.data.total, all.length) ?? all.length;
+  const allRatings = all.map((r) => r.rating ?? 0);
+  const computedAvg = allRatings.length ? allRatings.reduce((s, n) => s + n, 0) / allRatings.length : 0;
+  const avgRating = firstFiniteNumber(res.data.avg_rating, computedAvg) ?? 0;
   const breakdown: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-  for (const r of ratings) breakdown[r] = (breakdown[r] ?? 0) + 1;
+  for (const r of allRatings) breakdown[r] = (breakdown[r] ?? 0) + 1;
+  let reviews = all;
+  if (opts.rating) reviews = reviews.filter((r) => r.rating === opts.rating);
+  if (opts.search?.trim()) {
+    const needle = opts.search.trim().toLowerCase();
+    reviews = reviews.filter((r) =>
+      [r.content, r.title, r.user?.full_name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }
   return ok({ reviews, total, avgRating, ratingBreakdown: breakdown });
 }
 
@@ -3083,37 +3479,43 @@ export async function updateStoreMeta(patch: B.StoreMetaPatch): Promise<Result<B
 // Seller — Coupons + analytics
 // ============================================================================
 
+function mapSellerCouponRow(row: B.Coupon | Record<string, unknown>): AdminCoupon {
+  const r = row as B.Coupon & {
+    type?: string;
+    value?: number;
+    min_order_value?: number;
+    usage_limit?: number | null;
+  };
+  const rawType = String(r.discount_type ?? r.type ?? "fixed");
+  const type = (rawType === "percent" || rawType === "percentage"
+    ? "percentage"
+    : rawType) as AdminCoupon["type"];
+  const value = Number(r.discount_value ?? r.value ?? 0);
+  return {
+    id: String(r.id),
+    code: String(r.code),
+    type,
+    value,
+    min_order_total: Number(r.min_order_amount ?? r.min_order_value ?? 0),
+    max_uses: (r.max_uses ?? r.usage_limit) ?? undefined,
+    current_uses: r.used_count ?? 0,
+    starts_at: undefined,
+    ends_at: r.expires_at ?? undefined,
+    is_active: r.is_active,
+    scope: r.scope_id ?? undefined,
+    created_at: new Date().toISOString(),
+    bxgy_buy_product_ids: r.bxgy_buy_product_ids,
+    bxgy_buy_quantity: r.bxgy_buy_quantity,
+    bxgy_get_product_ids: r.bxgy_get_product_ids,
+    bxgy_get_quantity: r.bxgy_get_quantity,
+    bxgy_get_discount_pct: r.bxgy_get_discount_pct,
+  } satisfies AdminCoupon;
+}
+
 export async function getStoreCoupons(_storeId: string): Promise<Result<AdminCoupon[]>> {
   const res = await B.getStoreCouponsBackend();
   if (!res.ok) return fail(res.error);
-  return ok(
-    (res.data.coupons as unknown[]).map((c) => {
-      const row = c as B.Coupon;
-      return {
-        id: row.id,
-        code: row.code,
-        // backend "percent" → mobile "percentage"; bxgy passes through
-        // (since CouponSchema accepts "bxgy" in longtail.ts).
-        type: (row.discount_type === "percent"
-          ? "percentage"
-          : row.discount_type) as AdminCoupon["type"],
-        value: row.discount_value,
-        min_order_total: row.min_order_amount,
-        max_uses: row.max_uses ?? undefined,
-        current_uses: row.used_count ?? 0,
-        starts_at: undefined,
-        ends_at: row.expires_at ?? undefined,
-        is_active: row.is_active,
-        scope: row.scope_id ?? undefined,
-        created_at: new Date().toISOString(),
-        bxgy_buy_product_ids: row.bxgy_buy_product_ids,
-        bxgy_buy_quantity: row.bxgy_buy_quantity,
-        bxgy_get_product_ids: row.bxgy_get_product_ids,
-        bxgy_get_quantity: row.bxgy_get_quantity,
-        bxgy_get_discount_pct: row.bxgy_get_discount_pct,
-      } satisfies AdminCoupon;
-    }),
-  );
+  return ok((res.data.coupons as unknown[]).map((c) => mapSellerCouponRow(c as B.Coupon)));
 }
 
 export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
@@ -3122,7 +3524,9 @@ export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<R
   // before validating so a seller-form save doesn't silently drop the fields.
   const remapped = {
     ...coupon,
-    min_order_value: coupon.min_order_total ?? coupon.value,
+    // No explicit minimum means no minimum. Falling back to `value` here
+    // used to make a "Rs.500 off" coupon require a Rs.500 order.
+    min_order_value: coupon.min_order_total ?? 0,
     usage_limit: coupon.max_uses,
   };
   const parsed = CouponCreateSchema.safeParse(remapped);
@@ -3138,8 +3542,9 @@ export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<R
     code: parsed.data.code,
     discount_type: parsed.data.type === "percentage" ? "percent" : parsed.data.type,
     discount_value: parsed.data.value,
-    min_order_amount: parsed.data.min_order_value,
-    max_uses: parsed.data.usage_limit,
+    // Backend CouponSchema expects these names (Zod strips unknowns).
+    min_order_value: parsed.data.min_order_value,
+    usage_limit: parsed.data.usage_limit,
     is_active: parsed.data.is_active ?? true,
     scope: "store",
     scope_id: storeId,
@@ -3148,28 +3553,9 @@ export async function createStoreCoupon(coupon: Partial<AdminCoupon>): Promise<R
     bxgy_buy_quantity: parsed.data.bxgy_buy_quantity,
     bxgy_get_quantity: parsed.data.bxgy_get_quantity,
     bxgy_get_discount_pct: parsed.data.bxgy_get_discount_pct,
-  });
+  } as Parameters<typeof B.createStoreCouponBackend>[0]);
   if (!res.ok) return fail(res.error);
-  const row = res.data.coupon;
-  return ok({
-    id: row.id,
-    code: row.code,
-    type: (row.discount_type === "percent" ? "percentage" : row.discount_type) as AdminCoupon["type"],
-    value: row.discount_value,
-    min_order_total: row.min_order_amount,
-    max_uses: row.max_uses ?? undefined,
-    current_uses: row.used_count ?? 0,
-    starts_at: undefined,
-    ends_at: row.expires_at ?? undefined,
-    is_active: row.is_active,
-    scope: row.scope_id ?? undefined,
-    created_at: new Date().toISOString(),
-    bxgy_buy_product_ids: row.bxgy_buy_product_ids,
-    bxgy_buy_quantity: row.bxgy_buy_quantity,
-    bxgy_get_product_ids: row.bxgy_get_product_ids,
-    bxgy_get_quantity: row.bxgy_get_quantity,
-    bxgy_get_discount_pct: row.bxgy_get_discount_pct,
-  } satisfies AdminCoupon);
+  return ok(mapSellerCouponRow(res.data.coupon));
 }
 
 export async function updateStoreCoupon(id: string, patch: Partial<AdminCoupon>): Promise<Result<AdminCoupon>> {
@@ -3197,26 +3583,7 @@ export async function updateStoreCoupon(id: string, patch: Partial<AdminCoupon>)
   if (patch.bxgy_get_discount_pct !== undefined) body.bxgy_get_discount_pct = patch.bxgy_get_discount_pct;
   const res = await B.updateStoreCouponBackend(id, body as Partial<B.Coupon>);
   if (!res.ok) return fail(res.error);
-  const row = res.data.coupon;
-  return ok({
-    id: row.id,
-    code: row.code,
-    type: (row.discount_type === "percent" ? "percentage" : row.discount_type) as AdminCoupon["type"],
-    value: row.discount_value,
-    min_order_total: row.min_order_amount,
-    max_uses: row.max_uses ?? undefined,
-    current_uses: row.used_count ?? 0,
-    starts_at: undefined,
-    ends_at: row.expires_at ?? undefined,
-    is_active: row.is_active,
-    scope: row.scope_id ?? undefined,
-    created_at: new Date().toISOString(),
-    bxgy_buy_product_ids: row.bxgy_buy_product_ids,
-    bxgy_buy_quantity: row.bxgy_buy_quantity,
-    bxgy_get_product_ids: row.bxgy_get_product_ids,
-    bxgy_get_quantity: row.bxgy_get_quantity,
-    bxgy_get_discount_pct: row.bxgy_get_discount_pct,
-  } satisfies AdminCoupon);
+  return ok(mapSellerCouponRow(res.data.coupon));
 }
 
 export async function deleteStoreCoupon(id: string): Promise<Result<void>> {
@@ -3232,27 +3599,57 @@ export async function deleteStoreCoupon(id: string): Promise<Result<void>> {
   return ok(undefined);
 }
 
-export async function getStoreAnalytics(_storeId: string): Promise<Result<{
+export async function getStoreAnalytics(
+  _storeId: string,
+  range: B.SellerAnalyticsRange = "30d",
+): Promise<Result<{
   totalRevenue: number;
   totalOrders: number;
   totalProducts: number;
   avgOrderValue: number;
-  conversionRate: number;
+  refundRate: number;
   revenueByMonth: { month: string; revenue: number; orders: number }[];
-  topProducts: { name: string; revenue: number; units: number; image?: string }[];
+  topProducts: { id: string; name: string; revenue: number; units: number }[];
   ordersByStatus: Record<string, number>;
 }>> {
-  const res = await B.getSellerAnalyticsBackend();
-  if (!res.ok) return fail(res.error);
+  const [analytics, products, orders] = await Promise.all([
+    B.getSellerKPIsBackend(range),
+    B.getSellerProductsBackend({ limit: 1 }),
+    B.getSellerOrdersBackend({ limit: 200 }),
+  ]);
+  if (!analytics.ok) return fail(analytics.error);
+
+  const stats =
+    products.ok && products.data.stats && typeof products.data.stats === "object"
+      ? products.data.stats
+      : undefined;
+
+  const ordersByStatus: Record<string, number> = {};
+  if (orders.ok) {
+    for (const order of loose<Order[]>(orders.data.orders ?? [])) {
+      const key = String(order?.status ?? "unknown");
+      ordersByStatus[key] = (ordersByStatus[key] ?? 0) + 1;
+    }
+  }
+
   return ok({
-    totalRevenue: 0,
-    totalOrders: 0,
-    totalProducts: 0,
-    avgOrderValue: 0,
-    conversionRate: 0,
-    revenueByMonth: [],
-    topProducts: [],
-    ordersByStatus: {},
+    totalRevenue: analytics.data.revenue,
+    totalOrders: analytics.data.orders,
+    totalProducts: (products.ok ? firstFiniteNumber(products.data.total, stats?.all, stats?.total) : null) ?? 0,
+    avgOrderValue: analytics.data.aov,
+    refundRate: analytics.data.refundRate,
+    revenueByMonth: analytics.data.series.map((p) => ({
+      month: p.date,
+      revenue: p.revenue,
+      orders: p.orders,
+    })),
+    topProducts: analytics.data.topProducts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      revenue: p.revenue,
+      units: 0,
+    })),
+    ordersByStatus,
   });
 }
 

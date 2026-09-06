@@ -4,17 +4,18 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
-  Image,
   RefreshControl,
   Alert,
   ActionSheetIOS,
   Platform,
   Share,
   ActivityIndicator,
+  StatusBar,
 } from "react-native";
+import { Image } from "expo-image";
 import { useRouter, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
@@ -24,19 +25,46 @@ import {
   duplicateSellerProduct,
   bulkSetSellerStatus,
 } from "@/lib/api";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice } from "@/lib/utils";
+import { getVariantAvailableStock, LOW_STOCK_THRESHOLD } from "@/lib/inventory";
+import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  SellerSearchField,
+  SellerFilterTab,
+  sellerBorder,
+  SELLER_CREAM,
+  SELLER_INK,
+  SELLER_GOLD,
+  SELLER_RUST,
+} from "@/components/seller/chrome";
 import type { Product } from "@/lib/types";
 
-const STATUS_TABS = ["all", "active", "draft", "pending", "flagged", "archived"] as const;
+const GOLD = SELLER_GOLD;
+const RUST = SELLER_RUST;
+const CREAM = SELLER_CREAM;
+const INK = SELLER_INK;
+
+const STATUS_TABS = [
+  { key: "all", label: "All" },
+  { key: "active", label: "Live" },
+  { key: "draft", label: "Draft" },
+  { key: "pending", label: "Review" },
+  { key: "flagged", label: "Flagged" },
+  { key: "archived", label: "Archive" },
+] as const;
+
+type StatusKey = (typeof STATUS_TABS)[number]["key"];
 type SortKey = "newest" | "oldest" | "price_asc" | "price_desc" | "sales_desc" | "name_asc";
 type ViewMode = "list" | "grid";
 
 const SORT_TABS: { key: SortKey; label: string }[] = [
   { key: "newest", label: "Newest" },
-  { key: "sales_desc", label: "Top selling" },
-  { key: "price_desc", label: "Price ↓" },
-  { key: "price_asc", label: "Price ↑" },
-  { key: "name_asc", label: "Name A→Z" },
+  { key: "sales_desc", label: "Bestsellers" },
+  { key: "price_desc", label: "Price high" },
+  { key: "price_asc", label: "Price low" },
+  { key: "name_asc", label: "A–Z" },
   { key: "oldest", label: "Oldest" },
 ];
 const PAGE_SIZE = 20;
@@ -53,52 +81,52 @@ interface ProductStats {
   flagged: number;
 }
 
-function ModerationChip({ p }: { p: Product }) {
-  const reasons = (p.suspicious_reasons ?? []) as { blocking: boolean }[];
-  if (p.status === "active" && p.auto_approved) {
-    return (
-      <View style={[styles.modChip, { backgroundColor: "#ecfdf5", borderColor: "#a7f3d0" }]}>
-        <Ionicons name="shield-checkmark" size={11} color="#059669" />
-        <Text style={[styles.modChipText, { color: "#047857" }]}>auto</Text>
-      </View>
-    );
-  }
-  if (p.is_flagged) {
-    const blocking = reasons.some((r) => r.blocking);
-    return (
-      <View
-        style={[
-          styles.modChip,
-          {
-            backgroundColor: blocking ? "#ede9fe" : "#fff1f2",
-            borderColor: blocking ? "#c4b5fd" : "#fecdd3",
-          },
-        ]}
-      >
-        <Ionicons name={blocking ? "close-circle" : "alert-circle"} size={11} color={blocking ? "#7c3aed" : "#e11d48"} />
-        <Text style={[styles.modChipText, { color: blocking ? "#6d28d9" : "#be123c" }]}>
-          flagged · {p.risk_score ?? 0}
-        </Text>
-      </View>
-    );
-  }
-  if (p.status === "pending") {
-    return (
-      <View style={[styles.modChip, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
-        <Ionicons name="alert-circle" size={11} color="#d97706" />
-        <Text style={[styles.modChipText, { color: "#b45309" }]}>review</Text>
-      </View>
-    );
-  }
-  return null;
+function parseStats(raw: Record<string, number> | undefined): ProductStats | null {
+  if (!raw || Object.keys(raw).length === 0) return null;
+  const num = (v: unknown) => {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return {
+    all: num(raw.all ?? raw.total),
+    active: num(raw.active),
+    draft: num(raw.draft),
+    pending: num(raw.pending),
+    archived: num(raw.archived),
+    flagged: num(raw.flagged),
+  };
 }
 
-function formatPrice(n: number) {
-  try {
-    return `Rs. ${Number(n ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-  } catch {
-    return `Rs. ${n}`;
+function productImageUrl(p: Product): string | null {
+  const imgs = p.images ?? [];
+  return imgs.find((i) => i.is_primary)?.url || imgs[0]?.url || null;
+}
+
+function productPrice(p: Product): string {
+  return formatPrice(Number(p.price ?? 0), p.currency || "LKR");
+}
+
+/** Sellable units for a list row. Missing stock stays null so we never invent "0 in stock". */
+function productAvailableStock(p: Product): number | null {
+  const variants = p.variants ?? [];
+  if (variants.length === 0) return null;
+  let any = false;
+  let sum = 0;
+  for (const v of variants) {
+    if (v.stock == null) continue;
+    any = true;
+    sum += getVariantAvailableStock(v, v.stock);
   }
+  return any ? sum : null;
+}
+
+type StockTone = "ok" | "low" | "out" | "unknown";
+
+function describeStock(n: number | null): { label: string; short: string; tone: StockTone } {
+  if (n == null) return { label: "Stock —", short: "—", tone: "unknown" };
+  if (n <= 0) return { label: "Out of stock", short: "Out", tone: "out" };
+  if (n <= LOW_STOCK_THRESHOLD) return { label: `${n} low`, short: String(n), tone: "low" };
+  return { label: `${n} ready`, short: String(n), tone: "ok" };
 }
 
 function formatDate(iso?: string) {
@@ -119,7 +147,7 @@ function toCsv(products: Product[]): string {
   };
   const lines = [header.join(",")];
   for (const p of products) {
-    const stock = (p.variants ?? []).reduce((s, v) => s + (v.stock ?? 0), 0);
+    const stock = productAvailableStock(p);
     lines.push(
       [
         escape(p.name),
@@ -137,42 +165,130 @@ function toCsv(products: Product[]): string {
 }
 
 function showActions(item: Product, onAction: (key: string) => void) {
-  const opts = [
-    "View public page",
-    item.status === "archived" ? "Restore" : "Archive",
-    "Duplicate",
-    item.status === "active" ? "Move to draft" : "Activate",
-    "Delete",
-    "Cancel",
+  const actions = [
+    { label: "View public page", key: "view" },
+    {
+      label: item.status === "archived" ? "Restore" : "Archive",
+      key: item.status === "archived" ? "restore" : "archive",
+    },
+    { label: "Duplicate", key: "duplicate" },
+    {
+      label: item.status === "active" ? "Move to draft" : "Activate",
+      key: item.status === "active" ? "draft" : "activate",
+    },
+    { label: "Delete", key: "delete" },
   ];
+  const opts = [...actions.map((a) => a.label), "Cancel"];
   if (Platform.OS === "ios") {
     ActionSheetIOS.showActionSheetWithOptions(
-      { options: opts, cancelButtonIndex: 5, destructiveButtonIndex: 4 },
-      (i) => onAction(opts[i].toLowerCase().split(" ")[0]),
+      { options: opts, cancelButtonIndex: actions.length, destructiveButtonIndex: actions.length - 1 },
+      (i) => {
+        if (i >= 0 && i < actions.length) onAction(actions[i].key);
+      },
     );
   } else {
     Alert.alert(item.name, undefined, [
-      { text: opts[0], onPress: () => onAction("view") },
-      { text: opts[1], onPress: () => onAction(item.status === "archived" ? "restore" : "archive") },
-      { text: opts[2], onPress: () => onAction("duplicate") },
-      { text: opts[3], onPress: () => onAction(item.status === "active" ? "draft" : "activate") },
-      { text: opts[4], style: "destructive", onPress: () => onAction("delete") },
-      { text: opts[5], style: "cancel" },
+      ...actions.map((a) => ({
+        text: a.label,
+        style: a.key === "delete" ? ("destructive" as const) : ("default" as const),
+        onPress: () => onAction(a.key),
+      })),
+      { text: "Cancel", style: "cancel" as const },
     ]);
   }
 }
 
-function statusColor(status: string) {
-  if (status === "active") return { bg: "#dcfce7", text: "#166534" };
-  if (status === "draft") return { bg: "#f3f4f6", text: "#6b7280" };
-  if (status === "archived") return { bg: "#fce7f3", text: "#9d174d" };
-  return { bg: "#fef9c3", text: "#854d0e" };
+function statusTone(status: string): { bg: string; text: string; label: string } {
+  if (status === "active") return { bg: colors.olive[50], text: colors.olive[800], label: "Live" };
+  if (status === "draft") return { bg: colors.paper.warm, text: colors.ink.mute, label: "Draft" };
+  if (status === "archived") return { bg: "#f4e6df", text: RUST, label: "Archive" };
+  if (status === "pending") return { bg: "#f3efe2", text: "#8a6a2a", label: "Review" };
+  if (status === "rejected") return { bg: "#f4e6df", text: RUST, label: "Rejected" };
+  return { bg: "#f3efe2", text: "#8a6a2a", label: status };
+}
+
+function stockColors(tone: StockTone): { bg: string; text: string } {
+  if (tone === "out") return { bg: "#f4e6df", text: RUST };
+  if (tone === "low") return { bg: "#f3efe2", text: "#8a6a2a" };
+  if (tone === "ok") return { bg: colors.olive[50], text: colors.olive[800] };
+  return { bg: colors.paper.warm, text: colors.ink.mute };
+}
+
+function ProductThumb({ uri, style }: { uri: string | null; style: object }) {
+  if (uri) {
+    return <Image source={{ uri }} style={style} contentFit="cover" transition={200} />;
+  }
+  return (
+    <View style={[style, styles.thumbEmpty]}>
+      <Ionicons name="image-outline" size={18} color={colors.light.mutedForeground} />
+    </View>
+  );
+}
+
+function ModerationChip({ p }: { p: Product }) {
+  const reasons = (p.suspicious_reasons ?? []) as { blocking: boolean }[];
+  if (p.status === "active" && p.auto_approved) {
+    return (
+      <View style={[styles.modChip, { backgroundColor: colors.olive[50], borderColor: colors.olive[200] }]}>
+        <Ionicons name="shield-checkmark" size={11} color={colors.olive[700]} />
+        <Text style={[styles.modChipText, { color: colors.olive[800] }]}>auto</Text>
+      </View>
+    );
+  }
+  if (p.is_flagged) {
+    const blocking = reasons.some((r) => r.blocking);
+    return (
+      <View
+        style={[
+          styles.modChip,
+          {
+            backgroundColor: blocking ? "#f3efe2" : "#f4e6df",
+            borderColor: blocking ? "rgba(200,164,74,0.45)" : "rgba(184,92,58,0.35)",
+          },
+        ]}
+      >
+        <Ionicons name={blocking ? "close-circle" : "alert-circle"} size={11} color={blocking ? "#8a6a2a" : RUST} />
+        <Text style={[styles.modChipText, { color: blocking ? "#8a6a2a" : RUST }]}>
+          flagged · {p.risk_score ?? 0}
+        </Text>
+      </View>
+    );
+  }
+  if (p.status === "pending") {
+    return (
+      <View style={[styles.modChip, { backgroundColor: "#f3efe2", borderColor: "rgba(200,164,74,0.45)" }]}>
+        <Ionicons name="alert-circle" size={11} color="#8a6a2a" />
+        <Text style={[styles.modChipText, { color: "#8a6a2a" }]}>review</Text>
+      </View>
+    );
+  }
+  return null;
+}
+
+function ProductListSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: spacing[4], paddingTop: 4, gap: 10 }}>
+      {[0, 1, 2, 3].map((i) => (
+        <View key={i} style={styles.skeletonCard}>
+          <Skeleton width={80} height={104} borderRadius={radii.md} />
+          <View style={{ flex: 1, gap: 8, paddingVertical: 8 }}>
+            <Skeleton width="70%" height={14} />
+            <Skeleton width="40%" height={10} />
+            <Skeleton width="85%" height={10} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export default function SellerProducts() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [storeId, setStoreId] = useState<string | null>(null);
+  const [storeError, setStoreError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [stats, setStats] = useState<ProductStats | null>(null);
@@ -180,7 +296,7 @@ export default function SellerProducts() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [status, setStatus] = useState<(typeof STATUS_TABS)[number]>("all");
+  const [status, setStatus] = useState<StatusKey>("all");
   const [sort, setSort] = useState<SortKey>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [offset, setOffset] = useState(0);
@@ -193,7 +309,6 @@ export default function SellerProducts() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Track initial mount so the focus-effect doesn't refetch on first render.
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -221,15 +336,18 @@ export default function SellerProducts() {
         if (!append) setLoading(false);
         setLoadingMore(false);
         setRefreshing(false);
-        Alert.alert("Error", res.error);
+        // Keep the message on screen; an alert alone left an empty list
+        // that looked like the seller had no products.
+        if (append) Alert.alert("Couldn’t load more", res.error);
+        else setListError(res.error);
         return;
       }
+      setListError(null);
       const incoming = res.data.products ?? [];
       setTotal(res.data.total ?? 0);
-      // Stats come back on the first page (offset 0) — keep the last good payload
-      // across pagination/refetches so the KPI banner doesn't flicker.
-      if (pageOffset === 0 && res.data && (res.data as unknown as { stats?: ProductStats }).stats) {
-        setStats((res.data as unknown as { stats: ProductStats }).stats);
+      if (pageOffset === 0) {
+        const next = parseStats(res.data.stats);
+        if (next) setStats(next);
       }
       setProducts((prev) => (append ? [...prev, ...incoming] : incoming));
       setHasMore(incoming.length >= PAGE_SIZE);
@@ -241,13 +359,23 @@ export default function SellerProducts() {
     [storeId, status, debouncedSearch, sort],
   );
 
+  const loadStore = useCallback(async () => {
+    if (!user) return;
+    setStoreError(null);
+    setLoading(true);
+    const storeRes = await getSellerStore(user.id);
+    if (storeRes.ok && storeRes.data) {
+      setStoreId(storeRes.data.id);
+      return;
+    }
+    setLoading(false);
+    setStoreError(!storeRes.ok ? storeRes.error : "No store found for this account.");
+  }, [user]);
+
   useEffect(() => {
     if (!user || storeId) return;
-    (async () => {
-      const storeRes = await getSellerStore(user.id);
-      if (storeRes.ok && storeRes.data) setStoreId(storeRes.data.id);
-    })();
-  }, [user, storeId]);
+    void loadStore();
+  }, [user, storeId, loadStore]);
 
   useEffect(() => {
     if (!storeId) return;
@@ -256,8 +384,6 @@ export default function SellerProducts() {
     loadPage(0, false);
   }, [storeId, status, sort, debouncedSearch, loadPage, resetList]);
 
-  // Refresh on tab focus so edits on the [id] page land here without pull-to-refresh.
-  // Mirror of the dashboard's useFocusEffect pattern.
   useFocusEffect(
     useCallback(() => {
       if (!storeId || !mountedRef.current) {
@@ -271,10 +397,14 @@ export default function SellerProducts() {
   );
 
   const onRefresh = useCallback(() => {
+    if (!storeId) {
+      void loadStore();
+      return;
+    }
     setRefreshing(true);
     resetList();
     loadPage(0, false);
-  }, [loadPage, resetList]);
+  }, [loadPage, resetList, storeId, loadStore]);
 
   const onEndReached = useCallback(() => {
     if (loadingMore || loading || refreshing || !hasMore) return;
@@ -298,7 +428,7 @@ export default function SellerProducts() {
 
   const handleDelete = (product: Product) => {
     Alert.alert(
-      "Delete product?",
+      "Delete this piece?",
       `"${product.name}" will be removed permanently.`,
       [
         { text: "Cancel", style: "cancel" },
@@ -332,8 +462,6 @@ export default function SellerProducts() {
     const res = await duplicateSellerProduct(product.id, storeId);
     setBusyId(null);
     if (res.ok && res.data?.id) {
-      // Mirror web: navigate straight into the new draft so the seller
-      // can edit the copy without an intermediate dialog.
       router.replace(`/(seller)/products/${res.data.id}` as any);
     } else if (!res.ok) {
       Alert.alert("Error", res.error);
@@ -373,7 +501,6 @@ export default function SellerProducts() {
   const handleAction = (product: Product, key: string) => {
     switch (key) {
       case "view":
-        // Public product route is app/(main)/products/[slug].tsx on mobile.
         router.push(`/(main)/products/${product.slug}` as any);
         break;
       case "delete":
@@ -400,7 +527,7 @@ export default function SellerProducts() {
     const res = await bulkSetSellerStatus(ids, target, storeId);
     setBulkBusy(false);
     if (res.ok) {
-      Alert.alert("Done", `${res.data.updated} product(s) moved to ${target}.`);
+      Alert.alert("Done", `${res.data.updated} piece(s) moved to ${target}.`);
       exitSelect();
       onRefresh();
     } else {
@@ -411,8 +538,8 @@ export default function SellerProducts() {
   const bulkDelete = () => {
     if (selectedIds.size === 0) return;
     Alert.alert(
-      "Delete products?",
-      `${selectedIds.size} product(s) will be removed.`,
+      "Delete pieces?",
+      `${selectedIds.size} piece(s) will be removed.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -444,8 +571,6 @@ export default function SellerProducts() {
     }
     setExporting(true);
     try {
-      // Page through the full result set for the current filter/search/sort —
-      // `products` only holds whatever page is currently loaded in the list.
       let all: Product[] = [];
       let pageOffset = 0;
       for (;;) {
@@ -481,10 +606,62 @@ export default function SellerProducts() {
     }
   };
 
+  const openOverflowMenu = () => {
+    if (exporting) return;
+    const opts = ["Export CSV", "Cancel"];
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: opts, cancelButtonIndex: 1 },
+        (i) => {
+          if (i === 0) void exportCsv();
+        },
+      );
+    } else {
+      Alert.alert("More", undefined, [
+        { text: "Export CSV", onPress: () => void exportCsv() },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  };
+
+  const openSortMenu = () => {
+    Alert.alert(
+      "Sort",
+      undefined,
+      [
+        ...SORT_TABS.map((s) => ({
+          text: sort === s.key ? `✓ ${s.label}` : s.label,
+          onPress: () => setSort(s.key),
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ],
+    );
+  };
+
+  const sortLabel = SORT_TABS.find((s) => s.key === sort)?.label ?? "Sort";
+
+  const openProduct = (item: Product) => {
+    if (selectMode) {
+      toggleSelect(item.id);
+      return;
+    }
+    router.push(`/(seller)/products/${item.id}` as any);
+  };
+
+  const onLongPressProduct = (item: Product) => {
+    if (!selectMode) {
+      setSelectMode(true);
+      setSelectedIds(new Set([item.id]));
+    } else {
+      toggleSelect(item.id);
+    }
+  };
+
   const renderProduct = ({ item }: { item: Product }) => {
-    const stock = item.variants?.reduce((s, v) => s + (v.stock ?? 0), 0) ?? 0;
+    const stock = describeStock(productAvailableStock(item));
     const selected = selectedIds.has(item.id);
-    const sc = statusColor(item.status);
+    const sc = statusTone(item.status);
+    const sold = item.total_sales ?? 0;
     return (
       <View style={[styles.productCard, selected && styles.productCardSelected]}>
         {selectMode && (
@@ -492,55 +669,49 @@ export default function SellerProducts() {
             style={styles.checkbox}
             onPress={() => toggleSelect(item.id)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: selected }}
           >
             <Ionicons
               name={selected ? "checkbox" : "square-outline"}
               size={22}
-              color={selected ? colors.light.primary : colors.light.mutedForeground}
+              color={selected ? colors.olive[700] : colors.light.mutedForeground}
             />
           </TouchableOpacity>
         )}
         <TouchableOpacity
           style={styles.productCardMain}
-          onPress={() => (selectMode ? toggleSelect(item.id) : router.push(`/(seller)/products/${item.id}` as any))}
-          onLongPress={() => {
-            if (!selectMode) {
-              setSelectMode(true);
-              setSelectedIds(new Set([item.id]));
-            } else {
-              toggleSelect(item.id);
-            }
-          }}
+          onPress={() => openProduct(item)}
+          onLongPress={() => onLongPressProduct(item)}
           delayLongPress={350}
+          activeOpacity={0.75}
         >
-          {item.images?.[0]?.url ? (
-            <Image source={{ uri: item.images[0].url }} style={styles.productImage} />
-          ) : (
-            <View style={[styles.productImage, styles.productImagePlaceholder]}>
-              <Text style={{ color: colors.light.mutedForeground }}>📦</Text>
-            </View>
-          )}
+          <ProductThumb uri={productImageUrl(item)} style={styles.productImage} />
           <View style={styles.productInfo}>
             <View style={styles.productHeader}>
-              <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
               <View style={styles.badges}>
                 <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-                  <Text style={[styles.statusText, { color: sc.text }]}>{item.status}</Text>
+                  <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
                 </View>
                 <ModerationChip p={item} />
               </View>
             </View>
             <Text style={styles.productSku}>{item.sku ?? item.slug ?? "—"}</Text>
             <View style={styles.metaRow}>
-              <Text style={styles.metaItem}>{formatPrice(item.price)}</Text>
+              <Text style={styles.metaPrice}>{productPrice(item)}</Text>
               <Text style={styles.metaSep}>·</Text>
-              <Text style={[styles.metaItem, stock === 0 && styles.stockOut, stock > 0 && stock < 10 && styles.stockLow]}>
-                {stock} in stock
+              <Text style={[styles.metaItem, stock.tone === "out" && styles.stockOut, stock.tone === "low" && styles.stockLow]}>
+                {stock.label}
               </Text>
               <Text style={styles.metaSep}>·</Text>
-              <Text style={styles.metaItem}>{item.total_sales ?? 0} sold</Text>
-              <Text style={styles.metaSep}>·</Text>
-              <Text style={styles.metaItem}>{formatDate(item.created_at)}</Text>
+              <Text style={styles.metaItem}>{sold} sold</Text>
+              {item.created_at ? (
+                <>
+                  <Text style={styles.metaSep}>·</Text>
+                  <Text style={styles.metaItem}>{formatDate(item.created_at)}</Text>
+                </>
+              ) : null}
             </View>
           </View>
         </TouchableOpacity>
@@ -550,8 +721,13 @@ export default function SellerProducts() {
             onPress={() => showActions(item, (k) => handleAction(item, k))}
             disabled={busyId === item.id}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="More actions"
           >
-            <Ionicons name="ellipsis-vertical" size={18} color={colors.light.mutedForeground} />
+            {busyId === item.id ? (
+              <ActivityIndicator size="small" color={colors.olive[700]} />
+            ) : (
+              <Ionicons name="ellipsis-vertical" size={18} color={colors.ink.mute} />
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -559,59 +735,41 @@ export default function SellerProducts() {
   };
 
   const renderGrid = ({ item }: { item: Product }) => {
-    const stock = item.variants?.reduce((s, v) => s + (v.stock ?? 0), 0) ?? 0;
+    const stock = describeStock(productAvailableStock(item));
     const selected = selectedIds.has(item.id);
-    const sc = statusColor(item.status);
-    const stockTone =
-      stock === 0
-        ? { bg: "#fee2e2", text: "#991b1b" }
-        : stock < 10
-          ? { bg: "#fef3c7", text: "#92400e" }
-          : { bg: "#dcfce7", text: "#166534" };
+    const sc = statusTone(item.status);
+    const tone = stockColors(stock.tone);
     return (
       <TouchableOpacity
         style={[styles.gridCard, selected && styles.gridCardSelected]}
-        onPress={() => (selectMode ? toggleSelect(item.id) : router.push(`/(seller)/products/${item.id}` as any))}
-        onLongPress={() => {
-          if (!selectMode) {
-            setSelectMode(true);
-            setSelectedIds(new Set([item.id]));
-          } else {
-            toggleSelect(item.id);
-          }
-        }}
+        onPress={() => openProduct(item)}
+        onLongPress={() => onLongPressProduct(item)}
         delayLongPress={350}
-        activeOpacity={0.9}
+        activeOpacity={0.85}
       >
         {selectMode ? (
           <View style={styles.gridCheckbox}>
             <Ionicons
               name={selected ? "checkbox" : "square-outline"}
               size={18}
-              color={selected ? colors.light.primary : "#fff"}
+              color={selected ? CREAM : CREAM}
             />
           </View>
         ) : null}
-        {item.images?.[0]?.url ? (
-          <Image source={{ uri: item.images[0].url }} style={styles.gridImage} />
-        ) : (
-          <View style={[styles.gridImage, styles.productImagePlaceholder]}>
-            <Text style={{ fontSize: 24 }}>📦</Text>
+        <View style={styles.gridImageWrap}>
+          <ProductThumb uri={productImageUrl(item)} style={styles.gridImage} />
+          <View style={[styles.gridStatusPill, { backgroundColor: sc.bg }]}>
+            <Text style={[styles.gridStatusText, { color: sc.text }]}>{sc.label}</Text>
           </View>
-        )}
-        <View style={[styles.gridStatusPill, { backgroundColor: sc.bg }]}>
-          <Text style={[styles.gridStatusText, { color: sc.text }]}>{item.status}</Text>
-        </View>
-        <View style={[styles.gridStockPill, { backgroundColor: stockTone.bg }]}>
-          <Text style={[styles.gridStockText, { color: stockTone.text }]}>
-            {stock === 0 ? "Out" : `${stock}`}
-          </Text>
+          <View style={[styles.gridStockPill, { backgroundColor: tone.bg }]}>
+            <Text style={[styles.gridStockText, { color: tone.text }]}>{stock.short}</Text>
+          </View>
         </View>
         <View style={styles.gridBody}>
           <Text style={styles.gridName} numberOfLines={2}>{item.name}</Text>
           <Text style={styles.gridSku} numberOfLines={1}>{item.sku ?? "—"}</Text>
           <View style={styles.gridFooter}>
-            <Text style={styles.gridPrice}>{formatPrice(item.price)}</Text>
+            <Text style={styles.gridPrice}>{productPrice(item)}</Text>
             <Text style={styles.gridSales}>{item.total_sales ?? 0} sold</Text>
           </View>
           <ModerationChip p={item} />
@@ -621,30 +779,111 @@ export default function SellerProducts() {
   };
 
   const empty = useMemo(() => {
+    // A failed fetch must not read as "the collection is empty".
+    if (listError) {
+      return {
+        icon: "cloud-offline-outline" as const,
+        title: "Couldn’t load the collection",
+        sub: listError,
+        showCta: false,
+        showRetry: true,
+      };
+    }
     if (search || status !== "all") {
       return {
-        icon: "🔍",
+        icon: "search-outline" as const,
         title: "No matches",
         sub: "Try a different search or status filter.",
         showCta: false,
+        showRetry: false,
       };
     }
     return {
-      icon: "📦",
-      title: "No products yet",
-      sub: "Add your first product to start selling.",
+      icon: "cube-outline" as const,
+      title: "The collection is empty",
+      sub: "Add a piece to start listing in the maison.",
       showCta: true,
+      showRetry: false,
     };
-  }, [search, status]);
+  }, [search, status, listError]);
+
+  const countLabel = (() => {
+    if (loading && products.length === 0) return "Loading";
+    if (total > 0) {
+      return products.length < total
+        ? `${products.length} of ${total}`
+        : `${total} ${total === 1 ? "piece" : "pieces"}`;
+    }
+    return products.length === 0 ? "No pieces yet" : `${products.length} pieces`;
+  })();
+
+  const listFooter = loadingMore ? (
+    <View style={styles.footerLoader}>
+      <ActivityIndicator size="small" color={colors.olive[700]} />
+    </View>
+  ) : hasMore && products.length > 0 ? (
+    <TouchableOpacity style={styles.loadMoreBtn} onPress={onEndReached}>
+      <Text style={styles.loadMoreText}>Load more</Text>
+    </TouchableOpacity>
+  ) : products.length > 0 ? (
+    <View style={styles.footerEnd}>
+      <Text style={styles.footerEndText}>End of collection</Text>
+    </View>
+  ) : null;
+
+  const emptyEl = loading ? (
+    <ProductListSkeleton />
+  ) : (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconWrap}>
+        <Ionicons name={empty.icon} size={28} color={colors.olive[700]} />
+      </View>
+      <Text style={styles.emptyTitle}>{empty.title}</Text>
+      <Text style={styles.emptySub}>{empty.sub}</Text>
+      {empty.showCta ? (
+        <TouchableOpacity
+          style={styles.emptyCta}
+          onPress={() => router.push("/(seller)/products/new" as any)}
+        >
+          <Ionicons name="add" size={16} color={CREAM} />
+          <Text style={styles.emptyCtaText}>Add a piece</Text>
+        </TouchableOpacity>
+      ) : null}
+      {empty.showRetry ? (
+        <TouchableOpacity
+          style={styles.emptyCta}
+          onPress={() => void loadPage(0, false)}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading products"
+        >
+          <Text style={styles.emptyCtaText}>Try again</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+
+  if (storeError && !storeId) {
+    return (
+      <View style={[styles.container, styles.errorWrap, { paddingTop: Math.max(insets.top, 24) }]}>
+        <StatusBar barStyle="dark-content" />
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.olive[700]} />
+        <Text style={styles.emptyTitle}>Couldn’t load the collection</Text>
+        <Text style={styles.emptySub}>{storeError}</Text>
+        <TouchableOpacity style={styles.emptyCta} onPress={() => void loadStore()}>
+          <Text style={styles.emptyCtaText}>Try again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.kicker}>Catalogue</Text>
           <Text style={styles.title}>Products</Text>
-          <Text style={styles.count}>
-            {total > 0 ? `${products.length} of ${total}` : `${products.length} products`}
-          </Text>
+          <Text style={styles.count}>{countLabel}</Text>
         </View>
         <View style={styles.headerActions}>
           {selectMode ? (
@@ -655,126 +894,93 @@ export default function SellerProducts() {
             <>
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={exportCsv}
-                hitSlop={6}
+                onPress={openOverflowMenu}
                 disabled={exporting}
-                accessibilityLabel="Export CSV"
+                accessibilityLabel="More actions"
               >
                 {exporting ? (
-                  <ActivityIndicator size="small" color={colors.light.foreground} />
+                  <ActivityIndicator size="small" color={INK} />
                 ) : (
-                  <Ionicons name="share-outline" size={16} color={colors.light.foreground} />
+                  <Ionicons name="ellipsis-horizontal" size={18} color={INK} />
                 )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconBtn}
-                onPress={() => router.push("/(seller)/bulk-upload" as any)}
-                hitSlop={6}
-                accessibilityLabel="Bulk upload"
-              >
-                <Ionicons name="cloud-upload-outline" size={16} color={colors.light.foreground} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => router.push("/(seller)/products/new" as any)}
+                accessibilityLabel="Add a piece"
               >
-                <Ionicons name="add" size={16} color={colors.light.card} />
+                <Ionicons name="add" size={18} color={CREAM} />
                 <Text style={styles.addButtonText}>Add</Text>
               </TouchableOpacity>
             </>
           )}
         </View>
       </View>
+      <View style={styles.goldRule} />
 
       <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrap}>
-          <Ionicons name="search" size={16} color={colors.light.mutedForeground} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search products..."
-            value={search}
-            onChangeText={setSearch}
-            placeholderTextColor={colors.light.mutedForeground}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SellerSearchField
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search the collection"
+          style={{ flex: 1 }}
+        />
         <View style={styles.viewToggle}>
           <TouchableOpacity
             style={[styles.viewBtn, viewMode === "list" && styles.viewBtnActive]}
             onPress={() => setViewMode("list")}
-            hitSlop={6}
+            accessibilityLabel="List view"
           >
             <Ionicons
               name="list-outline"
               size={16}
-              color={viewMode === "list" ? "#fff" : colors.light.foreground}
+              color={viewMode === "list" ? CREAM : colors.olive[800]}
             />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.viewBtn, viewMode === "grid" && styles.viewBtnActive]}
             onPress={() => setViewMode("grid")}
-            hitSlop={6}
+            accessibilityLabel="Grid view"
           >
             <Ionicons
               name="grid-outline"
               size={16}
-              color={viewMode === "grid" ? "#fff" : colors.light.foreground}
+              color={viewMode === "grid" ? CREAM : colors.olive[800]}
             />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* KPI banner — status counts from the latest backend payload. */}
-      {stats ? (
-        <View style={styles.kpiRow}>
-          {([
-            { key: "all", label: "Total", tone: "#1f2937" },
-            { key: "active", label: "Active", tone: "#166534" },
-            { key: "draft", label: "Draft", tone: "#6b7280" },
-            { key: "pending", label: "Pending", tone: "#854d0e" },
-            { key: "flagged", label: "Flagged", tone: "#9d174d" },
-            { key: "archived", label: "Archived", tone: "#9d174d" },
-          ] as const).map((s) => {
-            const active = status === s.key;
-            return (
-              <TouchableOpacity
-                key={s.key}
-                style={[styles.kpiChip, active && styles.kpiChipActive]}
-                onPress={() => setStatus(s.key)}
-              >
-                <Text style={[styles.kpiChipValue, { color: active ? "#fff" : s.tone }]}>
-                  {stats[s.key] ?? 0}
-                </Text>
-                <Text style={[styles.kpiChipLabel, active && styles.kpiChipLabelActive]}>
-                  {s.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : null}
-
-      <View style={styles.sortRow}>
+      <View style={styles.chipRow}>
+        <TouchableOpacity
+          style={[styles.sortChip, styles.sortTrigger]}
+          onPress={openSortMenu}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort by ${sortLabel}`}
+        >
+          <Ionicons name="swap-vertical" size={14} color={colors.olive[800]} />
+          <Text style={styles.sortChipText} numberOfLines={1}>
+            {sortLabel}
+          </Text>
+        </TouchableOpacity>
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={SORT_TABS}
+          data={STATUS_TABS}
           keyExtractor={(s) => s.key}
-          renderItem={({ item: s }) => (
-            <TouchableOpacity
-              style={[styles.sortChip, sort === s.key && styles.sortChipActive]}
-              onPress={() => setSort(s.key)}
-            >
-              <Text style={[styles.sortChipText, sort === s.key && styles.sortChipTextActive]}>
-                {s.label}
-              </Text>
-            </TouchableOpacity>
-          )}
+          style={styles.statusList}
+          renderItem={({ item: s }) => {
+            const active = status === s.key;
+            const count = stats ? stats[s.key] : undefined;
+            return (
+              <SellerFilterTab
+                label={s.label}
+                count={typeof count === "number" ? count : undefined}
+                active={active}
+                onPress={() => setStatus(s.key)}
+              />
+            );
+          }}
           contentContainerStyle={styles.tabsContent}
         />
       </View>
@@ -786,83 +992,29 @@ export default function SellerProducts() {
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
           renderItem={renderGrid}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />}
           contentContainerStyle={[styles.listContent, selectMode && { paddingBottom: 96 }]}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.4}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.footerLoader}><Text style={styles.footerLoaderText}>Loading…</Text></View>
-            ) : hasMore && products.length > 0 ? (
-              <TouchableOpacity style={styles.loadMoreBtn} onPress={onEndReached}>
-                <Text style={styles.loadMoreText}>Load more</Text>
-              </TouchableOpacity>
-            ) : products.length > 0 ? (
-              <View style={styles.footerEnd}><Text style={styles.footerEndText}>End of list</Text></View>
-            ) : null
-          }
-          ListEmptyComponent={
-            !loading ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>{empty.icon}</Text>
-                <Text style={styles.emptyTitle}>{empty.title}</Text>
-                <Text style={styles.emptySub}>{empty.sub}</Text>
-                {empty.showCta ? (
-                  <TouchableOpacity
-                    style={styles.emptyCta}
-                    onPress={() => router.push("/(seller)/products/new" as any)}
-                  >
-                    <Ionicons name="add" size={16} color={colors.light.card} />
-                    <Text style={styles.emptyCtaText}>Add your first product</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            ) : null
-          }
+          ListFooterComponent={listFooter}
+          ListEmptyComponent={emptyEl}
         />
       ) : (
         <FlatList
           data={products}
           keyExtractor={(item) => item.id}
           renderItem={renderProduct}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />}
           contentContainerStyle={[styles.listContent, selectMode && { paddingBottom: 96 }]}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.4}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.footerLoader}><Text style={styles.footerLoaderText}>Loading…</Text></View>
-            ) : hasMore && products.length > 0 ? (
-              <TouchableOpacity style={styles.loadMoreBtn} onPress={onEndReached}>
-                <Text style={styles.loadMoreText}>Load more</Text>
-              </TouchableOpacity>
-            ) : products.length > 0 ? (
-              <View style={styles.footerEnd}><Text style={styles.footerEndText}>End of list</Text></View>
-            ) : null
-          }
-          ListEmptyComponent={
-            !loading ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyIcon}>{empty.icon}</Text>
-                <Text style={styles.emptyTitle}>{empty.title}</Text>
-                <Text style={styles.emptySub}>{empty.sub}</Text>
-                {empty.showCta ? (
-                  <TouchableOpacity
-                    style={styles.emptyCta}
-                    onPress={() => router.push("/(seller)/products/new" as any)}
-                  >
-                    <Ionicons name="add" size={16} color={colors.light.card} />
-                    <Text style={styles.emptyCtaText}>Add your first product</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            ) : null
-          }
+          ListFooterComponent={listFooter}
+          ListEmptyComponent={emptyEl}
         />
       )}
 
       {selectMode && (
-        <View style={styles.bulkBar}>
+        <View style={[styles.bulkBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
           <View style={styles.bulkActions}>
             <TouchableOpacity
@@ -890,8 +1042,9 @@ export default function SellerProducts() {
               style={[styles.bulkBtn, styles.bulkBtnDanger]}
               onPress={bulkDelete}
               disabled={bulkBusy}
+              accessibilityLabel="Delete selected"
             >
-              <Ionicons name="trash" size={14} color="#fff" />
+              <Ionicons name="trash" size={14} color={CREAM} />
             </TouchableOpacity>
           </View>
         </View>
@@ -902,26 +1055,54 @@ export default function SellerProducts() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
+  errorWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 8,
+  },
 
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingBottom: 8,
+    alignItems: "flex-end",
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
+    gap: 12,
   },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  kicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+    marginBottom: 2,
+  },
   title: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    color: INK,
+    letterSpacing: -0.4,
   },
-  count: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 2 },
+  count: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginTop: 4,
+  },
+  goldRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(200,164,74,0.55)",
+    marginHorizontal: spacing[5],
+  },
   iconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.light.muted,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -929,32 +1110,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.light.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: colors.olive[800],
+    paddingHorizontal: 16,
+    minHeight: 44,
     borderRadius: radii.full,
   },
   addButtonText: {
-    color: colors.light.card,
+    color: CREAM,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
   cancelSelectBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
     borderRadius: radii.full,
     backgroundColor: colors.light.muted,
   },
   cancelSelectText: {
     color: colors.light.foreground,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
+    fontFamily: fontFamilies.sans.medium,
   },
 
   searchContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    marginBottom: spacing[2],
     gap: 8,
     alignItems: "center",
   },
@@ -962,147 +1145,147 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
+    borderColor: "rgba(83,94,44,0.14)",
+    borderRadius: radii.xl,
     paddingHorizontal: 12,
+    minHeight: 44,
     gap: 8,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.sans.regular,
     color: colors.light.foreground,
   },
   viewToggle: {
     flexDirection: "row",
-    backgroundColor: colors.light.muted,
-    borderRadius: radii.md,
+    backgroundColor: CREAM,
+    borderRadius: radii.lg,
     padding: 2,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
   },
   viewBtn: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radii.sm,
-  },
-  viewBtnActive: { backgroundColor: colors.light.foreground },
-
-  kpiRow: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    gap: 6,
-    marginBottom: 8,
-  },
-  kpiChip: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
     borderRadius: radii.md,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    minWidth: 0,
   },
-  kpiChipActive: {
-    backgroundColor: colors.light.foreground,
-    borderColor: colors.light.foreground,
-  },
-  kpiChipValue: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold as any,
-  },
-  kpiChipLabel: {
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  kpiChipLabelActive: { color: "#fff" },
+  viewBtnActive: { backgroundColor: colors.olive[800] },
 
-  sortRow: { marginBottom: 10 },
-  tabsContent: { paddingHorizontal: 16, gap: 8 },
+  chipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    paddingLeft: spacing[5],
+    gap: 8,
+  },
+  statusList: { flexGrow: 0, flexShrink: 1 },
+  tabsContent: { paddingRight: spacing[5], gap: 8 },
   sortChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    justifyContent: "center",
     borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
   },
-  sortChipActive: { backgroundColor: colors.light.foreground },
+  sortTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    maxWidth: 120,
+    flexShrink: 0,
+  },
+  sortChipActive: {
+    backgroundColor: colors.olive[800],
+    borderColor: colors.olive[800],
+  },
   sortChipText: {
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    fontWeight: typography.fontWeights.medium as any,
+    fontSize: 12,
+    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.medium,
   },
-  sortChipTextActive: { color: colors.light.background },
+  sortChipTextActive: { color: CREAM },
 
-  listContent: { padding: 16, paddingTop: 4 },
+  listContent: { padding: spacing[5], paddingTop: 4 },
 
-  /* List view */
+  skeletonCard: {
+    flexDirection: "row",
+    backgroundColor: CREAM,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    overflow: "hidden",
+    paddingRight: 12,
+    gap: 12,
+  },
+
   productCard: {
     flexDirection: "row",
-    backgroundColor: colors.light.card,
-    borderRadius: radii.lg,
+    backgroundColor: CREAM,
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     marginBottom: 10,
     overflow: "hidden",
     alignItems: "stretch",
   },
   productCardSelected: {
-    borderColor: colors.light.primary,
-    backgroundColor: "#f0f9ff",
+    borderColor: colors.olive[600],
+    backgroundColor: colors.olive[50],
   },
   productCardMain: { flex: 1, flexDirection: "row" },
   checkbox: {
     width: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRightWidth: 1,
-    borderRightColor: colors.light.border,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: "rgba(83,94,44,0.12)",
     backgroundColor: colors.light.background,
   },
   moreBtn: {
-    width: 36,
+    width: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderLeftWidth: 1,
-    borderLeftColor: colors.light.border,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "rgba(83,94,44,0.12)",
   },
-  productImage: { width: 90, height: 90 },
-  productImagePlaceholder: {
-    backgroundColor: colors.light.muted,
+  productImage: { width: 80, height: 104 },
+  thumbEmpty: {
+    backgroundColor: colors.paper.warm,
     justifyContent: "center",
     alignItems: "center",
   },
-  productInfo: { flex: 1, padding: 12, justifyContent: "center" },
+  productInfo: { flex: 1, paddingVertical: 12, paddingHorizontal: 12, justifyContent: "center" },
   productHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: 8,
   },
   productName: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    color: INK,
     flex: 1,
-    marginRight: 8,
   },
   statusBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.full,
   },
   statusText: {
     fontSize: 10,
-    fontWeight: typography.fontWeights.semibold as any,
-    textTransform: "capitalize",
+    fontFamily: fontFamilies.sans.semibold,
+    letterSpacing: 0.3,
   },
-  badges: { flexDirection: "row", alignItems: "center", gap: 4 },
+  badges: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 0 },
   modChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -1112,59 +1295,65 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     borderWidth: 1,
   },
-  modChipText: { fontSize: 10, fontWeight: "600" },
+  modChipText: { fontSize: 10, fontFamily: fontFamilies.sans.semibold },
 
   productSku: {
-    fontSize: typography.fontSizes.xs,
+    fontSize: 11,
     color: colors.light.mutedForeground,
-    fontFamily: "monospace",
-    marginTop: 2,
+    fontFamily: fontFamilies.mono.regular,
+    marginTop: 4,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    marginTop: 6,
+    marginTop: 8,
     gap: 4,
+  },
+  metaPrice: {
+    fontSize: typography.fontSizes.xs,
+    fontFamily: fontFamilies.sans.semibold,
+    color: INK,
   },
   metaItem: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fontFamilies.sans.regular,
     color: colors.light.mutedForeground,
   },
   metaSep: { fontSize: 10, color: colors.light.mutedForeground, opacity: 0.5 },
-  stockOut: { color: "#dc2626", fontWeight: typography.fontWeights.semibold as any },
-  stockLow: { color: "#d97706", fontWeight: typography.fontWeights.semibold as any },
+  stockOut: { color: RUST, fontFamily: fontFamilies.sans.semibold },
+  stockLow: { color: GOLD, fontFamily: fontFamilies.sans.semibold },
 
-  /* Grid view */
   gridRow: {
     gap: 10,
     marginBottom: 10,
   },
   gridCard: {
     flex: 1,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.lg,
+    backgroundColor: CREAM,
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.12)",
     overflow: "hidden",
   },
   gridCardSelected: {
-    borderColor: colors.light.primary,
-    backgroundColor: "#f0f9ff",
+    borderColor: colors.olive[600],
+    backgroundColor: colors.olive[50],
   },
+  gridImageWrap: { position: "relative" },
   gridImage: {
     width: "100%",
-    aspectRatio: 1,
+    aspectRatio: 3 / 4,
   },
   gridCheckbox: {
     position: "absolute",
     top: 8,
     left: 8,
     zIndex: 2,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(22,26,10,0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1173,102 +1362,122 @@ const styles = StyleSheet.create({
     top: 8,
     right: 8,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.full,
   },
   gridStatusText: {
     fontSize: 9,
-    fontWeight: typography.fontWeights.semibold as any,
-    textTransform: "capitalize",
+    fontFamily: fontFamilies.sans.semibold,
   },
   gridStockPill: {
     position: "absolute",
     bottom: 8,
     left: 8,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.full,
   },
   gridStockText: {
     fontSize: 10,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
-  gridBody: { padding: 10, gap: 2 },
+  gridBody: { padding: 12, gap: 3 },
   gridName: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-    minHeight: 32,
+    fontFamily: fontFamilies.display.semibold,
+    color: INK,
+    minHeight: 36,
   },
   gridSku: {
     fontSize: 10,
     color: colors.light.mutedForeground,
-    fontFamily: "monospace",
+    fontFamily: fontFamilies.mono.regular,
   },
   gridFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 6,
   },
   gridPrice: {
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
+    color: INK,
   },
   gridSales: {
     fontSize: 9,
     color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
+    letterSpacing: 0.4,
     textTransform: "uppercase",
   },
 
   emptyContainer: { alignItems: "center", paddingVertical: 56 },
-  emptyIcon: { fontSize: 48 },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-    marginTop: 12,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: INK,
+    marginTop: 16,
+    textAlign: "center",
   },
   emptySub: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
-    marginTop: 4,
+    marginTop: 6,
     textAlign: "center",
     paddingHorizontal: 32,
+    lineHeight: 20,
   },
   emptyCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: colors.light.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: colors.olive[800],
+    paddingHorizontal: 18,
+    minHeight: 44,
     borderRadius: radii.full,
     marginTop: 20,
   },
   emptyCtaText: {
-    color: colors.light.card,
+    color: CREAM,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
 
   footerLoader: { paddingVertical: 16, alignItems: "center" },
-  footerLoaderText: { fontSize: 12, color: colors.light.mutedForeground },
   footerEnd: { paddingVertical: 20, alignItems: "center" },
-  footerEndText: { fontSize: 11, color: colors.light.mutedForeground, opacity: 0.6 },
+  footerEndText: {
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.regular,
+    opacity: 0.7,
+  },
   loadMoreBtn: {
     marginTop: 8,
     marginHorizontal: 16,
-    paddingVertical: 10,
+    minHeight: 44,
     borderRadius: radii.lg,
-    backgroundColor: colors.light.muted,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
     alignItems: "center",
+    justifyContent: "center",
   },
   loadMoreText: {
     fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
-    fontWeight: typography.fontWeights.medium as any,
+    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.medium,
   },
 
   bulkBar: {
@@ -1281,14 +1490,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: 12,
     paddingHorizontal: 16,
-    backgroundColor: colors.light.foreground,
+    backgroundColor: INK,
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,
   },
   bulkCount: {
-    color: colors.light.background,
+    color: CREAM,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
   bulkActions: { flexDirection: "row", gap: 6 },
   bulkBtn: {
@@ -1296,21 +1505,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    minHeight: 36,
     borderRadius: radii.md,
   },
   bulkBtnGhost: {
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: colors.light.background,
+    borderColor: "rgba(250,248,241,0.35)",
   },
   bulkBtnGhostText: {
-    color: colors.light.background,
+    color: CREAM,
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
   bulkBtnDanger: {
-    backgroundColor: "#dc2626",
+    backgroundColor: RUST,
     width: 36,
     paddingHorizontal: 0,
   },

@@ -11,7 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
-import { replyToReviewBackend } from "@/lib/api";
+import { replyToSellerReview } from "@/lib/api";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import type { Review } from "@/lib/types";
 
@@ -19,27 +19,28 @@ export interface ReplyModalProps {
   review: Review | null;
   visible: boolean;
   onClose: () => void;
-  onReplied: (reply: { body: string }) => void;
+  onReplied: (reply: { body: string; created_at: string }) => void;
 }
 
 const MAX_BODY = 2000;
 
 /**
- * Reply to a customer review (seller or brand). Mirrors POST
- * /api/reviews/:id/reply. Body is 1-2000 chars per the v2 schema CHECK.
+ * Reply to a customer review as the seller. Mirrors POST
+ * /api/seller/reviews/:id/reply. Body is 1-2000 chars per the v2 schema CHECK.
  */
 export function ReplyModal({ review, visible, onClose, onReplied }: ReplyModalProps) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Reset on open / review change
+  // Reset on open / review change. Prefill any existing reply so the
+  // seller edits their words instead of retyping from scratch.
   React.useEffect(() => {
     if (visible) {
-      setBody("");
+      setBody(review?.seller_reply ?? "");
       setErr(null);
     }
-  }, [visible, review?.id]);
+  }, [visible, review?.id, review?.seller_reply]);
 
   const submit = async () => {
     if (!review) return;
@@ -55,13 +56,13 @@ export function ReplyModal({ review, visible, onClose, onReplied }: ReplyModalPr
     setBusy(true);
     setErr(null);
     try {
-      const res = await replyToReviewBackend(review.id, trimmed);
+      const res = await replyToSellerReview(review.id, trimmed);
       if (!res.ok) {
         setErr(res.error ?? "Reply failed");
         setBusy(false);
         return;
       }
-      onReplied({ body: trimmed });
+      onReplied(res.data.reply);
       onClose();
     } catch (e: any) {
       setErr(e?.message ?? "Reply failed");
@@ -78,7 +79,9 @@ export function ReplyModal({ review, visible, onClose, onReplied }: ReplyModalPr
       >
         <View style={styles.card}>
           <View style={styles.headerRow}>
-            <Text style={styles.title}>Reply to review</Text>
+            <Text style={styles.title}>
+              {review?.seller_reply ? "Edit your reply" : "Reply to review"}
+            </Text>
             <TouchableOpacity onPress={onClose} accessibilityLabel="Close reply dialog">
               <Ionicons name="close" size={24} color={colors.light.foreground} />
             </TouchableOpacity>
@@ -108,7 +111,9 @@ export function ReplyModal({ review, visible, onClose, onReplied }: ReplyModalPr
             {busy ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitLabel}>Post reply</Text>
+              <Text style={styles.submitLabel}>
+                {review?.seller_reply ? "Update reply" : "Post reply"}
+              </Text>
             )}
           </TouchableOpacity>
         </View>

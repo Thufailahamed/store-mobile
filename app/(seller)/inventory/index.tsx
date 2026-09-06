@@ -6,24 +6,44 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Image,
   RefreshControl,
   Alert,
   Share,
+  StatusBar,
+  ActivityIndicator,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   getSellerStore,
   getSellerInventory,
+  getSellerProducts,
   updateVariantStock,
   type Result,
 } from "@/lib/api";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice } from "@/lib/utils";
+import { LOW_STOCK_THRESHOLD } from "@/lib/inventory";
+import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  SellerSearchField,
+  SellerFilterTab,
+  sellerBorder,
+  SELLER_CREAM,
+  SELLER_INK,
+  SELLER_GOLD,
+  SELLER_RUST,
+} from "@/components/seller/chrome";
 import type { Product, ProductVariant } from "@/lib/types";
 
-const LOW_STOCK_THRESHOLD = 5;
+const GOLD = SELLER_GOLD;
+const RUST = SELLER_RUST;
+const CREAM = SELLER_CREAM;
+const INK = SELLER_INK;
 
 interface InventoryRow {
   productId: string;
@@ -32,51 +52,78 @@ interface InventoryRow {
   sku: string;
   size?: string;
   color?: string;
-  onHand: number;
+  onHand: number | null;
   reserved: number;
-  available: number;
-  price: number;
+  available: number | null;
+  price: number | null;
+  currency: string;
   image?: string;
 }
 
-function formatPrice(n: number) {
-  try {
-    return `Rs. ${Number(n ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-  } catch {
-    return `Rs. ${n}`;
-  }
+type StockTone = "ok" | "low" | "out" | "unknown";
+
+function stockTone(available: number | null): StockTone {
+  if (available == null) return "unknown";
+  if (available <= 0) return "out";
+  if (available <= LOW_STOCK_THRESHOLD) return "low";
+  return "ok";
+}
+
+function money(n: number | null | undefined, currency = "LKR"): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return formatPrice(n, currency);
+}
+
+function productImageUrl(p: Product): string | undefined {
+  const imgs = p.images ?? [];
+  return imgs.find((i) => i.is_primary)?.url || imgs[0]?.url || undefined;
 }
 
 function toCSV(rows: InventoryRow[]): string {
   const header = ["SKU", "Product", "Size", "Color", "On hand", "Reserved", "Available", "Price", "Value"];
-  const escape = (s: string | number | undefined) => {
+  const escape = (s: string | number | null | undefined) => {
     if (s == null) return "";
     const str = String(s);
     return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
   };
   const lines = [header.join(",")];
   for (const r of rows) {
+    const value = r.onHand != null && r.price != null ? r.onHand * r.price : "";
     lines.push(
       [
         escape(r.sku),
         escape(r.productName),
         escape(r.size),
         escape(r.color),
-        r.onHand,
+        escape(r.onHand),
         r.reserved,
-        r.available,
-        r.price,
-        r.onHand * r.price,
+        escape(r.available),
+        escape(r.price),
+        escape(value === "" ? "" : value),
       ].join(","),
     );
   }
   return lines.join("\n");
 }
 
+function Thumb({ uri, style }: { uri?: string; style: object }) {
+  if (uri) {
+    return <Image source={{ uri }} style={style} contentFit="cover" transition={200} />;
+  }
+  return (
+    <View style={[style, styles.thumbEmpty]}>
+      <Ionicons name="image-outline" size={16} color={colors.light.mutedForeground} />
+    </View>
+  );
+}
+
 export default function SellerInventory() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [storeId, setStoreId] = useState<string | null>(null);
+  const [storeError, setStoreError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,42 +132,31 @@ export default function SellerInventory() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draftStock, setDraftStock] = useState("0");
   const [saving, setSaving] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
-  // Bulk edit mode
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStock, setBulkStock] = useState("0");
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    if (!storeId) {
-      const storeRes = await getSellerStore(user.id);
-      if (storeRes.ok && storeRes.data) {
-        setStoreId(storeRes.data.id);
-        const res = await getSellerInventory(storeRes.data.id);
-        if (res.ok) flattenRows(res.data);
-      }
-    } else {
-      const res = await getSellerInventory(storeId);
-      if (res.ok) flattenRows(res.data);
-    }
-    setLoading(false);
-    setRefreshing(false);
-  }, [user, storeId]);
-
-  const flattenRows = (data: {
-    product: Product;
-    variants: (ProductVariant & {
-      quantity: number;
-      reserved: number;
-      available: number;
-      stock: number;
-    })[];
-  }[]) => {
+  const flattenRows = (
+    data: {
+      product: Product;
+      variants: (ProductVariant & {
+        quantity: number | null;
+        reserved: number;
+        available: number | null;
+        stock: number | null;
+      })[];
+    }[],
+    imageByProduct: Map<string, string>,
+  ) => {
     const all: InventoryRow[] = [];
     for (const item of data) {
+      const fallbackImage = productImageUrl(item.product) || imageByProduct.get(item.product.id);
       for (const v of item.variants) {
+        const priceRaw = v.price ?? item.product.price;
+        const price = typeof priceRaw === "number" && Number.isFinite(priceRaw) ? priceRaw : null;
         all.push({
           productId: item.product.id,
           productName: item.product.name,
@@ -128,74 +164,113 @@ export default function SellerInventory() {
           sku: v.sku ?? item.product.sku ?? `${item.product.slug}-${v.size}-${v.color}`,
           size: v.size ?? undefined,
           color: v.color ?? undefined,
-          onHand: v.quantity ?? v.stock ?? 0,
+          onHand: v.quantity ?? null,
           reserved: v.reserved ?? 0,
-          available: v.available ?? Math.max(0, (v.quantity ?? v.stock ?? 0) - (v.reserved ?? 0)),
-          price: v.price ?? item.product.price,
-          image: item.product.images?.[0]?.url,
+          available: v.available ?? null,
+          price,
+          currency: item.product.currency || "LKR",
+          image: fallbackImage,
         });
       }
     }
     setRows(all);
   };
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    let id = storeId;
+    if (!id) {
+      const storeRes = await getSellerStore(user.id);
+      if (!storeRes.ok || !storeRes.data) {
+        setStoreError(!storeRes.ok ? storeRes.error : "No store found for this account.");
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      id = storeRes.data.id;
+      setStoreId(id);
+      setStoreError(null);
+    }
+
+    const [invRes, prodRes] = await Promise.all([
+      getSellerInventory(id),
+      getSellerProducts(id, { limit: 100 }),
+    ]);
+    if (!invRes.ok) {
+      // Surfaced inline rather than only in an alert — a dismissed alert
+      // left the list looking like the store genuinely had no SKUs.
+      setLoadError(invRes.error);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setLoadError(null);
+    const imageByProduct = new Map<string, string>();
+    if (prodRes.ok) {
+      for (const p of prodRes.data.products ?? []) {
+        const url = productImageUrl(p);
+        if (url) imageByProduct.set(p.id, url);
+      }
+    }
+    flattenRows(invRes.data, imageByProduct);
+    setLoading(false);
+    setRefreshing(false);
+  }, [user, storeId]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return rows.filter((r) => {
-      const matchSearch = !q ||
+    const list = rows.filter((r) => {
+      const matchSearch =
+        !q ||
         r.productName.toLowerCase().includes(q) ||
         r.sku.toLowerCase().includes(q) ||
         (r.size ?? "").toLowerCase().includes(q) ||
         (r.color ?? "").toLowerCase().includes(q);
-      if (filter === "low") return matchSearch && r.available > 0 && r.available < LOW_STOCK_THRESHOLD;
-      if (filter === "out") return matchSearch && r.available === 0;
-      if (filter === "healthy") return matchSearch && r.available >= LOW_STOCK_THRESHOLD;
-      return matchSearch;
+      if (!matchSearch) return false;
+      const tone = stockTone(r.available);
+      if (filter === "low") return tone === "low";
+      if (filter === "out") return tone === "out";
+      if (filter === "healthy") return tone === "ok";
+      return true;
     });
+    // Urgency-first so sellers see problems without hunting.
+    const rank = (t: StockTone) => (t === "out" ? 0 : t === "low" ? 1 : t === "unknown" ? 2 : 3);
+    return [...list].sort((a, b) => rank(stockTone(a.available)) - rank(stockTone(b.available)));
   }, [rows, search, filter]);
 
-  const stats = useMemo(() => ({
-    total: rows.length,
-    healthy: rows.filter((r) => r.available >= LOW_STOCK_THRESHOLD).length,
-    low: rows.filter((r) => r.available > 0 && r.available < LOW_STOCK_THRESHOLD).length,
-    out: rows.filter((r) => r.available === 0).length,
-  }), [rows]);
+  const stats = useMemo(() => {
+    let healthy = 0;
+    let low = 0;
+    let out = 0;
+    for (const r of rows) {
+      const tone = stockTone(r.available);
+      if (tone === "ok") healthy += 1;
+      else if (tone === "low") low += 1;
+      else if (tone === "out") out += 1;
+    }
+    return { healthy, low, out };
+  }, [rows]);
 
-  const totalValue = useMemo(
-    () => filtered.reduce((sum, r) => sum + r.onHand * r.price, 0),
-    [filtered],
-  );
+  const totalValue = useMemo(() => {
+    let sum = 0;
+    let any = false;
+    for (const r of filtered) {
+      if (r.onHand == null || r.price == null) continue;
+      any = true;
+      sum += r.onHand * r.price;
+    }
+    return any ? sum : null;
+  }, [filtered]);
 
-  // Top 5 at-risk variants by available stock, asc. Drives the "Lowest stock" panel.
-  const lowestRows = useMemo(
-    () =>
-      rows
-        .filter((r) => r.available < LOW_STOCK_THRESHOLD)
-        .slice()
-        .sort((a, b) => a.available - b.available)
-        .slice(0, 5),
-    [rows],
-  );
-
-  // Cash value of the at-risk stock — Rs. X on hand across the low subset.
-  const lowStockValue = useMemo(
-    () =>
-      rows
-        .filter((r) => r.available > 0 && r.available < LOW_STOCK_THRESHOLD)
-        .reduce((s, r) => s + r.available * r.price, 0),
-    [rows],
-  );
-
-  // Shared reserved-stock safety check. Any target whose new stock would drop
-  // below its held/reserved quantity is a "breach" — warn before proceeding
-  // instead of silently letting the change break an in-progress cart.
   const confirmReservedStock = (
     targets: InventoryRow[],
     newStock: number,
@@ -242,24 +317,39 @@ export default function SellerInventory() {
 
   const saveStock = async (row: InventoryRow, newStock: number) => {
     setSaving(true);
+    setSavingId(row.variantId);
+    const snapshot: InventoryRow = { ...row };
+    // Optimistic UI so ± feels instant on phone.
+    setRows((prev) =>
+      prev.map((r) =>
+        r.variantId === row.variantId
+          ? {
+              ...r,
+              onHand: newStock,
+              available: Math.max(0, newStock - r.reserved),
+            }
+          : r,
+      ),
+    );
     const res = await updateVariantStock(row.productId, row.variantId, newStock);
     setSaving(false);
+    setSavingId(null);
     if (res.ok) {
-      setRows((prev) =>
-        prev.map((r) =>
-          r.variantId === row.variantId
-            ? {
-                ...r,
-                onHand: newStock,
-                available: Math.max(0, newStock - r.reserved),
-              }
-            : r
-        )
-      );
       setEditing(null);
     } else {
+      setRows((prev) =>
+        prev.map((r) => (r.variantId === row.variantId ? snapshot : r)),
+      );
       Alert.alert("Error", res.error);
     }
+  };
+
+  const adjustStock = (row: InventoryRow, delta: number) => {
+    if (savingId === row.variantId) return;
+    const current = row.onHand ?? 0;
+    const next = Math.max(0, current + delta);
+    if (next === current) return;
+    confirmReservedStock([row], next, () => void saveStock(row, next));
   };
 
   const exitSelect = () => {
@@ -294,21 +384,19 @@ export default function SellerInventory() {
       (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok),
     );
     if (failed.length === 0) {
-      Alert.alert("Done", `${targets.length} variant(s) updated to ${newStock}.`);
+      Alert.alert("Done", `${targets.length} SKU(s) updated to ${newStock}.`);
       setRows((prev) =>
         prev.map((r) =>
           ids.has(r.variantId)
             ? { ...r, onHand: newStock, available: Math.max(0, newStock - r.reserved) }
-            : r
-        )
+            : r,
+        ),
       );
       exitSelect();
     } else {
-      Alert.alert(
-        "Partial",
-        `${targets.length - failed.length} updated, ${failed.length} failed.`,
-        [{ text: "OK", onPress: () => onRefresh() }],
-      );
+      Alert.alert("Partial", `${targets.length - failed.length} updated, ${failed.length} failed.`, [
+        { text: "OK", onPress: () => onRefresh() },
+      ]);
     }
   };
 
@@ -328,347 +416,368 @@ export default function SellerInventory() {
     }
   };
 
+  const startEdit = (row: InventoryRow) => {
+    setEditing(row.variantId);
+    setDraftStock(String(row.onHand ?? 0));
+  };
+
+  const toneMeta = (tone: StockTone) => {
+    if (tone === "out") return { label: "Out", color: RUST, bg: "rgba(184,92,58,0.12)" };
+    if (tone === "low") return { label: "Low", color: "#8a6a2a", bg: "rgba(200,164,74,0.18)" };
+    if (tone === "ok") return { label: "In stock", color: colors.olive[800], bg: "rgba(83,94,44,0.1)" };
+    return { label: "—", color: colors.ink.mute, bg: colors.olive[50] };
+  };
+
   const renderRow = ({ item }: { item: InventoryRow }) => {
     const isEditing = editing === item.variantId;
-    const stockStatus =
-      item.available === 0 ? "out" : item.available < LOW_STOCK_THRESHOLD ? "low" : "healthy";
+    const isSaving = savingId === item.variantId;
+    const tone = stockTone(item.available);
+    const meta = toneMeta(tone);
     const selected = selectedIds.has(item.variantId);
+    const variantLabel = [item.size, item.color].filter(Boolean).join(" · ");
+    const qty = item.onHand ?? item.available;
+    const qtyLabel = qty == null ? "—" : String(qty);
 
     return (
-      <View style={[styles.tableRow, selected && styles.rowSelected, stockStatus === "out" && styles.rowOut, stockStatus === "low" && styles.rowLow]}>
-        {selectMode && (
-          <TouchableOpacity
-            style={styles.checkbox}
-            onPress={() => toggleSelect(item.variantId)}
-            hitSlop={6}
-          >
-            <Ionicons
-              name={selected ? "checkbox" : "square-outline"}
-              size={20}
-              color={selected ? colors.light.primary : colors.light.mutedForeground}
-            />
-          </TouchableOpacity>
-        )}
-        <View style={styles.tableCellImage}>
-          {item.image ? (
-            <Image source={{ uri: item.image }} style={styles.cellImage} />
-          ) : (
-            <View style={[styles.cellImage, styles.cellImagePlaceholder]}>
-              <Text>📦</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.tableCellInfo}>
-          <Text style={styles.cellProduct} numberOfLines={1}>{item.productName}</Text>
-          <Text style={styles.cellSku}>{item.sku}</Text>
-          <Text style={styles.cellVariant}>
-            {[item.size, item.color].filter(Boolean).join(" · ") || "—"}
-          </Text>
-        </View>
-        <View style={styles.tableCellPrice}>
-          <Text style={styles.cellPrice}>{formatPrice(item.price)}</Text>
-          <Text style={styles.cellValue}>{formatPrice(item.onHand * item.price)}</Text>
-        </View>
-        <View style={styles.tableCellStock}>
-          {isEditing ? (
-            <View style={styles.editRow}>
-              <TextInput
-                style={styles.editInput}
-                value={draftStock}
-                onChangeText={setDraftStock}
-                keyboardType="numeric"
-                autoFocus
-                onSubmitEditing={() => handleSaveStock(item)}
-              />
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={() => handleSaveStock(item)}
-                disabled={saving}
-              >
-                <Text style={styles.saveBtnText}>✓</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditing(null)}>
-                <Text style={styles.cancelBtnText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.stockStack}>
-              <Text style={[styles.cellStock, stockStatus === "out" && styles.stockOut, stockStatus === "low" && styles.stockLow]}>
-                {item.onHand}
-              </Text>
-              {item.reserved > 0 && (
-                <Text style={styles.cellHeld}>{item.reserved} held</Text>
-              )}
-              <Text style={styles.cellAvail}>{item.available} avail</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.tableCellStatus}>
-          {stockStatus === "out" ? (
-            <View style={[styles.badge, styles.badgeOut]}>
-              <Text style={[styles.badgeText, styles.badgeTextOut]}>Out</Text>
-            </View>
-          ) : stockStatus === "low" ? (
-            <View style={[styles.badge, styles.badgeLow]}>
-              <Text style={[styles.badgeText, styles.badgeTextLow]}>Low</Text>
-            </View>
-          ) : (
-            <View style={[styles.badge, styles.badgeHealthy]}>
-              <Text style={[styles.badgeText, styles.badgeTextHealthy]}>OK</Text>
-            </View>
-          )}
-        </View>
-        {!selectMode && (
-          <View style={styles.tableCellAction}>
+      <View
+        style={[
+          styles.card,
+          selected && styles.cardSelected,
+          tone === "out" && styles.cardOut,
+          tone === "low" && styles.cardLow,
+        ]}
+      >
+        <View style={[styles.toneBar, { backgroundColor: meta.color }]} />
+        <View style={styles.cardRow}>
+          {selectMode && (
             <TouchableOpacity
-              onPress={() => { setEditing(item.variantId); setDraftStock(String(item.onHand)); }}
+              style={styles.checkbox}
+              onPress={() => toggleSelect(item.variantId)}
               hitSlop={6}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected }}
             >
-              <Text style={styles.editBtn}>Edit</Text>
+              <Ionicons
+                name={selected ? "checkbox" : "square-outline"}
+                size={22}
+                color={selected ? colors.olive[700] : colors.light.mutedForeground}
+              />
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+          <TouchableOpacity
+            style={styles.cardMain}
+            onPress={() =>
+              selectMode
+                ? toggleSelect(item.variantId)
+                : router.push(`/(seller)/products/${item.productId}` as any)
+            }
+            onLongPress={() => {
+              if (!selectMode) {
+                setSelectMode(true);
+                setSelectedIds(new Set([item.variantId]));
+              }
+            }}
+            delayLongPress={350}
+            activeOpacity={0.75}
+          >
+            <Thumb uri={item.image} style={styles.thumb} />
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardName} numberOfLines={2}>
+                {item.productName}
+              </Text>
+              <Text style={styles.cardSku}>{item.sku}</Text>
+              {variantLabel ? <Text style={styles.cardMeta}>{variantLabel}</Text> : null}
+              <View style={styles.cardFooter}>
+                <Text style={styles.cardPrice}>{money(item.price, item.currency)}</Text>
+                {item.reserved > 0 ? (
+                  <>
+                    <Text style={styles.cardDot}>·</Text>
+                    <Text style={styles.cardHeld}>{item.reserved} held</Text>
+                  </>
+                ) : null}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {!selectMode && (
+            <View style={styles.stockPanel}>
+              <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
+                <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
+              </View>
+
+              {isEditing ? (
+                <View style={styles.editStack}>
+                  <TextInput
+                    style={[styles.qtyInput, { borderColor: meta.color }]}
+                    value={draftStock}
+                    onChangeText={setDraftStock}
+                    keyboardType="number-pad"
+                    autoFocus
+                    selectTextOnFocus
+                    onSubmitEditing={() => handleSaveStock(item)}
+                    accessibilityLabel="On-hand quantity"
+                  />
+                  <View style={styles.editActions}>
+                    <TouchableOpacity
+                      style={styles.editCancelBtn}
+                      onPress={() => setEditing(null)}
+                      accessibilityLabel="Cancel"
+                    >
+                      <Text style={styles.editCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.editSaveBtn}
+                      onPress={() => handleSaveStock(item)}
+                      disabled={saving}
+                      accessibilityLabel="Save stock"
+                    >
+                      {saving && isSaving ? (
+                        <ActivityIndicator size="small" color={CREAM} />
+                      ) : (
+                        <Text style={styles.editSaveText}>Save</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.stepper}>
+                    <TouchableOpacity
+                      style={[styles.stepBtn, isSaving && styles.stepBtnDisabled]}
+                      onPress={() => adjustStock(item, -1)}
+                      disabled={isSaving || (item.onHand ?? 0) <= 0}
+                      accessibilityLabel="Decrease stock"
+                    >
+                      <Ionicons name="remove" size={18} color={INK} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.qtyTap}
+                      onPress={() => startEdit(item)}
+                      accessibilityLabel={`Stock ${qtyLabel}. Tap to edit`}
+                      accessibilityRole="button"
+                    >
+                      {isSaving ? (
+                        <ActivityIndicator size="small" color={meta.color} />
+                      ) : (
+                        <Text style={[styles.qtyValue, { color: meta.color }]}>{qtyLabel}</Text>
+                      )}
+                      <Text style={styles.qtyHint}>on hand</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.stepBtn, isSaving && styles.stepBtnDisabled]}
+                      onPress={() => adjustStock(item, 1)}
+                      disabled={isSaving}
+                      accessibilityLabel="Increase stock"
+                    >
+                      <Ionicons name="add" size={18} color={INK} />
+                    </TouchableOpacity>
+                  </View>
+                  {tone === "out" ? (
+                    <TouchableOpacity
+                      style={styles.quickRestock}
+                      onPress={() => {
+                        const next = Math.max(10, (item.reserved || 0) + 5);
+                        confirmReservedStock([item], next, () => void saveStock(item, next));
+                      }}
+                      disabled={isSaving}
+                      accessibilityLabel="Quick restock to 10"
+                    >
+                      <Text style={styles.quickRestockText}>+10</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )}
+            </View>
+          )}
+        </View>
       </View>
     );
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
+  const countLabel = (() => {
+    if (loading && rows.length === 0) return "Loading";
+    const value = totalValue == null ? "On-hand —" : `On-hand ${money(totalValue)}`;
+    return `${filtered.length} of ${rows.length} SKUs · ${value}`;
+  })();
+
+  const listHeader = (
+    <>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.kicker}>Stock</Text>
           <Text style={styles.title}>Inventory</Text>
-          <Text style={styles.count}>
-            {filtered.length} of {rows.length} variants · {formatPrice(totalValue)} value
-          </Text>
+          <Text style={styles.count}>{countLabel}</Text>
         </View>
         <View style={styles.headerActions}>
           {selectMode ? (
-            <TouchableOpacity style={styles.cancelBtn} onPress={exitSelect}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+            <TouchableOpacity style={styles.cancelSelectBtn} onPress={exitSelect}>
+              <Text style={styles.cancelSelectText}>Cancel</Text>
             </TouchableOpacity>
           ) : (
             <>
               <TouchableOpacity
-                style={styles.headerBtn}
+                style={styles.iconBtn}
                 onPress={() => setSelectMode(true)}
                 disabled={filtered.length === 0}
+                accessibilityLabel="Select SKUs"
               >
-                <Ionicons name="checkmark-circle-outline" size={16} color={colors.light.foreground} />
-                <Text style={styles.headerBtnText}>Select</Text>
+                <Ionicons name="checkmark-circle-outline" size={18} color={INK} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.headerBtn}
+                style={styles.iconBtn}
                 onPress={exportCSV}
                 disabled={filtered.length === 0}
+                accessibilityLabel="Export CSV"
               >
-                <Ionicons name="share-outline" size={16} color={colors.light.foreground} />
-                <Text style={styles.headerBtnText}>CSV</Text>
+                <Ionicons name="share-outline" size={18} color={INK} />
               </TouchableOpacity>
             </>
           )}
         </View>
       </View>
+      <View style={styles.goldRule} />
 
-      {/* KPI Cards */}
-      <View style={styles.kpiRow}>
-        <View style={[styles.kpiCard, { backgroundColor: "#f3f4f6" }]}>
-          <Text style={styles.kpiValue}>{stats.total}</Text>
-          <Text style={styles.kpiLabel}>Total</Text>
-        </View>
-        <View style={[styles.kpiCard, { backgroundColor: "#dcfce7" }]}>
-          <Text style={[styles.kpiValue, { color: "#166534" }]}>{stats.healthy}</Text>
-          <Text style={styles.kpiLabel}>Healthy</Text>
-        </View>
-        <View style={[styles.kpiCard, { backgroundColor: "#fef9c3" }]}>
-          <Text style={[styles.kpiValue, { color: "#854d0e" }]}>{stats.low}</Text>
-          <Text style={styles.kpiLabel}>Low</Text>
-        </View>
-        <View style={[styles.kpiCard, { backgroundColor: "#fce7f3" }]}>
-          <Text style={[styles.kpiValue, { color: "#9d174d" }]}>{stats.out}</Text>
-          <Text style={styles.kpiLabel}>Out</Text>
-        </View>
+      <View style={styles.ledger}>
+        <TouchableOpacity
+          style={styles.ledgerStat}
+          onPress={() => setFilter("healthy")}
+          accessibilityRole="button"
+          accessibilityLabel={`${stats.healthy} healthy`}
+        >
+          <Text style={[styles.ledgerValue, { color: colors.olive[700] }]}>{stats.healthy}</Text>
+          <Text style={styles.ledgerLabel}>Healthy</Text>
+        </TouchableOpacity>
+        <View style={styles.ledgerRule} />
+        <TouchableOpacity
+          style={styles.ledgerStat}
+          onPress={() => setFilter("low")}
+          accessibilityRole="button"
+          accessibilityLabel={`${stats.low} low`}
+        >
+          <Text style={[styles.ledgerValue, { color: "#8a6a2a" }]}>{stats.low}</Text>
+          <Text style={styles.ledgerLabel}>Low</Text>
+        </TouchableOpacity>
+        <View style={styles.ledgerRule} />
+        <TouchableOpacity
+          style={styles.ledgerStat}
+          onPress={() => setFilter("out")}
+          accessibilityRole="button"
+          accessibilityLabel={`${stats.out} out`}
+        >
+          <Text style={[styles.ledgerValue, { color: RUST }]}>{stats.out}</Text>
+          <Text style={styles.ledgerLabel}>Out</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Low-stock alert banner — only shown when at least one variant is at risk. */}
-      {stats.low > 0 ? (
-        <View style={styles.lowStockBanner}>
-          <View style={styles.lowStockIcon}>
-            <Ionicons name="alert-circle" size={18} color="#b45309" />
-          </View>
-          <View style={styles.lowStockText}>
-            <Text style={styles.lowStockTitle}>
-              {stats.low} variant{stats.low === 1 ? "" : "s"} running low
-            </Text>
-            <Text style={styles.lowStockSub}>
-              Below the {LOW_STOCK_THRESHOLD}-unit threshold · {formatPrice(lowStockValue)} of stock on hand
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.lowStockCta}
-            onPress={() => setFilter("low")}
-            hitSlop={6}
-          >
-            <Text style={styles.lowStockCtaText}>Review</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      {/* Lowest-stock visual map — top 5 at-risk variants sorted by available stock asc. */}
-      {lowestRows.length > 0 ? (
-        <View style={styles.lowStockPanel}>
-          <View style={styles.lowStockPanelHeader}>
-            <View style={styles.lowStockPanelTitleRow}>
-              <Ionicons name="trending-down" size={14} color="#b45309" />
-              <Text style={styles.lowStockPanelTitle}>At risk · Lowest stock first</Text>
-            </View>
-            <Text style={styles.lowStockPanelHint}>Tap to restock</Text>
-          </View>
-          {lowestRows.map((r) => {
-            const pct = Math.max(2, Math.min(100, Math.round((r.available / LOW_STOCK_THRESHOLD) * 100)));
-            // Red < 30%, amber < 70%, green otherwise.
-            const tone =
-              r.available === 0
-                ? { bar: "#dc2626", label: "Out" }
-                : r.available < 2
-                  ? { bar: "#dc2626", label: "Critical" }
-                  : r.available < 4
-                    ? { bar: "#f59e0b", label: "Low" }
-                    : { bar: "#10b981", label: "Close" };
-            return (
-              <TouchableOpacity
-                key={r.variantId}
-                style={styles.lowStockRow}
-                onPress={() => {
-                  // Jump straight into stock-edit mode for this variant.
-                  setEditing(r.variantId);
-                  setDraftStock(String(r.onHand));
-                }}
-                activeOpacity={0.8}
-              >
-                {r.image ? (
-                  <Image source={{ uri: r.image }} style={styles.lowStockImage} />
-                ) : (
-                  <View style={[styles.lowStockImage, styles.cellImagePlaceholder]}>
-                    <Text style={{ fontSize: 16 }}>📦</Text>
-                  </View>
-                )}
-                <View style={styles.lowStockInfo}>
-                  <Text style={styles.lowStockName} numberOfLines={1}>{r.productName}</Text>
-                  <View style={styles.lowStockVariantRow}>
-                    <Text style={styles.lowStockVariant} numberOfLines={1}>
-                      {[r.size, r.color].filter(Boolean).join(" · ") || "—"}
-                    </Text>
-                    <View style={[styles.lowStockTonePill, { backgroundColor: tone.bar + "20" }]}>
-                      <View style={[styles.lowStockToneDot, { backgroundColor: tone.bar }]} />
-                      <Text style={[styles.lowStockToneText, { color: tone.bar }]}>{tone.label}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.lowStockBarTrack}>
-                    <View style={[styles.lowStockBarFill, { width: `${pct}%`, backgroundColor: tone.bar }]} />
-                  </View>
-                </View>
-                <View style={styles.lowStockNumbers}>
-                  <Text style={styles.lowStockCount}>{r.available}</Text>
-                  <Text style={styles.lowStockCountSub}>avail</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : null}
-
-      {/* Search + Filter */}
-      <View style={styles.filterRow}>
-        <View style={styles.searchInputWrap}>
-          <Ionicons name="search" size={16} color={colors.light.mutedForeground} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search SKU, product, size, color..."
-            value={search}
-            onChangeText={setSearch}
-            placeholderTextColor={colors.light.mutedForeground}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch("")} hitSlop={6}>
-              <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
-            </TouchableOpacity>
-          )}
-        </View>
+      <View style={styles.searchWrap}>
+        <SellerSearchField
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search SKU, piece, size, colour"
+        />
       </View>
       <View style={styles.filterTabs}>
-        {(["all", "healthy", "low", "out"] as const).map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterTab, filter === f && styles.filterTabActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Text>
-          </TouchableOpacity>
+        {([
+          { key: "all" as const, label: "All", count: rows.length },
+          { key: "healthy" as const, label: "Healthy", count: stats.healthy },
+          { key: "low" as const, label: "Low", count: stats.low },
+          { key: "out" as const, label: "Out", count: stats.out },
+        ]).map((f) => (
+          <SellerFilterTab
+            key={f.key}
+            label={f.label}
+            count={f.count}
+            active={filter === f.key}
+            onPress={() => setFilter(f.key)}
+          />
         ))}
       </View>
+    </>
+  );
 
-      {/* Table Header */}
-      <View style={styles.tableHeader}>
-        {selectMode && (
-          <View style={{ width: 36, alignItems: "center" }}>
-            <TouchableOpacity onPress={() => {
-              const allVisible = filtered.every((r) => selectedIds.has(r.variantId));
-              setSelectedIds(allVisible ? new Set() : new Set(filtered.map((r) => r.variantId)));
-            }} hitSlop={6}>
-              <Ionicons
-                name={filtered.every((r) => selectedIds.has(r.variantId)) && filtered.length > 0 ? "checkbox" : "square-outline"}
-                size={18}
-                color={colors.light.mutedForeground}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
-        <Text style={[styles.tableHeaderText, { width: 44 }]}> </Text>
-        <Text style={[styles.tableHeaderText, { flex: 1 }]}>Product</Text>
-        <Text style={[styles.tableHeaderText, { width: 70, textAlign: "right" }]}>Price / Val</Text>
-        <Text style={[styles.tableHeaderText, { width: 72, textAlign: "right" }]}>Stock</Text>
-        <Text style={[styles.tableHeaderText, { width: 44, textAlign: "center" }]}>Stat</Text>
-        {!selectMode && <Text style={[styles.tableHeaderText, { width: 38 }]}> </Text>}
+  if (storeError && !storeId) {
+    return (
+      <View style={[styles.container, styles.errorWrap, { paddingTop: Math.max(insets.top, 24) }]}>
+        <StatusBar barStyle="dark-content" />
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.olive[700]} />
+        <Text style={styles.emptyTitle}>Couldn’t load the stock room</Text>
+        <Text style={styles.emptySub}>{storeError}</Text>
+        <TouchableOpacity style={styles.emptyCta} onPress={() => void fetchData()}>
+          <Text style={styles.emptyCtaText}>Try again</Text>
+        </TouchableOpacity>
       </View>
+    );
+  }
 
-      {/* Table */}
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.variantId}
         renderItem={renderRow}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
+        ListHeaderComponent={listHeader}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />}
         contentContainerStyle={[styles.listContent, selectMode && { paddingBottom: 96 }]}
         ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>📋</Text>
-              <Text style={styles.emptyTitle}>No variants found</Text>
+          loading ? (
+            <View style={{ paddingHorizontal: spacing[5], gap: 10 }}>
+              {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={styles.skeletonCard}>
+                  <Skeleton width={72} height={96} borderRadius={radii.md} />
+                  <View style={{ flex: 1, gap: 8, paddingVertical: 8 }}>
+                    <Skeleton width="70%" height={14} />
+                    <Skeleton width="40%" height={10} />
+                    <Skeleton width="55%" height={10} />
+                  </View>
+                </View>
+              ))}
             </View>
-          ) : null
+          ) : (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons
+                  name={loadError ? "cloud-offline-outline" : "layers-outline"}
+                  size={28}
+                  color={colors.olive[700]}
+                />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {loadError ? "Couldn’t load stock" : "No SKUs match"}
+              </Text>
+              <Text style={styles.emptySub}>
+                {loadError ?? "Try a different search or stock filter."}
+              </Text>
+              {loadError ? (
+                <TouchableOpacity
+                  style={styles.emptyCta}
+                  onPress={() => void fetchData()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading stock"
+                >
+                  <Text style={styles.emptyCtaText}>Try again</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )
         }
       />
 
-      {/* Bulk action bar */}
       {selectMode && (
-        <View style={styles.bulkBar}>
-          <View style={styles.bulkInfo}>
-            <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
-          </View>
+        <View style={[styles.bulkBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
           <View style={styles.bulkControls}>
-            <Text style={styles.bulkLabel}>Set stock</Text>
+            <Text style={styles.bulkLabel}>On-hand</Text>
             <TextInput
               style={styles.bulkInput}
               value={bulkStock}
               onChangeText={setBulkStock}
               keyboardType="numeric"
               placeholder="0"
-              placeholderTextColor="rgba(255,255,255,0.5)"
+              placeholderTextColor="rgba(250,248,241,0.45)"
             />
             <TouchableOpacity
-              style={[styles.bulkApplyBtn, bulkBusy && styles.bulkApplyBtnBusy]}
+              style={[styles.bulkApplyBtn, bulkBusy && { opacity: 0.5 }]}
               onPress={bulkApply}
               disabled={bulkBusy || selectedIds.size === 0}
             >
@@ -683,255 +792,381 @@ export default function SellerInventory() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
+  errorWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 8 },
 
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingBottom: 8,
+    alignItems: "flex-end",
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
+    gap: 12,
   },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  kicker: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+    marginBottom: 2,
+  },
   title: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    color: INK,
+    letterSpacing: -0.4,
   },
   count: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
-    marginTop: 2,
+    marginTop: 4,
   },
-  headerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
+  goldRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(200,164,74,0.55)",
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[3],
   },
-  headerBtnText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
-  },
-  cancelBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
-  },
-  cancelBtnText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.foreground,
-    fontWeight: typography.fontWeights.medium as any,
-  },
-
-  kpiRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  kpiCard: {
-    flex: 1,
-    padding: 12,
-    borderRadius: radii.lg,
-    alignItems: "center",
-  },
-  kpiValue: {
-    fontSize: 24,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
-  },
-  kpiLabel: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-
-  filterRow: { paddingHorizontal: 16, marginBottom: 8 },
-  searchInputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.light.card,
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    gap: 8,
+    borderColor: "rgba(83,94,44,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: typography.fontSizes.sm,
+  cancelSelectBtn: {
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: "center",
+    borderRadius: radii.full,
+    backgroundColor: colors.light.muted,
+  },
+  cancelSelectText: {
     color: colors.light.foreground,
+    fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.sans.medium,
+  },
+
+  ledger: {
+    flexDirection: "row",
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[3],
+    backgroundColor: CREAM,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    paddingVertical: 10,
+  },
+  ledgerStat: { flex: 1, alignItems: "center", minHeight: 44, justifyContent: "center" },
+  ledgerRule: { width: StyleSheet.hairlineWidth, backgroundColor: "rgba(83,94,44,0.14)" },
+  ledgerValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: INK,
+  },
+  ledgerLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+  },
+
+  searchWrap: {
+    marginHorizontal: spacing[5],
+    marginBottom: 10,
   },
   filterTabs: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing[5],
     marginBottom: 12,
   },
   filterTab: {
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    minHeight: 44,
+    justifyContent: "center",
     borderRadius: radii.full,
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.14)",
   },
   filterTabActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
+    backgroundColor: colors.olive[800],
+    borderColor: colors.olive[800],
   },
   filterTabText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    fontWeight: typography.fontWeights.medium as any,
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.olive[800],
   },
-  filterTabTextActive: { color: colors.light.card },
+  filterTabTextActive: { color: CREAM },
 
-  tableHeader: {
+  listContent: { paddingBottom: 24 },
+  skeletonCard: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: colors.light.muted,
-    gap: 4,
-  },
-  tableHeaderText: {
-    fontSize: 10,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.mutedForeground,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    backgroundColor: CREAM,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    overflow: "hidden",
+    paddingRight: 12,
+    gap: 12,
   },
 
-  listContent: { paddingHorizontal: 16 },
-
-  tableRow: {
+  card: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    marginHorizontal: spacing[5],
+    marginBottom: 10,
+    backgroundColor: CREAM,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    overflow: "hidden",
   },
-  rowSelected: { backgroundColor: "#f0f9ff" },
-  rowOut: { backgroundColor: "#fef2f2" },
-  rowLow: { backgroundColor: "#fffbeb" },
-
+  cardOut: {
+    borderColor: "rgba(184,92,58,0.28)",
+    backgroundColor: "rgba(184,92,58,0.04)",
+  },
+  cardLow: {
+    borderColor: "rgba(200,164,74,0.4)",
+    backgroundColor: "rgba(200,164,74,0.06)",
+  },
+  toneBar: {
+    width: 4,
+    alignSelf: "stretch",
+  },
+  cardRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  cardSelected: {
+    borderColor: colors.olive[600],
+    backgroundColor: colors.olive[50],
+  },
   checkbox: {
-    width: 36,
+    width: 44,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 4,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: "rgba(83,94,44,0.12)",
   },
-
-  tableCellImage: { width: 44, marginRight: 8 },
-  cellImage: { width: 36, height: 36, borderRadius: radii.md },
-  cellImagePlaceholder: {
-    backgroundColor: colors.light.muted,
+  cardMain: { flex: 1, flexDirection: "row", minWidth: 0 },
+  thumb: { width: 64, height: 88 },
+  thumbEmpty: {
+    backgroundColor: colors.paper.warm,
     justifyContent: "center",
     alignItems: "center",
   },
-  tableCellInfo: { flex: 1, marginRight: 8 },
-  cellProduct: {
+  cardInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    justifyContent: "center",
+  },
+  cardName: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
+    color: INK,
   },
-  cellSku: {
-    fontSize: 10,
+  cardSku: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 11,
     color: colors.light.mutedForeground,
-    fontFamily: "monospace",
+    marginTop: 3,
   },
-  cellVariant: {
-    fontSize: 10,
+  cardMeta: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
     color: colors.light.mutedForeground,
+    marginTop: 2,
     textTransform: "capitalize",
   },
-  tableCellPrice: { width: 70, alignItems: "flex-end", marginRight: 4 },
-  cellPrice: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.foreground,
-    fontWeight: typography.fontWeights.medium as any,
-  },
-  cellValue: {
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    marginTop: 1,
-  },
-  tableCellStock: { width: 72, alignItems: "flex-end" },
-  stockStack: { alignItems: "flex-end" },
-  cellStock: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
-  },
-  cellHeld: {
-    fontSize: 9,
-    color: "#7c3aed",
-    marginTop: 1,
-  },
-  cellAvail: {
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    marginTop: 1,
-  },
-  stockOut: { color: "#dc2626" },
-  stockLow: { color: "#d97706" },
-
-  editRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  editInput: {
-    width: 40,
-    height: 28,
-    borderWidth: 1,
-    borderColor: colors.light.primary,
-    borderRadius: radii.sm,
-    textAlign: "center",
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.foreground,
-    padding: 0,
-  },
-  saveBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#10b981",
-    justifyContent: "center",
+  cardFooter: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
+    gap: 4,
+    marginTop: 8,
   },
-  saveBtnText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-
-  tableCellStatus: { width: 44, alignItems: "center" },
-  badge: {
+  cardPrice: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.xs,
+    color: INK,
+  },
+  cardDot: { color: colors.light.mutedForeground, fontSize: 10 },
+  cardHeld: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    color: "#8a6a2a",
+  },
+  stockPanel: {
+    width: 118,
+    paddingVertical: 10,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "rgba(83,94,44,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(250,248,241,0.65)",
+  },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: radii.full,
   },
-  badgeOut: { backgroundColor: "#fce7f3" },
-  badgeLow: { backgroundColor: "#fef9c3" },
-  badgeHealthy: { backgroundColor: "#dcfce7" },
-  badgeText: { fontSize: 10, fontWeight: typography.fontWeights.semibold as any },
-  badgeTextOut: { color: "#9d174d" },
-  badgeTextLow: { color: "#854d0e" },
-  badgeTextHealthy: { color: "#166534" },
-
-  tableCellAction: { width: 38, alignItems: "flex-end" },
-  editBtn: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.primary,
-    fontWeight: typography.fontWeights.medium as any,
+  statusPillText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.2)",
+    backgroundColor: CREAM,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepBtnDisabled: { opacity: 0.4 },
+  qtyTap: {
+    minWidth: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  qtyValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    lineHeight: 28,
+    letterSpacing: -0.5,
+  },
+  qtyHint: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9,
+    color: colors.ink.mute,
+    marginTop: 1,
+  },
+  quickRestock: {
+    minHeight: 28,
+    paddingHorizontal: 10,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickRestockText: {
+    color: CREAM,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+  },
+  editStack: {
+    width: "100%",
+    gap: 8,
+    alignItems: "center",
+  },
+  qtyInput: {
+    width: "100%",
+    minHeight: 40,
+    borderWidth: 1.5,
+    borderRadius: radii.md,
+    textAlign: "center",
+    fontSize: 20,
+    fontFamily: fontFamilies.display.semibold,
+    color: INK,
+    paddingHorizontal: 6,
+    backgroundColor: colors.light.background,
+  },
+  editActions: {
+    flexDirection: "row",
+    gap: 6,
+    width: "100%",
+  },
+  editCancelBtn: {
+    flex: 1,
+    minHeight: 32,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: sellerBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editCancelText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: colors.olive[800],
+  },
+  editSaveBtn: {
+    flex: 1,
+    minHeight: 32,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editSaveText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: CREAM,
   },
 
   emptyContainer: { alignItems: "center", paddingVertical: 48 },
-  emptyIcon: { fontSize: 48 },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   emptyTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: INK,
+    marginTop: 16,
+    textAlign: "center",
+  },
+  emptySub: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.light.mutedForeground,
-    marginTop: 12,
+    marginTop: 6,
+    textAlign: "center",
+    paddingHorizontal: 32,
+  },
+  emptyCta: {
+    marginTop: 16,
+    backgroundColor: colors.olive[800],
+    paddingHorizontal: 18,
+    minHeight: 44,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyCtaText: {
+    color: CREAM,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
   },
 
   bulkBar: {
@@ -944,194 +1179,44 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: 12,
     paddingHorizontal: 16,
-    backgroundColor: colors.light.foreground,
+    backgroundColor: INK,
     borderTopLeftRadius: 14,
     borderTopRightRadius: 14,
+    gap: 12,
   },
-  bulkInfo: { flex: 1 },
   bulkCount: {
-    color: colors.light.background,
+    color: CREAM,
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontFamily: fontFamilies.sans.semibold,
   },
-  bulkControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  bulkControls: { flexDirection: "row", alignItems: "center", gap: 8 },
   bulkLabel: {
-    color: colors.light.background,
+    color: CREAM,
     fontSize: typography.fontSizes.xs,
+    fontFamily: fontFamilies.sans.medium,
   },
   bulkInput: {
     width: 56,
-    height: 32,
+    minHeight: 36,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.light.background,
-    color: colors.light.background,
+    borderColor: "rgba(250,248,241,0.35)",
+    color: CREAM,
     paddingHorizontal: 8,
     fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.mono.medium,
+    textAlign: "center",
   },
   bulkApplyBtn: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    minHeight: 36,
     borderRadius: radii.md,
-    backgroundColor: "#10b981",
-  },
-  bulkApplyBtnBusy: { opacity: 0.5 },
-  bulkApplyText: {
-    color: "#fff",
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold as any,
-  },
-
-  /* Low-stock alert banner */
-  lowStockBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: radii.lg,
-    backgroundColor: "#fef3c7",
-    borderWidth: 1,
-    borderColor: "#fde68a",
-  },
-  lowStockIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#fffbeb",
-    alignItems: "center",
+    backgroundColor: GOLD,
     justifyContent: "center",
   },
-  lowStockText: { flex: 1 },
-  lowStockTitle: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: "#92400e",
-  },
-  lowStockSub: {
-    fontSize: 11,
-    color: "#b45309",
-    marginTop: 1,
-  },
-  lowStockCta: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: "#92400e",
-  },
-  lowStockCtaText: {
-    color: "#fffbeb",
-    fontSize: 10,
-    fontWeight: typography.fontWeights.semibold as any,
-  },
-
-  /* Lowest-stock visual map */
-  lowStockPanel: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 14,
-    borderRadius: radii.lg,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: 10,
-  },
-  lowStockPanelHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  lowStockPanelTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  lowStockPanelTitle: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-  },
-  lowStockPanelHint: {
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    fontStyle: "italic",
-  },
-  lowStockRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
-  },
-  lowStockImage: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.md,
-  },
-  lowStockInfo: { flex: 1, gap: 4 },
-  lowStockName: {
+  bulkApplyText: {
+    color: INK,
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-  },
-  lowStockVariantRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
-  },
-  lowStockVariant: {
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    textTransform: "capitalize",
-    flex: 1,
-  },
-  lowStockTonePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-  },
-  lowStockToneDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  lowStockToneText: {
-    fontSize: 9,
-    fontWeight: typography.fontWeights.semibold as any,
-  },
-  lowStockBarTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.light.muted,
-    overflow: "hidden",
-  },
-  lowStockBarFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  lowStockNumbers: {
-    alignItems: "flex-end",
-    minWidth: 44,
-  },
-  lowStockCount: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
-  },
-  lowStockCountSub: {
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontFamily: fontFamilies.sans.semibold,
   },
 });

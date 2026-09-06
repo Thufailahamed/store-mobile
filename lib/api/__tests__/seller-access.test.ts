@@ -4,6 +4,8 @@ import {
   getSellerComplianceGaps,
   collectComplianceGaps,
   isComplianceDocumentApproved,
+  readStorefrontContact,
+  describePayoutProfile,
 } from "@/lib/seller-access";
 
 const baseStore = {
@@ -90,5 +92,52 @@ describe("seller-access", () => {
   it("reports missing bank details as optional gaps", () => {
     const gaps = getSellerComplianceGaps(baseStore, { ...basePayout, bank_name: null }, approvedDocs);
     expect(gaps).toContain("bank name");
+  });
+});
+
+describe("readStorefrontContact", () => {
+  it("maps backend phone/email onto storefront contact", () => {
+    expect(
+      readStorefrontContact({
+        phone: "0771234567",
+        email: "atelier@aura.lk",
+      }),
+    ).toEqual({ phone: "0771234567", email: "atelier@aura.lk" });
+  });
+
+  it("prefers contact_* over nested aliases", () => {
+    expect(
+      readStorefrontContact({
+        contact_phone: "0112",
+        phone: "077",
+        contact: { phone: "000", email: "nested@x.com" },
+        email: "row@x.com",
+      }),
+    ).toEqual({ phone: "0112", email: "row@x.com" });
+  });
+
+  it("does not invent contact from blank strings", () => {
+    expect(readStorefrontContact({ phone: "  ", email: "" })).toEqual({ phone: null, email: null });
+  });
+});
+
+describe("describePayoutProfile", () => {
+  it("does not treat a missing payout fetch as KYC not started", () => {
+    const view = describePayoutProfile(null, false);
+    expect(view.loaded).toBe(false);
+    expect(view.kycLabel).toBeNull();
+  });
+
+  it("does not invent verified KYC from bank fields", () => {
+    const view = describePayoutProfile(basePayout, true);
+    expect(view.kycLabel).toBeNull();
+    expect(view.bankSummary).toContain("Test Bank");
+    expect(view.missing).toEqual([]);
+  });
+
+  it("uses API kyc_status when present", () => {
+    const view = describePayoutProfile({ ...basePayout, kyc_status: "pending" }, true);
+    expect(view.kycLabel).toBe("In review");
+    expect(view.kycTone).toBe("warn");
   });
 });
