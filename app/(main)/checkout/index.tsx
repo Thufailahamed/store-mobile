@@ -17,7 +17,7 @@ import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
-import { getPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { getPayHereSession, getGuestPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
 import { placeOrderGroupBackend, placeGuestOrderBackend, abandonOrderGroupBackend, getCheckoutOptionsBackend } from "@/lib/api/backend";
 import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
@@ -160,6 +160,7 @@ export default function CheckoutScreen() {
   /** The order id that PayHere is currently processing (subset of
    *  pendingOrderIdsRef). */
   const pendingOrderIdsFirstRef = useRef<string | null>(null);
+  const pendingGuestPayRef = useRef<{ token: string; email: string } | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
   const [couponInput, setCouponInput] = useState(couponCode || "");
@@ -686,7 +687,7 @@ export default function CheckoutScreen() {
           orders: ordersPayload,
           address_id: isGuest ? null : addressId,
           shipping_address: shippingAddress,
-          payment_method: isGuest ? "cod" : paymentMethod,
+          payment_method: paymentMethod,
           coupon_id: couponId,
           coupon_code: couponInput.trim() || null,
           gift_card_code: giftCardCode || null,
@@ -709,12 +710,25 @@ export default function CheckoutScreen() {
       if (isGuest) {
         const token = (groupData as { guest_token?: string } | null)?.guest_token;
         orderPlaced = true;
+        if (paymentMethod === "payhere") {
+          const session = await getGuestPayHereSession(token ?? "", guestEmail.trim());
+          if (!session.ok) {
+            throw new Error(session.error);
+          }
+          const firstId =
+            (groupData as { orders?: Array<{ id: string }> } | null)?.orders?.[0]?.id ?? token ?? "guest";
+          pendingGuestPayRef.current = { token: token ?? "", email: guestEmail.trim() };
+          setPlacedOrderId(firstId);
+          setPayhereSession(session.data);
+          setPayhereVisible(true);
+          return;
+        }
         await releaseCartReservations();
         reservationsHeld = false;
         clear();
         toast("Order placed", "success");
         router.replace(
-          `/(main)/orders/guest-lookup?token=${encodeURIComponent(token ?? "")}` as never,
+          `/(main)/orders/guest-lookup?token=${encodeURIComponent(token ?? "")}&email=${encodeURIComponent(guestEmail.trim())}` as never,
         );
         return;
       }
@@ -998,7 +1012,7 @@ export default function CheckoutScreen() {
             {([
               { key: "cod" as const, label: "Cash on delivery", desc: "Pay when you receive", icon: "cash-outline" as const },
               { key: "payhere" as const, label: "Card via PayHere", desc: "Visa · Mastercard · Amex", icon: "card-outline" as const },
-            ] as const).filter((m) => !(m.key === "cod" && codAllowed === false) && !(isGuest && m.key === "payhere")).map((m) => (
+            ] as const).filter((m) => !(m.key === "cod" && codAllowed === false)).map((m) => (
               <TouchableOpacity
                 key={m.key}
                 style={[styles.optionCard, paymentMethod === m.key && styles.optionCardActive]}
@@ -1260,6 +1274,8 @@ export default function CheckoutScreen() {
           confirming={confirmingPayment}
           onClose={async () => {
             if (confirmingPayment) return;
+            const guest = pendingGuestPayRef.current;
+            pendingGuestPayRef.current = null;
             setPayhereVisible(false);
             const orderId = placedOrderId;
             setPlacedOrderId(null);
@@ -1268,6 +1284,13 @@ export default function CheckoutScreen() {
             const siblingIds = pendingOrderIdsRef.current.filter((id) => id !== orderId);
             pendingOrderIdsRef.current = [];
             pendingOrderIdsFirstRef.current = null;
+            if (guest) {
+              toast("Payment cancelled — look up your order with the guest token", "info");
+              router.replace(
+                `/(main)/orders/guest-lookup?token=${encodeURIComponent(guest.token)}&email=${encodeURIComponent(guest.email)}` as never,
+              );
+              return;
+            }
             if (orderId) {
               // Cancel the PayHere-anchored order. Sibling orders (from other
               // stores in the multi-vendor split) stay intact — the user may
@@ -1290,6 +1313,20 @@ export default function CheckoutScreen() {
           }}
           onReturnFromGateway={async () => {
             if (confirmingPayment) return;
+            const guest = pendingGuestPayRef.current;
+            if (guest) {
+              pendingGuestPayRef.current = null;
+              setPayhereVisible(false);
+              setPayhereSession(null);
+              setPlacedOrderId(null);
+              await releaseCartReservations();
+              clear();
+              toast("Payment submitted — check your guest order status", "success");
+              router.replace(
+                `/(main)/orders/guest-lookup?token=${encodeURIComponent(guest.token)}&email=${encodeURIComponent(guest.email)}` as never,
+              );
+              return;
+            }
             const orderId = placedOrderId;
             if (!orderId) return;
 

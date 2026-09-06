@@ -275,6 +275,37 @@ export default function ReturnDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {returnReq.status === "approved" && (
+          <>
+            <TouchableOpacity
+              style={styles.supportBtn}
+              onPress={() =>
+                router.push({
+                  pathname: "/(main)/account/returns/[id]/pickup",
+                  params: { id: returnReq.return_group_id },
+                } as never)
+              }
+              activeOpacity={0.85}
+            >
+              <Ionicons name="navigate-outline" size={16} color={colors.olive[950]} />
+              <Label style={styles.supportBtnText}>Track return pickup</Label>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.supportBtn}
+              onPress={() =>
+                router.push({
+                  pathname: "/(main)/account/returns/[id]/label",
+                  params: { id: returnReq.return_group_id },
+                } as never)
+              }
+              activeOpacity={0.85}
+            >
+              <Ionicons name="print-outline" size={16} color={colors.olive[950]} />
+              <Label style={styles.supportBtnText}>Prepaid return label</Label>
+            </TouchableOpacity>
+          </>
+        )}
+
         <TouchableOpacity
           style={styles.supportBtn}
           onPress={() =>

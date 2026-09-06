@@ -17,6 +17,8 @@ import { useAuth } from "@/lib/supabase/auth";
 import * as Linking from "expo-linking";
 import { getOrderById, cancelOrder as cancelOrderRpc, cancelOrderItems as cancelOrderItemsRpc } from "@/lib/api";
 import { getOrderInvoiceBackend, resendOrderReceiptBackend } from "@/lib/api/backend";
+import { getPayHereSession } from "@/lib/api/payments";
+import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
 import { useCart } from "@/lib/stores/cart-store";
 import { canBuyerCancelInWindow, CUSTOMER_STATUS_STEPS, isTrackableStatus } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
@@ -57,6 +59,8 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [payhere, setPayhere] = useState<{ action: string; fields: Record<string, string> } | null>(null);
+  const [retryingPay, setRetryingPay] = useState(false);
 
   const loadOrder = useCallback(() => {
     if (!id) return;
@@ -203,6 +207,22 @@ export default function OrderDetailScreen() {
     toast("Receipt queued — check your inbox", "success");
   };
 
+  const handleRetryPay = async () => {
+    if (!order) return;
+    setRetryingPay(true);
+    const groupId =
+      typeof (order as unknown as { metadata?: { group_id?: string } }).metadata?.group_id === "string"
+        ? (order as unknown as { metadata: { group_id: string } }).metadata.group_id
+        : undefined;
+    const res = await getPayHereSession(order.id, groupId ? { groupId } : {});
+    setRetryingPay(false);
+    if (!res.ok) {
+      toast(res.error, "error");
+      return;
+    }
+    setPayhere(res.data);
+  };
+
   if (loading || !order) {
     return (
       <SafeAreaView style={styles.container}>
@@ -320,6 +340,21 @@ export default function OrderDetailScreen() {
               }
             />
           )}
+          {order.payment_status !== "paid" &&
+            (order.payment_method === "payhere" || order.payment_method === "stripe") &&
+            order.status !== "cancelled" && (
+            <ActionChip icon="card-outline" label={retryingPay ? "Starting…" : "Pay now"} onPress={handleRetryPay} />
+          )}
+          <ActionChip
+            icon="chatbubbles-outline"
+            label="Support"
+            onPress={() =>
+              router.push({
+                pathname: "/(main)/account/tickets/new",
+                params: { orderId: order.id },
+              } as never)
+            }
+          />
           <ActionChip icon="document-text-outline" label="Invoice" onPress={handleDownloadInvoice} />
           {["confirmed", "packed", "shipped", "delivered", "processing", "out_for_delivery"].includes(order.status) ? (
             <ActionChip icon="mail-outline" label="Resend receipt" onPress={handleResendReceipt} />
@@ -465,6 +500,20 @@ export default function OrderDetailScreen() {
           <View style={styles.overlay}><Body muted>Cancelling…</Body></View>
         )}
       </ScrollView>
+      {payhere ? (
+        <PayHereCheckout
+          visible
+          action={payhere.action}
+          fields={payhere.fields}
+          orderId={order.id}
+          onClose={() => setPayhere(null)}
+          onReturnFromGateway={() => {
+            setPayhere(null);
+            toast("Payment submitted — refreshing order", "success");
+            loadOrder();
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

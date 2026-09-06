@@ -277,6 +277,54 @@ export async function removeWishlistBackend(productId: string): Promise<ApiResul
   return fetchJson(`/api/users/wishlist/${productId}`, { method: "DELETE" });
 }
 
+export type WishlistShareLink = {
+  id: string;
+  token: string;
+  resource: string;
+  title: string | null;
+  is_active: boolean;
+};
+
+export async function createWishlistShareBackend(): Promise<ApiResult<{ link: WishlistShareLink }>> {
+  return fetchJson("/api/users/wishlist/share", {
+    method: "POST",
+    body: { resource: "wishlist" },
+  });
+}
+
+export async function getSharedWishlistBackend(token: string): Promise<
+  ApiResult<{
+    link: WishlistShareLink;
+    items: Array<{
+      product_id: string;
+      product?: {
+        id: string;
+        name: string;
+        slug: string;
+        price: number;
+        images?: Array<{ url: string; is_primary?: boolean }>;
+      } | null;
+    }>;
+  }>
+> {
+  return fetchJson(`/api/users/wishlist/share/${encodeURIComponent(token)}`, { requireAuth: false });
+}
+
+export async function listReturnPickupsBackend(): Promise<
+  ApiResult<{
+    pickups: Array<{
+      id: string;
+      return_id: string;
+      scheduled_for: string | null;
+      status: string;
+      driver_id: string | null;
+      address: string | null;
+    }>;
+  }>
+> {
+  return fetchJson("/api/returns/pickups");
+}
+
 export type CartLine = {
   id: string;
   product_id: string;
@@ -628,12 +676,21 @@ export async function getGuestOrderBackend(token: string): Promise<ApiResult<{
   order_number: string;
   status: string;
   payment_status: string;
+  payment_method?: string;
   total: number;
   currency: string;
   placed_at: string;
   delivery_date?: string | null;
   guest_email?: string | null;
   items?: Array<{ id: string; product_id: string; quantity: number; unit_price: number; total: number; is_gift?: boolean; gift_message?: string | null }>;
+  orders?: Array<{
+    id: string;
+    order_number: string;
+    status: string;
+    payment_status: string;
+    total: number;
+    currency: string;
+  }>;
 }>> {
   return fetchJson(`/api/orders/guest/${encodeURIComponent(token)}`, { requireAuth: false });
 }

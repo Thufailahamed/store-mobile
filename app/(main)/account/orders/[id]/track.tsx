@@ -20,6 +20,7 @@ import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
 import { safeOpenUrl } from "@/lib/utils/safe-open-url";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { supabase } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/lib/types";
 
 const STATUS_ORDER: OrderStatus[] = [
@@ -79,6 +80,26 @@ export default function OrderTrackScreen() {
 
   useEffect(() => {
     load();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const uniqueId = Math.random().toString(36).slice(2, 10);
+    const ch = supabase
+      .channel(`order-track-${id}-${uniqueId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `id=eq.${id}` }, () => {
+        void load(false);
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "tracking_events", filter: `order_id=eq.${id}` }, () => {
+        void load(false);
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "package_scan_events", filter: `order_id=eq.${id}` }, () => {
+        void load(false);
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
   }, [id]);
 
   const onRefresh = async () => {

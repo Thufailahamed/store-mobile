@@ -10,6 +10,7 @@ import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
 import { useWishlistLayout } from "@/components/wishlist/layout";
+import { subscribeStockAlertBackend } from "@/lib/api/backend";
 
 const INK = "#16170f";
 const MUTED = "#6b6b6b";
@@ -68,8 +69,10 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
     }
   };
 
-  const notifyMe = () => {
-    toast("We'll notify you when this piece is back", "success");
+  const notifyMe = async () => {
+    const res = await subscribeStockAlertBackend(product.id, variant?.id);
+    if (res.ok) toast("We'll notify you when this piece is back", "success");
+    else toast(res.error ?? "Could not set alert", "error");
   };
 
   return (

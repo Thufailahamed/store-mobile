@@ -52,7 +52,7 @@ import {
 } from "@/lib/api/delivery-api";
 import { getSellerAccessState, getSellerComplianceGaps, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
 import { getBrowsableStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
-import { getAvailableStock } from "@/lib/inventory";
+import { getAvailableStock, summarizeInventoryHealth } from "@/lib/inventory";
 import {
   getAdminCategoriesEnriched,
   getCategoryDeleteImpact,
@@ -1110,16 +1110,33 @@ export async function getSellerInventory(_storeId: string): Promise<Result<{
   if (!res.ok) return fail(res.error);
   const list = (res.data.inventory as unknown[]).map((row) => {
     const r = row as {
-      variant_id: string; sku: string; size?: string; color?: string; color_hex?: string;
+      id?: string;
+      variant_id?: string;
+      sku: string;
+      size?: string;
+      color?: string;
+      color_hex?: string;
       price: number;
-      product: { id: string; name: string; status: string };
-      inventory: { quantity: number; reserved: number };
+      quantity?: number;
+      reserved?: number;
+      stock?: number;
+      on_hand?: number;
+      available?: number;
+      product?: { id: string; name: string; status: string };
+      inventory?: { quantity?: number; reserved?: number; on_hand?: number };
     };
-    const quantity = Math.max(0, Number(r.inventory?.quantity ?? 0));
-    const reserved = Math.max(0, Number(r.inventory?.reserved ?? 0));
-    const available = getAvailableStock(r.inventory, quantity - reserved);
+    const nested = r.inventory ?? {};
+    const quantity = Math.max(
+      0,
+      Number(nested.quantity ?? nested.on_hand ?? r.quantity ?? r.on_hand ?? r.stock ?? 0),
+    );
+    const reserved = Math.max(0, Number(nested.reserved ?? r.reserved ?? 0));
+    const available = getAvailableStock(
+      { quantity, reserved },
+      Number.isFinite(Number(r.available)) ? Number(r.available) : quantity - reserved,
+    );
     const variant: ProductVariant & { quantity: number; reserved: number; available: number; stock: number } = {
-      id: r.variant_id,
+      id: r.variant_id ?? r.id ?? r.sku,
       sku: r.sku,
       size: r.size,
       color: r.color,
@@ -1131,7 +1148,10 @@ export async function getSellerInventory(_storeId: string): Promise<Result<{
       stock: quantity,
       is_active: true,
     } as unknown as ProductVariant & { quantity: number; reserved: number; available: number; stock: number };
-    return { product: { id: r.product.id, name: r.product.name } as unknown as Product, variants: [variant] };
+    return {
+      product: { id: r.product?.id ?? "", name: r.product?.name ?? r.sku } as unknown as Product,
+      variants: [variant],
+    };
   });
   return ok(list);
 }
@@ -1142,8 +1162,6 @@ export async function updateVariantStock(productId: string, variantId: string, s
   return ok(undefined);
 }
 
-const LOW_STOCK_THRESHOLD = 5;
-
 export async function getSellerKPIs(_storeId: string): Promise<Result<{
   totalRevenue: number;
   totalOrders: number;
@@ -1153,6 +1171,10 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
   outOfStockVariants: number;
   totalSkus: number;
   recentOrders: Order[];
+  analyticsReady: boolean;
+  inventoryReady: boolean;
+  productsReady: boolean;
+  ordersReady: boolean;
 }>> {
   const [kpis, orders, products, inventory] = await Promise.all([
     B.getSellerKPIsBackend(),
@@ -1160,40 +1182,37 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
     B.getSellerProductsBackend({ limit: 1 }),
     B.getSellerInventoryBackend(),
   ]);
-  if (!kpis.ok) return fail(kpis.error);
+
+  if (!kpis.ok && !orders.ok && !products.ok && !inventory.ok) {
+    return fail(kpis.error || orders.error || products.error || inventory.error || "Could not load seller metrics");
+  }
 
   const recentOrders = orders.ok ? loose<Order[]>(orders.data.orders ?? []).slice(0, 5) : [];
 
-  // totalProducts: prefer backend `total` (unfiltered count), fall back to length.
   const totalProducts = products.ok
     ? typeof products.data.total === "number"
       ? products.data.total
       : products.data.products?.length ?? 0
     : 0;
 
-  // Inventory health — variants scoped to this seller via /api/seller/inventory.
-  const inventoryRows = inventory.ok ? inventory.data.inventory ?? [] : [];
-  let totalSkus = 0;
-  let lowStockVariants = 0;
-  let outOfStockVariants = 0;
-  for (const v of inventoryRows) {
-    const qty = v.inventory?.quantity ?? 0;
-    const reserved = v.inventory?.reserved ?? 0;
-    const available = qty - reserved;
-    totalSkus += 1;
-    if (available <= 0) outOfStockVariants += 1;
-    else if (available <= LOW_STOCK_THRESHOLD) lowStockVariants += 1;
-  }
+  const health = inventory.ok
+    ? summarizeInventoryHealth(inventory.data.inventory ?? [])
+    : { totalSkus: 0, healthyCount: 0, lowStockVariants: 0, outOfStockVariants: 0 };
+  const kpiData = kpis.ok ? kpis.data : null;
 
   return ok({
-    totalRevenue: kpis.data.revenue ?? 0,
-    totalOrders: kpis.data.orders ?? 0,
+    totalRevenue: Number(kpiData?.revenue ?? 0),
+    totalOrders: Number(kpiData?.orders ?? 0),
     totalProducts,
-    pendingOrders: kpis.data.pending ?? 0,
-    lowStockVariants,
-    outOfStockVariants,
-    totalSkus,
+    pendingOrders: Number(kpiData?.pending ?? 0),
+    lowStockVariants: health.lowStockVariants,
+    outOfStockVariants: health.outOfStockVariants,
+    totalSkus: health.totalSkus,
     recentOrders,
+    analyticsReady: kpis.ok,
+    inventoryReady: inventory.ok,
+    productsReady: products.ok,
+    ordersReady: orders.ok,
   });
 }
 
@@ -2874,9 +2893,14 @@ export async function getReturns(_userId: string): Promise<Result<MobileReturnRe
 export async function getReturnByGroupId(userId: string, returnGroupId: string): Promise<Result<MobileReturnRequest | null>> {
   const res = await B.getReturnByGroupIdBackend(returnGroupId);
   if (!res.ok) return fail(res.error);
-  const found = (res.data.returns as unknown[] as MobileReturnRequest[]).find((r) => r.return_group_id === returnGroupId);
+  const payload = res.data as unknown as { returns?: MobileReturnRequest[]; return?: MobileReturnRequest };
+  const found =
+    payload.return ??
+    (payload.returns ?? []).find((r) => r.return_group_id === returnGroupId) ??
+    payload.returns?.[0] ??
+    null;
   void userId;
-  return ok(found ?? null);
+  return ok(found);
 }
 
 export async function cancelReturn(returnGroupId: string): Promise<Result<{ ok: true; returns: Array<{ id: string; status: string; cancelled_at: string | null }> }>> {

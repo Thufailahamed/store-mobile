@@ -296,13 +296,7 @@ function RootLayoutNav() {
         return;
       }
 
-      // Everything below requires auth.
-      if (!user?.id) {
-        router.replace("/(auth)/login");
-        return;
-      }
-
-      // Product deep link: luxe://product/<slug>
+      // Product deep link is public catalogue.
       if (parsed.hostname === "product" && parsed.path) {
         const rawSlug = parsed.path.replace("/", "");
         const slug = sanitizeSlug(rawSlug);
@@ -311,6 +305,22 @@ function RootLayoutNav() {
           return;
         }
         safeRoutePush(router, `/(main)/products/${slug}`);
+        return;
+      }
+
+      // Shared wishlist is public read-only.
+      if (parsed.hostname === "wishlist") {
+        const parts = (parsed.path ?? "").split("/").filter(Boolean);
+        const token = parts[0] === "shared" ? parts[1] : parts[0];
+        if (token && isValidToken(token)) {
+          safeRoutePush(router, "/(main)/wishlist/shared/[token]", { token });
+          return;
+        }
+      }
+
+      // Everything below requires auth.
+      if (!user?.id) {
+        router.replace("/(auth)/login");
         return;
       }
 

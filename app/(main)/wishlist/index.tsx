@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { View, StyleSheet, Text } from "react-native";
+import { View, StyleSheet, Text, Share, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
@@ -10,8 +10,10 @@ import { spacing, radii } from "@/lib/theme/tokens";
 import { useWishlist, useCart } from "@/lib/stores";
 import type { CartStore } from "@/lib/stores/cart-store";
 import { useToast } from "@/components/ui";
+import { useAuth } from "@/lib/supabase/auth";
+import { createWishlistShareBackend, getProductsByIdsBackend } from "@/lib/api/backend";
+import { Ionicons } from "@/components/ui/Icon";
 import { mapProducts } from "@/lib/api/product-mapper";
-import { getProductsByIdsBackend } from "@/lib/api/backend";
 import { formatPrice, discountPct } from "@/lib/utils";
 import { WishlistItemCard } from "@/components/wishlist/WishlistItemCard";
 import {
@@ -72,6 +74,7 @@ export default function WishlistScreen() {
   const { cardWidth } = useWishlistLayout();
   const tabBarScrollHandler = useHideTabBarOnScroll();
   const { toast } = useToast();
+  const { user } = useAuth();
   const wishlist = useWishlist();
   const cart = useCart();
   const [products, setProducts] = useState<Product[]>([]);
@@ -158,7 +161,31 @@ export default function WishlistScreen() {
     [products]
   );
 
-  const listBottomPad = insets.bottom + 24;
+  const shareUrl = (token: string) => {
+    const web =
+      (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "").replace(/\/$/, "") ||
+      "https://synapstore.shop";
+    return `${web}/wishlist/shared/${token}`;
+  };
+
+  const handleShare = async () => {
+    if (!user?.id) {
+      toast("Sign in to share your wishlist", "error");
+      return;
+    }
+    const res = await createWishlistShareBackend();
+    if (!res.ok) {
+      toast(res.error ?? "Could not create share link", "error");
+      return;
+    }
+    const url = shareUrl(res.data.link.token);
+    try {
+      await Share.share({ message: `My LUXE wishlist: ${url}`, url });
+    } catch {
+      toast("Could not open share sheet", "error");
+    }
+  };
+
   const viewable = useTrackViewableItems(visibleProducts, "wishlist");
 
   if (!loading && productIds.length === 0) {
@@ -200,6 +227,12 @@ export default function WishlistScreen() {
                   {formatPrice(totalValue)} curated
                 </Body>
               </Body>
+              {user?.id ? (
+                <Pressable onPress={() => void handleShare()} style={styles.shareBtn} accessibilityRole="button">
+                  <Ionicons name="share-outline" size={16} color="#16170f" />
+                  <Label style={styles.shareBtnText}>Share collection</Label>
+                </Pressable>
+              ) : null}
             </View>
 
             <View style={styles.statRow}>
@@ -304,6 +337,25 @@ const styles = StyleSheet.create({
   heroValue: {
     fontFamily: fontFamilies.display.regular,
     fontStyle: "italic",
+    color: "#16170f",
+  },
+  shareBtn: {
+    marginTop: spacing[2],
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
+    backgroundColor: "#ffffff",
+  },
+  shareBtnText: {
+    fontSize: 12,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
     color: "#16170f",
   },
   statRow: {

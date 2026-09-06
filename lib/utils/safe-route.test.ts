@@ -28,6 +28,11 @@ describe("safe-route utils", () => {
     expect(mapWebPathToMobileRoute("/account/orders")).toBe("/(main)/account/orders");
     expect(mapWebPathToMobileRoute("/products/linen-dress")).toBe("/(main)/products/linen-dress");
     expect(mapWebPathToMobileRoute("/account/gift-cards")).toBe("/(main)/account/gift-cards");
+    expect(mapWebPathToMobileRoute("/wishlist/shared/abc123def456ghi789")).toBe(
+      "/(main)/wishlist/shared/abc123def456ghi789",
+    );
+    expect(isAllowedRoute("/(main)/wishlist/shared/abc123def456ghi789")).toBe(true);
+    expect(isAllowedRoute("/(main)/account/tickets/new")).toBe(true);
     expect(mapWebPathToMobileRoute("/(main)/cart")).toBe("/(main)/cart");
   });
 

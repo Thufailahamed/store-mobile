@@ -49,6 +49,15 @@ export default function MainLayout() {
         <Tabs.Screen name="account/settings/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/returns/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/returns/[id]" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/returns/[id]/pickup" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/returns/[id]/label" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/tickets/index" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/tickets/new" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/tickets/[id]" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/fit-profile" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/gift-cards" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="account/price-alerts" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
+        <Tabs.Screen name="wishlist/shared/[token]" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/notifications/preferences" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/loyalty" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />
         <Tabs.Screen name="account/referrals" options={{ href: null, tabBarStyle: HIDDEN_TAB_BAR, sceneStyle: { paddingBottom: 0 } }} />

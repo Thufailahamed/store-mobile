@@ -9,24 +9,15 @@ import { Button, useToast, Card } from "@/components/ui";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { ScreenHeader } from "@/components/layout";
 import { useAuth } from "@/lib/supabase/auth";
-import { purchaseGiftCard } from "@/lib/api";
+import { getGiftCardPayHereSession } from "@/lib/api/payments";
+import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
 /**
- * SECURITY NOTE — C-01 (Critical):
- * The gift-card purchase flow sends a client-supplied `amount` directly to
- * POST /api/gift-cards/purchase. The mobile client has no payment-step of
- * its own for this flow (no PayHere session, no polling).
- *
- * The Cloudflare Workers backend MUST gate balance creation behind a real
- * captured payment before crediting any balance. If it does not, an attacker
- * can call the endpoint directly with an arbitrary amount and receive usable
- * store credit for free.
- *
- * Verify: workers/src/.../gift-cards/purchase.ts checks payment status
- * before calling INSERT INTO gift_cards.
+ * Gift cards are paid through PayHere. The backend creates an inactive card
+ * and only credits the balance after the webhook captures payment.
  */
 
 const AMOUNTS = [2500, 5000, 10000, 20000, 50000, 100000];
@@ -40,7 +31,7 @@ export default function GiftCardsScreen() {
   const [scheduled, setScheduled] = useState(false);
   const [scheduledHours, setScheduledHours] = useState("24");
   const [purchasing, setPurchasing] = useState(false);
-  const [purchased, setPurchased] = useState<{ code: string; balance: number; currency: string; scheduled_for: string | null } | null>(null);
+  const [payhere, setPayhere] = useState<{ action: string; fields: Record<string, string>; cardId: string } | null>(null);
 
   const isAmountValid = Number.isFinite(amount) && amount >= MIN_AMOUNT;
 
@@ -64,8 +55,7 @@ export default function GiftCardsScreen() {
       scheduled_for = new Date(Date.now() + hours * 3_600_000).toISOString();
     }
     setPurchasing(true);
-    // C-01 AUDIT: backend MUST verify captured payment before crediting balance.
-    const res = await purchaseGiftCard({
+    const res = await getGiftCardPayHereSession({
       amount,
       currency: "LKR",
       recipient_email: recipient.email,
@@ -74,45 +64,16 @@ export default function GiftCardsScreen() {
       scheduled_for,
     });
     setPurchasing(false);
-    if (res.ok) {
-      const card = res.data.card as { code: string; current_balance: number; currency: string; scheduled_for: string | null };
-      setPurchased({
-        code: card.code,
-        balance: Number(card.current_balance),
-        currency: card.currency,
-        scheduled_for: card.scheduled_for,
-      });
-      setRecipient({ name: "", email: "", message: "" });
-      toast("Card created", "success");
-    } else {
-      toast(res.error || "Failed", "error");
+    if (!res.ok) {
+      Alert.alert("Could not start payment", res.error);
+      return;
     }
+    setPayhere({
+      action: res.data.action,
+      fields: res.data.fields,
+      cardId: res.data.pending_card_id ?? "gift-card",
+    });
   };
-
-  if (purchased) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.light.background }}>
-        <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
-          <ScreenHeader title="Card ready" />
-          <Card style={styles.successCard}>
-            <Ionicons name="checkmark-circle" size={48} color={colors.olive[600]} style={{ alignSelf: "center" }} />
-            <Display size="lg" style={{ textAlign: "center", marginTop: 12 }}>{purchased.code}</Display>
-            <Body muted style={{ textAlign: "center", marginTop: 6 }}>
-              Balance: {formatPrice(purchased.balance, purchased.currency)}
-            </Body>
-            {purchased.scheduled_for && (
-              <Body size="sm" muted style={{ textAlign: "center", marginTop: 4 }}>
-                Scheduled for {new Date(purchased.scheduled_for).toLocaleString()}
-              </Body>
-            )}
-            <Button onPress={() => setPurchased(null)} style={{ marginTop: 16 }}>
-              Buy another
-            </Button>
-          </Card>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.light.background }}>
@@ -205,9 +166,22 @@ export default function GiftCardsScreen() {
         </Card>
 
         <Button onPress={onPurchase} disabled={purchasing || !recipient.email || !isAmountValid}>
-          {purchasing ? <ActivityIndicator color="#fff" /> : scheduled ? "Schedule card" : "Send card"}
+          {purchasing ? <ActivityIndicator color="#fff" /> : "Pay with card"}
         </Button>
       </ScrollView>
+      {payhere ? (
+        <PayHereCheckout
+          visible
+          action={payhere.action}
+          fields={payhere.fields}
+          orderId={payhere.cardId}
+          onClose={() => setPayhere(null)}
+          onReturnFromGateway={() => {
+            setPayhere(null);
+            toast("Payment submitted — check Gift cards in a moment", "success");
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

@@ -156,3 +156,85 @@ export async function getPayHereSession(
     return { ok: false, error: e?.message ?? "Network error" };
   }
 }
+
+export async function getGiftCardPayHereSession(input: {
+  amount: number;
+  currency?: string;
+  recipient_email?: string;
+  recipient_name?: string;
+  message?: string;
+  scheduled_for?: string;
+}): Promise<{ ok: true; data: PayHereSession & { pending_card_id?: string } } | { ok: false; error: string }> {
+  if (!STORE_API_URL) {
+    return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
+  }
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return { ok: false, error: "Payment requires an authenticated session" };
+    const res = await fetch(`${STORE_API_URL}/api/payhere/gift-card-session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currency: "LKR", ...input }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      const err = (json as { error?: unknown }).error;
+      const message =
+        typeof err === "string"
+          ? err
+          : err && typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message?: unknown }).message)
+            : "Payment session failed";
+      return { ok: false, error: message };
+    }
+    const payload = (json && typeof json === "object" && "data" in json
+      ? (json as { data: PayHereSession & { pending_card_id?: string } }).data
+      : json) as PayHereSession & { pending_card_id?: string };
+    if (!payload?.action || !payload?.fields) {
+      return { ok: false, error: "Payment session was missing checkout fields" };
+    }
+    return { ok: true, data: payload };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Network error" };
+  }
+}
+
+export async function getGuestPayHereSession(
+  guestToken: string,
+  guestEmail: string,
+): Promise<{ ok: true; data: PayHereSession } | { ok: false; error: string }> {
+  if (!STORE_API_URL) {
+    return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
+  }
+  try {
+    const res = await fetch(`${STORE_API_URL}/api/payhere/guest-checkout-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guest_token: guestToken, guest_email: guestEmail }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      const err = (json as { error?: unknown }).error;
+      const message =
+        typeof err === "string"
+          ? err
+          : err && typeof err === "object" && err !== null && "message" in err
+            ? String((err as { message?: unknown }).message)
+            : "Payment session failed";
+      return { ok: false, error: message };
+    }
+    const payload = (json && typeof json === "object" && "data" in json
+      ? (json as { data: PayHereSession }).data
+      : json) as PayHereSession;
+    if (!payload?.action || !payload?.fields) {
+      return { ok: false, error: "Payment session was missing checkout fields" };
+    }
+    return { ok: true, data: { action: payload.action, fields: payload.fields } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Network error" };
+  }
+}

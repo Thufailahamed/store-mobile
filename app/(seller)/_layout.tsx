@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
 import { Tabs, useRouter, useSegments } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography } from "@/lib/theme/tokens";
@@ -14,6 +15,7 @@ export default function SellerLayout() {
   const { role, roleLoading, loading, user } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const insets = useSafeAreaInsets();
   const [store, setStore] = useState<Store | null>(null);
   const [payout, setPayout] = useState<SellerPayoutCompliance | null>(null);
   const [documents, setDocuments] = useState<SellerComplianceDocument[]>([]);
@@ -136,20 +138,20 @@ export default function SellerLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.light.primary,
-        tabBarInactiveTintColor: colors.light.mutedForeground,
+        tabBarActiveTintColor: colors.olive[800],
+        tabBarInactiveTintColor: colors.ink.mute,
         tabBarStyle: {
-          backgroundColor: colors.light.card,
-          borderTopColor: colors.light.border,
-          borderTopWidth: 1,
-          height: 85,
+          backgroundColor: colors.paper.cream,
+          borderTopColor: "rgba(83,94,44,0.12)",
+          borderTopWidth: StyleSheet.hairlineWidth,
+          height: 56 + Math.max(insets.bottom, 10),
           paddingTop: 8,
-          paddingBottom: 28,
+          paddingBottom: Math.max(insets.bottom, 10),
         },
         tabBarLabelStyle: {
-          fontSize: typography.fontSizes.xs,
+          fontSize: 10,
           fontWeight: typography.fontWeights.medium,
-          letterSpacing: typography.letterSpacing.wide,
+          letterSpacing: 0.4,
         },
       }}
     >
@@ -158,7 +160,9 @@ export default function SellerLayout() {
         options={{
           title: "Dashboard",
           href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="bar-chart-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "grid" : "grid-outline"} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -166,7 +170,9 @@ export default function SellerLayout() {
         options={{
           title: "Products",
           href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "cube" : "cube-outline"} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -174,7 +180,9 @@ export default function SellerLayout() {
         options={{
           title: "Orders",
           href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="receipt-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "receipt" : "receipt-outline"} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -182,14 +190,18 @@ export default function SellerLayout() {
         options={{
           title: "Inventory",
           href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="list-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "layers" : "layers-outline"} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings/index"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "settings" : "settings-outline"} size={size} color={color} />
+          ),
         }}
       />
 
@@ -201,14 +213,7 @@ export default function SellerLayout() {
       <Tabs.Screen name="reviews/index" options={{ href: null }} />
       <Tabs.Screen name="coupons/index" options={{ href: null }} />
       <Tabs.Screen name="notifications/index" options={{ href: null }} />
-      <Tabs.Screen
-        name="payouts/index"
-        options={{
-          title: "Payouts",
-          href: locked ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="wallet-outline" size={size} color={color} />,
-        }}
-      />
+      <Tabs.Screen name="payouts/index" options={{ href: null }} />
       <Tabs.Screen name="payouts/settings" options={{ href: null }} />
       <Tabs.Screen name="payouts/withdraw" options={{ href: null }} />
       <Tabs.Screen name="payouts/connect-return" options={{ href: null }} />
