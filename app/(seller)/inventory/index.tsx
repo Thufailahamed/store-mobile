@@ -10,9 +10,7 @@ import {
   Alert,
   Share,
   StatusBar,
-  ActivityIndicator,
 } from "react-native";
-import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,6 +27,11 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { LOW_STOCK_THRESHOLD } from "@/lib/inventory";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui";
+import { SellerProductGroup } from "@/components/seller/SellerProductGroup";
+import { SellerStockSheet } from "@/components/seller/SellerStockSheet";
+import type { SellerInventoryRow as InventoryRow } from "@/lib/seller-inventory";
+import { groupSellerRows } from "@/lib/seller-inventory";
 import {
   SellerSearchField,
   SellerFilterTab,
@@ -44,21 +47,6 @@ const GOLD = SELLER_GOLD;
 const RUST = SELLER_RUST;
 const CREAM = SELLER_CREAM;
 const INK = SELLER_INK;
-
-interface InventoryRow {
-  productId: string;
-  productName: string;
-  variantId: string;
-  sku: string;
-  size?: string;
-  color?: string;
-  onHand: number | null;
-  reserved: number;
-  available: number | null;
-  price: number | null;
-  currency: string;
-  image?: string;
-}
 
 type StockTone = "ok" | "low" | "out" | "unknown";
 
@@ -106,21 +94,11 @@ function toCSV(rows: InventoryRow[]): string {
   return lines.join("\n");
 }
 
-function Thumb({ uri, style }: { uri?: string; style: object }) {
-  if (uri) {
-    return <Image source={{ uri }} style={style} contentFit="cover" transition={200} />;
-  }
-  return (
-    <View style={[style, styles.thumbEmpty]}>
-      <Ionicons name="image-outline" size={16} color={colors.light.mutedForeground} />
-    </View>
-  );
-}
-
 export default function SellerInventory() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [storeId, setStoreId] = useState<string | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -129,8 +107,7 @@ export default function SellerInventory() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "low" | "out" | "healthy">("all");
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draftStock, setDraftStock] = useState("0");
+  const [sheetRow, setSheetRow] = useState<InventoryRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -310,11 +287,6 @@ export default function SellerInventory() {
     );
   };
 
-  const handleSaveStock = async (row: InventoryRow) => {
-    const newStock = Math.max(0, Number(draftStock) || 0);
-    confirmReservedStock([row], newStock, () => void saveStock(row, newStock));
-  };
-
   const saveStock = async (row: InventoryRow, newStock: number) => {
     setSaving(true);
     setSavingId(row.variantId);
@@ -335,21 +307,14 @@ export default function SellerInventory() {
     setSaving(false);
     setSavingId(null);
     if (res.ok) {
-      setEditing(null);
+      setSheetRow(null);
+      toast.success("Stock updated");
     } else {
       setRows((prev) =>
         prev.map((r) => (r.variantId === row.variantId ? snapshot : r)),
       );
-      Alert.alert("Error", res.error);
+      toast.error(res.error);
     }
-  };
-
-  const adjustStock = (row: InventoryRow, delta: number) => {
-    if (savingId === row.variantId) return;
-    const current = row.onHand ?? 0;
-    const next = Math.max(0, current + delta);
-    if (next === current) return;
-    confirmReservedStock([row], next, () => void saveStock(row, next));
   };
 
   const exitSelect = () => {
@@ -384,7 +349,7 @@ export default function SellerInventory() {
       (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok),
     );
     if (failed.length === 0) {
-      Alert.alert("Done", `${targets.length} SKU(s) updated to ${newStock}.`);
+      toast.success(`${targets.length} SKU(s) updated to ${newStock}.`);
       setRows((prev) =>
         prev.map((r) =>
           ids.has(r.variantId)
@@ -394,15 +359,14 @@ export default function SellerInventory() {
       );
       exitSelect();
     } else {
-      Alert.alert("Partial", `${targets.length - failed.length} updated, ${failed.length} failed.`, [
-        { text: "OK", onPress: () => onRefresh() },
-      ]);
+      toast.error(`${targets.length - failed.length} updated, ${failed.length} failed.`);
+      onRefresh();
     }
   };
 
   const exportCSV = async () => {
     if (filtered.length === 0) {
-      Alert.alert("Nothing to export", "No rows match the current filters.");
+      toast.info("No rows match the current filters.");
       return;
     }
     const csv = toCSV(filtered);
@@ -412,187 +376,11 @@ export default function SellerInventory() {
         title: `inventory-${new Date().toISOString().slice(0, 10)}.csv`,
       });
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Could not share");
+      toast.error(e?.message ?? "Could not share");
     }
   };
 
-  const startEdit = (row: InventoryRow) => {
-    setEditing(row.variantId);
-    setDraftStock(String(row.onHand ?? 0));
-  };
-
-  const toneMeta = (tone: StockTone) => {
-    if (tone === "out") return { label: "Out", color: RUST, bg: "rgba(184,92,58,0.12)" };
-    if (tone === "low") return { label: "Low", color: "#8a6a2a", bg: "rgba(200,164,74,0.18)" };
-    if (tone === "ok") return { label: "In stock", color: colors.olive[800], bg: "rgba(83,94,44,0.1)" };
-    return { label: "—", color: colors.ink.mute, bg: colors.olive[50] };
-  };
-
-  const renderRow = ({ item }: { item: InventoryRow }) => {
-    const isEditing = editing === item.variantId;
-    const isSaving = savingId === item.variantId;
-    const tone = stockTone(item.available);
-    const meta = toneMeta(tone);
-    const selected = selectedIds.has(item.variantId);
-    const variantLabel = [item.size, item.color].filter(Boolean).join(" · ");
-    const qty = item.onHand ?? item.available;
-    const qtyLabel = qty == null ? "—" : String(qty);
-
-    return (
-      <View
-        style={[
-          styles.card,
-          selected && styles.cardSelected,
-          tone === "out" && styles.cardOut,
-          tone === "low" && styles.cardLow,
-        ]}
-      >
-        <View style={[styles.toneBar, { backgroundColor: meta.color }]} />
-        <View style={styles.cardRow}>
-          {selectMode && (
-            <TouchableOpacity
-              style={styles.checkbox}
-              onPress={() => toggleSelect(item.variantId)}
-              hitSlop={6}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: selected }}
-            >
-              <Ionicons
-                name={selected ? "checkbox" : "square-outline"}
-                size={22}
-                color={selected ? colors.olive[700] : colors.light.mutedForeground}
-              />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={styles.cardMain}
-            onPress={() =>
-              selectMode
-                ? toggleSelect(item.variantId)
-                : router.push(`/(seller)/products/${item.productId}` as any)
-            }
-            onLongPress={() => {
-              if (!selectMode) {
-                setSelectMode(true);
-                setSelectedIds(new Set([item.variantId]));
-              }
-            }}
-            delayLongPress={350}
-            activeOpacity={0.75}
-          >
-            <Thumb uri={item.image} style={styles.thumb} />
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardName} numberOfLines={2}>
-                {item.productName}
-              </Text>
-              <Text style={styles.cardSku}>{item.sku}</Text>
-              {variantLabel ? <Text style={styles.cardMeta}>{variantLabel}</Text> : null}
-              <View style={styles.cardFooter}>
-                <Text style={styles.cardPrice}>{money(item.price, item.currency)}</Text>
-                {item.reserved > 0 ? (
-                  <>
-                    <Text style={styles.cardDot}>·</Text>
-                    <Text style={styles.cardHeld}>{item.reserved} held</Text>
-                  </>
-                ) : null}
-              </View>
-            </View>
-          </TouchableOpacity>
-
-          {!selectMode && (
-            <View style={styles.stockPanel}>
-              <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
-                <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-              </View>
-
-              {isEditing ? (
-                <View style={styles.editStack}>
-                  <TextInput
-                    style={[styles.qtyInput, { borderColor: meta.color }]}
-                    value={draftStock}
-                    onChangeText={setDraftStock}
-                    keyboardType="number-pad"
-                    autoFocus
-                    selectTextOnFocus
-                    onSubmitEditing={() => handleSaveStock(item)}
-                    accessibilityLabel="On-hand quantity"
-                  />
-                  <View style={styles.editActions}>
-                    <TouchableOpacity
-                      style={styles.editCancelBtn}
-                      onPress={() => setEditing(null)}
-                      accessibilityLabel="Cancel"
-                    >
-                      <Text style={styles.editCancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.editSaveBtn}
-                      onPress={() => handleSaveStock(item)}
-                      disabled={saving}
-                      accessibilityLabel="Save stock"
-                    >
-                      {saving && isSaving ? (
-                        <ActivityIndicator size="small" color={CREAM} />
-                      ) : (
-                        <Text style={styles.editSaveText}>Save</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.stepper}>
-                    <TouchableOpacity
-                      style={[styles.stepBtn, isSaving && styles.stepBtnDisabled]}
-                      onPress={() => adjustStock(item, -1)}
-                      disabled={isSaving || (item.onHand ?? 0) <= 0}
-                      accessibilityLabel="Decrease stock"
-                    >
-                      <Ionicons name="remove" size={18} color={INK} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.qtyTap}
-                      onPress={() => startEdit(item)}
-                      accessibilityLabel={`Stock ${qtyLabel}. Tap to edit`}
-                      accessibilityRole="button"
-                    >
-                      {isSaving ? (
-                        <ActivityIndicator size="small" color={meta.color} />
-                      ) : (
-                        <Text style={[styles.qtyValue, { color: meta.color }]}>{qtyLabel}</Text>
-                      )}
-                      <Text style={styles.qtyHint}>on hand</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.stepBtn, isSaving && styles.stepBtnDisabled]}
-                      onPress={() => adjustStock(item, 1)}
-                      disabled={isSaving}
-                      accessibilityLabel="Increase stock"
-                    >
-                      <Ionicons name="add" size={18} color={INK} />
-                    </TouchableOpacity>
-                  </View>
-                  {tone === "out" ? (
-                    <TouchableOpacity
-                      style={styles.quickRestock}
-                      onPress={() => {
-                        const next = Math.max(10, (item.reserved || 0) + 5);
-                        confirmReservedStock([item], next, () => void saveStock(item, next));
-                      }}
-                      disabled={isSaving}
-                      accessibilityLabel="Quick restock to 10"
-                    >
-                      <Text style={styles.quickRestockText}>+10</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </>
-              )}
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  };
+  const groups = useMemo(() => groupSellerRows(filtered), [filtered]);
 
   const countLabel = (() => {
     if (loading && rows.length === 0) return "Loading";
@@ -713,9 +501,34 @@ export default function SellerInventory() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.variantId}
-        renderItem={renderRow}
+        data={groups}
+        keyExtractor={(item) => item.key}
+        renderItem={({ item }) => (
+          <SellerProductGroup
+            group={item}
+            savingId={savingId}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onLongPress={(id) => {
+              if (!selectMode) {
+                setSelectMode(true);
+                setSelectedIds(new Set([id]));
+              }
+            }}
+            onOpenProduct={(productId) => router.push(`/(seller)/products/${productId}` as any)}
+            onStep={(row, next) => {
+              if (savingId === row.variantId) return;
+              if (next === (row.onHand ?? 0)) return;
+              confirmReservedStock([row], next, () => void saveStock(row, next));
+            }}
+            onEdit={(row) => setSheetRow(row)}
+            onQuickRestock={(row) => {
+              const next = Math.max(10, (row.reserved || 0) + 5);
+              confirmReservedStock([row], next, () => void saveStock(row, next));
+            }}
+          />
+        )}
         ListHeaderComponent={listHeader}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />}
         contentContainerStyle={[styles.listContent, selectMode && { paddingBottom: 96 }]}
@@ -761,6 +574,18 @@ export default function SellerInventory() {
             </View>
           )
         }
+      />
+
+      <SellerStockSheet
+        visible={!!sheetRow}
+        row={sheetRow}
+        saving={saving}
+        onClose={() => setSheetRow(null)}
+        onSave={(n) => {
+          if (!sheetRow) return;
+          const target = sheetRow;
+          confirmReservedStock([target], n, () => void saveStock(target, n));
+        }}
       />
 
       {selectMode && (
