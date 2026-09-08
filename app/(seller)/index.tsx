@@ -29,7 +29,6 @@ import {
   SellerStatusPill,
   SELLER_GOLD,
   SELLER_RUST,
-  SELLER_INK,
   SELLER_CREAM,
 } from "@/components/seller/chrome";
 import { SellerBentoGrid } from "@/components/seller/SellerBentoGrid";
@@ -40,7 +39,6 @@ import type { Store, Order, Product, Notification } from "@/lib/types";
 
 const GOLD = SELLER_GOLD;
 const RUST = SELLER_RUST;
-const INK = SELLER_INK;
 const CREAM = SELLER_CREAM;
 
 interface KPIData {
@@ -306,7 +304,7 @@ export default function SellerDashboard() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
         <View style={[styles.hero, styles.loadingHero, { paddingTop: Math.max(insets.top, 24) + 8 }]}>
           <View style={styles.loadingHeroRow}>
             <Skeleton width={140} height={10} borderRadius={4} />
@@ -432,13 +430,13 @@ export default function SellerDashboard() {
     >
       <View style={styles.hero}>
         <LinearGradient
-          colors={["#12160c", INK, "#243018"]}
+          colors={["#f5f4ef", "#faf8f1", "#efece2"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
         <LinearGradient
-          colors={["rgba(200,164,74,0.18)", "transparent", "rgba(22,26,10,0.45)"]}
+          colors={["rgba(83,94,44,0.10)", "transparent", "rgba(83,94,44,0.05)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.85, y: 1 }}
           style={StyleSheet.absoluteFillObject}
@@ -446,7 +444,7 @@ export default function SellerDashboard() {
         />
 
         <View style={[styles.heroContent, { paddingTop: Math.max(insets.top, 20) + 4 }]}>
-          <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+          <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
           <View style={styles.heroTop}>
             <View style={styles.heroHeaderLeft}>
@@ -472,7 +470,7 @@ export default function SellerDashboard() {
                   unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"
                 }
               >
-                <Ionicons name="notifications-outline" size={18} color={CREAM} />
+                <Ionicons name="notifications-outline" size={18} color={colors.olive[800]} />
                 {unreadCount > 0 && (
                   <View style={styles.notifBadge}>
                     <Text style={styles.notifBadgeText}>{formatBadgeCount(unreadCount)}</Text>
@@ -548,7 +546,7 @@ export default function SellerDashboard() {
               accessibilityRole="button"
               accessibilityLabel={`${totalOrders ?? 0} orders`}
             >
-              <Text style={[styles.heroMetaValue, ordersNeedWork && { color: GOLD }]}>
+              <Text style={[styles.heroMetaValue, ordersNeedWork && { color: "#9a6b1f" }]}>
                 {ordersNeedWork ? pendingOrders : totalOrders ?? "—"}
               </Text>
               <Text style={styles.heroMetaLabel}>{ordersNeedWork ? "Pending" : "Orders"}</Text>
@@ -573,8 +571,8 @@ export default function SellerDashboard() {
               <Text
                 style={[
                   styles.heroMetaValue,
-                  inventoryReady && stock.tone === "critical" && { color: "#e8b4a4" },
-                  inventoryReady && stock.tone === "warn" && { color: GOLD },
+                  inventoryReady && stock.tone === "critical" && { color: RUST },
+                  inventoryReady && stock.tone === "warn" && { color: "#9a6b1f" },
                 ]}
               >
                 {inventoryReady ? stock.value : "—"}
@@ -1004,7 +1002,7 @@ const styles = StyleSheet.create({
   hero: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: INK,
+    backgroundColor: "#f5f4ef",
   },
   heroContent: {
     position: "relative",
@@ -1031,7 +1029,7 @@ const styles = StyleSheet.create({
   heroHeaderLeft: { gap: 4, flex: 1, paddingRight: 12 },
   heroDate: {
     fontSize: 11,
-    color: "rgba(250,248,241,0.55)",
+    color: colors.olive[700],
     fontFamily: fontFamilies.mono.medium,
     letterSpacing: 1.4,
   },
@@ -1051,17 +1049,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(200,164,74,0.16)",
+    backgroundColor: "rgba(83,94,44,0.10)",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radii.full,
     minHeight: 36,
     borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.35)",
+    borderColor: "rgba(83,94,44,0.22)",
   },
   liveTagOff: {
-    backgroundColor: "rgba(250,248,241,0.08)",
-    borderColor: "rgba(250,248,241,0.16)",
+    backgroundColor: "rgba(22,23,15,0.05)",
+    borderColor: "rgba(22,23,15,0.12)",
   },
   liveDot: {
     width: 6,
@@ -1070,11 +1068,11 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD,
   },
   liveDotOff: {
-    backgroundColor: "rgba(250,248,241,0.4)",
+    backgroundColor: "rgba(22,23,15,0.30)",
   },
   liveText: {
     fontSize: 11,
-    color: CREAM,
+    color: colors.olive[950],
     fontFamily: fontFamilies.mono.medium,
     letterSpacing: 0.8,
   },
@@ -1082,9 +1080,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(250,248,241,0.08)",
+    backgroundColor: "#fffdf8",
     borderWidth: 1,
-    borderColor: "rgba(250,248,241,0.16)",
+    borderColor: "rgba(83,94,44,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1136,21 +1134,21 @@ const styles = StyleSheet.create({
   greetingWrap: { flex: 1, minWidth: 0 },
   heroGreeting: {
     fontSize: 14,
-    color: "rgba(250,248,241,0.62)",
+    color: colors.ink.mute,
     fontFamily: fontFamilies.display.italic,
   },
   heroName: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 30,
+    lineHeight: 36,
     fontFamily: fontFamilies.display.semibold,
-    color: CREAM,
+    color: colors.olive[950],
     marginTop: 1,
     letterSpacing: -0.4,
   },
   ledgerCard: {
-    backgroundColor: "rgba(250,248,241,0.06)",
+    backgroundColor: "#fffdf8",
     borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.22)",
+    borderColor: "rgba(83,94,44,0.14)",
     borderRadius: radii["2xl"],
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[4],
@@ -1168,13 +1166,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: "rgba(200,164,74,0.12)",
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   ledgerKicker: {
     fontSize: 10,
-    color: GOLD,
+    color: colors.olive[700],
     fontFamily: fontFamilies.mono.medium,
     letterSpacing: 1.6,
     textTransform: "uppercase",
@@ -1184,14 +1182,15 @@ const styles = StyleSheet.create({
     fontSize: 34,
     lineHeight: 40,
     fontFamily: fontFamilies.display.semibold,
-    color: CREAM,
+    color: colors.olive[950],
     letterSpacing: -0.6,
+    fontVariant: ["tabular-nums"],
   },
   ledgerHint: {
     marginTop: 8,
     fontSize: 12,
     lineHeight: 17,
-    color: "rgba(250,248,241,0.55)",
+    color: colors.ink.mute,
     fontFamily: fontFamilies.sans.regular,
   },
   heroMetaRow: {
@@ -1200,9 +1199,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing[5],
     paddingVertical: spacing[3],
     borderRadius: radii.xl,
-    backgroundColor: "rgba(250,248,241,0.04)",
+    backgroundColor: "rgba(83,94,44,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.14)",
+    borderColor: "rgba(83,94,44,0.14)",
   },
   heroMetaItem: {
     flex: 1,
@@ -1213,13 +1212,14 @@ const styles = StyleSheet.create({
   heroMetaValue: {
     fontSize: 20,
     fontFamily: fontFamilies.display.semibold,
-    color: CREAM,
+    color: colors.olive[950],
     letterSpacing: -0.3,
+    fontVariant: ["tabular-nums"],
   },
   heroMetaLabel: {
     marginTop: 3,
     fontSize: 10,
-    color: "rgba(250,248,241,0.52)",
+    color: colors.ink.mute,
     fontFamily: fontFamilies.mono.medium,
     letterSpacing: 1.1,
     textTransform: "uppercase",
@@ -1227,7 +1227,7 @@ const styles = StyleSheet.create({
   heroMetaRule: {
     width: StyleSheet.hairlineWidth,
     height: 28,
-    backgroundColor: "rgba(200,164,74,0.28)",
+    backgroundColor: "rgba(83,94,44,0.18)",
   },
   heroActions: {
     flexDirection: "row",
@@ -1240,20 +1240,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: CREAM,
+    backgroundColor: colors.olive[900],
     minHeight: 50,
     paddingHorizontal: 18,
     borderRadius: radii.full,
     ...shadows.soft,
   },
   heroBtnPrimaryText: {
-    color: colors.olive[900],
+    color: CREAM,
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.semibold,
     letterSpacing: 0.15,
   },
   heroBtnCount: {
-    backgroundColor: colors.olive[800],
+    backgroundColor: CREAM,
     minWidth: 22,
     height: 22,
     borderRadius: 11,
@@ -1262,7 +1262,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   heroBtnCountText: {
-    color: CREAM,
+    color: colors.olive[900],
     fontSize: 10,
     fontFamily: fontFamilies.mono.semibold,
   },
@@ -1272,11 +1272,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(250,248,241,0.22)",
-    backgroundColor: "rgba(250,248,241,0.06)",
+    borderColor: "rgba(83,94,44,0.22)",
+    backgroundColor: SELLER_CREAM,
   },
   heroBtnGhostText: {
-    color: CREAM,
+    color: colors.olive[900],
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.medium,
     letterSpacing: 0.2,
