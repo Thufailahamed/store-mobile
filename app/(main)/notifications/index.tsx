@@ -46,10 +46,10 @@ const FILTERS: {
 ];
 
 const FILTER_TYPES: Record<Exclude<NotifFilter, "all">, string[]> = {
-  messages: ["review", "system"],
-  alerts: ["order", "delivery", "payment", "stock"],
-  social: ["review"],
-  saved: ["promo"],
+  messages: ["system", "welcome", "review"],
+  alerts: ["order", "delivery", "payment", "stock", "inventory"],
+  social: ["review", "social"],
+  saved: ["promo", "promotion", "loyalty", "drop", "rewards"],
 };
 
 const TYPE_BADGE: Record<
@@ -59,10 +59,18 @@ const TYPE_BADGE: Record<
   order: "receipt-outline",
   delivery: "bicycle-outline",
   promo: "pricetag-outline",
+  promotion: "pricetag-outline",
+  marketing: "pricetag-outline",
   review: "star-outline",
   payment: "wallet-outline",
   stock: "alert-circle-outline",
+  inventory: "alert-circle-outline",
   system: "settings-outline",
+  loyalty: "gift-outline",
+  rewards: "gift-outline",
+  drop: "sparkles-outline",
+  welcome: "sparkles-outline",
+  social: "people-outline",
 };
 
 function formatRelativeShort(dateStr: string): string {
@@ -89,9 +97,17 @@ function isSafeInAppPath(path: string): boolean {
   return /^\/[a-zA-Z0-9/_\-().[\]%]*$/.test(path);
 }
 
+function normalizeType(type: string): string {
+  const t = (type ?? "").toLowerCase();
+  if (t === "promotion" || t === "marketing") return "promo";
+  if (t === "rewards") return "loyalty";
+  return t;
+}
+
 function matchesFilter(notification: Notification, filter: NotifFilter): boolean {
   if (filter === "all") return true;
-  return FILTER_TYPES[filter].includes(notification.type);
+  const normalized = normalizeType(notification.type);
+  return FILTER_TYPES[filter].map(normalizeType).includes(normalized);
 }
 
 function getNotificationImage(notification: Notification): string | undefined {
@@ -130,35 +146,83 @@ export default function NotificationsScreen() {
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,
-    onSuccess: () => {
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
+      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
+      queryClient.setQueryData<Notification[]>(["notifications", user?.id], (old) =>
+        (old ?? []).map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)),
+      );
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      toast("Couldn't mark as read. Try again.", "error");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 
   const markAllMutation = useMutation({
     mutationFn: async () => {
-      if (user) await markAllNotificationsRead(user.id);
+      if (!user) throw new Error("Not signed in");
+      const res = await markAllNotificationsRead(user.id);
+      if (!res.ok) throw new Error(res.error);
     },
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
+      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
+      queryClient.setQueryData<Notification[]>(["notifications", user?.id], (old) =>
+        (old ?? []).map((n) => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })),
+      );
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      toast("Couldn't mark all as read. Try again.", "error");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteNotification,
-    onSuccess: () => {
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
+      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
+      queryClient.setQueryData<Notification[]>(["notifications", user?.id], (old) =>
+        (old ?? []).filter((n) => n.id !== id),
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      toast("Couldn't delete that notification.", "error");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
-    onError: () => toast("Couldn't delete that notification.", "error"),
   });
 
   const clearAllMutation = useMutation({
     mutationFn: clearAllNotifications,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
+      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
+      queryClient.setQueryData<Notification[]>(["notifications", user?.id], []);
+      return { previous };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast("Inbox cleared", "success");
     },
-    onError: () => toast("Couldn't clear notifications.", "error"),
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      toast("Couldn't clear notifications.", "error");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
   });
 
   // Live-refresh: a new server-side notification arrives → invalidate
@@ -188,7 +252,7 @@ export default function NotificationsScreen() {
       counts.all += 1;
       (Object.keys(FILTER_TYPES) as Exclude<NotifFilter, "all">[]).forEach(
         (key) => {
-          if (FILTER_TYPES[key].includes(notification.type)) {
+          if (matchesFilter(notification, key)) {
             counts[key] += 1;
           }
         }
@@ -456,7 +520,7 @@ function NotificationRow({
   const theme = useTheme();
   const isUnread = !item.read_at;
   const imageUrl = getNotificationImage(item);
-  const badgeIcon = TYPE_BADGE[item.type] ?? "bookmark-outline";
+  const badgeIcon = TYPE_BADGE[(item.type ?? "").toLowerCase()] ?? "bookmark-outline";
   const message = item.body?.trim() ? item.body : item.title;
 
   return (

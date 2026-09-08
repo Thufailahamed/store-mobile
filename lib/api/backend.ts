@@ -457,7 +457,7 @@ export async function markNotificationReadBackend(id: string): Promise<ApiResult
 }
 
 export async function markAllNotificationsReadBackend(): Promise<ApiResult<{ updated: number }>> {
-  return fetchJson("/api/notifications", { method: "POST", body: { action: "mark_all_read" } });
+  return fetchJson("/api/notifications/read-all", { method: "POST", body: {} });
 }
 
 export async function deleteNotificationBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {

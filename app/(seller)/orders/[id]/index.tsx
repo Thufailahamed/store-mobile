@@ -456,7 +456,8 @@ export default function SellerOrderDetail() {
             danger
             style={{ minWidth: 96 }}
           />
-        ) : null}        {canRefund && !nextStatus ? (
+        ) : null}
+        {canRefund && !nextStatus ? (
           <SellerGhostButton
             label={updating ? "Working…" : "Refund order"}
             onPress={openRefundDialog}
