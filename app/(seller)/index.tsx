@@ -26,13 +26,13 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RevenueChart } from "@/components/seller/RevenueChart";
 import {
-  SellerShortcutGrid,
   SellerStatusPill,
   SELLER_GOLD,
   SELLER_RUST,
   SELLER_INK,
   SELLER_CREAM,
 } from "@/components/seller/chrome";
+import { SellerBentoGrid } from "@/components/seller/SellerBentoGrid";
 import { orderStatusTone } from "@/lib/seller/status-tones";
 import { SELLER_DASHBOARD_ACTIONS } from "@/lib/seller/dashboard-actions";
 import { formatOrderStatusLabel } from "@/lib/orders/seller-list";
@@ -691,13 +691,14 @@ export default function SellerDashboard() {
           </View>
         </View>
 
-        <SellerShortcutGrid
+        <SellerBentoGrid
           items={QUICK_ACTIONS.map((a) => {
             const hasAlertBadge = a.badgeKey === "alerts" && unreadCount > 0;
             const hasReturnsBadge = a.badgeKey === "returns" && (returnsCount ?? 0) > 0;
             return {
               key: a.key,
               label: a.label,
+              hint: a.hint,
               icon: a.icon,
               onPress: () => router.push(a.route as any),
               badge: hasAlertBadge ? unreadCount : hasReturnsBadge ? returnsCount : null,
