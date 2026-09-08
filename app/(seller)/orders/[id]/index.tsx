@@ -14,8 +14,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
-import { getSellerStore, getSellerOrderById, transitionOrderStatus } from "@/lib/api";
+import { Image } from "expo-image";
+import { getSellerStore, getSellerOrderById, transitionOrderStatus, cancelOrder } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
+import { canSellerCancelOrder } from "@/lib/order-lifecycle";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -114,6 +116,23 @@ export default function SellerOrderDetail() {
       ]
     );
   };
+
+  const handleCancel = useCallback(() => {
+    if (!order || updating) return;
+    Alert.alert("Cancel order?", `Cancel ${order.order_number}? Stock will be restored.`, [
+      { text: "Keep", style: "cancel" },
+      { text: "Cancel order", style: "destructive", onPress: async () => {
+        setUpdating(true);
+        const res = await cancelOrder(order.id);
+        setUpdating(false);
+        if (res.ok) {
+          setOrder({ ...order, status: "cancelled" });
+        } else {
+          Alert.alert("Error", res.error);
+        }
+      } },
+    ]);
+  }, [order, updating]);
 
   /**
    * Issue a refund for a delivered/processing order. Mirrors web's admin
@@ -226,7 +245,7 @@ export default function SellerOrderDetail() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: nextStatus || canRefund ? 120 : 32 },
+        { paddingBottom: nextStatus || canRefund || canSellerCancelOrder(order.status) ? 120 : 32 },
       ]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />
@@ -309,11 +328,24 @@ export default function SellerOrderDetail() {
         </View>
       </View>
 
+      {/* COD collect reminder */}
+      {order.payment_method === "cod" && order.payment_status !== "paid" ? (
+        <View style={styles.codBanner}>
+          <Text style={styles.codTitle}>Collect {formatPrice(order.total)} on delivery</Text>
+          <Text style={styles.codBody}>Once cash is collected, the order can be marked through its status flow.</Text>
+        </View>
+      ) : null}
+
       {/* Items */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Items ({itemsCount})</Text>
         {order.items?.map((item) => (
           <View key={item.id} style={styles.itemCard}>
+            {item.image_url ? (
+              <Image source={{ uri: item.image_url }} style={styles.itemThumb} contentFit="cover" />
+            ) : (
+              <View style={[styles.itemThumb, styles.itemThumbEmpty]} />
+            )}
             <View style={{ flex: 1 }}>
               <Text style={styles.itemName} numberOfLines={1}>{item.product_name}</Text>
               {item.variant_label && (
@@ -328,9 +360,14 @@ export default function SellerOrderDetail() {
 
       {/* Summary */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Your items total</Text>
+        <Text style={styles.sectionTitle}>Price breakdown</Text>
         <View style={styles.summaryCard}>
-          <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} bold />
+          <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
+          <SummaryRow label="Shipping" value={formatPrice(order.shipping_fee)} />
+          <SummaryRow label="Tax" value={formatPrice(order.tax)} />
+          {order.discount > 0 ? <SummaryRow label="Discount" value={`-${formatPrice(order.discount)}`} /> : null}
+          <SummaryRow label="Total" value={formatPrice(order.total)} bold />
+          <SummaryRow label="Payment" value={`${formatCheckoutPayment(order.payment_method)} · ${formatPaymentStatus(order.payment_status)}`} />
         </View>
       </View>
 
@@ -409,9 +446,17 @@ export default function SellerOrderDetail() {
         </View>
       </KeyboardAvoidingView>
     </Modal>
-    {(nextStatus || canRefund) && (
+    {(nextStatus || canRefund || canSellerCancelOrder(order.status)) && (
       <SellerStickyBar>
-        {canRefund && !nextStatus ? (
+        {canSellerCancelOrder(order.status) ? (
+          <SellerGhostButton
+            label={updating ? "Working…" : "Cancel"}
+            onPress={handleCancel}
+            disabled={updating}
+            danger
+            style={{ minWidth: 96 }}
+          />
+        ) : null}        {canRefund && !nextStatus ? (
           <SellerGhostButton
             label={updating ? "Working…" : "Refund order"}
             onPress={openRefundDialog}
@@ -778,12 +823,35 @@ const styles = StyleSheet.create({
   itemCard: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     backgroundColor: CREAM,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
     padding: 12,
     marginBottom: 8,
+  },
+  itemThumb: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.olive[50] },
+  itemThumbEmpty: { alignItems: "center", justifyContent: "center" },
+  codBanner: {
+    backgroundColor: "rgba(184,92,58,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.28)",
+    borderRadius: radii.lg,
+    padding: 14,
+    marginBottom: 16,
+  },
+  codTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+    color: colors.accent2.rust,
+  },
+  codBody: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.xs,
+    color: colors.light.mutedForeground,
+    marginTop: 4,
+    lineHeight: 18,
   },
   itemName: {
     fontFamily: fontFamilies.sans.medium,
