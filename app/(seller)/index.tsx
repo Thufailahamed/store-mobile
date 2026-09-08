@@ -1365,7 +1365,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.olive[600],
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1.8,
+    letterSpacing: 2.0,
     textTransform: "uppercase",
     marginBottom: 3,
   },
@@ -1487,6 +1487,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: fontFamilies.display.semibold,
     color: colors.ink.DEFAULT,
+    fontVariant: ["tabular-nums"],
   },
   stockStatLabel: {
     fontSize: 11,
@@ -1547,6 +1548,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: fontFamilies.display.semibold,
     color: GOLD,
+    fontVariant: ["tabular-nums"],
   },
   lookImage: {
     width: 56,
@@ -1618,6 +1620,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fontFamilies.display.semibold,
     color: colors.ink.DEFAULT,
+    fontVariant: ["tabular-nums"],
   },
 
   unreadBadge: {
