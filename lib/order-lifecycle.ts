@@ -84,6 +84,11 @@ export function getSellerNextStatus(status: OrderStatus): OrderStatus | null {
   return SELLER_NEXT_STATUS[status] ?? null;
 }
 
+/** Web parity: seller orders page allows Cancel except from shipped/delivered/cancelled/returned/refunded. */
+export function canSellerCancelOrder(status: OrderStatus): boolean {
+  return !["shipped", "delivered", "cancelled", "returned", "refunded"].includes(status);
+}
+
 export function getCustomerStepIndex(status: OrderStatus): number {
   if (status === "cancelled" || status === "returned" || status === "refunded") {
     return -1;

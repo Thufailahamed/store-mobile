@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CUSTOMER_STATUS_STEPS,
   SELLER_NEXT_STATUS,
+  canSellerCancelOrder,
   getCustomerStepIndex,
   getSellerNextStatus,
   isValidOrderStatusTransition,
@@ -78,5 +79,21 @@ describe("order-lifecycle — reschedule edge", () => {
     expect(isValidOrderStatusTransition("failed_attempt", "processing")).toBe(true);
     // Random other transition still blocked.
     expect(isValidOrderStatusTransition("failed_attempt", "delivered")).toBe(false);
+  });
+});
+
+describe("canSellerCancelOrder", () => {
+  it("allows cancel from actionable pipeline states", () => {
+    expect(canSellerCancelOrder("pending")).toBe(true);
+    expect(canSellerCancelOrder("confirmed")).toBe(true);
+    expect(canSellerCancelOrder("processing")).toBe(true);
+  });
+
+  it("blocks cancel from terminal/shipped states like web", () => {
+    expect(canSellerCancelOrder("shipped")).toBe(false);
+    expect(canSellerCancelOrder("delivered")).toBe(false);
+    expect(canSellerCancelOrder("cancelled")).toBe(false);
+    expect(canSellerCancelOrder("returned")).toBe(false);
+    expect(canSellerCancelOrder("refunded")).toBe(false);
   });
 });
