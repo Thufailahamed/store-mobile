@@ -430,24 +430,26 @@ export default function SellerDashboard() {
     >
       <View style={styles.hero}>
         <LinearGradient
-          colors={["#f5f4ef", "#faf8f1", "#efece2"]}
+          colors={["#FAF8F5", "#F5F2EA", "#ECE7DD"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
         <LinearGradient
-          colors={["rgba(83,94,44,0.10)", "transparent", "rgba(83,94,44,0.05)"]}
+          colors={["rgba(200,164,74,0.07)", "transparent", "rgba(200,164,74,0.03)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0.85, y: 1 }}
           style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
         />
 
-        <View style={[styles.heroContent, { paddingTop: Math.max(insets.top, 20) + 4 }]}>
+        <View style={[styles.heroContent, { paddingTop: Math.max(insets.top, 16) + 4 }]}>
           <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
+          {/* 1. Top Status & Atelier Header */}
           <View style={styles.heroTop}>
-            <View style={styles.heroHeaderLeft}>
+            <View style={styles.dateBadge}>
+              <Ionicons name="calendar-outline" size={11} color="#85651B" />
               <Text style={styles.heroDate}>{today.toUpperCase()}</Text>
             </View>
             <View style={styles.heroHeaderRight}>
@@ -459,7 +461,9 @@ export default function SellerDashboard() {
                 accessibilityLabel={storeIsLive ? "Store is live. Open settings" : "Store is offline. Open settings"}
               >
                 <View style={[styles.liveDot, !storeIsLive && styles.liveDotOff]} />
-                <Text style={styles.liveText}>{storeIsLive ? "Live" : "Offline"}</Text>
+                <Text style={[styles.liveText, !storeIsLive && styles.liveTextOff]}>
+                  {storeIsLive ? "Live" : "Offline"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.notifBtn}
@@ -470,7 +474,7 @@ export default function SellerDashboard() {
                   unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"
                 }
               >
-                <Ionicons name="notifications-outline" size={18} color={colors.olive[800]} />
+                <Ionicons name="notifications-outline" size={18} color="#141311" />
                 {unreadCount > 0 && (
                   <View style={styles.notifBadge}>
                     <Text style={styles.notifBadgeText}>{formatBadgeCount(unreadCount)}</Text>
@@ -480,107 +484,194 @@ export default function SellerDashboard() {
             </View>
           </View>
 
+          {/* 2. Store Branding & Greeting */}
           <View style={styles.storeBrandingRow}>
-            {store?.logo_url ? (
-              <Image source={{ uri: store.logo_url }} style={styles.storeLogo} contentFit="cover" />
-            ) : (
-              <View style={styles.storeMonogram}>
-                <Text style={styles.storeMonogramText}>{monogram}</Text>
+            <View style={styles.storeAvatarBezel}>
+              {store?.logo_url ? (
+                <Image source={{ uri: store.logo_url }} style={styles.storeLogo} contentFit="cover" />
+              ) : (
+                <View style={styles.storeMonogram}>
+                  <Text style={styles.storeMonogramText}>{monogram}</Text>
+                </View>
+              )}
+              <View style={styles.avatarSparkleBadge}>
+                <Ionicons name="sparkles" size={8} color="#C8A44A" />
               </View>
-            )}
+            </View>
             <View style={styles.greetingWrap}>
-              <Text style={styles.heroGreeting}>{greeting}</Text>
+              <View style={styles.greetingRow}>
+                <Text style={styles.heroGreeting}>{greeting}</Text>
+                <View style={styles.maisonVerifiedPill}>
+                  <Ionicons name="shield-checkmark" size={9} color="#85651B" />
+                  <Text style={styles.maisonVerifiedText}>ATELIER</Text>
+                </View>
+              </View>
               <Text style={styles.heroName} numberOfLines={1}>
                 {storeName}
               </Text>
             </View>
           </View>
 
+          {/* 3. Haute Horlogerie Treasury / Revenue Card */}
           <TouchableOpacity
             style={styles.ledgerCard}
             onPress={() => router.push("/(seller)/analytics" as any)}
-            activeOpacity={0.88}
+            activeOpacity={0.92}
             accessibilityRole="button"
             accessibilityLabel={`Revenue ${totalRevenue == null ? "unavailable" : formatPrice(totalRevenue)}`}
           >
-            <View style={styles.ledgerCardTop}>
-              <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                <Text style={styles.ledgerKicker}>Revenue · 30 days</Text>
-                <Text
-                  style={styles.ledgerValue}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                >
-                  {formatHeroRevenue(totalRevenue)}
-                </Text>
+            <LinearGradient
+              colors={["#161513", "#1F1D19", "#100F0D"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <LinearGradient
+              colors={["rgba(200,164,74,0.14)", "transparent"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0.7, y: 0.7 }}
+              style={StyleSheet.absoluteFillObject}
+              pointerEvents="none"
+            />
+
+            <View style={styles.ledgerCardHeader}>
+              <View style={styles.ledgerKickerBadge}>
+                <Ionicons name="sparkles" size={10} color="#C8A44A" />
+                <Text style={styles.ledgerKickerText}>REVENUE · 30 DAYS</Text>
               </View>
-              {analyticsReady && (kpis?.revenueSeries?.length ?? 0) > 1 ? (
-                <RevenueChart
-                  compact
-                  height={48}
-                  points={kpis!.revenueSeries}
-                  style={styles.ledgerSpark}
-                />
+              {revenueTrend ? (
+                <View style={styles.trendBadge}>
+                  <Ionicons
+                    name={revenueDelta >= 0 ? "trending-up" : "trending-down"}
+                    size={11}
+                    color={revenueDelta >= 0 ? "#7D8B6F" : "#B85C3A"}
+                  />
+                  <Text
+                    style={[
+                      styles.trendText,
+                      revenueDelta < 0 && styles.trendTextNegative,
+                    ]}
+                  >
+                    {revenueTrend}
+                  </Text>
+                </View>
               ) : (
-                <View style={styles.ledgerSparkPlaceholder}>
-                  <Ionicons name="trending-up" size={18} color={GOLD} />
+                <View style={styles.trendBadgeNeutral}>
+                  <Text style={styles.trendTextNeutral}>30D WINDOW</Text>
                 </View>
               )}
             </View>
-            <Text style={styles.ledgerHint} numberOfLines={2}>
-              {!analyticsReady
-                ? "Analytics unavailable — pull to refresh"
-                : (totalRevenue ?? 0) > 0
-                  ? revenueTrend
-                    ? `${revenueTrend} vs prior period · Insights`
-                    : "Open full analytics"
-                  : "Your first sale will appear here"}
-            </Text>
+
+            <View style={styles.ledgerCardMainRow}>
+              <View style={styles.ledgerAmountCol}>
+                <Text style={styles.ledgerValue} numberOfLines={1}>
+                  {formatHeroRevenue(totalRevenue)}
+                </Text>
+              </View>
+
+              <View style={styles.ledgerChartWrap}>
+                {analyticsReady && (kpis?.revenueSeries?.length ?? 0) > 1 ? (
+                  <RevenueChart
+                    compact
+                    height={46}
+                    points={kpis!.revenueSeries}
+                    style={styles.ledgerSpark}
+                  />
+                ) : (
+                  <View style={styles.ledgerSparkPlaceholder}>
+                    <Ionicons name="trending-up" size={18} color="#C8A44A" />
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.ledgerDivider} />
+
+            <View style={styles.ledgerFooterRow}>
+              <Text style={styles.ledgerHint} numberOfLines={1}>
+                {!analyticsReady
+                  ? "Analytics syncing — pull to refresh"
+                  : (totalRevenue ?? 0) > 0
+                    ? revenueTrend
+                      ? `${revenueTrend} vs prior period · Detailed ledger`
+                      : "Open full financial insights"
+                    : "Your first sale will appear here"}
+              </Text>
+              <View style={styles.ledgerArrowPill}>
+                <Ionicons name="arrow-forward" size={11} color="#E8CF8F" />
+              </View>
+            </View>
           </TouchableOpacity>
 
-          <View style={styles.heroMetaRow}>
+          {/* 4. 3 Executive Metric Cards */}
+          <View style={styles.metricsGrid}>
             <TouchableOpacity
-              style={styles.heroMetaItem}
+              style={styles.metricCard}
               onPress={() => router.push("/(seller)/orders" as any)}
+              activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={`${totalOrders ?? 0} orders`}
             >
-              <Text style={[styles.heroMetaValue, ordersNeedWork && { color: "#9a6b1f" }]}>
+              <View style={styles.metricTopRow}>
+                <View style={[styles.metricIndicatorDot, ordersNeedWork && styles.metricIndicatorDotAmber]} />
+                <Ionicons name="bag-check-outline" size={13} color="#85651B" />
+              </View>
+              <Text style={[styles.metricNumber, ordersNeedWork && styles.metricNumberAmber]}>
                 {ordersNeedWork ? pendingOrders : totalOrders ?? "—"}
               </Text>
-              <Text style={styles.heroMetaLabel}>{ordersNeedWork ? "Pending" : "Orders"}</Text>
+              <Text style={styles.metricLabel}>{ordersNeedWork ? "PENDING" : "ORDERS"}</Text>
             </TouchableOpacity>
-            <View style={styles.heroMetaRule} />
+
             <TouchableOpacity
-              style={styles.heroMetaItem}
+              style={styles.metricCard}
               onPress={() => router.push("/(seller)/products" as any)}
+              activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={`${totalProducts ?? 0} products`}
             >
-              <Text style={styles.heroMetaValue}>{totalProducts ?? "—"}</Text>
-              <Text style={styles.heroMetaLabel}>Listed</Text>
+              <View style={styles.metricTopRow}>
+                <View style={[styles.metricIndicatorDot, { backgroundColor: "#141311" }]} />
+                <Ionicons name="pricetag-outline" size={13} color="#6B675E" />
+              </View>
+              <Text style={styles.metricNumber}>{totalProducts ?? "—"}</Text>
+              <Text style={styles.metricLabel}>LISTED</Text>
             </TouchableOpacity>
-            <View style={styles.heroMetaRule} />
+
             <TouchableOpacity
-              style={styles.heroMetaItem}
+              style={styles.metricCard}
               onPress={() => router.push("/(seller)/inventory" as any)}
+              activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={inventoryReady ? `${stock.value} ${stock.heroLabel}` : "Stock unavailable"}
             >
+              <View style={styles.metricTopRow}>
+                <View
+                  style={[
+                    styles.metricIndicatorDot,
+                    inventoryReady && stock.tone === "critical" && styles.metricIndicatorDotCritical,
+                    inventoryReady && stock.tone === "warn" && styles.metricIndicatorDotAmber,
+                  ]}
+                />
+                <Ionicons
+                  name="cube-outline"
+                  size={13}
+                  color={inventoryReady && stock.tone === "critical" ? "#B85C3A" : "#6B675E"}
+                />
+              </View>
               <Text
                 style={[
-                  styles.heroMetaValue,
-                  inventoryReady && stock.tone === "critical" && { color: RUST },
-                  inventoryReady && stock.tone === "warn" && { color: "#9a6b1f" },
+                  styles.metricNumber,
+                  inventoryReady && stock.tone === "critical" && styles.metricNumberCritical,
+                  inventoryReady && stock.tone === "warn" && styles.metricNumberAmber,
                 ]}
               >
                 {inventoryReady ? stock.value : "—"}
               </Text>
-              <Text style={styles.heroMetaLabel}>{inventoryReady ? stock.heroLabel : "Stock"}</Text>
+              <Text style={styles.metricLabel}>{inventoryReady ? stock.heroLabel.toUpperCase() : "STOCK"}</Text>
             </TouchableOpacity>
           </View>
 
+          {/* 5. Primary Action Buttons */}
           <View style={styles.heroActions}>
             {ordersNeedWork ? (
               <>
@@ -591,10 +682,20 @@ export default function SellerDashboard() {
                   accessibilityRole="button"
                   accessibilityLabel={`Process ${pendingOrders} pending orders`}
                 >
-                  <Text style={styles.heroBtnPrimaryText}>Process orders</Text>
-                  <View style={styles.heroBtnCount}>
-                    <Text style={styles.heroBtnCountText}>{formatBadgeCount(pendingOrders ?? 0)}</Text>
-                  </View>
+                  <LinearGradient
+                    colors={["#24211D", "#141311"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroBtnPrimaryGradient}
+                  >
+                    <Ionicons name="flash" size={14} color="#C8A44A" />
+                    <Text style={styles.heroBtnPrimaryText}>Process orders</Text>
+                    <View style={styles.heroBtnBadge}>
+                      <Text style={styles.heroBtnBadgeText}>
+                        {formatBadgeCount(pendingOrders ?? 0)}
+                      </Text>
+                    </View>
+                  </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.heroBtnGhost}
@@ -603,6 +704,7 @@ export default function SellerDashboard() {
                   accessibilityRole="button"
                   accessibilityLabel="Add product"
                 >
+                  <Ionicons name="add" size={16} color="#141311" />
                   <Text style={styles.heroBtnGhostText}>Add product</Text>
                 </TouchableOpacity>
               </>
@@ -615,7 +717,15 @@ export default function SellerDashboard() {
                   accessibilityRole="button"
                   accessibilityLabel="Add product"
                 >
-                  <Text style={styles.heroBtnPrimaryText}>Add product</Text>
+                  <LinearGradient
+                    colors={["#24211D", "#141311"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroBtnPrimaryGradient}
+                  >
+                    <Ionicons name="add" size={15} color="#C8A44A" />
+                    <Text style={styles.heroBtnPrimaryText}>Add product</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.heroBtnGhost}
@@ -624,6 +734,7 @@ export default function SellerDashboard() {
                   accessibilityRole="button"
                   accessibilityLabel="View orders"
                 >
+                  <Ionicons name="bag-check-outline" size={15} color="#141311" />
                   <Text style={styles.heroBtnGhostText}>View orders</Text>
                 </TouchableOpacity>
               </>
@@ -681,10 +792,13 @@ export default function SellerDashboard() {
         </TouchableOpacity>
       )}
 
+      {/* 01. Tools / Operations */}
       <View style={[styles.section, inventoryIssues === 0 && (returnsCount ?? 0) === 0 && styles.bodyStart]}>
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>Tools</Text>
+            <View style={styles.sectionKickerBadge}>
+              <Text style={styles.sectionKickerText}>01 · OPERATIONS</Text>
+            </View>
             <Text style={styles.sectionTitle}>Quick actions</Text>
           </View>
         </View>
@@ -706,11 +820,54 @@ export default function SellerDashboard() {
         />
       </View>
 
+      {/* 02. Public Boutique Storefront Banner */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.storefrontCard}
+          onPress={() => {
+            if (store?.slug || store?.id) {
+              router.push(`/store/${store.slug || store.id}` as any);
+            } else {
+              Alert.alert("Storefront Inactive", "Your boutique storefront will be public once verified.");
+            }
+          }}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={["#1A1815", "#141311"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={styles.storefrontLeft}>
+            <View style={styles.storefrontIconMedallion}>
+              <Ionicons name="storefront-outline" size={18} color="#E8CF8F" />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={styles.storefrontKickerRow}>
+                <Ionicons name="sparkles" size={9} color="#C8A44A" />
+                <Text style={styles.storefrontKicker}>PATRON EXPERIENCE</Text>
+              </View>
+              <Text style={styles.storefrontTitle}>View Public Boutique</Text>
+              <Text style={styles.storefrontSub}>
+                Inspect your storefront as collectors see it on LUXE
+              </Text>
+            </View>
+          </View>
+          <View style={styles.storefrontArrow}>
+            <Ionicons name="arrow-forward" size={13} color="#C8A44A" />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* 03. Stock Room (if issues exist) */}
       {totalSkus > 0 && inventoryIssues > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionKicker}>Stock room</Text>
+              <View style={styles.sectionKickerBadge}>
+                <Text style={styles.sectionKickerText}>02 · INVENTORY</Text>
+              </View>
               <Text style={styles.sectionTitle}>Needs restock</Text>
             </View>
             <TouchableOpacity
@@ -719,7 +876,7 @@ export default function SellerDashboard() {
               accessibilityRole="button"
               accessibilityLabel="Manage inventory"
             >
-              <Text style={styles.sectionLink}>Manage</Text>
+              <Text style={styles.sectionLink}>Manage →</Text>
             </TouchableOpacity>
           </View>
 
@@ -730,36 +887,41 @@ export default function SellerDashboard() {
           >
             <View style={styles.stockStats}>
               <View style={styles.stockStat}>
-                <Text style={[styles.stockStatValue, { color: "#9a6b1f" }]}>{lowStockCount}</Text>
-                <Text style={styles.stockStatLabel}>Low</Text>
+                <Text style={[styles.stockStatValue, { color: "#85651B" }]}>{lowStockCount}</Text>
+                <Text style={styles.stockStatLabel}>Low stock</Text>
               </View>
               <View style={styles.panelRule} />
               <View style={styles.stockStat}>
-                <Text style={[styles.stockStatValue, { color: RUST }]}>{outOfStockCount}</Text>
-                <Text style={styles.stockStatLabel}>Out</Text>
+                <Text style={[styles.stockStatValue, { color: "#B85C3A" }]}>{outOfStockCount}</Text>
+                <Text style={styles.stockStatLabel}>Out of stock</Text>
               </View>
               <View style={styles.panelRule} />
               <View style={styles.stockStat}>
                 <Text style={styles.stockStatValue}>{totalSkus}</Text>
-                <Text style={styles.stockStatLabel}>SKUs</Text>
+                <Text style={styles.stockStatLabel}>Total SKUs</Text>
               </View>
             </View>
           </TouchableOpacity>
         </View>
       )}
 
+      {/* 04. Lookbook / Bestsellers */}
       {topProducts.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionKicker}>{hasSales ? "Lookbook" : "Collection"}</Text>
-              <Text style={styles.sectionTitle}>{hasSales ? "Bestsellers" : "Your pieces"}</Text>
+              <View style={styles.sectionKickerBadge}>
+                <Text style={styles.sectionKickerText}>
+                  {hasSales ? "03 · CURATED LOOKBOOK" : "03 · ATELIER PIECES"}
+                </Text>
+              </View>
+              <Text style={styles.sectionTitle}>{hasSales ? "Bestselling pieces" : "Your collection"}</Text>
             </View>
             <TouchableOpacity
               onPress={() => router.push("/(seller)/products" as any)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={styles.sectionLink}>All</Text>
+              <Text style={styles.sectionLink}>View all →</Text>
             </TouchableOpacity>
           </View>
 
@@ -783,13 +945,15 @@ export default function SellerDashboard() {
                   onPress={() => router.push(`/(seller)/products/${p.id}` as any)}
                   activeOpacity={0.75}
                 >
-                  <Text style={styles.lookRank}>{String(i + 1).padStart(2, "0")}</Text>
+                  <View style={styles.lookRankBadge}>
+                    <Text style={styles.lookRank}>{String(i + 1).padStart(2, "0")}</Text>
+                  </View>
                   <View style={styles.lookImage}>
                     {img ? (
                       <Image source={{ uri: img }} style={styles.lookImg} contentFit="cover" />
                     ) : (
                       <View style={[styles.lookImg, styles.lookImgEmpty]}>
-                        <Ionicons name="image-outline" size={16} color={colors.light.mutedForeground} />
+                        <Ionicons name="image-outline" size={16} color="#A49E93" />
                       </View>
                     )}
                   </View>
@@ -797,6 +961,7 @@ export default function SellerDashboard() {
                     <Text style={styles.lookName} numberOfLines={1}>{p.name}</Text>
                     <Text style={styles.lookMeta}>{meta}</Text>
                   </View>
+                  <Ionicons name="chevron-forward" size={14} color="#A49E93" />
                 </TouchableOpacity>
               );
             })}
@@ -804,10 +969,13 @@ export default function SellerDashboard() {
         </View>
       )}
 
+      {/* 05. Recent Orders / Ledger */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>Ledger</Text>
+            <View style={styles.sectionKickerBadge}>
+              <Text style={styles.sectionKickerText}>04 · COMMISSIONS</Text>
+            </View>
             <Text style={styles.sectionTitle}>Recent orders</Text>
           </View>
           {typeof totalOrders === "number" && totalOrders > 0 && (
@@ -817,7 +985,7 @@ export default function SellerDashboard() {
               accessibilityRole="button"
               accessibilityLabel="View all orders"
             >
-              <Text style={styles.sectionLink}>All</Text>
+              <Text style={styles.sectionLink}>All orders →</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -851,7 +1019,10 @@ export default function SellerDashboard() {
                       {itemsCount} {pluralize(itemsCount, "item")}  ·  {formatRelative(o.placed_at)}
                     </Text>
                   </View>
-                  <Text style={styles.orderTotal}>{formatPrice(o.total)}</Text>
+                  <View style={styles.orderRightCol}>
+                    <Text style={styles.orderTotal}>{formatPrice(o.total)}</Text>
+                    <Ionicons name="chevron-forward" size={14} color="#A49E93" />
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -860,17 +1031,43 @@ export default function SellerDashboard() {
           <EmptyState
             icon="bag-handle-outline"
             title="No orders yet"
-            description="New commissions will appear here the moment a customer checks out."
+            description="New commissions will appear here the moment a patron checks out."
           />
         ) : null}
       </View>
 
+      {/* 06. Treasury & Payout Status Advisory */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.payoutCard}
+          onPress={() => router.push("/(seller)/payouts" as any)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.payoutIconWrap}>
+            <Ionicons name="wallet-outline" size={20} color="#85651B" />
+          </View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <View style={styles.payoutKickerRow}>
+              <Text style={styles.payoutKicker}>TREASURY SETTLEMENT</Text>
+            </View>
+            <Text style={styles.payoutTitle}>Payouts & Bank Account</Text>
+            <Text style={styles.payoutSub}>
+              Direct deposit schedule, settlement ledger, and invoices
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#85651B" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 07. Correspondence / Activity */}
       {notifications.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionKicker}>Correspondence</Text>
-              <Text style={styles.sectionTitle}>Activity</Text>
+              <View style={styles.sectionKickerBadge}>
+                <Text style={styles.sectionKickerText}>05 · CORRESPONDENCE</Text>
+              </View>
+              <Text style={styles.sectionTitle}>Activity & updates</Text>
             </View>
             {unreadCount > 0 ? (
               <TouchableOpacity
@@ -880,14 +1077,14 @@ export default function SellerDashboard() {
                 accessibilityRole="button"
                 accessibilityLabel={`${unreadCount} new notifications`}
               >
-                <Text style={styles.unreadBadgeText}>{unreadCount} new</Text>
+                <Text style={styles.unreadBadgeText}>{unreadCount} unread</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={() => router.push("/(seller)/notifications" as any)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.sectionLink}>All</Text>
+                <Text style={styles.sectionLink}>View all →</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -915,6 +1112,7 @@ export default function SellerDashboard() {
                     ) : null}
                     <Text style={styles.notifTime}>{formatRelative(n.created_at)}</Text>
                   </View>
+                  <Ionicons name="chevron-forward" size={13} color="#A49E93" />
                 </TouchableOpacity>
               );
             })}
@@ -1020,18 +1218,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing[4],
   },
+  /* Top Atelier Header */
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing[5],
+    marginBottom: spacing[4],
   },
-  heroHeaderLeft: { gap: 4, flex: 1, paddingRight: 12 },
+  dateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+  },
   heroDate: {
-    fontSize: 11,
-    color: colors.olive[700],
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1.4,
+    fontSize: 10,
+    color: "#85651B",
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.2,
   },
   heroKicker: {
     fontSize: 11,
@@ -1043,121 +1252,244 @@ const styles = StyleSheet.create({
   heroHeaderRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    gap: 8,
   },
   liveTag: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(83,94,44,0.10)",
+    backgroundColor: "rgba(76, 120, 60, 0.12)",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: radii.full,
-    minHeight: 36,
+    minHeight: 34,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.22)",
+    borderColor: "rgba(76, 120, 60, 0.25)",
   },
   liveTagOff: {
-    backgroundColor: "rgba(22,23,15,0.05)",
-    borderColor: "rgba(22,23,15,0.12)",
+    backgroundColor: "rgba(20, 19, 17, 0.05)",
+    borderColor: "rgba(20, 19, 17, 0.12)",
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: GOLD,
+    backgroundColor: "#4E8D42",
   },
   liveDotOff: {
-    backgroundColor: "rgba(22,23,15,0.30)",
+    backgroundColor: "#8E8B82",
   },
   liveText: {
     fontSize: 11,
-    color: colors.olive[950],
+    color: "#2C5A23",
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
+  },
+  liveTextOff: {
+    color: "#6B675E",
   },
   notifBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#fffdf8",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.18)",
+    borderColor: "#EAE7DF",
     alignItems: "center",
     justifyContent: "center",
+    ...shadows.soft,
   },
   notifBadge: {
     position: "absolute",
-    top: 6,
-    right: 6,
-    backgroundColor: RUST,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
+    top: -2,
+    right: -2,
+    backgroundColor: "#C8A44A",
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
   },
   notifBadgeText: {
-    color: CREAM,
+    color: "#141311",
     fontSize: 9,
     fontFamily: fontFamilies.mono.semibold,
   },
+
+  /* Store Branding & Greeting */
   storeBrandingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    marginBottom: spacing[5],
+    gap: 14,
+    marginBottom: spacing[4],
+  },
+  storeAvatarBezel: {
+    position: "relative",
+    padding: 2.5,
+    borderRadius: 30,
+    borderWidth: 1.5,
+    borderColor: "#C8A44A",
+    backgroundColor: "#FAF8F5",
+    ...shadows.soft,
   },
   storeLogo: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: "rgba(200,164,74,0.55)",
   },
   storeMonogram: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: CREAM,
+    backgroundColor: "#FAF8F5",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: GOLD,
   },
   storeMonogramText: {
     fontSize: 22,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.olive[800],
+    color: "#141311",
   },
-  greetingWrap: { flex: 1, minWidth: 0 },
-  heroGreeting: {
-    fontSize: 14,
-    color: colors.ink.mute,
-    fontFamily: fontFamilies.display.italic,
-  },
-  heroName: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontFamily: fontFamilies.display.semibold,
-    color: colors.olive[950],
-    marginTop: 1,
-    letterSpacing: -0.4,
-  },
-  ledgerCard: {
-    backgroundColor: "#fffdf8",
+  avatarSparkleBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#141311",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-    borderRadius: radii["2xl"],
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    marginBottom: spacing[4],
+    borderColor: "#C8A44A",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  ledgerCardTop: {
+  greetingWrap: { flex: 1, minWidth: 0, gap: 2 },
+  greetingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
+  },
+  heroGreeting: {
+    fontSize: 14,
+    color: "#85651B",
+    fontFamily: fontFamilies.display.italic,
+  },
+  maisonVerifiedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+  },
+  maisonVerifiedText: {
+    fontSize: 8,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#85651B",
+    letterSpacing: 1,
+  },
+  heroName: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#141311",
+    letterSpacing: -0.4,
+  },
+
+  /* Haute Horlogerie Treasury Card */
+  ledgerCard: {
+    borderRadius: 22,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#2E2A24",
+    padding: 18,
+    marginBottom: 14,
+    ...shadows.soft,
+  },
+  ledgerCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  ledgerKickerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.28)",
+  },
+  ledgerKickerText: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#E8CF8F",
+    letterSpacing: 1.4,
+  },
+  trendBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(125, 139, 111, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(125, 139, 111, 0.35)",
+  },
+  trendText: {
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#9BB386",
+    letterSpacing: 0.4,
+  },
+  trendTextNegative: {
+    color: "#E88D72",
+  },
+  trendBadgeNeutral: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  trendTextNeutral: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.medium,
+    color: "#A49E93",
+    letterSpacing: 0.8,
+  },
+  ledgerCardMainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 12,
+  },
+  ledgerAmountCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+  },
+  ledgerValue: {
+    fontSize: 32,
+    lineHeight: 38,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#FAF8F5",
+    letterSpacing: -0.6,
+    fontVariant: ["tabular-nums"],
+  },
+  ledgerChartWrap: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   ledgerSpark: {
     opacity: 0.95,
@@ -1166,119 +1498,156 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: colors.olive[50],
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.2)",
   },
-  ledgerKicker: {
-    fontSize: 10,
-    color: colors.olive[700],
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 4,
+  ledgerDivider: {
+    height: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    marginBottom: 10,
   },
-  ledgerValue: {
-    fontSize: 34,
-    lineHeight: 40,
-    fontFamily: fontFamilies.display.semibold,
-    color: colors.olive[950],
-    letterSpacing: -0.6,
-    fontVariant: ["tabular-nums"],
-  },
-  ledgerHint: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.ink.mute,
-    fontFamily: fontFamilies.sans.regular,
-  },
-  heroMetaRow: {
+  ledgerFooterRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing[5],
-    paddingVertical: spacing[3],
-    borderRadius: radii.xl,
-    backgroundColor: "rgba(83,94,44,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    justifyContent: "space-between",
+    gap: 8,
   },
-  heroMetaItem: {
+  ledgerHint: {
     flex: 1,
-    alignItems: "center",
-    minHeight: 48,
-    justifyContent: "center",
+    fontSize: 11,
+    color: "#A49E93",
+    fontFamily: fontFamilies.sans.regular,
   },
-  heroMetaValue: {
-    fontSize: 20,
+  ledgerArrowPill: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
+  },
+
+  /* 3 Executive Metric Cards */
+  metricsGrid: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 14,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
+    minHeight: 76,
+    justifyContent: "space-between",
+    ...shadows.soft,
+  },
+  metricTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  metricIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#141311",
+  },
+  metricIndicatorDotAmber: {
+    backgroundColor: "#C8A44A",
+  },
+  metricIndicatorDotCritical: {
+    backgroundColor: "#B85C3A",
+  },
+  metricNumber: {
+    fontSize: 22,
+    lineHeight: 26,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.olive[950],
+    color: "#141311",
     letterSpacing: -0.3,
     fontVariant: ["tabular-nums"],
   },
-  heroMetaLabel: {
-    marginTop: 3,
-    fontSize: 10,
-    color: colors.ink.mute,
+  metricNumberAmber: {
+    color: "#85651B",
+  },
+  metricNumberCritical: {
+    color: "#B85C3A",
+  },
+  metricLabel: {
+    marginTop: 2,
+    fontSize: 9,
     fontFamily: fontFamilies.mono.medium,
+    color: "#8E8B82",
     letterSpacing: 1.1,
-    textTransform: "uppercase",
   },
-  heroMetaRule: {
-    width: StyleSheet.hairlineWidth,
-    height: 28,
-    backgroundColor: "rgba(83,94,44,0.18)",
-  },
+
+  /* Action Buttons */
   heroActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
+    gap: 10,
   },
   heroBtnPrimary: {
     flex: 1,
+    borderRadius: radii.full,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
+    ...shadows.soft,
+  },
+  heroBtnPrimaryGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: colors.olive[900],
-    minHeight: 50,
-    paddingHorizontal: 18,
-    borderRadius: radii.full,
-    ...shadows.soft,
+    minHeight: 48,
+    paddingHorizontal: 16,
   },
   heroBtnPrimaryText: {
-    color: CREAM,
+    color: "#FAF8F5",
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.semibold,
-    letterSpacing: 0.15,
+    letterSpacing: 0.2,
   },
-  heroBtnCount: {
-    backgroundColor: CREAM,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
+  heroBtnBadge: {
+    backgroundColor: "#C8A44A",
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
   },
-  heroBtnCountText: {
-    color: colors.olive[900],
+  heroBtnBadgeText: {
+    color: "#141311",
     fontSize: 10,
     fontFamily: fontFamilies.mono.semibold,
   },
   heroBtnGhost: {
-    minHeight: 50,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
+    gap: 6,
+    minHeight: 48,
+    paddingHorizontal: 16,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.22)",
-    backgroundColor: SELLER_CREAM,
+    borderColor: "#EAE7DF",
+    backgroundColor: "#FFFFFF",
+    ...shadows.soft,
   },
   heroBtnGhostText: {
-    color: colors.olive[900],
+    color: "#141311",
     fontSize: typography.fontSizes.sm,
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
     letterSpacing: 0.2,
   },
   heroGoldEdge: {
@@ -1298,12 +1667,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: spacing[5],
-    marginTop: spacing[5],
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    marginTop: spacing[4],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(184,92,58,0.18)",
+    borderColor: "rgba(184,92,58,0.22)",
     minHeight: 76,
     ...shadows.soft,
   },
@@ -1348,7 +1717,7 @@ const styles = StyleSheet.create({
   },
 
   section: {
-    paddingLeft: spacing[5],
+    paddingHorizontal: spacing[5],
     marginTop: spacing[6],
   },
   bodyStart: {
@@ -1359,119 +1728,157 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
     marginBottom: spacing[3],
-    paddingRight: spacing[5],
   },
-  sectionKicker: {
-    fontSize: 10,
-    color: colors.olive[600],
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 2.0,
-    textTransform: "uppercase",
-    marginBottom: 3,
+  sectionKickerBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: "#F4F1EA",
+    borderWidth: 1,
+    borderColor: "#E5E0D5",
+    alignSelf: "flex-start",
+    marginBottom: 4,
+  },
+  sectionKickerText: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#85651B",
+    letterSpacing: 1.2,
   },
   sectionTitle: {
     fontSize: 22,
     lineHeight: 28,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.ink.DEFAULT,
+    color: "#141311",
     letterSpacing: -0.3,
   },
   sectionLink: {
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.semibold,
-    color: colors.olive[800],
+    color: "#85651B",
   },
 
-  opsRail: {
-    gap: 10,
-    paddingRight: spacing[5],
-    paddingBottom: 4,
-  },
-  opsTile: {
-    width: 84,
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+  /* Public Storefront Banner */
+  storefrontCard: {
+    borderRadius: 22,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
-    minHeight: 88,
-  },
-  opsIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: colors.olive[50],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  opsTileBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    backgroundColor: colors.olive[800],
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: CREAM,
-  },
-  opsTileLabel: {
-    fontSize: 12,
-    fontFamily: fontFamilies.sans.medium,
-    color: colors.olive[900],
-    textAlign: "center",
-  },
-  opsPill: {
+    borderColor: "#2E2A24",
+    padding: 16,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: CREAM,
+    justifyContent: "space-between",
+    gap: 12,
+    ...shadows.soft,
+  },
+  storefrontLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    flex: 1,
+  },
+  storefrontIconMedallion: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: radii.full,
-    minHeight: 44,
-  },
-  opsPillLabel: {
-    fontSize: 13,
-    fontFamily: fontFamilies.sans.medium,
-    color: colors.olive[800],
-  },
-  opsPillBadge: {
-    backgroundColor: colors.olive[800],
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    borderColor: "rgba(200, 164, 74, 0.3)",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 5,
   },
-  opsPillBadgeText: {
-    color: CREAM,
+  storefrontKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  storefrontKicker: {
     fontSize: 9,
     fontFamily: fontFamilies.mono.semibold,
+    color: "#E8CF8F",
+    letterSpacing: 1.2,
+  },
+  storefrontTitle: {
+    fontSize: 16,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#FAF8F5",
+    letterSpacing: -0.2,
+  },
+  storefrontSub: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.regular,
+    color: "#A49E93",
+    lineHeight: 16,
+  },
+  storefrontArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* Treasury & Payout Status Advisory */
+  payoutCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    ...shadows.soft,
+  },
+  payoutIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#F7F5EE",
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payoutKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  payoutKicker: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#85651B",
+    letterSpacing: 1.2,
+  },
+  payoutTitle: {
+    fontSize: 15,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#141311",
+    letterSpacing: -0.2,
+  },
+  payoutSub: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.regular,
+    color: "#8E8B82",
+    lineHeight: 16,
   },
 
   panel: {
-    marginRight: spacing[5],
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
+    borderColor: "#EAE7DF",
     paddingHorizontal: spacing[4],
     ...shadows.soft,
   },
   panelRule: {
     width: StyleSheet.hairlineWidth,
     alignSelf: "stretch",
-    backgroundColor: "rgba(83,94,44,0.16)",
+    backgroundColor: "#EAE7DF",
   },
 
   stockStats: {
@@ -1484,78 +1891,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   stockStatValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.ink.DEFAULT,
+    color: "#141311",
     fontVariant: ["tabular-nums"],
   },
   stockStatLabel: {
-    fontSize: 11,
-    color: colors.ink.mute,
+    fontSize: 10,
+    color: "#8E8B82",
     fontFamily: fontFamilies.mono.medium,
     letterSpacing: 1.2,
     textTransform: "uppercase",
     marginTop: 4,
   },
-  stockBar: {
-    flexDirection: "row",
-    height: 4,
-    borderRadius: 2,
-    overflow: "hidden",
-    backgroundColor: colors.olive[50],
-    marginBottom: spacing[3],
-  },
-  stockBarFill: {
-    height: "100%",
-  },
-  stockLegend: {
-    flexDirection: "row",
-    gap: spacing[4],
-    paddingBottom: spacing[4],
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  legendDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  legendLabel: {
-    fontSize: 11,
-    color: colors.ink.mute,
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
 
   lookRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingVertical: spacing[3],
+    gap: 12,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(83,94,44,0.12)",
-    minHeight: 72,
+    borderBottomColor: "#F4F1EA",
+    minHeight: 74,
   },
   lookRowLast: {
     borderBottomWidth: 0,
   },
+  lookRankBadge: {
+    width: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   lookRank: {
-    width: 28,
-    fontSize: 13,
-    fontFamily: fontFamilies.display.semibold,
-    color: GOLD,
+    fontSize: 12,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#85651B",
     fontVariant: ["tabular-nums"],
   },
   lookImage: {
-    width: 56,
-    height: 72,
-    borderRadius: 4,
+    width: 50,
+    height: 64,
+    borderRadius: 8,
     overflow: "hidden",
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#F7F5EE",
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
   },
   lookImg: {
     width: "100%",
@@ -1564,115 +1944,107 @@ const styles = StyleSheet.create({
   lookImgEmpty: {
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#F7F5EE",
   },
-  lookInfo: { flex: 1 },
+  lookInfo: { flex: 1, minWidth: 0, gap: 2 },
   lookName: {
-    fontSize: 16,
-    fontFamily: fontFamilies.display.regular,
-    color: colors.ink.DEFAULT,
+    fontSize: 14,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#141311",
   },
   lookMeta: {
-    marginTop: 4,
     fontSize: 12,
-    color: colors.ink.mute,
     fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 0.4,
+    color: "#85651B",
   },
 
   ledgerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingVertical: spacing[4],
+    justifyContent: "space-between",
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(83,94,44,0.12)",
-    minHeight: 64,
+    borderBottomColor: "#F4F1EA",
   },
-  orderInfo: { flex: 1 },
+  orderInfo: { flex: 1, minWidth: 0, gap: 4 },
   orderNumberRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    gap: 8,
   },
   orderNumber: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: fontFamilies.mono.semibold,
-    color: colors.ink.DEFAULT,
-    letterSpacing: 0.3,
-  },
-  orderStatus: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  orderStatusText: {
-    fontSize: 10,
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+    color: "#141311",
   },
   orderMeta: {
     fontSize: 12,
-    color: colors.ink.mute,
-    marginTop: 4,
+    color: "#8E8B82",
+    fontFamily: fontFamilies.sans.regular,
+  },
+  orderRightCol: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   orderTotal: {
     fontSize: 15,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.ink.DEFAULT,
+    color: "#141311",
+    letterSpacing: -0.2,
     fontVariant: ["tabular-nums"],
   },
 
   unreadBadge: {
-    backgroundColor: colors.olive[800],
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
   },
   unreadBadgeText: {
-    color: CREAM,
+    color: "#85651B",
     fontSize: 11,
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.mono.semibold,
   },
   notifRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing[3],
-    paddingVertical: spacing[4],
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(83,94,44,0.12)",
+    borderBottomColor: "#F4F1EA",
   },
   notifMark: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "transparent",
-    marginTop: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#E5E0D5",
   },
   notifMarkUnread: {
-    backgroundColor: GOLD,
+    backgroundColor: "#C8A44A",
   },
-  notifContent: { flex: 1 },
+  notifContent: { flex: 1, minWidth: 0, gap: 2 },
   notifTitle: {
-    fontSize: 15,
-    fontFamily: fontFamilies.sans.regular,
-    color: colors.ink.DEFAULT,
+    fontSize: 14,
+    fontFamily: fontFamilies.sans.medium,
+    color: "#6B675E",
   },
   notifTitleUnread: {
     fontFamily: fontFamilies.sans.semibold,
+    color: "#141311",
   },
   notifBody: {
-    fontSize: 13,
-    color: colors.ink.mute,
-    marginTop: 3,
-    lineHeight: 18,
+    fontSize: 12,
+    color: "#8E8B82",
+    lineHeight: 16,
   },
   notifTime: {
-    fontSize: 11,
-    color: colors.ink.mute,
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 0.6,
-    marginTop: 6,
+    fontSize: 10,
+    color: "#A49E93",
+    fontFamily: fontFamilies.mono.regular,
+    marginTop: 2,
   },
 
   emptyCard: {
@@ -1680,10 +2052,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingVertical: spacing[7],
     paddingHorizontal: spacing[5],
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
+    borderColor: "#EAE7DF",
   },
   emptyKicker: {
     fontSize: 11,
@@ -1696,12 +2068,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 22,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.ink.DEFAULT,
+    color: "#141311",
   },
   emptySub: {
     marginTop: spacing[2],
     fontSize: 14,
-    color: colors.ink.mute,
+    color: "#8E8B82",
     lineHeight: 21,
     maxWidth: 280,
   },

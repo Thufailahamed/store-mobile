@@ -37,13 +37,13 @@ export function SellerBentoGrid({ items }: { items: SellerBentoItem[] }) {
         >
           <View style={styles.topRow}>
             <View style={styles.iconBadge}>
-              <Ionicons name={item.icon} size={20} color={colors.olive[800]} />
+              <Ionicons name={item.icon} size={18} color="#141311" />
               {item.badge != null && item.badge > 0 ? (
                 <View
                   style={[
                     styles.badge,
-                    item.tone === "critical" && { backgroundColor: colors.accent2.rust },
-                    item.tone === "warn" && { backgroundColor: colors.accent2.ochre },
+                    item.tone === "critical" && { backgroundColor: "#B85C3A" },
+                    item.tone === "warn" && { backgroundColor: "#C8A44A" },
                   ]}
                 >
                   <Text style={styles.badgeText}>
@@ -52,7 +52,7 @@ export function SellerBentoGrid({ items }: { items: SellerBentoItem[] }) {
                 </View>
               ) : null}
             </View>
-            <Ionicons name="chevron-forward" size={14} color={colors.ink.mute} />
+            <Ionicons name="chevron-forward" size={13} color="#A49E93" />
           </View>
           <View>
             <Text style={styles.label}>{item.label}</Text>
@@ -69,11 +69,11 @@ const styles = StyleSheet.create({
   tile: {
     width: "47.5%",
     flexGrow: 1,
-    minHeight: 108,
-    backgroundColor: SELLER_CREAM,
-    borderRadius: radii["2xl"],
+    minHeight: 110,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: sellerBorder,
+    borderColor: "#EAE7DF",
     paddingHorizontal: 14,
     paddingVertical: 14,
     justifyContent: "space-between",
@@ -82,28 +82,30 @@ const styles = StyleSheet.create({
   },
   topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   iconBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: colors.olive[50],
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#F7F5EE",
     borderWidth: 1,
-    borderColor: sellerBorder,
+    borderColor: "#ECE8DD",
     alignItems: "center",
     justifyContent: "center",
   },
   badge: {
     position: "absolute",
-    top: -5,
-    right: -5,
+    top: -4,
+    right: -4,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 4,
-    backgroundColor: colors.olive[800],
+    backgroundColor: "#C8A44A",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
   },
-  badgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: SELLER_CREAM },
-  label: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.sm, color: colors.olive[950] },
-  hint: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 1.2, color: colors.ink.mute, marginTop: 2 },
+  badgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: "#141311" },
+  label: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: "#141311" },
+  hint: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.2, color: "#8E8B82", marginTop: 2 },
 });
