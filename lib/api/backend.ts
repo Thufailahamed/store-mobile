@@ -487,14 +487,59 @@ export async function unregisterPushTokenBackend(token: string): Promise<ApiResu
   });
 }
 
-export type ReferralInfo = { code: string; shareUrl: string; uses?: number };
+export type ReferralEntry = {
+  id: string;
+  referee_id: string;
+  status: string;
+  reward_points: number | null;
+  created_at: string;
+};
 
-export async function getReferralInfoBackend(): Promise<ApiResult<ReferralInfo>> {
-  return fetchJson("/api/users/referral");
+export type ReferralInfo = {
+  code: string;
+  shareUrl: string;
+  sharePath?: string;
+  // Legacy alias used by older screens.
+  uses?: number;
+  // Full stats (mirrors the Hono backend GET /api/users/referral).
+  invites_sent?: number;
+  invites_completed?: number;
+  points_earned?: number;
+  referrals?: ReferralEntry[];
+  totalReferrals?: number;
+  pendingRewards?: number;
+};
+
+export function normalizeReferralInfo(raw: ReferralInfo): ReferralInfo {
+  const total = raw.totalReferrals ?? raw.invites_sent ?? raw.uses ?? 0;
+  return {
+    ...raw,
+    invites_sent: raw.invites_sent ?? total,
+    totalReferrals: raw.totalReferrals ?? total,
+    invites_completed: raw.invites_completed ?? 0,
+    points_earned: raw.points_earned ?? 0,
+    pendingRewards: raw.pendingRewards ?? 0,
+    referrals: raw.referrals ?? [],
+    uses: raw.uses ?? total,
+    sharePath: raw.sharePath ?? (raw.code ? `/r/${raw.code}` : undefined),
+  };
 }
 
-export async function applyReferralCodeBackend(code: string): Promise<ApiResult<{ applied: boolean }>> {
-  return fetchJson("/api/users/referral/apply", { method: "POST", body: { code } });
+export async function getReferralInfoBackend(): Promise<ApiResult<ReferralInfo>> {
+  const res = await fetchJson<ReferralInfo>("/api/users/referral");
+  if (!res.ok) return res;
+  return { ok: true, data: normalizeReferralInfo(res.data) };
+}
+
+export function isValidReferralCode(code: string): boolean {
+  return /^[A-Z0-9]{4,12}$/.test(code.trim().toUpperCase());
+}
+
+export async function applyReferralCodeBackend(
+  code: string,
+): Promise<ApiResult<{ applied: boolean; already?: boolean }>> {
+  const normalized = code.trim().toUpperCase();
+  return fetchJson("/api/users/referral/apply", { method: "POST", body: { code: normalized } });
 }
 
 export type NotificationPrefs = Record<string, boolean>;
@@ -2433,15 +2478,12 @@ export async function reactivateAccountBackend(): Promise<ApiResult<{ ok: true }
   return fetchJson("/api/account/reactivate", { method: "POST", body: {} });
 }
 
-export type ReferralStats = {
-  code: string;
-  totalReferrals: number;
-  pendingRewards: number;
-  shareUrl: string;
-};
+export type ReferralStats = ReferralInfo;
 
 export async function getReferralStatsBackend(): Promise<ApiResult<ReferralStats>> {
-  return fetchJson("/api/users/referral");
+  const res = await fetchJson<ReferralStats>("/api/users/referral");
+  if (!res.ok) return res;
+  return { ok: true, data: normalizeReferralInfo(res.data) };
 }
 
 // --- Storefront (seller) --------------------------------------------------

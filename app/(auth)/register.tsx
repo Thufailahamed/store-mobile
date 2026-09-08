@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { supabase } from "@/lib/supabase/client";
 import { isValidEmail, isValidPhone, normalizePhoneE164, PASSWORD_MIN_LENGTH } from "@/lib/contact-validation";
-import { checkUniqueBackend } from "@/lib/api/backend";
+import { checkUniqueBackend, applyReferralCodeBackend, isValidReferralCode } from "@/lib/api/backend";
 import { Button, Input, useToast } from "@/components/ui";
 import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -42,7 +42,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ role?: string; code?: string }>();
+  const params = useLocalSearchParams<{ role?: string; code?: string; ref?: string; referral?: string }>();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -51,6 +51,8 @@ export default function RegisterScreen() {
   const [showPwd, setShowPwd] = useState(false);
   const [role, setRole] = useState<UserRole>(resolveRoleParam(params.role));
   const [inviteCode, setInviteCode] = useState(params.code ?? "");
+  const initialReferral = (params.ref ?? params.referral ?? (resolveRoleParam(params.role) === "delivery" ? "" : (params.code ?? ""))).toUpperCase();
+  const [referralCode, setReferralCode] = useState(initialReferral);
   const [terms, setTerms] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -126,7 +128,14 @@ export default function RegisterScreen() {
       }
     }
 
-    const { error } = await supabase.auth.signUp({
+    const trimmedReferral = referralCode.trim().toUpperCase();
+    if (role !== "delivery" && trimmedReferral && !isValidReferralCode(trimmedReferral)) {
+      setLoading(false);
+      toast("Referral code looks invalid (4–12 letters/numbers)", "error");
+      return;
+    }
+
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -142,6 +151,20 @@ export default function RegisterScreen() {
       setLoading(false);
       toast(error.message, "error");
       return;
+    }
+
+    // Best-effort: attribute a friend's referral code right after signup.
+    // When email confirmation is required there is no session yet — the user
+    // can still apply the code later from Account → Referrals.
+    if (role !== "delivery" && trimmedReferral && signUpData.session && hasStoreApi()) {
+      try {
+        const applied = await applyReferralCodeBackend(trimmedReferral);
+        if (!applied.ok) {
+          toast(`Account created, but referral code was not applied: ${applied.error}`, "error");
+        }
+      } catch {
+        /* non-blocking — referrals screen offers a retry */
+      }
     }
 
     // If this is a delivery signup, immediately accept the invite so the
@@ -249,7 +272,7 @@ export default function RegisterScreen() {
             leftIcon={<Ionicons name="person-outline" size={18} color={colors.light.mutedForeground} />}
           />
 
-          {role === "delivery" && (
+          {role === "delivery" ? (
             <Input
               label="Invite code"
               placeholder="Code from your company"
@@ -258,6 +281,16 @@ export default function RegisterScreen() {
               autoCapitalize="characters"
               autoCorrect={false}
               leftIcon={<Ionicons name="key-outline" size={18} color={colors.light.mutedForeground} />}
+            />
+          ) : (
+            <Input
+              label="Referral code (optional)"
+              placeholder="Friend's invite code"
+              value={referralCode}
+              onChangeText={(v) => setReferralCode(v.toUpperCase())}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              leftIcon={<Ionicons name="gift-outline" size={18} color={colors.light.mutedForeground} />}
             />
           )}
 

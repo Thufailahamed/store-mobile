@@ -13,13 +13,16 @@ const BORDER = "rgba(22,23,15,0.10)";
 interface Props {
   outfit: WardrobeOutfit;
   onPress: () => void;
+  /** Full item list for resolving thumbnails when backend omits the join. */
+  items?: { id: string; image_url?: string | null }[];
 }
 
-export function OutfitCard({ outfit, onPress }: Props) {
+export function OutfitCard({ outfit, onPress, items }: Props) {
   const links = outfit.items ?? [];
+  const byId = new Map((items ?? []).map((i) => [i.id, i.image_url]));
   const thumbs = links
     .slice(0, 5)
-    .map((l) => l.item?.image_url)
+    .map((l) => (l as { item?: { image_url?: string | null } }).item?.image_url ?? byId.get(l.wardrobe_item_id))
     .filter(Boolean) as string[];
 
   return (

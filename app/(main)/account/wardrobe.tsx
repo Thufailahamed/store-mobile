@@ -1,20 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  RefreshControl,
   useWindowDimensions,
-  FlatList,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground } from "@/components/layout";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { radii, spacing } from "@/lib/theme/tokens";
+import { radii, shadows, spacing } from "@/lib/theme/tokens";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast } from "@/components/ui";
 import {
@@ -29,7 +32,11 @@ import {
   syncWardrobe,
   updateWardrobeItem,
 } from "@/lib/api/wardrobe";
-import { getWardrobeCardWidth, WARDROBE_H_PAD, WardrobeItemCard } from "@/components/wardrobe/WardrobeItemCard";
+import {
+  getWardrobeCardWidth,
+  WARDROBE_H_PAD,
+  WardrobeItemCard,
+} from "@/components/wardrobe/WardrobeItemCard";
 import {
   WardrobeFilterBar,
   type WardrobeGarmentFilter,
@@ -53,10 +60,10 @@ import type {
 type Tab = "items" | "outfits" | "stats" | "planned";
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "items", label: "Items", icon: "shirt-outline" },
+  { key: "items", label: "Pieces", icon: "shirt-outline" },
   { key: "outfits", label: "Outfits", icon: "albums-outline" },
-  { key: "stats", label: "Stats", icon: "bar-chart-outline" },
-  { key: "planned", label: "Planned", icon: "calendar-outline" },
+  { key: "stats", label: "Analytics", icon: "bar-chart-outline" },
+  { key: "planned", label: "Lookbook", icon: "calendar-outline" },
 ];
 
 export default function WardrobeScreen() {
@@ -132,48 +139,54 @@ export default function WardrobeScreen() {
     toast(
       res.data.inserted > 0
         ? `Added ${res.data.inserted} item${res.data.inserted === 1 ? "" : "s"}`
-        : "Already up to date",
-      "success",
+        : "Wardrobe is up to date",
+      "success"
     );
     await load();
   }, [load, toast]);
 
-  const handleLogWear = useCallback(async (wornAtIso: string) => {
-    if (!wearItem) return;
-    setLogPending(true);
-    const res = await logWardrobeWear(wearItem.id, { worn_at: wornAtIso });
-    setLogPending(false);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
-    }
-    setWearItem(null);
-    toast(
-      `Worn × ${res.data.result.wear_count}`,
-      "success",
-    );
-    await load();
-  }, [wearItem, load, toast]);
+  const handleLogWear = useCallback(
+    async (wornAtIso: string) => {
+      if (!wearItem) return;
+      setLogPending(true);
+      const res = await logWardrobeWear(wearItem.id, { worn_at: wornAtIso });
+      setLogPending(false);
+      if (!res.ok) {
+        toast(res.error, "error");
+        return;
+      }
+      setWearItem(null);
+      toast(`Wear logged × ${res.data.result.wear_count}`, "success");
+      await load();
+    },
+    [wearItem, load, toast]
+  );
 
-  const handleArchive = useCallback(async (item: WardrobeItem) => {
-    const next = item.status === "active" ? "archived" : "active";
-    const res = await updateWardrobeItem(item.id, { status: next });
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
-    }
-    await load();
-  }, [load, toast]);
+  const handleArchive = useCallback(
+    async (item: WardrobeItem) => {
+      const next = item.status === "active" ? "archived" : "active";
+      const res = await updateWardrobeItem(item.id, { status: next });
+      if (!res.ok) {
+        toast(res.error, "error");
+        return;
+      }
+      await load();
+    },
+    [load, toast]
+  );
 
-  const handleDelete = useCallback(async (item: WardrobeItem) => {
-    const res = await deleteWardrobeItem(item.id);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
-    }
-    toast("Item removed", "success");
-    await load();
-  }, [load, toast]);
+  const handleDelete = useCallback(
+    async (item: WardrobeItem) => {
+      const res = await deleteWardrobeItem(item.id);
+      if (!res.ok) {
+        toast(res.error, "error");
+        return;
+      }
+      toast("Item removed from closet", "success");
+      await load();
+    },
+    [load, toast]
+  );
 
   const handleShare = useCallback(async () => {
     const res = await shareWardrobeHeader();
@@ -184,6 +197,7 @@ export default function WardrobeScreen() {
     setHeader(res.data.wardrobe);
     const token = res.data.wardrobe.share_token;
     if (token) setShareLink(`/account/wardrobe/share/${token}`);
+    toast("Public link ready", "success");
   }, [toast]);
 
   const handleRevoke = useCallback(async () => {
@@ -209,24 +223,38 @@ export default function WardrobeScreen() {
 
   if (!user?.id) {
     return (
-      <PaperBackground style={{ backgroundColor: "#ffffff" }}>
+      <PaperBackground>
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <View style={styles.headerBtn} />
-          <Text style={styles.headerTitle}>Wardrobe</Text>
-          <View style={styles.headerBtn} />
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="chevron-back" size={20} color="#181b12" />
+          </TouchableOpacity>
+          <View style={styles.navTitleWrap}>
+            <Text style={styles.headerTitle}>DIGITAL WARDROBE</Text>
+            <Text style={styles.headerSubtitle}>CAPSULE ARCHIVE</Text>
+          </View>
+          <View style={{ width: 38 }} />
         </View>
+
         <View style={styles.gateWrap}>
-          <Ionicons name="lock-closed-outline" size={48} color="#556b2f" />
-          <Text style={styles.gateTitle}>Sign in to see your wardrobe</Text>
+          <View style={styles.gateMedallion}>
+            <Ionicons name="lock-closed-outline" size={32} color="#C8A44A" />
+          </View>
+          <Text style={styles.gateTitle}>Sign in to Access Wardrobe</Text>
           <Text style={styles.gateSub}>
-            Track items, outfits, and cost-per-wear across every order.
+            Track closet pieces, log cost-per-wear, and assemble bespoke looks across all your acquisitions.
           </Text>
           <TouchableOpacity
             style={styles.gateCta}
             onPress={() => router.push("/(auth)/login" as never)}
-            activeOpacity={0.85}
+            activeOpacity={0.88}
           >
-            <Text style={styles.gateCtaText}>Sign in</Text>
+            <Text style={styles.gateCtaText}>SIGN IN</Text>
+            <Ionicons name="arrow-forward" size={14} color="#ffffff" />
           </TouchableOpacity>
         </View>
       </PaperBackground>
@@ -234,16 +262,48 @@ export default function WardrobeScreen() {
   }
 
   return (
-    <PaperBackground style={{ backgroundColor: "#ffffff" }}>
+    <PaperBackground>
+      {/* Atelier Navigation Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <View style={styles.headerBtn} />
-        <Text style={styles.headerTitle}>Wardrobe</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <HeaderBtn icon="bag-add-outline" onPress={handleSync} busy={syncing} />
-          <HeaderBtn
-            icon={header?.is_public ? "share-social" : "share-outline"}
+        <TouchableOpacity
+          style={styles.headerBtn}
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={20} color="#181b12" />
+        </TouchableOpacity>
+
+        <View style={styles.navTitleWrap}>
+          <Text style={styles.headerTitle}>DIGITAL WARDROBE</Text>
+          <Text style={styles.headerSubtitle}>CAPSULE ARCHIVE</Text>
+        </View>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={handleSync}
+            disabled={syncing}
+            activeOpacity={0.7}
+          >
+            {syncing ? (
+              <ActivityIndicator size="small" color="#C8A44A" />
+            ) : (
+              <Ionicons name="sync-outline" size={18} color="#181b12" />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerBtn}
             onPress={handleShare}
-          />
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={header?.is_public ? "share-social" : "share-outline"}
+              size={18}
+              color={header?.is_public ? "#85651b" : "#181b12"}
+            />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -251,61 +311,113 @@ export default function WardrobeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#556b2f" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#C8A44A"
+          />
         }
       >
-        {/* Hero */}
-        <View style={styles.hero}>
-          <Text style={styles.heroLabel}>YOUR VIRTUAL WARDROBE</Text>
-          <Text style={styles.heroTitle}>
-            Things you <Text style={styles.heroItalic}>own</Text>.
-          </Text>
-          <Text style={styles.heroSub}>
-            A living catalog of your closet — auto-synced from deliveries, curated by you.
-          </Text>
-          <View style={styles.heroStamps}>
-            <Stamp label={`${items.length} pieces`} tone="primary" />
-            {(stats?.totals.total_wears ?? 0) > 0 ? (
-              <Stamp
-                label={`${stats?.totals.total_wears} wears`}
-                tone="rust"
-              />
-            ) : null}
-          </View>
+        {/* 1. Haute Couture Obsidian Wardrobe Hero Card */}
+        <View style={styles.heroSection}>
+          <LinearGradient
+            colors={["#1c2016", "#14170e", "#0e110a"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
+          >
+            <View style={styles.heroEyebrowRow}>
+              <View style={styles.heroTagBadge}>
+                <Ionicons name="sparkles" size={11} color="#C8A44A" />
+                <Text style={styles.heroTagText}>CAPSULE ATELIER</Text>
+              </View>
+              <View style={styles.heroLiveBadge}>
+                <View style={styles.heroLiveDot} />
+                <Text style={styles.heroLiveText}>DELIVERY SYNC ACTIVE</Text>
+              </View>
+            </View>
+
+            <Text style={styles.heroMainTitle}>
+              Things You <Text style={styles.heroGoldText}>Own.</Text>
+            </Text>
+            <Text style={styles.heroSubText}>
+              A living digital catalog of your closet — auto-synced from verified deliveries, ready for bespoke look curation and cost-per-wear analytics.
+            </Text>
+
+            <View style={styles.heroStatsRibbon}>
+              <View style={styles.heroStatCell}>
+                <Text style={styles.heroStatValue}>{items.length}</Text>
+                <Text style={styles.heroStatLabel}>Curated Pieces</Text>
+              </View>
+              <View style={styles.heroStatSep} />
+              <View style={styles.heroStatCell}>
+                <Text style={styles.heroStatValue}>{outfits.length}</Text>
+                <Text style={styles.heroStatLabel}>Bespoke Outfits</Text>
+              </View>
+              <View style={styles.heroStatSep} />
+              <View style={styles.heroStatCell}>
+                <Text style={styles.heroStatValue}>
+                  {stats?.totals.total_wears ?? 0}
+                </Text>
+                <Text style={styles.heroStatLabel}>Wears Logged</Text>
+              </View>
+              <View style={styles.heroStatSep} />
+              <TouchableOpacity
+                style={styles.heroSyncQuickBtn}
+                activeOpacity={0.8}
+                onPress={handleSync}
+                disabled={syncing}
+              >
+                {syncing ? (
+                  <ActivityIndicator size="small" color="#E8CF8F" />
+                ) : (
+                  <>
+                    <Ionicons name="sync" size={12} color="#E8CF8F" />
+                    <Text style={styles.heroSyncQuickText}>Sync</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
         </View>
 
-        {/* Stats rail */}
-        {items.length > 0 ? (
-          <View style={{ marginTop: 12 }}>
+        {/* 2. Stats Rail (when items exist) */}
+        {items.length > 0 && (
+          <View style={{ marginTop: 6, paddingHorizontal: WARDROBE_H_PAD }}>
             <WardrobeStatsBar stats={stats} />
           </View>
-        ) : null}
+        )}
 
-        {/* Insights strip */}
-        {items.length > 0 ? (
+        {/* 3. Insights Strip (when items exist) */}
+        {items.length > 0 && (
           <View style={{ marginTop: 14 }}>
-            <Text style={styles.sectionLabel}>INSIGHTS</Text>
+            <Text style={styles.sectionEyebrow}>WARDROBE INTELLIGENCE</Text>
             <InsightsSection onLogWear={(it) => setWearItem(it)} />
           </View>
-        ) : null}
+        )}
 
-        {/* Tabs */}
-        <View style={styles.tabsRow}>
+        {/* 4. Segmented Mode Tabs Ribbon */}
+        <View style={styles.tabsContainer}>
           {TABS.map((t) => {
             const active = tab === t.key;
             return (
               <TouchableOpacity
                 key={t.key}
-                style={[styles.tab, active && styles.tabActive]}
+                style={[styles.tabButton, active && styles.tabButtonActive]}
                 onPress={() => setTab(t.key)}
                 activeOpacity={0.85}
               >
                 <Ionicons
                   name={t.icon}
                   size={14}
-                  color={active ? "#fff" : "#16170f"}
+                  color={active ? "#E8CF8F" : "#181b12"}
                 />
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    active && styles.tabButtonTextActive,
+                  ]}
+                >
                   {t.label}
                 </Text>
               </TouchableOpacity>
@@ -313,9 +425,9 @@ export default function WardrobeScreen() {
           })}
         </View>
 
-        {/* Tab body */}
-        {tab === "items" ? (
-          <View style={{ marginTop: 14 }}>
+        {/* 5. Tab Body */}
+        {tab === "items" && (
+          <View style={{ marginTop: 12 }}>
             <WardrobeFilterBar
               garment={garment}
               status={status}
@@ -328,13 +440,15 @@ export default function WardrobeScreen() {
             />
 
             {loading ? (
-              <View style={{ padding: 32 }}>
-                <Text style={styles.muted}>Loading wardrobe…</Text>
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="small" color="#C8A44A" />
+                <Text style={styles.loadingBoxText}>Cataloging your pieces…</Text>
               </View>
             ) : items.length === 0 ? (
               <WardrobeEmptyState
                 onSync={handleSync}
                 syncing={syncing}
+                onExplore={() => router.push("/(main)/account/orders" as any)}
               />
             ) : (
               <FlatList
@@ -342,7 +456,10 @@ export default function WardrobeScreen() {
                 keyExtractor={(it) => it.id}
                 numColumns={2}
                 scrollEnabled={false}
-                columnWrapperStyle={{ gap: WARDROBE_H_PAD, paddingHorizontal: WARDROBE_H_PAD }}
+                columnWrapperStyle={{
+                  gap: WARDROBE_H_PAD,
+                  paddingHorizontal: WARDROBE_H_PAD,
+                }}
                 contentContainerStyle={{ gap: 12, marginTop: 14 }}
                 renderItem={({ item }) => (
                   <WardrobeItemCard
@@ -356,68 +473,86 @@ export default function WardrobeScreen() {
               />
             )}
           </View>
-        ) : null}
+        )}
 
-        {tab === "outfits" ? (
-          <View style={{ marginTop: 14 }}>
-            <View style={styles.outfitsHead}>
-              <Text style={styles.muted}>
-                Compose outfits from your wardrobe by occasion or season.
-              </Text>
-            </View>
-            <View style={styles.outfitsActions}>
+        {tab === "outfits" && (
+          <View style={{ marginTop: 14, paddingHorizontal: WARDROBE_H_PAD }}>
+            <View style={styles.outfitsHeaderRow}>
+              <View>
+                <Text style={styles.sectionEyebrow}>RUNWAY CURATION</Text>
+                <Text style={styles.outfitsTitle}>Bespoke Outfits</Text>
+              </View>
               <TouchableOpacity
-                style={styles.smallCta}
+                style={styles.autoGenerateBtn}
                 onPress={() => setAutoSheetOpen(true)}
                 activeOpacity={0.85}
               >
-                <Ionicons name="sparkles" size={13} color="#fff" />
-                <Text style={styles.smallCtaText}>Auto-generate</Text>
+                <Ionicons name="sparkles" size={13} color="#ffffff" />
+                <Text style={styles.autoGenerateBtnText}>AI Outfit Suggestion</Text>
               </TouchableOpacity>
             </View>
 
             {outfits.length === 0 ? (
-              <View style={styles.subtle}>
-                <Ionicons name="albums-outline" size={32} color="#556b2f" />
-                <Text style={[styles.muted, { marginTop: 8 }]}>No outfits yet.</Text>
+              <View style={styles.emptyOutfitsBox}>
+                <View style={styles.emptyOutfitsMedallion}>
+                  <Ionicons name="albums-outline" size={28} color="#C8A44A" />
+                </View>
+                <Text style={styles.emptyOutfitsTitle}>No Outfits Composed</Text>
+                <Text style={styles.emptyOutfitsSub}>
+                  Pair your tops, bottoms, and footwear into complete runway lookbooks for any season.
+                </Text>
+                <TouchableOpacity
+                  style={styles.createOutfitBtn}
+                  onPress={() => setAutoSheetOpen(true)}
+                  activeOpacity={0.88}
+                >
+                  <Text style={styles.createOutfitBtnText}>Generate Outfit</Text>
+                  <Ionicons name="arrow-forward" size={13} color="#ffffff" />
+                </TouchableOpacity>
               </View>
             ) : (
-              outfits.map((o) => (
-                <OutfitCard
-                  key={o.id}
-                  outfit={o}
-                  onPress={() =>
-                    router.push({ pathname: "/(main)/wardrobe/[id]", params: { id: o.id } } as never)
-                  }
-                />
-              ))
+              <View style={{ gap: 12, marginTop: 10 }}>
+                {outfits.map((o) => (
+                  <OutfitCard
+                    key={o.id}
+                    outfit={o}
+                    items={items}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(main)/wardrobe/[id]",
+                        params: { id: o.id },
+                      } as never)
+                    }
+                  />
+                ))}
+              </View>
             )}
           </View>
-        ) : null}
+        )}
 
-        {tab === "stats" && stats ? (
+        {tab === "stats" && stats && (
           <View style={{ marginTop: 14, paddingHorizontal: WARDROBE_H_PAD, gap: 14 }}>
-            <View style={styles.statCard}>
-              <Text style={styles.statTitle}>By category</Text>
+            <View style={styles.statPanel}>
+              <Text style={styles.statPanelTitle}>Breakdown by Category</Text>
               {stats.byGarment.length === 0 ? (
-                <Text style={styles.muted}>No items yet.</Text>
+                <Text style={styles.emptyStatText}>No items cataloged yet.</Text>
               ) : (
                 stats.byGarment.map((g) => {
                   const max = Math.max(...stats.byGarment.map((x) => x.n), 1);
                   return (
                     <View key={g.garment_type} style={{ marginTop: 10 }}>
-                      <View style={styles.statRow}>
-                        <Text style={styles.statRowLabel}>
+                      <View style={styles.statLineHeader}>
+                        <Text style={styles.statLineLabel}>
                           {g.garment_type.toUpperCase()}
                         </Text>
-                        <Text style={styles.statRowVal}>
-                          {g.n} · LKR {g.total_spent.toLocaleString()}
+                        <Text style={styles.statLineValue}>
+                          {g.n} pieces · LKR {g.total_spent.toLocaleString()}
                         </Text>
                       </View>
-                      <View style={styles.statBar}>
+                      <View style={styles.statProgressTrack}>
                         <View
                           style={[
-                            styles.statBarFill,
+                            styles.statProgressFill,
                             { width: `${(g.n / max) * 100}%` },
                           ]}
                         />
@@ -428,10 +563,10 @@ export default function WardrobeScreen() {
               )}
             </View>
 
-            <View style={styles.statCard}>
-              <Text style={styles.statTitle}>Top worn</Text>
+            <View style={styles.statPanel}>
+              <Text style={styles.statPanelTitle}>Most Worn Staples</Text>
               {stats.topWorn.length === 0 ? (
-                <Text style={styles.muted}>No wears logged yet.</Text>
+                <Text style={styles.emptyStatText}>No wears logged yet.</Text>
               ) : (
                 stats.topWorn.map((w) => (
                   <View key={w.id} style={styles.topWornRow}>
@@ -443,65 +578,70 @@ export default function WardrobeScreen() {
                           contentFit="cover"
                         />
                       ) : (
-                        <Ionicons name="shirt-outline" size={18} color="#6b6b6b" />
+                        <Ionicons name="shirt-outline" size={18} color="#C8A44A" />
                       )}
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.topWornName} numberOfLines={1}>{w.name}</Text>
-                      <Text style={styles.topWornMeta}>{w.garment_type}</Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.topWornName} numberOfLines={1}>
+                        {w.name}
+                      </Text>
+                      <Text style={styles.topWornMeta}>
+                        {w.garment_type.toUpperCase()}
+                      </Text>
                     </View>
-                    <Text style={styles.topWornCount}>{w.wear_count}×</Text>
+                    <Text style={styles.topWornCount}>{w.wear_count} wears</Text>
                   </View>
                 ))
               )}
             </View>
           </View>
-        ) : null}
+        )}
 
-        {tab === "planned" ? (
+        {tab === "planned" && (
           <View style={{ marginTop: 14, gap: 14 }}>
             <OutfitCalendar
               outfits={outfits}
               onSelectOutfit={(o) =>
-                router.push({ pathname: "/(main)/wardrobe/[id]", params: { id: o.id } } as never)
+                router.push({
+                  pathname: "/(main)/wardrobe/[id]",
+                  params: { id: o.id },
+                } as never)
               }
             />
             <View style={{ paddingHorizontal: WARDROBE_H_PAD }}>
-              <Text style={styles.muted}>
-                Scheduled outfits appear here. Tap a chip to open it.
+              <Text style={styles.lookbookSubText}>
+                Plan your looks ahead. Tap any scheduled day to preview or swap pieces.
               </Text>
             </View>
           </View>
-        ) : null}
+        )}
 
         {/* Share link pill */}
-        {shareLink ? (
+        {shareLink && (
           <View style={styles.sharePill}>
-            <Ionicons name="link" size={14} color="#556b2f" />
+            <Ionicons name="link" size={14} color="#85651b" />
             <Text style={styles.sharePillText} numberOfLines={1}>
-              Share link created
+              Public collection link active
             </Text>
             <TouchableOpacity onPress={() => setShareLink(null)} hitSlop={8}>
-              <Ionicons name="close" size={14} color="#16170f" />
+              <Ionicons name="close" size={14} color="#181b12" />
             </TouchableOpacity>
           </View>
-        ) : null}
+        )}
 
-        {/* Revoke (only when public) */}
-        {header?.is_public ? (
+        {/* Revoke public link */}
+        {header?.is_public && (
           <View style={{ paddingHorizontal: WARDROBE_H_PAD, marginTop: 14 }}>
             <TouchableOpacity
-              style={[styles.smallCta, styles.smallCtaGhost]}
+              style={styles.revokeBtn}
               onPress={handleRevoke}
               activeOpacity={0.85}
             >
-              <Ionicons name="close-circle-outline" size={14} color="#16170f" />
-              <Text style={[styles.smallCtaText, styles.smallCtaTextGhost]}>
-                Revoke public link
-              </Text>
+              <Ionicons name="close-circle-outline" size={14} color="#dc2626" />
+              <Text style={styles.revokeBtnText}>Revoke public link</Text>
             </TouchableOpacity>
           </View>
-        ) : null}
+        )}
 
         <View style={{ height: Math.max(insets.bottom, spacing[4]) }} />
       </ScrollView>
@@ -525,365 +665,488 @@ export default function WardrobeScreen() {
   );
 }
 
-function HeaderBtn({
-  icon,
-  onPress,
-  busy,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  busy?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.headerBtn, busy && { opacity: 0.6 }]}
-      onPress={onPress}
-      activeOpacity={0.85}
-      disabled={busy}
-    >
-      <Ionicons name={icon} size={18} color="#16170f" />
-    </TouchableOpacity>
-  );
-}
-
-function Stamp({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "primary" | "rust";
-}) {
-  return (
-    <View
-      style={[
-        styles.stamp,
-        tone === "primary"
-          ? styles.stampPrimary
-          : styles.stampRust,
-      ]}
-    >
-      <Text
-        style={[
-          styles.stampText,
-          tone === "primary" ? styles.stampTextPrimary : styles.stampTextRust,
-        ]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-import { Image } from "expo-image";
-
-const OLIVE = "#556b2f";
-const INK = "#16170f";
-const MUTED = "#6b6b6b";
-const PAPER = "#fbfaf3";
-const BORDER = "rgba(22,23,15,0.10)";
-
-const styles: Record<string, any> = StyleSheet.create({
+/* =========================================================================
+   Styles
+   ========================================================================= */
+const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 10,
-    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    gap: 8,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 16,
-    fontWeight: "600",
-    color: INK,
+    borderBottomColor: "rgba(22, 23, 15, 0.06)",
   },
   headerBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#fff",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "rgba(22, 23, 15, 0.08)",
     alignItems: "center",
     justifyContent: "center",
+    ...shadows.soft,
   },
-  hero: {
-    paddingHorizontal: WARDROBE_H_PAD,
-    paddingTop: 8,
-    paddingBottom: 4,
+  navTitleWrap: {
+    alignItems: "center",
   },
-  heroLabel: {
-    fontSize: 10,
-    letterSpacing: 0.7,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
+  headerTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15,
+    letterSpacing: 2,
+    color: "#181b12",
+    textTransform: "uppercase",
   },
-  heroTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 34,
-    color: INK,
-    marginTop: 6,
+  headerSubtitle: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    color: "#85651b",
+    marginTop: 1,
+    letterSpacing: 1,
   },
-  heroItalic: {
-    fontStyle: "italic",
-    color: OLIVE,
-  },
-  heroSub: {
-    fontSize: 13,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    marginTop: 6,
-    maxWidth: 320,
-    lineHeight: 19,
-  },
-  heroStamps: {
+  headerActions: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 12,
   },
-  stamp: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-  },
-  stampPrimary: {
-    backgroundColor: "rgba(85,107,47,0.12)",
-  },
-  stampRust: {
-    backgroundColor: "rgba(168,49,31,0.12)",
-  },
-  stampText: {
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-  },
-  stampTextPrimary: {
-    color: OLIVE,
-  },
-  stampTextRust: {
-    color: "#a8311f",
-  },
-  tabsRow: {
-    flexDirection: "row",
-    gap: 6,
-    paddingHorizontal: WARDROBE_H_PAD,
-    marginTop: 18,
-  },
-  tab: {
-    flexDirection: "row",
+
+  /* Gate Wrap */
+  gateWrap: {
+    flex: 1,
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.full,
+    justifyContent: "center",
+    paddingHorizontal: spacing[8],
+    gap: 12,
+  },
+  gateMedallion: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: "#fff",
+    borderColor: "rgba(200, 164, 74, 0.3)",
+    marginBottom: 4,
   },
-  tabActive: {
-    backgroundColor: INK,
-    borderColor: INK,
+  gateTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: "#181b12",
+    textAlign: "center",
   },
-  tabText: {
-    fontSize: 11,
+  gateSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
-    color: INK,
-  },
-  tabTextActive: {
-    color: "#fff",
-  },
-  muted: {
     fontSize: 13,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
+    color: "#6b6b6b",
+    textAlign: "center",
     lineHeight: 19,
+    maxWidth: 290,
   },
-  outfitsHead: {
+  gateCta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: WARDROBE_H_PAD,
+    gap: 6,
+    backgroundColor: "#181b12",
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: radii.full,
+    marginTop: 8,
+    ...shadows.soft,
   },
-  outfitsActions: {
+  gateCtaText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    color: "#ffffff",
+    letterSpacing: 1.2,
+  },
+
+  /* 1. Hero Card */
+  heroSection: {
+    paddingHorizontal: WARDROBE_H_PAD,
+    paddingTop: 12,
+  },
+  heroCard: {
+    borderRadius: 20,
+    padding: spacing[5],
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+    ...shadows.editorial,
+  },
+  heroEyebrowRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: WARDROBE_H_PAD,
-    marginTop: 10,
+    justifyContent: "space-between",
+    marginBottom: 10,
   },
-  sectionLabel: {
-    fontSize: 10,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-    letterSpacing: 0.7,
-    paddingHorizontal: WARDROBE_H_PAD,
-    marginBottom: 6,
-  },
-  smallCta: {
+  heroTagBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: OLIVE,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: radii.full,
-  },
-  smallCtaText: {
-    color: "#fff",
-    fontSize: 12,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-  },
-  smallCtaGhost: {
-    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "rgba(200, 164, 74, 0.3)",
   },
-  smallCtaTextGhost: {
-    color: INK,
+  heroTagText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: "#E8CF8F",
+    letterSpacing: 1,
   },
-  subtle: {
+  heroLiveBadge: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 40,
+    gap: 5,
   },
-  statCard: {
-    backgroundColor: PAPER,
+  heroLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#4ade80",
+  },
+  heroLiveText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    color: "rgba(255, 255, 255, 0.65)",
+    letterSpacing: 0.8,
+  },
+  heroMainTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    color: "#ffffff",
+    letterSpacing: -0.3,
+  },
+  heroGoldText: {
+    color: "#E8CF8F",
+    fontStyle: "italic",
+  },
+  heroSubText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: "rgba(255, 255, 255, 0.72)",
+    lineHeight: 18,
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  heroStatsRibbon: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderRadius: radii.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: BORDER,
-    padding: 14,
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
-  statTitle: {
-    fontFamily: fontFamilies.display.regular,
+  heroStatCell: {
+    flex: 1,
+  },
+  heroStatValue: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: 16,
-    color: INK,
-    fontWeight: "600",
+    color: "#E8CF8F",
   },
-  statRow: {
+  heroStatLabel: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    color: "rgba(255, 255, 255, 0.55)",
+    marginTop: 1,
+  },
+  heroStatSep: {
+    width: 1,
+    height: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    marginHorizontal: 6,
+  },
+  heroSyncQuickBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.35)",
+  },
+  heroSyncQuickText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    color: "#E8CF8F",
+    letterSpacing: 0.5,
+  },
+
+  /* Section Eyebrow */
+  sectionEyebrow: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    color: "#85651b",
+    letterSpacing: 1.2,
+    paddingHorizontal: WARDROBE_H_PAD,
+    marginBottom: 6,
+  },
+
+  /* Tabs Ribbon */
+  tabsContainer: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: WARDROBE_H_PAD,
+    marginTop: 14,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    backgroundColor: "#ffffff",
+    ...shadows.soft,
+  },
+  tabButtonActive: {
+    backgroundColor: "#181b12",
+    borderColor: "#181b12",
+  },
+  tabButtonText: {
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.medium,
+    color: "#181b12",
+  },
+  tabButtonTextActive: {
+    color: "#ffffff",
+    fontFamily: fontFamilies.sans.semibold,
+  },
+
+  /* Loading Box */
+  loadingBox: {
+    padding: 32,
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingBoxText: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 13,
+    color: "#6b6b6b",
+    fontStyle: "italic",
+  },
+
+  /* Outfits Tab */
+  outfitsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  outfitsTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: "#181b12",
+  },
+  autoGenerateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#181b12",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    ...shadows.soft,
+  },
+  autoGenerateBtnText: {
+    color: "#ffffff",
+    fontSize: 10.5,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 0.5,
+  },
+  emptyOutfitsBox: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: spacing[7],
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    ...shadows.soft,
+    marginTop: 8,
+    gap: 8,
+  },
+  emptyOutfitsMedallion: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+  },
+  emptyOutfitsTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: "#181b12",
+    marginTop: 4,
+  },
+  emptyOutfitsSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: "#6b6b6b",
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 270,
+  },
+  createOutfitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#181b12",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    marginTop: 6,
+  },
+  createOutfitBtnText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10.5,
+    color: "#ffffff",
+    letterSpacing: 0.8,
+  },
+
+  /* Stats Tab */
+  statPanel: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    ...shadows.soft,
+  },
+  statPanelTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15,
+    color: "#181b12",
+    marginBottom: 6,
+  },
+  emptyStatText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: "#6b6b6b",
+  },
+  statLineHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 4,
   },
-  statRowLabel: {
+  statLineLabel: {
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-    letterSpacing: 0.4,
+    color: "#85651b",
+    letterSpacing: 0.6,
   },
-  statRowVal: {
-    fontSize: 11,
-    color: INK,
-    fontFamily: fontFamilies.sans.regular,
+  statLineValue: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10.5,
+    color: "#181b12",
   },
-  statBar: {
-    height: 6,
-    backgroundColor: "#f1efe6",
-    borderRadius: 3,
+  statProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(22, 23, 15, 0.06)",
     overflow: "hidden",
   },
-  statBarFill: {
+  statProgressFill: {
     height: "100%",
-    backgroundColor: OLIVE,
-    borderRadius: 3,
+    backgroundColor: "#C8A44A",
+    borderRadius: 2,
   },
   topWornRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginTop: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(22, 23, 15, 0.05)",
   },
   topWornThumb: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    overflow: "hidden",
-    backgroundColor: "#f1efe6",
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(22, 23, 15, 0.04)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   topWornImg: {
     width: "100%",
     height: "100%",
   },
   topWornName: {
-    fontSize: 13,
-    fontFamily: fontFamilies.sans.regular,
-    color: INK,
-    fontWeight: "600",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: "#181b12",
   },
   topWornMeta: {
-    fontSize: 10,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    marginTop: 2,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    color: "#85651b",
+    letterSpacing: 0.5,
   },
   topWornCount: {
-    fontSize: 14,
-    fontFamily: fontFamilies.display.regular,
-    fontWeight: "700",
-    color: INK,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    color: "#181b12",
   },
+
+  /* Lookbook Tab */
+  lookbookSubText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: "#6b6b6b",
+    textAlign: "center",
+    lineHeight: 17,
+  },
+
+  /* Share Pill */
   sharePill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginHorizontal: WARDROBE_H_PAD,
+    gap: 6,
+    alignSelf: "center",
     marginTop: 14,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "rgba(85,107,47,0.10)",
+    paddingVertical: 6,
     borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
   },
   sharePillText: {
-    flex: 1,
-    fontSize: 12,
-    color: INK,
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10.5,
+    color: "#85651b",
   },
-  gateWrap: {
-    flex: 1,
+
+  /* Revoke Button */
+  revokeBtn: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing[6],
-    paddingVertical: 60,
-    gap: 8,
-  },
-  gateTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 22,
-    color: INK,
-    textAlign: "center",
-    marginTop: 14,
-  },
-  gateSub: {
-    fontSize: 13,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    textAlign: "center",
-    marginTop: 4,
-    lineHeight: 19,
-  },
-  gateCta: {
-    marginTop: 18,
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    backgroundColor: OLIVE,
+    gap: 5,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "rgba(220, 38, 38, 0.2)",
+    paddingVertical: 9,
     borderRadius: radii.full,
   },
-  gateCtaText: {
-    color: "#fff",
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-    fontSize: 13,
+  revokeBtnText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: "#dc2626",
   },
 });

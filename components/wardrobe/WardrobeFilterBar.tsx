@@ -1,13 +1,13 @@
 import React from "react";
-import { View, Pressable, StyleSheet, Text, ScrollView } from "react-native";
+import { View, Pressable, StyleSheet, Text, ScrollView, TextInput, Platform } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { radii } from "@/lib/theme/tokens";
+import { radii, shadows } from "@/lib/theme/tokens";
 import type { GarmentType } from "@/lib/types";
 
-const INK = "#16170f";
+const INK = "#181b12";
 const MUTED = "#6b6b6b";
-const BORDER = "rgba(22,23,15,0.10)";
+const BORDER = "rgba(22, 23, 15, 0.08)";
 
 const GARMENT_LABEL: Record<GarmentType, string> = {
   top: "Tops",
@@ -52,6 +52,7 @@ export function WardrobeFilterBar({
 }: Props) {
   return (
     <View style={styles.wrap}>
+      {/* Category Scroll */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -74,17 +75,25 @@ export function WardrobeFilterBar({
         ))}
       </ScrollView>
 
+      {/* Search & Status Row */}
       <View style={styles.searchRow}>
         <View style={styles.searchInput}>
-          <Ionicons name="search-outline" size={14} color={MUTED} />
+          <Ionicons name="search" size={14} color={MUTED} />
           <TextInput
             value={q}
             onChangeText={onQ}
-            placeholder="Search by name or brand"
+            placeholder="Search closet by piece or designer…"
             placeholderTextColor={MUTED}
             style={styles.searchText}
+            returnKeyType="search"
           />
+          {q.length > 0 && (
+            <Pressable onPress={() => onQ("")} hitSlop={8}>
+              <Ionicons name="close-circle" size={14} color={MUTED} />
+            </Pressable>
+          )}
         </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -115,11 +124,11 @@ export function WardrobeFilterBar({
 }
 
 const STATUS_LABEL: Record<WardrobeStatusFilter, string> = {
-  active: "Active",
+  active: "Active Closet",
   archived: "Archived",
   sold: "Sold",
   donated: "Donated",
-  all: "All",
+  all: "All Status",
 };
 
 function Pill({
@@ -145,79 +154,87 @@ function Pill({
       <Text style={[styles.pillText, active && styles.pillTextActive]} numberOfLines={1}>
         {label}
       </Text>
-      <Text style={[styles.pillCount, active && styles.pillCountActive]}>{count}</Text>
+      <View style={[styles.countBadge, active && styles.countBadgeActive]}>
+        <Text style={[styles.pillCount, active && styles.pillCountActive]}>{count}</Text>
+      </View>
     </Pressable>
   );
 }
 
-// Local TextInput keeps imports minimal.
-import { TextInput } from "react-native";
-
-const styles: Record<string, any> = StyleSheet.create({
+const styles = StyleSheet.create({
   wrap: {
-    gap: 10,
+    gap: 12,
   },
   scroll: {
     paddingHorizontal: 16,
-    gap: 6,
+    gap: 7,
   },
   pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    paddingRight: 8,
     paddingVertical: 7,
     borderRadius: radii.full,
     borderWidth: 1,
   },
   pillIdle: {
-    backgroundColor: "rgba(251,250,243,0.85)",
+    backgroundColor: "#ffffff",
     borderColor: BORDER,
+    ...shadows.soft,
   },
   pillActive: {
     backgroundColor: INK,
     borderColor: INK,
   },
   pillText: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: INK,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
-    letterSpacing: 0.3,
+    fontFamily: fontFamilies.sans.medium,
+    letterSpacing: 0.2,
   },
   pillTextActive: {
-    color: "#fff",
+    color: "#ffffff",
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  countBadge: {
+    backgroundColor: "rgba(22, 23, 15, 0.06)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+  },
+  countBadgeActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
   },
   pillCount: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.mono.medium,
   },
   pillCountActive: {
-    color: "rgba(255,255,255,0.6)",
+    color: "#ffffff",
   },
   searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
     paddingHorizontal: 16,
-    gap: 10,
+    gap: 8,
   },
   searchInput: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "rgba(251,250,243,0.85)",
-    borderRadius: radii.full,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === "ios" ? 10 : 6,
+    backgroundColor: "#ffffff",
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: BORDER,
-    minWidth: 180,
-    flex: 1,
+    borderColor: "rgba(22, 23, 15, 0.09)",
+    ...shadows.soft,
   },
   searchText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 12.5,
     color: INK,
     fontFamily: fontFamilies.sans.regular,
     padding: 0,
@@ -226,24 +243,24 @@ const styles: Record<string, any> = StyleSheet.create({
     gap: 6,
   },
   statusPill: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: radii.full,
     borderWidth: 1,
     borderColor: BORDER,
-    backgroundColor: "#fff",
+    backgroundColor: "#ffffff",
   },
   statusPillActive: {
-    backgroundColor: "#556b2f",
-    borderColor: "#556b2f",
+    backgroundColor: INK,
+    borderColor: INK,
   },
   statusText: {
-    fontSize: 10,
-    color: INK,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
+    fontSize: 10.5,
+    color: MUTED,
+    fontFamily: fontFamilies.mono.medium,
   },
   statusTextActive: {
-    color: "#fff",
+    color: "#ffffff",
+    fontFamily: fontFamilies.mono.semibold,
   },
 });

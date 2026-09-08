@@ -204,7 +204,8 @@ export default function OrderSuccessScreen() {
     if (!referralCode) return;
     try {
       await Share.share({
-        message: `Use my invite code ${referralCode} to get Rs. 1,500 off your first purchase at LUXE Boutique!`,
+        message: `Shop LUXE with my invite ${referralCode} — https://synapstore.shop/r/${referralCode}\nI earn 100 loyalty points when you complete your first paid order!`,
+        url: `https://synapstore.shop/r/${referralCode}`,
       });
     } catch {
       // ignore
@@ -601,19 +602,20 @@ export default function OrderSuccessScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="share-social-outline" size={18} color={theme.colors.primary} />
                 <Display size="lg" style={[styles.cardTitle, { color: theme.colors.foreground }]}>
-                  Invite friends, earn money!
+                  Invite friends, earn points!
                 </Display>
               </View>
             </View>
 
             <View style={[styles.invitePill, { backgroundColor: theme.olive[100] }]}>
               <Label style={{ color: theme.olive[800], fontSize: 11, fontWeight: "700" }}>
-                Rs. 1,500 for you, Rs. 1,500 for a friend
+                100 loyalty points per friend
               </Label>
             </View>
 
             <Body size="xs" muted style={{ marginVertical: 6 }}>
-              Share your invite code with friends. They get Rs. 1,500 off their first purchase, and you receive Rs. 1,500 points in your account!
+              Share your invite code with friends. You earn 100 loyalty points when a friend you referred completes
+              their first paid order.
             </Body>
 
             <View style={[styles.inviteRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>

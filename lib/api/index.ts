@@ -735,6 +735,18 @@ export async function getReferralInfo(): Promise<Result<B.ReferralInfo>> {
   return ok(res.data);
 }
 
+export async function applyReferralCode(
+  code: string,
+): Promise<Result<{ applied: boolean; already?: boolean }>> {
+  const normalized = code.trim().toUpperCase();
+  if (!B.isValidReferralCode(normalized)) {
+    return fail("Enter a valid referral code (4–12 letters/numbers).");
+  }
+  const res = await B.applyReferralCodeBackend(normalized);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
+
 export async function listProductQuestions(productId: string): Promise<Result<B.Question[]>> {
   const res = await B.listQuestionsBackend(productId);
   if (!res.ok) return fail(res.error);

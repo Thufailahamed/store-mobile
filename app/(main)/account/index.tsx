@@ -16,7 +16,6 @@ import Svg, { Path } from "react-native-svg";
 import { PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
-import { Avatar } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
@@ -26,7 +25,12 @@ import {
   getRecentlyViewedIds,
   type PaymentCard,
 } from "@/lib/account-local";
-import { listPaymentMethodsBackend, getProfileBackend, getProductsByIdsBackend, type SavedCard } from "@/lib/api/backend";
+import {
+  listPaymentMethodsBackend,
+  getProfileBackend,
+  getProductsByIdsBackend,
+  type SavedCard,
+} from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import { navigateHome } from "@/lib/navigation";
@@ -55,111 +59,151 @@ function savedCardToPaymentCard(c: SavedCard): PaymentCard {
 
 const H_PAD = spacing[5];
 const CARD_GAP = spacing[3];
-const RECENT_SIZE = 120;
+const RECENT_CARD_WIDTH = 136;
+const RECENT_CARD_HEIGHT = 176;
 
-const ACCOUNT_LINKS: {
+interface AccountLinkItem {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   sub: string;
   route: string;
+  badge?: string;
   requiresAuth?: boolean;
-}[] = [
+}
+
+interface AccountGroup {
+  id: string;
+  title: string;
+  kicker: string;
+  items: AccountLinkItem[];
+}
+
+const ACCOUNT_GROUPS: AccountGroup[] = [
   {
-    icon: "location-outline",
-    label: "Addresses",
-    sub: "Shipping & billing",
-    route: "/(main)/account/addresses",
-    requiresAuth: true,
+    id: "orders",
+    title: "Orders & Logistics",
+    kicker: "PURCHASES",
+    items: [
+      {
+        icon: "location-outline",
+        label: "Addresses",
+        sub: "Shipping & billing addresses",
+        route: "/(main)/account/addresses",
+        requiresAuth: true,
+      },
+      {
+        icon: "return-down-back-outline",
+        label: "Returns & Refunds",
+        sub: "Track claims & return status",
+        route: "/(main)/account/returns",
+        requiresAuth: true,
+      },
+      {
+        icon: "shirt-outline",
+        label: "Wardrobe",
+        sub: "Your digital closet, outfits & wears",
+        route: "/(main)/account/wardrobe",
+        requiresAuth: true,
+      },
+    ],
   },
   {
-    icon: "return-down-back-outline",
-    label: "Returns",
-    sub: "Track refunds",
-    route: "/(main)/account/returns",
-    requiresAuth: true,
+    id: "privileges",
+    title: "Privileges & Rewards",
+    kicker: "EXCLUSIVE",
+    items: [
+      {
+        icon: "ribbon-outline",
+        label: "Loyalty & Rewards",
+        sub: "Tier privileges, points & perks",
+        route: "/(main)/account/loyalty",
+        badge: "VIP",
+        requiresAuth: true,
+      },
+      {
+        icon: "gift-outline",
+        label: "Gift Cards",
+        sub: "Buy, redeem & balance check",
+        route: "/(main)/account/gift-cards",
+        requiresAuth: true,
+      },
+      {
+        icon: "people-outline",
+        label: "Referrals",
+        sub: "Share your code & earn rewards",
+        route: "/(main)/account/referrals",
+        requiresAuth: true,
+      },
+      {
+        icon: "megaphone-outline",
+        label: "Influencer Program",
+        sub: "Application & collaboration status",
+        route: "/(main)/account/influencer-status",
+        requiresAuth: true,
+      },
+    ],
   },
   {
-    icon: "ribbon-outline",
-    label: "Loyalty & rewards",
-    sub: "Points and perks",
-    route: "/(main)/account/loyalty",
-    requiresAuth: true,
+    id: "style",
+    title: "Style & Personalization",
+    kicker: "CURATED FOR YOU",
+    items: [
+      {
+        icon: "resize-outline",
+        label: "Fit Profile",
+        sub: "Bespoke size recommendations",
+        route: "/(main)/account/fit-profile",
+        requiresAuth: true,
+      },
+      {
+        icon: "notifications-outline",
+        label: "Price Drop Alerts",
+        sub: "Watch for reductions on wishlist",
+        route: "/(main)/account/price-alerts",
+        requiresAuth: true,
+      },
+      {
+        icon: "star-outline",
+        label: "My Reviews",
+        sub: "Products you have rated",
+        route: "/(main)/account/reviews",
+        requiresAuth: true,
+      },
+    ],
   },
   {
-    icon: "shirt-outline",
-    label: "Wardrobe",
-    sub: "Your closet · wears · outfits",
-    route: "/(main)/account/wardrobe",
-    requiresAuth: true,
-  },
-  {
-    icon: "star-outline",
-    label: "My reviews",
-    sub: "Products you've rated",
-    route: "/(main)/account/reviews",
-    requiresAuth: true,
-  },
-  {
-    icon: "shield-outline",
-    label: "Security",
-    sub: "Password & MFA",
-    route: "/(main)/account/security",
-    requiresAuth: true,
-  },
-  {
-    icon: "gift-outline",
-    label: "Referrals",
-    sub: "Share your code",
-    route: "/(main)/account/referrals",
-    requiresAuth: true,
-  },
-  {
-    icon: "megaphone-outline",
-    label: "Influencer program",
-    sub: "Application status",
-    route: "/(main)/account/influencer-status",
-    requiresAuth: true,
-  },
-  {
-    icon: "gift-outline",
-    label: "Gift cards",
-    sub: "Buy, redeem, balances",
-    route: "/(main)/account/gift-cards",
-    requiresAuth: true,
-  },
-  {
-    icon: "notifications-outline",
-    label: "Price alerts",
-    sub: "Watch for drops",
-    route: "/(main)/account/price-alerts",
-    requiresAuth: true,
-  },
-  {
-    icon: "resize-outline",
-    label: "Fit profile",
-    sub: "Size recommendations",
-    route: "/(main)/account/fit-profile",
-    requiresAuth: true,
-  },
-  {
-    icon: "chatbubbles-outline",
-    label: "Support tickets",
-    sub: "Order help & refunds",
-    route: "/(main)/account/tickets",
-    requiresAuth: true,
-  },
-  {
-    icon: "headset-outline",
-    label: "Contact support",
-    sub: "Get help with orders",
-    route: "/(main)/contact",
+    id: "security",
+    title: "Account & Concierge",
+    kicker: "SETTINGS",
+    items: [
+      {
+        icon: "shield-outline",
+        label: "Security & MFA",
+        sub: "Password, sessions & two-factor",
+        route: "/(main)/account/security",
+        requiresAuth: true,
+      },
+      {
+        icon: "chatbubbles-outline",
+        label: "Support Tickets",
+        sub: "Order inquiries & claims",
+        route: "/(main)/account/tickets",
+        requiresAuth: true,
+      },
+      {
+        icon: "headset-outline",
+        label: "Luxe Concierge",
+        sub: "Connect with personal care",
+        route: "/(main)/contact",
+      },
+    ],
   },
 ];
 
 const CARD_BRAND_STYLES: Record<PaymentCard["brand"], { colors: [string, string]; label: string }> = {
-  visa: { colors: ["#0a0d24", "#1b2d72"], label: "VISA" },
-  mastercard: { colors: ["#1b0c24", "#4a1236"], label: "MC" },
-  amex: { colors: ["#0d213a", "#123c60"], label: "AMEX" },
+  visa: { colors: ["#0f172a", "#1e293b"], label: "VISA" },
+  mastercard: { colors: ["#18181b", "#3f3f46"], label: "MASTERCARD" },
+  amex: { colors: ["#0c1926", "#1c3247"], label: "AMEX" },
 };
 
 function buildOrderThumbs(orders: Order[]): string[] {
@@ -174,6 +218,13 @@ function buildOrderThumbs(orders: Order[]): string[] {
     .slice(0, 4) as string[];
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(" ").filter(Boolean);
+  if (!parts.length) return "L";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const tabBarScrollHandler = useHideTabBarOnScroll();
@@ -183,14 +234,18 @@ export default function AccountScreen() {
   const toggle = useWishlist((s) => s.toggle);
 
   const [orderThumbs, setOrderThumbs] = useState<string[]>([]);
+  const [orderCount, setOrderCount] = useState<number>(0);
   const [followedStores, setFollowedStores] = useState<FollowedStore[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
   const [payments, setPayments] = useState<PaymentCard[]>([]);
   const [profileName, setProfileName] = useState("");
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
 
   const name = profileName || user?.user_metadata?.full_name || "Guest";
   const email = user?.email ?? "Sign in to sync your account";
+  const wishlistCount = Object.keys(wishlistItems).length;
+  const showAvatarImage = Boolean(avatarUri) && !avatarError;
 
   useFocusEffect(
     useCallback(() => {
@@ -223,6 +278,7 @@ export default function AccountScreen() {
 
         if (!user?.id) {
           setOrderThumbs([]);
+          setOrderCount(0);
           setFollowedStores([]);
           return;
         }
@@ -236,14 +292,20 @@ export default function AccountScreen() {
         if (cancelled) return;
 
         if (storesRes.ok) setFollowedStores(storesRes.data);
-        if (ordersRes.ok) setOrderThumbs(buildOrderThumbs(ordersRes.data));
-        else setOrderThumbs([]);
+        if (ordersRes.ok && Array.isArray(ordersRes.data)) {
+          setOrderThumbs(buildOrderThumbs(ordersRes.data));
+          setOrderCount(ordersRes.data.length);
+        } else {
+          setOrderThumbs([]);
+          setOrderCount(0);
+        }
 
         const profile = profileRes.ok ? profileRes.data?.user : null;
         if (profile?.full_name) setProfileName(profile.full_name);
         const nextAvatar =
           profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null;
         setAvatarUri(nextAvatar ? resolveImageUrl(nextAvatar) || nextAvatar : null);
+        setAvatarError(false);
       }
 
       load();
@@ -266,7 +328,7 @@ export default function AccountScreen() {
   }, [router]);
 
   const openAccountLink = useCallback(
-    (link: (typeof ACCOUNT_LINKS)[number]) => {
+    (link: AccountLinkItem) => {
       if (link.requiresAuth && !user) {
         handleSignIn();
         return;
@@ -276,8 +338,10 @@ export default function AccountScreen() {
     [user, router, handleSignIn],
   );
 
+  const initials = getInitials(name);
+
   return (
-    <PaperBackground style={{ backgroundColor: "#ffffff" }}>
+    <PaperBackground style={{ backgroundColor: "#f8f7f2" }}>
       <AnimatedScrollView
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
@@ -285,402 +349,554 @@ export default function AccountScreen() {
         contentContainerStyle={[
           styles.scroll,
           {
-            paddingTop: Math.max(insets.top, spacing[4]) + spacing[2],
-            paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4],
+            paddingTop: Math.max(insets.top, spacing[3]) + spacing[1],
+            paddingBottom: expandableTabBarInset(insets.bottom) + spacing[6],
           },
         ]}
       >
-        {/* Back to home */}
-        <TouchableOpacity
-          style={styles.homeBtn}
-          onPress={() => navigateHome(router)}
-          activeOpacity={0.7}
-          accessibilityLabel="Back to home"
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-        </TouchableOpacity>
+        {/* Top App Bar */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => navigateHome(router)}
+            activeOpacity={0.7}
+            accessibilityLabel="Back to home"
+          >
+            <Ionicons name="chevron-back" size={18} color={colors.light.foreground} />
+          </TouchableOpacity>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.name}>{name}</Text>
-            <Text style={styles.email}>{email}</Text>
-            <View style={styles.pillRow}>
-              <PillButton
-                icon="settings-outline"
-                label="Settings"
-                onPress={() =>
-                  user
-                    ? router.push("/(main)/account/settings")
-                    : handleSignIn()
-                }
-              />
-              <PillButton
-                icon="person-outline"
-                label="Profile"
-                onPress={() =>
-                  user
-                    ? router.push("/(main)/account/profile")
-                    : handleSignIn()
-                }
-              />
-            </View>
+          <View style={styles.brandTitleContainer}>
+            <Text style={styles.brandTitleKicker}>MEMBERSHIP</Text>
+            <Text style={styles.brandTitleText}>Account</Text>
           </View>
-          <Avatar
-            name={name}
-            uri={avatarUri}
-            size={72}
-            style={styles.avatar}
-          />
+
+          {user ? (
+            <TouchableOpacity
+              style={styles.navBtn}
+              onPress={() => router.push("/(main)/account/settings")}
+              activeOpacity={0.7}
+              accessibilityLabel="Settings"
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.light.foreground} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.navBtnPlaceholder} />
+          )}
         </View>
 
-        {/* Order history + Following */}
-        <View style={styles.summaryRow}>
-          <SummaryCard
-            label="Order history"
-            onPress={() =>
-              user
-                ? router.push("/(main)/account/orders")
-                : handleSignIn()
-            }
+        {/* Luxury Member Profile Card — Private Client / Executive Noir Card */}
+        <View style={styles.memberCard}>
+          <LinearGradient
+            colors={["#1c2014", "#15180f", "#0c0e08"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.memberCardGradient}
           >
-            <OverlapRow
-              images={orderThumbs}
-              emptyIcon="receipt-outline"
-            />
-          </SummaryCard>
-          <SummaryCard
-            label="Following"
+            {/* Guilloche SVG Wave Accent Lines */}
+            <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
+              <Path
+                d="M-40 20 C 60 90, 180 10, 260 70 S 360 20, 440 60"
+                fill="none"
+                stroke="rgba(200, 164, 74, 0.08)"
+                strokeWidth={1.2}
+              />
+              <Path
+                d="M-40 35 C 60 105, 180 25, 260 85 S 360 35, 440 75"
+                fill="none"
+                stroke="rgba(200, 164, 74, 0.08)"
+                strokeWidth={1.2}
+              />
+              <Path
+                d="M-40 50 C 60 120, 180 40, 260 100 S 360 50, 440 90"
+                fill="none"
+                stroke="rgba(200, 164, 74, 0.08)"
+                strokeWidth={1.2}
+              />
+            </Svg>
+
+            {/* Top Badges Row */}
+            <View style={styles.memberBadgeRow}>
+              <View style={styles.privilegePill}>
+                <Ionicons
+                  name={role === "admin" ? "shield-checkmark" : "diamond-outline"}
+                  size={12}
+                  color="#E8CF8F"
+                />
+                <Text style={styles.privilegePillText}>
+                  {role === "admin" ? "PLATFORM EXECUTIVE" : "PRIVATE CLIENT"}
+                </Text>
+              </View>
+
+              <View style={styles.memberIdBadge}>
+                <Text style={styles.memberIdText}>
+                  {user ? `VIP · #${user.id.slice(0, 6).toUpperCase()}` : "GUEST PASS"}
+                </Text>
+              </View>
+            </View>
+
+            {/* Main Profile Info */}
+            <View style={styles.profileRow}>
+              {/* Luxury Avatar with Double Ring */}
+              <View style={styles.avatarWrapper}>
+                <View style={styles.avatarOuterBezel}>
+                  <View style={styles.avatarInnerBezel}>
+                    {showAvatarImage ? (
+                      <Image
+                        source={{ uri: avatarUri! }}
+                        style={styles.avatarImage}
+                        contentFit="cover"
+                        transition={200}
+                        onError={() => setAvatarError(true)}
+                      />
+                    ) : (
+                      <LinearGradient
+                        colors={["#2b311a", "#181c0e"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.avatarFallback}
+                      >
+                        <Ionicons name="sparkles" size={10} color="#E8CF8F" style={styles.crownIcon} />
+                        <Text style={styles.avatarInitials}>{initials}</Text>
+                      </LinearGradient>
+                    )}
+                  </View>
+                </View>
+                {user ? (
+                  <View style={styles.avatarVerifiedBadge}>
+                    <Ionicons name="checkmark-sharp" size={10} color="#14170d" />
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.profileCopy}>
+                <Text style={styles.profileName} numberOfLines={1}>
+                  {name}
+                </Text>
+                <View style={styles.emailRow}>
+                  <Text style={styles.profileEmail} numberOfLines={1}>
+                    {email}
+                  </Text>
+                </View>
+
+                {/* Quick Action Pills */}
+                <View style={styles.pillRow}>
+                  <TouchableOpacity
+                    style={styles.actionPill}
+                    onPress={() =>
+                      user
+                        ? router.push("/(main)/account/profile")
+                        : handleSignIn()
+                    }
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="person-outline" size={12} color="#E6E2D3" />
+                    <Text style={styles.actionPillText}>Profile</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionPill}
+                    onPress={() =>
+                      user
+                        ? router.push("/(main)/account/settings")
+                        : handleSignIn()
+                    }
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="settings-outline" size={12} color="#E6E2D3" />
+                    <Text style={styles.actionPillText}>Settings</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Haute Horlogerie / Private Client Stats Ribbon */}
+            <View style={styles.statsRibbon}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => (user ? router.push("/(main)/account/orders") : handleSignIn())}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statValue}>{orderCount}</Text>
+                <Text style={styles.statLabel}>PURCHASES</Text>
+              </TouchableOpacity>
+
+              <View style={styles.statDivider} />
+
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push("/(main)/products")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statValue}>{wishlistCount}</Text>
+                <Text style={styles.statLabel}>WISHLIST</Text>
+              </TouchableOpacity>
+
+              <View style={styles.statDivider} />
+
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => router.push("/(main)/account/following")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.statValue}>{followedStores.length}</Text>
+                <Text style={styles.statLabel}>BOUTIQUES</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+
+        {/* Action Tiles (Order History + Followed Boutiques) */}
+        <View style={styles.summaryGrid}>
+          {/* Order History Tile */}
+          <TouchableOpacity
+            style={styles.summaryTile}
+            onPress={() => (user ? router.push("/(main)/account/orders") : handleSignIn())}
+            activeOpacity={0.85}
+          >
+            <View style={styles.summaryTileTop}>
+              <View style={styles.summaryIconBadge}>
+                <Ionicons name="bag-handle-outline" size={16} color={colors.olive[700]} />
+              </View>
+              <Text style={styles.summaryTileKicker}>PURCHASES</Text>
+            </View>
+
+            <View style={styles.summaryVisualBox}>
+              {orderThumbs.length > 0 ? (
+                <View style={styles.overlapContainer}>
+                  {orderThumbs.map((uri, idx) => (
+                    <Image
+                      key={`${uri}-${idx}`}
+                      source={{ uri }}
+                      style={[
+                        styles.overlapThumb,
+                        { left: idx * 24, zIndex: 10 - idx },
+                      ]}
+                      contentFit="cover"
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyTileVisual}>
+                  <Text style={styles.emptyTileText}>View order history & tracking</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.summaryTileFooter}>
+              <Text style={styles.summaryTileTitle}>Order history</Text>
+              <Ionicons name="arrow-forward" size={14} color={colors.light.mutedForeground} />
+            </View>
+          </TouchableOpacity>
+
+          {/* Following Tile */}
+          <TouchableOpacity
+            style={styles.summaryTile}
             onPress={() => router.push("/(main)/account/following")}
-            emptyIcon="people-outline"
+            activeOpacity={0.85}
           >
-            <OverlapAvatars items={followingAvatars} emptyIcon="storefront-outline" />
-          </SummaryCard>
+            <View style={styles.summaryTileTop}>
+              <View style={styles.summaryIconBadge}>
+                <Ionicons name="storefront-outline" size={16} color={colors.olive[700]} />
+              </View>
+              <Text style={styles.summaryTileKicker}>BOUTIQUES</Text>
+            </View>
+
+            <View style={styles.summaryVisualBox}>
+              {followingAvatars.length > 0 ? (
+                <View style={styles.overlapContainer}>
+                  {followingAvatars.map((item, idx) => (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.overlapAvatarWrap,
+                        { left: idx * 24, zIndex: 10 - idx },
+                      ]}
+                    >
+                      {item.uri ? (
+                        <Image source={{ uri: item.uri }} style={styles.overlapAvatarImg} contentFit="cover" />
+                      ) : (
+                        <Text style={styles.overlapAvatarLetter}>{item.label.charAt(0)}</Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyTileVisual}>
+                  <Text style={styles.emptyTileText}>Explore followed designers</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.summaryTileFooter}>
+              <Text style={styles.summaryTileTitle}>Following</Text>
+              <Ionicons name="arrow-forward" size={14} color={colors.light.mutedForeground} />
+            </View>
+          </TouchableOpacity>
         </View>
 
-        {/* Recently viewed */}
-        <SectionHeader
-          title="Recently viewed"
-          onPress={() => router.push("/(main)/products")}
-        />
+        {/* Recently Viewed Editorial Rail */}
+        <View style={styles.sectionHeaderWrap}>
+          <View style={styles.sectionTitleBlock}>
+            <Text style={styles.sectionKicker}>CONTINUE BROWSING</Text>
+            <Text style={styles.sectionHeading}>Recently viewed</Text>
+          </View>
+
+          {recentlyViewed.length > 0 ? (
+            <TouchableOpacity
+              style={styles.seeAllBtn}
+              onPress={() => router.push("/(main)/products")}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.seeAllText}>Browse all</Text>
+              <Ionicons name="chevron-forward" size={12} color={colors.olive[700]} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         {recentlyViewed.length === 0 ? (
-          <View style={styles.emptyRail}>
-            <Ionicons name="eye-outline" size={22} color={colors.light.mutedForeground} />
-            <Text style={styles.emptyText}>Items you browse will show up here.</Text>
+          <View style={styles.emptyRecentCard}>
+            <View style={styles.emptyRecentIconWrap}>
+              <Ionicons name="eye-outline" size={22} color={colors.light.mutedForeground} />
+            </View>
+            <View style={styles.emptyRecentTextWrap}>
+              <Text style={styles.emptyRecentTitle}>No recently viewed pieces</Text>
+              <Text style={styles.emptyRecentSub}>Luxury pieces you explore will appear here</Text>
+            </View>
           </View>
         ) : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentScroll}
+            contentContainerStyle={styles.recentScrollContainer}
           >
-            {recentlyViewed.map((p, index) => {
+            {recentlyViewed.map((p) => {
               const img = p.images?.find((i) => i.is_primary)?.url ?? p.images?.[0]?.url;
               const isWishlisted = !!wishlistItems[p.id];
-              const showTextOverlay = index % 3 !== 2;
+              const brand = p.brand?.name || p.store?.name || "LUXE";
               const displayName = p.name.split(" - ")[0] || p.name;
 
               return (
                 <TouchableOpacity
                   key={p.id}
-                  style={styles.recentCard}
-                  activeOpacity={0.85}
+                  style={styles.recentProductCard}
+                  activeOpacity={0.9}
                   onPress={() => router.push(`/(main)/products/${p.slug}`)}
                 >
+                  {/* High-res Image */}
                   {img ? (
-                    <Image source={{ uri: img }} style={styles.recentImage} contentFit="cover" />
+                    <Image
+                      source={{ uri: img }}
+                      style={styles.recentProductImage}
+                      contentFit="cover"
+                      transition={200}
+                    />
                   ) : (
-                    <View style={[styles.recentImage, styles.recentPlaceholder]}>
+                    <View style={[styles.recentProductImage, styles.recentImagePlaceholder]}>
                       <Ionicons name="shirt-outline" size={28} color={colors.light.mutedForeground} />
                     </View>
                   )}
 
-                  {showTextOverlay ? (
-                    <>
-                      <View style={styles.recentOverlay} />
-                      <View style={styles.recentTextContainer}>
-                        <Text
-                          style={[
-                            styles.recentOverlayText,
-                            index % 3 === 0
-                              ? styles.recentTextAllCaps
-                              : styles.recentTextItalic,
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {displayName}
-                        </Text>
-                      </View>
-                    </>
-                  ) : (
-                    <>
-                      {p.price ? (
-                        <View style={styles.priceTag}>
-                          <Text style={styles.priceTagText}>{formatPrice(p.price, p.currency)}</Text>
-                        </View>
-                      ) : null}
-                      <TouchableOpacity
-                        style={styles.recentHeartBtn}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          toggle(p.id);
-                        }}
-                        activeOpacity={0.75}
-                        hitSlop={6}
-                      >
-                        <Ionicons
-                          name={isWishlisted ? "heart" : "heart-outline"}
-                          size={14}
-                          color={isWishlisted ? colors.light.destructive : "#ffffff"}
-                        />
-                      </TouchableOpacity>
-                    </>
-                  )}
+                  {/* Floating Wishlist Heart */}
+                  <TouchableOpacity
+                    style={styles.floatingHeartBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      toggle(p.id);
+                    }}
+                    activeOpacity={0.75}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name={isWishlisted ? "heart" : "heart-outline"}
+                      size={14}
+                      color={isWishlisted ? colors.light.destructive : "#16170f"}
+                    />
+                  </TouchableOpacity>
+
+                  {/* Editorial Gradient Scrim & Info */}
+                  <LinearGradient
+                    colors={["transparent", "rgba(18, 19, 14, 0.7)", "rgba(18, 19, 14, 0.95)"]}
+                    locations={[0, 0.6, 1]}
+                    style={styles.recentProductScrim}
+                  >
+                    <Text style={styles.recentBrandName} numberOfLines={1}>
+                      {brand.toUpperCase()}
+                    </Text>
+                    <Text style={styles.recentProductName} numberOfLines={1}>
+                      {displayName}
+                    </Text>
+                    {p.price ? (
+                      <Text style={styles.recentProductPrice}>
+                        {formatPrice(p.price, p.currency)}
+                      </Text>
+                    ) : null}
+                  </LinearGradient>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         )}
 
-        {/* Account shortcuts */}
-        <SectionHeader title="Your account" />
-        <View style={styles.menuGroup}>
-          {ACCOUNT_LINKS.map((link, index) => (
+        {/* Categorized Luxury Account Menu */}
+        {ACCOUNT_GROUPS.map((group) => (
+          <View key={group.id} style={styles.groupContainer}>
+            <View style={styles.groupHeaderRow}>
+              <Text style={styles.groupKicker}>{group.kicker}</Text>
+              <Text style={styles.groupTitle}>{group.title}</Text>
+            </View>
+
+            <View style={styles.groupMenuCard}>
+              {group.items.map((item, index) => (
+                <TouchableOpacity
+                  key={item.route}
+                  style={[
+                    styles.groupRow,
+                    index < group.items.length - 1 && styles.groupRowDivider,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => openAccountLink(item)}
+                >
+                  <View style={styles.groupIconBox}>
+                    <Ionicons name={item.icon} size={18} color={colors.olive[700]} />
+                  </View>
+
+                  <View style={styles.groupTextBox}>
+                    <View style={styles.groupLabelRow}>
+                      <Text style={styles.groupItemLabel}>{item.label}</Text>
+                      {item.badge ? (
+                        <View style={styles.itemBadgePill}>
+                          <Text style={styles.itemBadgeText}>{item.badge}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.groupItemSub}>{item.sub}</Text>
+                  </View>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={colors.light.mutedForeground}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {/* Payment Methods Section */}
+        <View style={styles.groupContainer}>
+          <View style={styles.paymentHeaderRow}>
+            <View>
+              <Text style={styles.groupKicker}>SECURE CHECKOUT</Text>
+              <Text style={styles.groupTitle}>Payment methods</Text>
+            </View>
+
             <TouchableOpacity
-              key={link.route}
-              style={[
-                styles.menuRow,
-                index < ACCOUNT_LINKS.length - 1 && styles.menuRowBorder,
-              ]}
-              activeOpacity={0.85}
-              onPress={() => openAccountLink(link)}
+              style={styles.addCardBtn}
+              activeOpacity={0.8}
+              onPress={() =>
+                user
+                  ? router.push("/(main)/account/payments/add")
+                  : handleSignIn()
+              }
             >
-              <View style={styles.menuIcon}>
-                <Ionicons name={link.icon} size={18} color={colors.olive[700]} />
-              </View>
-              <View style={styles.menuText}>
-                <Text style={styles.menuTitle}>{link.label}</Text>
-                <Text style={styles.menuSub}>{link.sub}</Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.light.mutedForeground}
-              />
+              <Ionicons name="add" size={14} color={colors.olive[700]} />
+              <Text style={styles.addCardBtnText}>Add card</Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          </View>
 
-        {/* Payment methods */}
-        <View style={styles.paymentHeader}>
-          <Text style={styles.sectionTitle}>Payment methods</Text>
-          <TouchableOpacity
-            style={styles.addCardBtn}
-            activeOpacity={0.8}
-            onPress={() =>
-              user
-                ? router.push("/(main)/account/payments/add")
-                : handleSignIn()
-            }
-          >
-            <Text style={styles.addCardText}>Add card</Text>
-          </TouchableOpacity>
-        </View>
-
-        {payments.length === 0 ? (
-          <TouchableOpacity
-            style={styles.paymentEmpty}
-            activeOpacity={0.85}
-            onPress={() =>
-              user
-                ? router.push("/(main)/account/payments/add")
-                : handleSignIn()
-            }
-          >
-            <View style={styles.emptyCardRow}>
-              <View style={styles.emptyCardIconWrap}>
-                <Ionicons name="card-outline" size={22} color={colors.light.primary} />
+          {payments.length === 0 ? (
+            <TouchableOpacity
+              style={styles.paymentEmptyCard}
+              activeOpacity={0.85}
+              onPress={() =>
+                user
+                  ? router.push("/(main)/account/payments/add")
+                  : handleSignIn()
+              }
+            >
+              <View style={styles.paymentEmptyIconWrap}>
+                <Ionicons name="card-outline" size={22} color={colors.olive[700]} />
               </View>
-              <View style={styles.emptyCardCopy}>
-                <Text style={styles.emptyCardTitle}>No cards saved yet</Text>
-                <Text style={styles.emptyCardSubtitle}>
-                  Add a card for faster checkout
+              <View style={styles.paymentEmptyCopy}>
+                <Text style={styles.paymentEmptyTitle}>No payment methods saved</Text>
+                <Text style={styles.paymentEmptySub}>
+                  Store credit and debit cards securely for one-tap purchases
                 </Text>
               </View>
-              <View style={styles.emptyCardCta}>
-                <Ionicons name="add" size={18} color={colors.light.primaryForeground} />
+              <View style={styles.paymentEmptyPlus}>
+                <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
               </View>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.cardStack}
-            activeOpacity={0.9}
-            onPress={() => router.push("/(main)/account/payments")}
-          >
-            {payments.slice(0, 2).map((card, index) => (
-              <PaymentCardPreview key={card.id} card={card} index={index} total={Math.min(payments.length, 2)} />
-            ))}
-          </TouchableOpacity>
-        )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.cardStack}
+              activeOpacity={0.9}
+              onPress={() => router.push("/(main)/account/payments")}
+            >
+              {payments.slice(0, 2).map((card, index) => (
+                <PaymentCardPreview
+                  key={card.id}
+                  card={card}
+                  index={index}
+                  total={Math.min(payments.length, 2)}
+                />
+              ))}
+            </TouchableOpacity>
+          )}
+        </View>
 
+        {/* Admin Executive Portal Banner (Admins only) */}
         {user && role === "admin" ? (
           <TouchableOpacity
-            style={styles.adminPortal}
-            activeOpacity={0.85}
+            style={styles.adminBanner}
+            activeOpacity={0.9}
             onPress={() => router.push("/(admin)")}
           >
-            <View style={styles.adminPortalIcon}>
-              <Ionicons name="shield-checkmark" size={22} color={colors.light.primaryForeground} />
-            </View>
-            <View style={styles.adminPortalText}>
-              <Text style={styles.adminPortalTitle}>Admin portal</Text>
-              <Text style={styles.adminPortalSub}>
-                Overview, approvals, orders & CMS
-              </Text>
-            </View>
-            <View style={styles.adminPortalChevron}>
-              <Ionicons name="chevron-forward" size={16} color={colors.light.foreground} />
-            </View>
+            <LinearGradient
+              colors={["#1c2012", "#2d3419"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.adminBannerGradient}
+            >
+              <View style={styles.adminBannerIconWrap}>
+                <Ionicons name="shield-checkmark" size={24} color="#f4efe2" />
+              </View>
+              <View style={styles.adminBannerCopy}>
+                <View style={styles.adminPillSmall}>
+                  <Text style={styles.adminPillSmallText}>EXECUTIVE PORTAL</Text>
+                </View>
+                <Text style={styles.adminBannerTitle}>Platform Administration</Text>
+                <Text style={styles.adminBannerSub}>
+                  Catalog, moderation, vendor payouts & system settings
+                </Text>
+              </View>
+              <View style={styles.adminBannerArrow}>
+                <Ionicons name="arrow-forward" size={16} color="#1c2012" />
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
         ) : null}
 
+        {/* Sign Out / Sign In Button */}
         {user ? (
-          <TouchableOpacity style={styles.signOut} onPress={signOut} activeOpacity={0.7}>
-            <Text style={styles.signOutText}>Sign out</Text>
+          <TouchableOpacity style={styles.signOutBtn} onPress={signOut} activeOpacity={0.7}>
+            <Ionicons name="log-out-outline" size={16} color={colors.light.destructive} />
+            <Text style={styles.signOutBtnText}>Sign out of Luxe</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.signInBtn} onPress={handleSignIn} activeOpacity={0.85}>
-            <Text style={styles.signInText}>Sign in</Text>
+            <Text style={styles.signInBtnText}>Sign in to your account</Text>
           </TouchableOpacity>
         )}
+
+        {/* Brand Atelier Signature */}
+        <View style={styles.brandFooter}>
+          <Text style={styles.brandFooterSignature}>LUXE ATELIER</Text>
+          <Text style={styles.brandFooterCaption}>Curated Luxury Fashion & Lifestyle • v1.0</Text>
+        </View>
       </AnimatedScrollView>
     </PaperBackground>
-  );
-}
-
-function PillButton({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={styles.pill} onPress={onPress} activeOpacity={0.8}>
-      <Ionicons name={icon} size={14} color={colors.light.foreground} />
-      <Text style={styles.pillText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function SectionHeader({ title, onPress }: { title: string; onPress?: () => void }) {
-  const content = (
-    <View style={styles.sectionHeaderRow}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {onPress ? (
-        <View style={styles.chevronCircle}>
-          <Ionicons name="chevron-forward" size={12} color={colors.light.foreground} />
-        </View>
-      ) : null}
-    </View>
-  );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.sectionHeader}>
-        {content}
-      </TouchableOpacity>
-    );
-  }
-  return <View style={styles.sectionHeader}>{content}</View>;
-}
-
-function SummaryCard({
-  label,
-  onPress,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  emptyIcon?: keyof typeof Ionicons.glyphMap;
-  children: React.ReactNode;
-}) {
-  const { width: screenWidth } = useWindowDimensions();
-  const cardWidth = (screenWidth - H_PAD * 2 - CARD_GAP) / 2;
-  return (
-    <TouchableOpacity
-      style={[styles.summaryCard, { width: cardWidth }]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <View style={styles.summaryVisual}>{children}</View>
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function OverlapRow({
-  images,
-  emptyIcon,
-}: {
-  images: string[];
-  emptyIcon: keyof typeof Ionicons.glyphMap;
-}) {
-  if (!images.length) {
-    return (
-      <View style={styles.overlapEmpty}>
-        <Ionicons name={emptyIcon} size={22} color={colors.light.mutedForeground} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.overlapRow}>
-      {images.map((uri, i) => (
-        <Image
-          key={`${uri}-${i}`}
-          source={{ uri }}
-          style={[styles.overlapImage, i > 0 && { marginLeft: -14 }]}
-          contentFit="cover"
-        />
-      ))}
-    </View>
-  );
-}
-
-function OverlapAvatars({
-  items,
-  emptyIcon,
-}: {
-  items: { id: string; uri?: string | null; label: string }[];
-  emptyIcon: keyof typeof Ionicons.glyphMap;
-}) {
-  if (!items.length) {
-    return (
-      <View style={styles.overlapEmpty}>
-        <Ionicons name={emptyIcon} size={22} color={colors.light.mutedForeground} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.overlapRow}>
-      {items.map((item, i) => (
-        <View
-          key={item.id}
-          style={[styles.overlapAvatar, i > 0 && { marginLeft: -14 }]}
-        >
-          {item.uri ? (
-            <Image source={{ uri: item.uri }} style={styles.overlapAvatarImage} contentFit="cover" />
-          ) : (
-            <Text style={styles.overlapInitial}>{item.label.charAt(0)}</Text>
-          )}
-        </View>
-      ))}
-    </View>
   );
 }
 
@@ -693,10 +909,10 @@ function PaymentCardPreview({
   index: number;
   total: number;
 }) {
-  const meta = CARD_BRAND_STYLES[card.brand] || { colors: ["#0a0d24", "#1b2d72"], label: "VISA" };
+  const meta = CARD_BRAND_STYLES[card.brand] || { colors: ["#0f172a", "#1e293b"], label: "VISA" };
   const isFront = index === total - 1 || total === 1;
   const cardScale = isFront ? 1 : 0.94;
-  const cardTop = isFront ? 30 : 0;
+  const cardTop = isFront ? 26 : 0;
   const cardZ = index;
 
   return (
@@ -713,36 +929,23 @@ function PaymentCardPreview({
         },
       ]}
     >
-      {/* Curved Waves Background */}
       <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
         <Path
           d="M-20 40 C 60 100, 160 30, 240 90 S 320 40, 400 80"
           fill="none"
-          stroke="rgba(255, 255, 255, 0.06)"
+          stroke="rgba(255, 255, 255, 0.07)"
           strokeWidth={1.2}
         />
         <Path
-          d="M-20 50 C 60 110, 160 40, 240 100 S 320 50, 400 90"
+          d="M-20 55 C 60 115, 160 45, 240 105 S 320 55, 400 95"
           fill="none"
-          stroke="rgba(255, 255, 255, 0.06)"
-          strokeWidth={1.2}
-        />
-        <Path
-          d="M-20 60 C 60 120, 160 50, 240 110 S 320 60, 400 100"
-          fill="none"
-          stroke="rgba(255, 255, 255, 0.06)"
+          stroke="rgba(255, 255, 255, 0.07)"
           strokeWidth={1.2}
         />
         <Path
           d="M-20 70 C 60 130, 160 60, 240 120 S 320 70, 400 110"
           fill="none"
-          stroke="rgba(255, 255, 255, 0.06)"
-          strokeWidth={1.2}
-        />
-        <Path
-          d="M-20 80 C 60 140, 160 70, 240 130 S 320 80, 400 120"
-          fill="none"
-          stroke="rgba(255, 255, 255, 0.06)"
+          stroke="rgba(255, 255, 255, 0.07)"
           strokeWidth={1.2}
         />
       </Svg>
@@ -753,10 +956,11 @@ function PaymentCardPreview({
         </View>
         <Text style={styles.cardNumberText}>•••• {card.last4}</Text>
       </View>
-      
+
       <View style={styles.paymentCardBottom}>
+        <Text style={styles.cardHolderText}>{card.holder || "LUXE MEMBER"}</Text>
         <View style={styles.cardWatermark}>
-          <Text style={styles.watermarkText}>{meta.label}</Text>
+          <Text style={styles.watermarkText}>{card.exp}</Text>
         </View>
       </View>
     </LinearGradient>
@@ -767,344 +971,627 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: H_PAD,
   },
-  homeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.lg,
+
+  /* Top Bar */
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing[4],
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
-    marginBottom: spacing[3],
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: spacing[6],
-    gap: spacing[4],
-  },
-  headerText: {
-    flex: 1,
-    gap: spacing[1],
-  },
-  name: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 26,
-    color: colors.light.foreground,
-    letterSpacing: -0.5,
-  },
-  email: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    color: colors.light.mutedForeground,
-    marginBottom: spacing[2],
-  },
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing[2],
-    marginTop: spacing[1],
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#f3f3f3",
-    borderRadius: radii.full,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  pillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  avatar: {
-    borderRadius: 36,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    gap: CARD_GAP,
-    marginBottom: spacing[6],
-  },
-  summaryCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: spacing[4],
-    minHeight: 120,
-    justifyContent: "space-between",
+    borderColor: "rgba(22, 23, 15, 0.08)",
     ...shadows.soft,
   },
-  summaryVisual: {
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  summaryLabel: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.light.foreground,
-    marginTop: spacing[3],
-  },
-  overlapRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  overlapImage: {
+  navBtnPlaceholder: {
     width: 40,
     height: 40,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: "#ffffff",
-    backgroundColor: "#f5f5f5",
   },
-  overlapAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: "#ffffff",
-    backgroundColor: "#f5f5f5",
+  brandTitleContainer: {
     alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
+    gap: 1,
   },
-  overlapAvatarImage: {
-    width: "100%",
-    height: "100%",
+  brandTitleKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 2,
+    color: colors.olive[700],
+    textTransform: "uppercase",
   },
-  overlapInitial: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.light.primary,
-  },
-  overlapEmpty: {
-    height: 40,
-    justifyContent: "center",
-  },
-  sectionHeader: {
-    marginBottom: spacing[3],
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  chevronCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#f3f3f3",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: spacing[1],
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.sans.bold,
+  brandTitleText: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: 18,
     color: colors.light.foreground,
     letterSpacing: -0.3,
   },
-  recentScroll: {
-    gap: spacing[3],
-    paddingBottom: spacing[6],
-  },
-  recentCard: {
-    width: RECENT_SIZE,
-    height: RECENT_SIZE,
-    borderRadius: radii.xl,
+
+  /* Member Card */
+  /* Member Card — Noir Obsidian & Champagne Gold Pass */
+  memberCard: {
+    borderRadius: 24,
     overflow: "hidden",
-    backgroundColor: "#f5f5f5",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.35)",
+    marginBottom: spacing[5],
+    backgroundColor: "#16190e",
+    shadowColor: "#16190e",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  memberCardGradient: {
+    padding: spacing[5],
     position: "relative",
   },
-  recentImage: {
+  memberBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing[4],
+  },
+  privilegePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    borderRadius: radii.full,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.35)",
+  },
+  privilegePillText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.4,
+    color: "#E8CF8F",
+    textTransform: "uppercase",
+  },
+  memberIdBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  memberIdText: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: "#C5BEA8",
+    letterSpacing: 1,
+  },
+  profileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[4],
+    marginBottom: spacing[5],
+  },
+  avatarWrapper: {
+    position: "relative",
+  },
+  avatarOuterBezel: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    borderWidth: 1.5,
+    borderColor: "#C8A44A",
+    padding: 3,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInnerBezel: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 33,
+    overflow: "hidden",
+    backgroundColor: "#1c2012",
+  },
+  avatarImage: {
     width: "100%",
     height: "100%",
   },
-  recentPlaceholder: {
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
-  recentOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.2)",
-  },
-  recentTextContainer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing[2],
-  },
-  recentOverlayText: {
-    color: "#ffffff",
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "center",
-  },
-  recentTextAllCaps: {
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  recentTextItalic: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 14,
-  },
-  priceTag: {
+  crownIcon: {
     position: "absolute",
-    top: 8,
-    left: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    borderRadius: 6,
-    paddingHorizontal: 6,
+    top: 6,
+  },
+  avatarInitials: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    color: "#F4E2B2",
+    marginTop: 6,
+    letterSpacing: 0.5,
+  },
+  avatarVerifiedBadge: {
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#C8A44A",
+    borderWidth: 2,
+    borderColor: "#16190e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  profileName: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 23,
+    color: "#FFFFFF",
+    letterSpacing: -0.4,
+  },
+  emailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  profileEmail: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: "#BFBBAA",
+  },
+  pillRow: {
+    flexDirection: "row",
+    gap: spacing[2],
+    marginTop: spacing[2],
+  },
+  actionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: radii.full,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+  },
+  actionPillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: "#FAF8F1",
+    letterSpacing: 0.2,
+  },
+  statsRibbon: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    backgroundColor: "rgba(0, 0, 0, 0.38)",
+    borderRadius: radii.xl,
+    paddingVertical: spacing[3] + 2,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.2)",
+  },
+  statItem: {
+    alignItems: "center",
+    flex: 1,
+    gap: 2,
+  },
+  statValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  statLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    color: "#C8A44A",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+  },
+  statDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: "rgba(200, 164, 74, 0.2)",
+  },
+
+  /* Action Tiles */
+  summaryGrid: {
+    flexDirection: "row",
+    gap: CARD_GAP,
+    marginBottom: spacing[5],
+  },
+  summaryTile: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: radii["2xl"],
+    padding: spacing[4],
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    justifyContent: "space-between",
+    minHeight: 128,
+    ...shadows.soft,
+  },
+  summaryTileTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  summaryIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  summaryTileKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    color: colors.light.mutedForeground,
+    letterSpacing: 1.2,
+  },
+  summaryVisualBox: {
+    height: 44,
+    justifyContent: "center",
+    marginVertical: spacing[2],
+  },
+  overlapContainer: {
+    position: "relative",
+    height: 40,
+    width: "100%",
+  },
+  overlapThumb: {
+    position: "absolute",
+    top: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#ffffff",
+    backgroundColor: "#f0ede2",
+  },
+  overlapAvatarWrap: {
+    position: "absolute",
+    top: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#ffffff",
+    backgroundColor: colors.olive[100],
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  overlapAvatarImg: {
+    width: "100%",
+    height: "100%",
+  },
+  overlapAvatarLetter: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.olive[800],
+  },
+  emptyTileVisual: {
+    justifyContent: "center",
+  },
+  emptyTileText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    lineHeight: 15,
+  },
+  summaryTileFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  summaryTileTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.light.foreground,
+    letterSpacing: -0.2,
+  },
+
+  /* Section Header */
+  sectionHeaderWrap: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginBottom: spacing[3],
+  },
+  sectionTitleBlock: {
+    gap: 2,
+  },
+  sectionKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.olive[700],
+    letterSpacing: 1.5,
+  },
+  sectionHeading: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: colors.light.foreground,
+    letterSpacing: -0.3,
+  },
+  seeAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
     paddingVertical: 2,
   },
-  priceTagText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-    fontSize: 10,
-    color: "#ffffff",
+  seeAllText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.olive[700],
   },
-  recentHeartBtn: {
+
+  /* Recently Viewed Editorial Rail */
+  recentScrollContainer: {
+    gap: spacing[3],
+    paddingBottom: spacing[5],
+  },
+  recentProductCard: {
+    width: RECENT_CARD_WIDTH,
+    height: RECENT_CARD_HEIGHT,
+    borderRadius: radii.xl,
+    overflow: "hidden",
+    backgroundColor: "#f5f4ef",
+    position: "relative",
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    ...shadows.soft,
+  },
+  recentProductImage: {
+    width: "100%",
+    height: "100%",
+  },
+  recentImagePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eae8de",
+  },
+  floatingHeartBtn: {
     position: "absolute",
-    bottom: 8,
+    top: 8,
     right: 8,
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  emptyRail: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingVertical: spacing[4],
-    marginBottom: spacing[6],
-  },
-  emptyText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.light.mutedForeground,
-    flex: 1,
-  },
-  paymentHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing[3],
-  },
-  menuGroup: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    marginBottom: spacing[6],
-    overflow: "hidden",
+    zIndex: 10,
     ...shadows.soft,
   },
-  menuRow: {
+  recentProductScrim: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: spacing[3],
+    paddingBottom: spacing[3],
+    paddingTop: spacing[5],
+    justifyContent: "flex-end",
+  },
+  recentBrandName: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: "#e6e6d0",
+    marginBottom: 2,
+  },
+  recentProductName: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: "#ffffff",
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  recentProductPrice: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    color: "#ffffff",
+    letterSpacing: -0.2,
+  },
+  emptyRecentCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
+    padding: spacing[4],
+    backgroundColor: "#ffffff",
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.06)",
+    marginBottom: spacing[5],
   },
-  menuRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-  },
-  menuIcon: {
+  emptyRecentIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: radii.lg,
+    borderRadius: 20,
     backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.olive[100],
   },
-  menuText: {
+  emptyRecentTextWrap: {
     flex: 1,
     gap: 2,
   },
-  menuTitle: {
+  emptyRecentTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
+    fontSize: 14,
     color: colors.light.foreground,
-    letterSpacing: -0.2,
   },
-  menuSub: {
+  emptyRecentSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
   },
-  addCardBtn: {
-    backgroundColor: colors.olive[100],
-    borderRadius: radii.full,
-    paddingHorizontal: spacing[4],
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: colors.olive[200],
+
+  /* Grouped Account Links */
+  groupContainer: {
+    marginBottom: spacing[5],
   },
-  addCardText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+  groupHeaderRow: {
+    marginBottom: spacing[2],
+    paddingHorizontal: spacing[1],
+    gap: 1,
+  },
+  groupKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.5,
     color: colors.olive[700],
+    textTransform: "uppercase",
   },
-  paymentEmpty: {
+  groupTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: colors.light.foreground,
+    letterSpacing: -0.2,
+  },
+  groupMenuCard: {
     backgroundColor: "#ffffff",
     borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: spacing[4],
-    marginBottom: spacing[6],
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    overflow: "hidden",
     ...shadows.soft,
   },
-  emptyCardRow: {
+  groupRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3] + 2,
   },
-  emptyCardIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.xl,
+  groupRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f2eb",
+  },
+  groupIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#f7f6f0",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(83, 94, 44, 0.1)",
+  },
+  groupTextBox: {
+    flex: 1,
+    gap: 2,
+  },
+  groupLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  groupItemLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.light.foreground,
+    letterSpacing: -0.2,
+  },
+  itemBadgePill: {
+    backgroundColor: "#e8a938",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  itemBadgeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: "#ffffff",
+    letterSpacing: 0.5,
+  },
+  groupItemSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+  },
+
+  /* Payment Section */
+  paymentHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing[2],
+    paddingHorizontal: spacing[1],
+  },
+  addCardBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.olive[50],
+    borderRadius: radii.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.olive[100],
+  },
+  addCardBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.olive[800],
+  },
+  paymentEmptyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    backgroundColor: "#ffffff",
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    padding: spacing[4],
+    ...shadows.soft,
+  },
+  paymentEmptyIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.olive[100],
   },
-  emptyCardCopy: {
+  paymentEmptyCopy: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
-  emptyCardTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
+  paymentEmptyTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
     color: colors.light.foreground,
-    letterSpacing: -0.2,
   },
-  emptyCardSubtitle: {
+  paymentEmptySub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
     lineHeight: 16,
   },
-  emptyCardCta: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.light.primary,
-    alignItems: "center",
-    justifyContent: "center",
+  paymentEmptyPlus: {
+    paddingLeft: 4,
   },
   cardStack: {
-    height: 158,
-    marginBottom: spacing[8],
+    height: 154,
+    marginBottom: spacing[2],
     position: "relative",
   },
   paymentCard: {
@@ -1113,26 +1600,28 @@ const styles = StyleSheet.create({
     right: 0,
     height: 120,
     borderRadius: radii["2xl"],
-    padding: spacing[5],
+    padding: spacing[4],
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
     ...shadows.soft,
   },
   paymentCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
+    justifyContent: "space-between",
   },
   brandBadge: {
     backgroundColor: "#ffffff",
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
   },
   brandBadgeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
-    color: "#0c0f24",
-    letterSpacing: 0.5,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    color: "#0f172a",
+    letterSpacing: 0.8,
   },
   cardNumberText: {
     fontFamily: fontFamilies.mono.medium,
@@ -1141,89 +1630,143 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
   paymentCardBottom: {
+    flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
+  },
+  cardHolderText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.75)",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   cardWatermark: {
-    alignSelf: "flex-end",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: 4,
+  },
+  watermarkText: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 11,
+    color: "#ffffff",
+  },
+
+  /* Admin Banner */
+  adminBanner: {
+    borderRadius: radii["2xl"],
+    overflow: "hidden",
+    marginBottom: spacing[5],
+    borderWidth: 1,
+    borderColor: "rgba(83, 94, 44, 0.3)",
+    ...shadows.soft,
+  },
+  adminBannerGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing[4],
+    gap: spacing[3],
+  },
+  adminBannerIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.15)",
   },
-  watermarkText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: "rgba(255, 255, 255, 0.35)",
-    letterSpacing: 0.5,
-  },
-  signOut: {
-    alignSelf: "center",
-    paddingVertical: spacing[3],
-    marginBottom: spacing[4],
-  },
-  adminPortal: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: spacing[4],
-    marginBottom: spacing[5],
-    ...shadows.soft,
-  },
-  adminPortalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.xl,
-    backgroundColor: colors.light.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  adminPortalText: {
+  adminBannerCopy: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
-  adminPortalTitle: {
-    fontFamily: fontFamilies.sans.bold,
+  adminPillSmall: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(200, 164, 74, 0.25)",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.4)",
+    marginBottom: 2,
+  },
+  adminPillSmallText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: "#e8c878",
+    letterSpacing: 1,
+  },
+  adminBannerTitle: {
+    fontFamily: fontFamilies.display.semibold,
     fontSize: 16,
-    color: colors.light.foreground,
+    color: "#faf8f1",
     letterSpacing: -0.2,
   },
-  adminPortalSub: {
+  adminBannerSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    lineHeight: 17,
+    fontSize: 11,
+    color: "rgba(250, 248, 241, 0.7)",
+    lineHeight: 15,
   },
-  adminPortalChevron: {
+  adminBannerArrow: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#f3f3f3",
+    backgroundColor: "#faf8f1",
     alignItems: "center",
     justifyContent: "center",
   },
-  signOutText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
+
+  /* Sign In / Sign Out */
+  signOutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: spacing[3],
+    marginBottom: spacing[4],
+    backgroundColor: "rgba(192, 57, 43, 0.05)",
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(192, 57, 43, 0.12)",
+  },
+  signOutBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: colors.light.destructive,
   },
   signInBtn: {
-    alignSelf: "stretch",
-    backgroundColor: colors.light.primary,
+    backgroundColor: colors.olive[700],
     borderRadius: radii.full,
     paddingVertical: spacing[4],
     alignItems: "center",
     marginBottom: spacing[4],
+    ...shadows.soft,
   },
-  signInText: {
+  signInBtnText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.light.primaryForeground,
+    fontSize: 14,
+    color: "#faf8f1",
+    letterSpacing: 0.3,
+  },
+
+  /* Brand Signature Footer */
+  brandFooter: {
+    alignItems: "center",
+    paddingVertical: spacing[4],
+    gap: 4,
+  },
+  brandFooterSignature: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 13,
+    letterSpacing: 3,
+    color: colors.olive[800],
+  },
+  brandFooterCaption: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
   },
 });

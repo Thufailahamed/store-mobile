@@ -20,11 +20,12 @@ import { useToast } from "@/components/ui";
 import {
   deleteWardrobeItem,
   listWardrobeItems,
+  listWardrobeOutfits,
   logWardrobeWear,
   updateWardrobeItem,
 } from "@/lib/api/wardrobe";
 import { LogWearSheet } from "@/components/wardrobe/LogWearSheet";
-import type { WardrobeItem } from "@/lib/types";
+import type { WardrobeItem, WardrobeOutfit } from "@/lib/types";
 
 const OLIVE = "#556b2f";
 const INK = "#16170f";
@@ -39,6 +40,8 @@ export default function WardrobeItemDetailScreen() {
   const { toast } = useToast();
 
   const [item, setItem] = useState<WardrobeItem | null>(null);
+  const [outfit, setOutfit] = useState<WardrobeOutfit | null>(null);
+  const [outfitItems, setOutfitItems] = useState<WardrobeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [wearOpen, setWearOpen] = useState(false);
   const [logPending, setLogPending] = useState(false);
@@ -46,18 +49,35 @@ export default function WardrobeItemDetailScreen() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    // The id might be a wardrobe item id or an outfit id. Try items first
-    // (cheaper — server filters via list), then outfits below if 404.
+    // The id might be a wardrobe item id or an outfit id. Try items first,
+    // then fall back to outfits (OutfitCard links land here).
     const res = await listWardrobeItems({ limit: 500 });
     if (res.ok) {
       const found = res.data.items.find((it) => it.id === id);
       if (found) {
         setItem(found);
+        setOutfit(null);
+        setOutfitItems([]);
+        setLoading(false);
+        return;
+      }
+    }
+    const outfitsRes = await listWardrobeOutfits();
+    if (outfitsRes.ok) {
+      const foundOutfit = outfitsRes.data.outfits.find((o) => o.id === id) ?? null;
+      if (foundOutfit) {
+        setOutfit(foundOutfit);
+        setItem(null);
+        const ids = new Set((foundOutfit.items ?? []).map((l) => l.wardrobe_item_id));
+        const allItems = res.ok ? res.data.items : [];
+        setOutfitItems(allItems.filter((it) => ids.has(it.id)));
         setLoading(false);
         return;
       }
     }
     setItem(null);
+    setOutfit(null);
+    setOutfitItems([]);
     setLoading(false);
   }, [id]);
 
@@ -133,7 +153,7 @@ export default function WardrobeItemDetailScreen() {
           <Ionicons name="chevron-back" size={20} color={INK} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {item?.name ?? "Wardrobe"}
+          {item?.name ?? outfit?.name ?? "Wardrobe"}
         </Text>
         <TouchableOpacity
           style={styles.headerBtn}
@@ -156,6 +176,44 @@ export default function WardrobeItemDetailScreen() {
           <Text style={[styles.muted, { padding: 32, textAlign: "center" }]}>
             Loading…
           </Text>
+        ) : outfit ? (
+          <View style={{ padding: 16, gap: 12 }}>
+            <Text style={styles.title}>{outfit.name}</Text>
+            {(outfit.occasion || outfit.season) && (
+              <Text style={styles.muted}>
+                {[outfit.occasion, outfit.season].filter(Boolean).join(" · ")}
+              </Text>
+            )}
+            {outfitItems.length === 0 ? (
+              <Text style={styles.muted}>No items in this outfit yet.</Text>
+            ) : (
+              outfitItems.map((oi) => (
+                <TouchableOpacity
+                  key={oi.id}
+                  style={styles.card}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({ pathname: "/(main)/wardrobe/[id]", params: { id: oi.id } } as never)
+                  }
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    {oi.image_url ? (
+                      <Image source={{ uri: oi.image_url }} style={{ width: 48, height: 48, borderRadius: 10 }} contentFit="cover" />
+                    ) : (
+                      <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: "#f1efe6", alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="shirt-outline" size={20} color={MUTED} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>{oi.name}</Text>
+                      <Text style={styles.muted}>{oi.garment_type} · worn {oi.wear_count}×</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={MUTED} />
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
         ) : !item ? (
           <View style={styles.notFound}>
             <Ionicons name="alert-circle-outline" size={36} color={MUTED} />

@@ -34,9 +34,13 @@ export interface LogWearInput {
 
 export interface AddManualItemInput {
   product_id: string;
+  variant_id?: string;
+  /** @deprecated use variant_id (backend AddBody). Kept for backwards compat. */
   product_variant_id?: string;
   purchase_price?: number;
   purchased_at?: string;
+  season?: string;
+  occasion?: string;
   tags?: string[];
   notes?: string;
 }
@@ -80,8 +84,12 @@ export async function listWardrobeItems(
 ): Promise<ApiResult<{ items: WardrobeItem[] }>> {
   return fetchJson(`/api/wardrobe/items`, {
     query: {
-      status: params.status,
-      garment_type: params.garment_type,
+      // Backend zod enum rejects "all" — omit the filter instead.
+      status: params.status && params.status !== "all" ? params.status : undefined,
+      garment_type:
+        params.garment_type && params.garment_type !== "all"
+          ? params.garment_type
+          : undefined,
       q: params.q,
       limit: params.limit ?? 200,
     },
@@ -91,9 +99,15 @@ export async function listWardrobeItems(
 export async function addWardrobeItem(
   body: AddManualItemInput,
 ): Promise<ApiResult<{ item: WardrobeItem }>> {
+  const { product_variant_id, ...rest } = body;
+  // Backend expects `variant_id`; map legacy `product_variant_id` forward.
+  const payload = {
+    ...rest,
+    ...(rest.variant_id ? {} : product_variant_id ? { variant_id: product_variant_id } : {}),
+  };
   return fetchJson(`/api/wardrobe/items`, {
     method: "POST",
-    body,
+    body: payload,
   });
 }
 
@@ -118,10 +132,10 @@ export async function logWardrobeWear(
 export async function updateWardrobeItem(
   itemId: string,
   patch: Partial<
-    Pick<
-      WardrobeItem,
-      "status" | "season" | "occasion" | "tags" | "notes" | "color" | "size"
-    > & { care_wear_threshold?: number | null; last_care_at?: string | null }
+    Pick<WardrobeItem, "status" | "season" | "occasion" | "tags" | "notes"> & {
+      care_wear_threshold?: number | null;
+      last_care_at?: string | null;
+    }
   >,
 ): Promise<ApiResult<{ item: WardrobeItem }>> {
   return fetchJson(`/api/wardrobe/items/${itemId}`, {
