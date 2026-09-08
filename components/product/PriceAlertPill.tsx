@@ -36,6 +36,12 @@ export function PriceAlertPill({ productId, variantId, currency, currentPrice }:
   const [loading, setLoading] = useState(false);
   const [checked, setChecked] = useState(false);
 
+  // Reset the one-shot status check whenever the product/variant or user
+  // changes so switching variants refetches instead of showing stale state.
+  React.useEffect(() => {
+    setChecked(false);
+  }, [user?.id, productId, variantId]);
+
   React.useEffect(() => {
     if (!user?.id || checked) return;
     (async () => {
@@ -52,11 +58,16 @@ export function PriceAlertPill({ productId, variantId, currency, currentPrice }:
   if (!user) return null;
 
   const onSubscribe = async () => {
+    const num = value === "" ? null : Number(value);
+    if (num !== null && (!Number.isFinite(num) || num <= 0)) {
+      toast("Enter a valid price greater than 0", "error");
+      return;
+    }
     setLoading(true);
     const r = await subscribePriceAlertBackend({
       product_id: productId,
       variant_id: variantId ?? null,
-      threshold_price: value ? Number(value) : null,
+      threshold_price: num,
     });
     setLoading(false);
     if (r.ok) {
@@ -71,8 +82,12 @@ export function PriceAlertPill({ productId, variantId, currency, currentPrice }:
 
   const onSave = async () => {
     if (!state.alertId) return;
-    setLoading(true);
     const num = value === "" ? null : Number(value);
+    if (num !== null && (!Number.isFinite(num) || num <= 0)) {
+      toast("Enter a valid price greater than 0", "error");
+      return;
+    }
+    setLoading(true);
     const r = await updatePriceAlertBackend(state.alertId, { threshold_price: num });
     setLoading(false);
     if (r.ok) {

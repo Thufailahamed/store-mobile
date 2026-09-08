@@ -2765,8 +2765,8 @@ export async function listPriceAlerts() {
   return B.listPriceAlertsBackend();
 }
 
-export async function getPriceAlertStatus(productId: string) {
-  return B.getPriceAlertStatusBackend(productId);
+export async function getPriceAlertStatus(productId: string, variantId?: string) {
+  return B.getPriceAlertStatusBackend(productId, variantId);
 }
 
 export async function subscribePriceAlert(input: { product_id: string; variant_id?: string | null; threshold_price?: number | null }) {

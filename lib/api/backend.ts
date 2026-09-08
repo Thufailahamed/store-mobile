@@ -2213,8 +2213,9 @@ export async function listPriceAlertsBackend(): Promise<ApiResult<{ alerts: unkn
 }
 
 export async function getPriceAlertStatusBackend(productId: string, variantId?: string): Promise<ApiResult<{ subscribed: boolean; alert: unknown }>> {
-  void variantId;
-  return fetchJson(`/api/users/price-alerts/${productId}/status`);
+  return fetchJson(`/api/users/price-alerts/${productId}/status`, {
+    query: variantId ? { variant_id: variantId } : undefined,
+  });
 }
 
 export async function subscribePriceAlertBackend(input: { product_id: string; variant_id?: string | null; threshold_price?: number | null }): Promise<ApiResult<{ alert: unknown }>> {

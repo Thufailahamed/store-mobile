@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
@@ -9,6 +10,7 @@ import {
   Share,
   StyleSheet,
   Switch,
+  Text,
   TextInput,
   TouchableOpacity,
   View,
@@ -16,6 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
 import { Avatar, Button, Chip, useToast } from "@/components/ui";
@@ -581,9 +584,19 @@ export default function SettingsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <ScreenHeader title="Settings" />
+        <View style={styles.topHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={20} color="#141311" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleCenter}>
+            <Text style={styles.headerEyebrow}>SYSTEM & PROFILE</Text>
+            <Text style={styles.headerTitle}>Settings</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
         <View style={styles.loading}>
-          <Body muted>Loading preferences…</Body>
+          <ActivityIndicator color="#C8A44A" size="large" />
+          <Text style={styles.loadingText}>Synchronizing patron preferences…</Text>
         </View>
       </SafeAreaView>
     );
@@ -591,34 +604,73 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScreenHeader
-        title="Settings"
-        right={
-          <TouchableOpacity onPress={handleSignOut} style={styles.headerIcon} activeOpacity={0.7}>
-            <Ionicons name="log-out-outline" size={18} color={colors.light.foreground} />
-          </TouchableOpacity>
-        }
-      />
+      {/* 1. Atelier Top Navigation Header */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="chevron-back" size={20} color="#141311" />
+        </TouchableOpacity>
+
+        <View style={styles.headerTitleCenter}>
+          <Text style={styles.headerEyebrow}>SYSTEM & PROFILE</Text>
+          <Text style={styles.headerTitle}>Settings</Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleSignOut}
+          style={styles.logoutButton}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="log-out-outline" size={18} color="#85651B" />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 140 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* HERO */}
-        <View style={styles.hero}>
-          <Avatar name={name} uri={avatarUri} size={64} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <Display size="xl" numberOfLines={1}>
-              {name}
-            </Display>
-            <Body muted size="sm" numberOfLines={1}>
-              {email || "Not signed in"}
-            </Body>
-            <View style={styles.rolePill}>
-              <Label style={styles.rolePillText}>{role.toUpperCase()}</Label>
+        {/* 2. Velvet Obsidian Hero Card */}
+        <LinearGradient
+          colors={["#141311", "#1E1C18", "#0F0E0D"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroTagBadge}>
+              <Ionicons name="sparkles" size={10} color="#C8A44A" />
+              <Text style={styles.heroTagText}>ATELIER PATRON PREFERENCES</Text>
+            </View>
+            <View style={styles.gearMedallion}>
+              <View style={styles.gearMedallionInner}>
+                <Ionicons name="options-outline" size={18} color="#E8CF8F" />
+              </View>
             </View>
           </View>
-        </View>
+
+          <View style={styles.heroProfileRow}>
+            <View style={styles.avatarBezel}>
+              <Avatar name={name} uri={avatarUri} size={58} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.heroNameText} numberOfLines={1}>
+                {name}
+              </Text>
+              <Text style={styles.heroEmailText} numberOfLines={1}>
+                {email || "Not signed in"}
+              </Text>
+              <View style={styles.rolePill}>
+                <View style={styles.roleDot} />
+                <Text style={styles.rolePillText}>{role.toUpperCase()}</Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
 
         {/* LANGUAGE & REGION */}
         <Section
@@ -626,42 +678,42 @@ export default function SettingsScreen() {
           title="Language & region"
           subtitle="How LUXE adapts prices, dates, and copy."
         >
-          <Label style={styles.subLabel}>Locale</Label>
+          <Text style={styles.subLabel}>LOCALE</Text>
           <ChipRow>
             {LOCALES.map((item) => (
-              <Chip
+              <SettingChip
                 key={item.value}
                 selected={locale === item.value}
                 onPress={() => setLocale(item.value)}
               >
                 {item.label}
-              </Chip>
+              </SettingChip>
             ))}
           </ChipRow>
 
-          <Label style={[styles.subLabel, styles.subLabelTop]}>Timezone</Label>
+          <Text style={[styles.subLabel, styles.subLabelTop]}>TIMEZONE</Text>
           <ChipRow>
             {TIMEZONES.map((item) => (
-              <Chip
+              <SettingChip
                 key={item.value}
                 selected={timezone === item.value}
                 onPress={() => setTimezone(item.value)}
               >
                 {item.label}
-              </Chip>
+              </SettingChip>
             ))}
           </ChipRow>
 
-          <Label style={[styles.subLabel, styles.subLabelTop]}>Currency</Label>
+          <Text style={[styles.subLabel, styles.subLabelTop]}>CURRENCY</Text>
           <ChipRow>
             {CURRENCIES.map((item) => (
-              <Chip
+              <SettingChip
                 key={item.value}
                 selected={currency === item.value}
                 onPress={() => setCurrency(item.value)}
               >
                 {item.label}
-              </Chip>
+              </SettingChip>
             ))}
           </ChipRow>
         </Section>
@@ -672,16 +724,16 @@ export default function SettingsScreen() {
           title="Appearance"
           subtitle="Display preferences on this device."
         >
-          <Label style={styles.subLabel}>Text size</Label>
+          <Text style={styles.subLabel}>TEXT SIZE</Text>
           <ChipRow>
             {(["sm", "md", "lg"] as TextSize[]).map((size) => (
-              <Chip
+              <SettingChip
                 key={size}
                 selected={local.textSize === size}
                 onPress={() => updateLocal({ textSize: size })}
               >
                 {TEXT_SIZE_LABEL[size]}
-              </Chip>
+              </SettingChip>
             ))}
           </ChipRow>
 
@@ -947,26 +999,60 @@ export default function SettingsScreen() {
       </ScrollView>
 
       {/* Sticky save bar */}
-      <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <View style={styles.saveBarInner}>
-          {dirty ? (
-            <Body size="sm" style={styles.dirtyText}>
-              Unsaved changes
-            </Body>
-          ) : (
-            <Body muted size="sm">
-              All changes saved
-            </Body>
-          )}
+          <View style={styles.saveBarStatusRow}>
+            <View style={[styles.saveStatusDot, !dirty && styles.saveStatusDotClean]} />
+            <Text style={[styles.saveStatusText, dirty && styles.saveStatusTextDirty]}>
+              {dirty ? "Unsaved revisions pending" : "All preferences synchronized"}
+            </Text>
+          </View>
           <View style={styles.saveBarActions}>
             {dirty ? (
-              <Button variant="ghost" size="sm" onPress={discard}>
-                Discard
-              </Button>
+              <TouchableOpacity
+                style={styles.discardButton}
+                onPress={discard}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.discardButtonText}>Discard</Text>
+              </TouchableOpacity>
             ) : null}
-            <Button size="sm" loading={saving} onPress={save} disabled={!dirty && !!user?.id}>
-              Save changes
-            </Button>
+            <TouchableOpacity
+              style={[
+                styles.saveChangesButton,
+                (!dirty || saving) && styles.saveChangesButtonDisabled,
+              ]}
+              onPress={save}
+              disabled={!dirty || saving}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={dirty ? ["#2A2723", "#141311"] : ["#E8E6E1", "#DCD9D1"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.saveChangesGradient}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FAF8F5" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="checkmark"
+                      size={14}
+                      color={dirty ? "#C8A44A" : "#8E8B82"}
+                    />
+                    <Text
+                      style={[
+                        styles.saveChangesText,
+                        !dirty && styles.saveChangesTextDisabled,
+                      ]}
+                    >
+                      Save Changes
+                    </Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -1212,13 +1298,15 @@ function Section({
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        {kicker ? <Label style={styles.sectionKicker}>{kicker}</Label> : null}
+        {kicker ? (
+          <View style={styles.sectionKickerBadge}>
+            <Text style={styles.sectionKickerText}>{kicker}</Text>
+          </View>
+        ) : null}
         <View style={{ flex: 1 }}>
-          <Display size="lg">{title}</Display>
+          <Text style={styles.sectionTitleText}>{title}</Text>
           {subtitle ? (
-            <Body muted size="sm" style={styles.sectionSubtitle}>
-              {subtitle}
-            </Body>
+            <Text style={styles.sectionSubtitleText}>{subtitle}</Text>
           ) : null}
         </View>
       </View>
@@ -1229,6 +1317,31 @@ function Section({
 
 function ChipRow({ children }: { children: React.ReactNode }) {
   return <View style={styles.chipRow}>{children}</View>;
+}
+
+function SettingChip({
+  selected,
+  onPress,
+  children,
+}: {
+  selected?: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={[styles.settingChip, selected && styles.settingChipSelected]}
+    >
+      {selected && (
+        <Ionicons name="checkmark-circle" size={13} color="#C8A44A" style={{ marginRight: 6 }} />
+      )}
+      <Text style={[styles.settingChipText, selected && styles.settingChipTextSelected]}>
+        {children}
+      </Text>
+    </TouchableOpacity>
+  );
 }
 
 function CommsRow({
@@ -1491,73 +1604,250 @@ function CenteredModal({
 /* --------------------------------- styles --------------------------------- */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#F8F7F2" },
   content: { padding: spacing[5] },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.olive[50],
+  loadingText: {
+    marginTop: 12,
+    fontSize: 12,
+    fontFamily: fontFamilies.mono.regular,
+    color: "#6B675E",
+    letterSpacing: 0.5,
   },
 
-  hero: {
+  /* Top Atelier Header */
+  topHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[4],
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[5],
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EAE7DF",
+    backgroundColor: "#F8F7F2",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: colors.light.border,
-    marginBottom: spacing[5],
+    borderColor: "#EAE7DF",
     ...shadows.soft,
+  },
+  headerTitleCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerEyebrow: {
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.medium,
+    color: "#85651B",
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#141311",
+    letterSpacing: -0.3,
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
+    ...shadows.soft,
+  },
+
+  /* Velvet Obsidian Hero Card */
+  heroCard: {
+    borderRadius: 24,
+    padding: 22,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#2E2A24",
+    ...shadows.soft,
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  heroTagBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
+  },
+  heroTagText: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#E8CF8F",
+    letterSpacing: 1.4,
+  },
+  gearMedallion: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gearMedallionInner: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroProfileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  avatarBezel: {
+    padding: 3,
+    borderRadius: 36,
+    borderWidth: 1.5,
+    borderColor: "#C8A44A",
+    backgroundColor: "#1E1C18",
+  },
+  heroNameText: {
+    fontSize: 18,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#FAF8F5",
+    letterSpacing: -0.2,
+  },
+  heroEmailText: {
+    fontSize: 12,
+    fontFamily: fontFamilies.mono.regular,
+    color: "#A49E93",
+    marginBottom: 4,
   },
   rolePill: {
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[100],
-    marginTop: 4,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+  },
+  roleDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#C8A44A",
+    marginRight: 6,
   },
   rolePillText: {
-    color: colors.olive[800],
+    color: "#E8CF8F",
     fontSize: 9,
-    letterSpacing: typography.letterSpacing.widest,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.2,
   },
 
+  /* Sections */
   section: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[5],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    padding: 20,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    marginBottom: spacing[5],
+    borderColor: "#EAE7DF",
+    marginBottom: 20,
     ...shadows.soft,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing[3],
-    marginBottom: spacing[4],
+    gap: 12,
+    marginBottom: 16,
   },
-  sectionKicker: {
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.mono.regular,
-    marginTop: 6,
+  sectionKickerBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: "#F4F1EA",
+    borderWidth: 1,
+    borderColor: "#E5E0D5",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  sectionSubtitle: { marginTop: 4 },
+  sectionKickerText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    color: "#85651B",
+    letterSpacing: 1,
+  },
+  sectionTitleText: {
+    fontSize: 16,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#141311",
+    letterSpacing: -0.2,
+  },
+  sectionSubtitleText: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.regular,
+    color: "#6B675E",
+    marginTop: 2,
+    lineHeight: 17,
+  },
   sectionBody: { gap: spacing[3] },
 
   subLabel: {
-    color: colors.light.mutedForeground,
-    marginBottom: spacing[2],
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.medium,
+    color: "#85651B",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 10,
   },
-  subLabelTop: { marginTop: spacing[2] },
+  subLabelTop: { marginTop: 16 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+
+  /* Setting Chips */
+  settingChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
+  },
+  settingChipSelected: {
+    backgroundColor: "#141311",
+    borderColor: "#141311",
+  },
+  settingChipText: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.medium,
+    color: "#6B675E",
+  },
+  settingChipTextSelected: {
+    color: "#FAF8F5",
+    fontFamily: fontFamilies.sans.semibold,
+  },
 
   commsRow: {
     flexDirection: "row",
@@ -1565,7 +1855,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: spacing[3],
     borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    borderBottomColor: "#F4F1EA",
   },
   commsRowLast: { borderBottomWidth: 0 },
   commsIcon: {
@@ -1574,7 +1864,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#F7F5EE",
+    borderWidth: 1,
+    borderColor: "#ECE8DD",
   },
   commsLabel: {
     fontWeight: typography.fontWeights.semibold,
@@ -1591,7 +1883,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.paper.cream,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "#EAE7DF",
     borderRadius: radii.lg,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -1607,7 +1899,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingVertical: spacing[3],
     borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    borderBottomColor: "#F4F1EA",
   },
   toggleRowLast: { borderBottomWidth: 0 },
   toggleInfo: { flex: 1, paddingRight: spacing[2] },
@@ -1618,7 +1910,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: spacing[2],
     borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    borderBottomColor: "#EAE7DF",
   },
   notifChannel: {
     width: 50,
@@ -1633,7 +1925,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingVertical: spacing[3],
     borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    borderBottomColor: "#F4F1EA",
   },
   notificationRowLast: { borderBottomWidth: 0 },
   notificationInfo: { flex: 1, paddingRight: spacing[2] },
@@ -1646,20 +1938,21 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: spacing[3],
     borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    borderBottomColor: "#F4F1EA",
   },
   providerRowLast: { borderBottomWidth: 0 },
   linkedDot: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: colors.light.primary,
+    backgroundColor: "#141311",
     alignItems: "center",
     justifyContent: "center",
   },
   linkAction: {
-    color: colors.light.primary,
+    color: "#85651B",
     fontWeight: typography.fontWeights.semibold,
+    fontFamily: fontFamilies.mono.medium,
   },
 
   versionRow: {
@@ -1675,13 +1968,14 @@ const styles = StyleSheet.create({
   },
 
   danger: {
-    backgroundColor: colors.light.card,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     padding: spacing[5],
     borderWidth: 1,
-    borderColor: colors.light.destructive + "30",
+    borderColor: "rgba(180, 50, 50, 0.2)",
     marginBottom: spacing[5],
     gap: spacing[3],
+    ...shadows.soft,
   },
   dangerHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   dangerIcon: {
@@ -1690,10 +1984,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.destructive + "15",
+    backgroundColor: "rgba(180, 50, 50, 0.08)",
   },
-  dangerKicker: { color: colors.light.destructive, fontSize: 10 },
-  dangerTitle: { marginTop: 2 },
+  dangerKicker: { color: colors.light.destructive, fontSize: 10, fontFamily: fontFamilies.mono.medium },
+  dangerTitle: { marginTop: 2, fontFamily: fontFamilies.display.semibold },
   dangerCopy: { color: colors.light.mutedForeground },
   dangerInput: {
     backgroundColor: colors.paper.cream,
@@ -1708,45 +2002,113 @@ const styles = StyleSheet.create({
     marginBottom: spacing[2],
   },
 
-  footerHint: { textAlign: "center", marginTop: spacing[2] },
+  footerHint: {
+    textAlign: "center",
+    marginTop: spacing[2],
+    fontFamily: fontFamilies.mono.regular,
+    color: "#8E8B82",
+    letterSpacing: 1.2,
+    fontSize: 10,
+  },
 
+  /* Sticky luxury save bar */
   saveBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.light.card,
+    backgroundColor: "#FAF8F5",
     borderTopWidth: 1,
-    borderTopColor: colors.light.border,
-    paddingHorizontal: spacing[5],
-    paddingTop: 10,
+    borderTopColor: "#EAE7DF",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    ...shadows.soft,
   },
   saveBarInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing[3],
+    gap: 12,
   },
-  saveBarActions: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dirtyText: {
-    color: colors.accent2.rust,
-    fontWeight: typography.fontWeights.semibold,
+  saveBarStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    flex: 1,
+  },
+  saveStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#C8A44A",
+  },
+  saveStatusDotClean: {
+    backgroundColor: "#7D8B6F",
+  },
+  saveStatusText: {
+    fontSize: 11,
+    fontFamily: fontFamilies.mono.medium,
+    color: "#6B675E",
+    letterSpacing: 0.2,
+  },
+  saveStatusTextDirty: {
+    color: "#85651B",
+    fontFamily: fontFamilies.mono.semibold,
+  },
+  saveBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  discardButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  discardButtonText: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.medium,
+    color: "#8E8B82",
+    textDecorationLine: "underline",
+  },
+  saveChangesButton: {
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  saveChangesButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveChangesGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  saveChangesText: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#FAF8F5",
+    letterSpacing: 0.2,
+  },
+  saveChangesTextDisabled: {
+    color: "#8E8B82",
   },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     alignItems: "center",
     justifyContent: "center",
     padding: spacing[4],
   },
   modal: {
     width: "100%",
-    backgroundColor: colors.light.card,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     padding: spacing[5],
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "#EAE7DF",
+    ...shadows.soft,
   },
   modalHeader: {
     flexDirection: "row",
@@ -1754,7 +2116,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing[3],
   },
-  modalKicker: { color: colors.light.mutedForeground, marginBottom: 2 },
+  modalKicker: {
+    color: "#85651B",
+    marginBottom: 2,
+    fontFamily: fontFamilies.mono.medium,
+    letterSpacing: 1,
+  },
   modalCopy: { marginBottom: spacing[4] },
   modalClose: {
     width: 32,
@@ -1762,7 +2129,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#F7F5EE",
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
   },
   modalFooter: {
     flexDirection: "row",
