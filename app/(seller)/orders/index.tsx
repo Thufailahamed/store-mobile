@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
+  Alert,
   View,
   Text,
   FlatList,
@@ -13,7 +14,7 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerOrders } from "@/lib/api";
+import { getSellerStore, getSellerOrders, transitionOrderStatus, cancelOrder } from "@/lib/api";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -40,7 +41,8 @@ import {
   readShippingContact,
 } from "@/lib/orders/seller-list";
 import { orderStatusTone } from "@/lib/seller/status-tones";
-import type { Order } from "@/lib/types";
+import { canSellerCancelOrder, getSellerNextStatus } from "@/lib/order-lifecycle";
+import type { Order, OrderStatus } from "@/lib/types";
 
 const RUST = SELLER_RUST;
 const CREAM = SELLER_CREAM;
@@ -108,6 +110,7 @@ export default function SellerOrders() {
   const [search, setSearch] = useState(incomingSearch);
   const [statusTab, setStatusTab] = useState("all");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -170,6 +173,41 @@ export default function SellerOrders() {
     void fetchOrders();
   }, [fetchOrders]);
 
+  const handleAdvance = useCallback(async (order: Order) => {
+    const next = getSellerNextStatus(order.status);
+    if (!next || updatingId) return;
+    Alert.alert("Update status?", `Mark ${order.order_number || "order"} as "${formatOrderStatusLabel(next)}"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Confirm", onPress: async () => {
+        setUpdatingId(order.id);
+        const res = await transitionOrderStatus(order.id, next);
+        if (res.ok) {
+          setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
+        } else {
+          Alert.alert("Error", res.error);
+        }
+        setUpdatingId(null);
+      } },
+    ]);
+  }, [updatingId]);
+
+  const handleCancel = useCallback(async (order: Order) => {
+    if (updatingId || !canSellerCancelOrder(order.status)) return;
+    Alert.alert("Cancel order?", `Cancel ${order.order_number || "order"}? Stock will be restored.`, [
+      { text: "Keep", style: "cancel" },
+      { text: "Cancel order", style: "destructive", onPress: async () => {
+        setUpdatingId(order.id);
+        const res = await cancelOrder(order.id);
+        if (res.ok) {
+          setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "cancelled" as OrderStatus } : o)));
+        } else {
+          Alert.alert("Error", res.error);
+        }
+        setUpdatingId(null);
+      } },
+    ]);
+  }, [updatingId]);
+
   const counts = useMemo(() => countOrdersByStatus(orders), [orders]);
   const visible = useMemo(
     () => filterSellerOrders(orders, { status: statusTab, search }),
@@ -196,6 +234,7 @@ export default function SellerOrders() {
     const payStatus = formatPaymentStatus(item.payment_status);
     const codUnpaid = item.payment_method === "cod" && item.payment_status !== "paid";
     const extraUnits = units != null && units > 1 ? units - 1 : 0;
+    const nextStatus = getSellerNextStatus(item.status);
 
     const metaBits = [
       formatRelative(item.placed_at),
@@ -251,6 +290,33 @@ export default function SellerOrders() {
               {method} · {payStatus}
             </Text>
           </View>
+          {(nextStatus || canSellerCancelOrder(item.status)) ? (
+            <View style={styles.cardActions}>
+              {nextStatus ? (
+                <TouchableOpacity
+                  style={[styles.primaryAction, updatingId === item.id && styles.primaryActionDisabled]}
+                  onPress={() => void handleAdvance(item)}
+                  disabled={updatingId === item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+                >
+                  <Text style={styles.primaryActionText}>
+                    {updatingId === item.id ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus)}`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {canSellerCancelOrder(item.status) ? (
+                <TouchableOpacity
+                  onPress={() => void handleCancel(item)}
+                  disabled={updatingId === item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel ${item.order_number}`}
+                >
+                  <Text style={styles.cancelActionText}>Cancel</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -414,6 +480,11 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   orderPaymentWarn: { color: RUST, fontFamily: fontFamilies.sans.semibold },
+  cardActions: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 10 },
+  primaryAction: { backgroundColor: colors.olive[700], borderRadius: radii.full, paddingHorizontal: 14, paddingVertical: 8 },
+  primaryActionDisabled: { opacity: 0.6 },
+  primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xs, color: CREAM },
+  cancelActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xs, color: RUST },
   skelCard: {
     flexDirection: "row",
     gap: 12,
