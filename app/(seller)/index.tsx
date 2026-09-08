@@ -34,6 +34,7 @@ import {
   SELLER_CREAM,
 } from "@/components/seller/chrome";
 import { orderStatusTone } from "@/lib/seller/status-tones";
+import { SELLER_DASHBOARD_ACTIONS } from "@/lib/seller/dashboard-actions";
 import { formatOrderStatusLabel } from "@/lib/orders/seller-list";
 import type { Store, Order, Product, Notification } from "@/lib/types";
 
@@ -129,12 +130,7 @@ function describeStock(out: number, low: number, healthy: number, total: number)
   };
 }
 
-const QUICK_ACTIONS = [
-  { label: "Returns", icon: "return-down-back-outline" as const, route: "/(seller)/returns", badgeKey: "returns" as const },
-  { label: "Payouts", icon: "wallet-outline" as const, route: "/(seller)/payouts" },
-  { label: "Analytics", icon: "bar-chart-outline" as const, route: "/(seller)/analytics" },
-  { label: "Alerts", icon: "notifications-outline" as const, route: "/(seller)/notifications", badgeKey: "alerts" as const },
-];
+const QUICK_ACTIONS = SELLER_DASHBOARD_ACTIONS;
 
 function formatHeroRevenue(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -700,7 +696,7 @@ export default function SellerDashboard() {
             const hasAlertBadge = a.badgeKey === "alerts" && unreadCount > 0;
             const hasReturnsBadge = a.badgeKey === "returns" && (returnsCount ?? 0) > 0;
             return {
-              key: a.label,
+              key: a.key,
               label: a.label,
               icon: a.icon,
               onPress: () => router.push(a.route as any),
