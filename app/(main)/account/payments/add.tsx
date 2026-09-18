@@ -356,15 +356,15 @@ export default function AddPaymentMethodScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 4. PayHere Hosted Gateway Security Guarantee Banner */}
+          {/* 4. Payments.lk Hosted Gateway Security Guarantee Banner */}
           <View style={styles.guaranteeCard}>
             <View style={styles.guaranteeHeader}>
               <Ionicons name="lock-closed" size={16} color="#C8A44A" />
-              <Text style={styles.guaranteeTitle}>PayHere & PCI-DSS Tier 1 Architecture</Text>
+              <Text style={styles.guaranteeTitle}>Payments.lk & PCI-DSS Tier 1 Architecture</Text>
             </View>
             <Text style={styles.guaranteeText}>
               LUXE never stores your full card number, CVV, or PAN in local storage or on unencrypted
-              servers. All transactions execute through PayHere's tokenized, 3D-Secure 2.0 banking
+              servers. All transactions execute through Payments.lk's tokenized, 3D-Secure 2.0 banking
               infrastructure with direct OTP verification from your card issuer.
             </Text>
           </View>

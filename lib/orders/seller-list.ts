@@ -16,7 +16,7 @@ export function isAmbiguousRelationshipError(error: string | null | undefined): 
 
 const PAYMENT_METHODS = new Set<PaymentMethod>([
   "stripe",
-  "payhere",
+  "paymentslk",
   "paypal",
   "cod",
   "wallet",
@@ -83,11 +83,12 @@ function parseMaybeJson(value: unknown): unknown {
   }
 }
 
-/** Buyer checkout method — card rail is PayHere, not seller Stripe Connect. */
+/** Buyer checkout method — card rail is Payments.lk, not seller Stripe Connect. */
 export function formatCheckoutPayment(method?: string | null): string {
   const key = (method ?? "").trim().toLowerCase();
   if (!key) return "—";
-  if (key === "payhere" || key === "stripe") return "PayHere";
+  if (key === "paymentslk") return "Payments.lk";
+  if (key === "stripe") return "Stripe";
   if (key === "cod") return "Cash on delivery";
   if (key === "paypal") return "PayPal";
   if (key === "wallet") return "Wallet";

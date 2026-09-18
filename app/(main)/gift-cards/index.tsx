@@ -18,8 +18,8 @@ import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground } from "@/components/layout";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast } from "@/components/ui";
-import { getGiftCardPayHereSession } from "@/lib/api/payments";
-import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
+import { getGiftCardPaymentsLkSession } from "@/lib/api/payments";
+import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -38,11 +38,6 @@ export default function GiftCardsScreen() {
   const [scheduled, setScheduled] = useState(false);
   const [scheduledHours, setScheduledHours] = useState("24");
   const [purchasing, setPurchasing] = useState(false);
-  const [payhere, setPayhere] = useState<{
-    action: string;
-    fields: Record<string, string>;
-    cardId: string;
-  } | null>(null);
 
   const isAmountValid = Number.isFinite(amount) && amount >= MIN_AMOUNT;
 
@@ -85,26 +80,31 @@ export default function GiftCardsScreen() {
     }
 
     setPurchasing(true);
-    const res = await getGiftCardPayHereSession({
-      amount,
-      currency: "LKR",
-      recipient_email: recipient.email.trim().toLowerCase(),
-      recipient_name: recipient.name.trim() || undefined,
-      message: recipient.message.trim() || undefined,
-      scheduled_for,
-    });
-    setPurchasing(false);
+    try {
+      const res = await getGiftCardPaymentsLkSession({
+        amount,
+        currency: "LKR",
+        recipient_email: recipient.email.trim().toLowerCase(),
+        recipient_name: recipient.name.trim() || undefined,
+        message: recipient.message.trim() || undefined,
+        scheduled_for,
+      });
 
-    if (!res.ok) {
-      Alert.alert("Payment Initiation Failed", res.error);
-      return;
+      if (!res.ok) {
+        Alert.alert("Payment Initiation Failed", res.error);
+        return;
+      }
+
+      const result = await runPaymentsLkCheckout(res.data.url);
+      if (result.status === "succeeded") {
+        toast("Payment submitted — gift voucher is being dispatched!", "success");
+        router.push("/(main)/account/gift-cards" as any);
+      } else if (result.status !== "dismissed") {
+        toast("Payment was not completed — the voucher was not charged", "info");
+      }
+    } finally {
+      setPurchasing(false);
     }
-
-    setPayhere({
-      action: res.data.action,
-      fields: res.data.fields,
-      cardId: res.data.pending_card_id ?? "gift-card",
-    });
   };
 
   return (
@@ -392,20 +392,6 @@ export default function GiftCardsScreen() {
           <View style={{ height: 30 }} />
         </ScrollView>
 
-        {payhere && (
-          <PayHereCheckout
-            visible
-            action={payhere.action}
-            fields={payhere.fields}
-            orderId={payhere.cardId}
-            onClose={() => setPayhere(null)}
-            onReturnFromGateway={() => {
-              setPayhere(null);
-              toast("Payment submitted — gift voucher is being dispatched!", "success");
-              router.push("/(main)/account/gift-cards" as any);
-            }}
-          />
-        )}
       </SafeAreaView>
     </PaperBackground>
   );

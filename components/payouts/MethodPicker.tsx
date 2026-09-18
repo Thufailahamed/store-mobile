@@ -35,7 +35,7 @@ export function MethodPicker({ value, onChange }: Props) {
   return (
     <View style={{ gap: spacing[4] }}>
       <Field label="Payout destination">
-        <Text style={styles.hint}>Where settlement is sent on the schedule you pick. Customers still pay with PayHere or cash on delivery at checkout.</Text>
+        <Text style={styles.hint}>Where settlement is sent on the schedule you pick. Customers still pay with Payments.lk or cash on delivery at checkout.</Text>
         <View style={styles.chips}>
           {METHODS.map((m) => (
             <Pressable

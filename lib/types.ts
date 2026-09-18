@@ -9,7 +9,7 @@ export type ProductType = "simple" | "variable";
 export type Gender = "men" | "women" | "kids" | "unisex";
 export type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded" | "failed_attempt";
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "partially_refunded";
-export type PaymentMethod = "stripe" | "payhere" | "paypal" | "cod" | "wallet" | "gift_card" | "koko";
+export type PaymentMethod = "stripe" | "paypal" | "cod" | "wallet" | "gift_card" | "koko" | "paymentslk";
 export type CouponType = "percentage" | "fixed" | "free_shipping" | "bxgy";
 
 export interface User {

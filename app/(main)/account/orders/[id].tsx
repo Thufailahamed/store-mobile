@@ -24,8 +24,8 @@ import {
   cancelOrderItems as cancelOrderItemsRpc,
 } from "@/lib/api";
 import { getOrderInvoiceBackend, resendOrderReceiptBackend } from "@/lib/api/backend";
-import { getPayHereSession } from "@/lib/api/payments";
-import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
+import { getPaymentsLkSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
 import { useCart } from "@/lib/stores/cart-store";
 import { canBuyerCancelInWindow, isTrackableStatus } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
@@ -140,7 +140,6 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [payhere, setPayhere] = useState<{ action: string; fields: Record<string, string> } | null>(null);
   const [retryingPay, setRetryingPay] = useState(false);
 
   const loadOrder = useCallback(() => {
@@ -279,17 +278,31 @@ export default function OrderDetailScreen() {
   const handleRetryPay = async () => {
     if (!order) return;
     setRetryingPay(true);
-    const groupId =
-      typeof (order as unknown as { metadata?: { group_id?: string } }).metadata?.group_id === "string"
-        ? (order as unknown as { metadata: { group_id: string } }).metadata.group_id
-        : undefined;
-    const res = await getPayHereSession(order.id, groupId ? { groupId } : {});
-    setRetryingPay(false);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
+    try {
+      const groupId =
+        typeof (order as unknown as { metadata?: { group_id?: string } }).metadata?.group_id === "string"
+          ? (order as unknown as { metadata: { group_id: string } }).metadata.group_id
+          : undefined;
+      const res = await getPaymentsLkSession(order.id, groupId ? { groupId } : {});
+      if (!res.ok) {
+        toast(res.error, "error");
+        return;
+      }
+      const result = await runPaymentsLkCheckout(res.data.url);
+      if (result.status === "succeeded") {
+        const poll = await pollOrderPaymentStatus(order.id);
+        if (!poll.ok) {
+          toast(poll.error, "error");
+        } else {
+          toast("Payment complete", "success");
+        }
+      } else if (result.status !== "dismissed") {
+        toast("Payment was not completed — you can retry any time", "info");
+      }
+      loadOrder();
+    } finally {
+      setRetryingPay(false);
     }
-    setPayhere(res.data);
   };
 
   if (loading || !order) {
@@ -810,21 +823,6 @@ export default function OrderDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* PayHere Checkout Modal */}
-      {payhere ? (
-        <PayHereCheckout
-          visible
-          action={payhere.action}
-          fields={payhere.fields}
-          orderId={order.id}
-          onClose={() => setPayhere(null)}
-          onReturnFromGateway={() => {
-            setPayhere(null);
-            toast("Payment submitted — refreshing order", "success");
-            loadOrder();
-          }}
-        />
-      ) : null}
     </SafeAreaView>
   );
 }

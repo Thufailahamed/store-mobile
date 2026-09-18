@@ -96,10 +96,10 @@ export function scheduleCartReservationSync(
   }, DEBOUNCE_MS);
 }
 
-/** Cancel an unpaid PayHere order and release cart holds (mobile checkout abandon).
- *  For multi-vendor groups, prefer `abandonUnpaidPayHereGroup` so every
+/** Cancel an unpaid card-checkout order and release cart holds (mobile checkout abandon).
+ *  For multi-vendor groups, prefer `abandonUnpaidOrderGroup` so every
  *  sub-order gets rolled back atomically. */
-export async function abandonUnpaidPayHereOrder(
+export async function abandonUnpaidCardOrder(
   orderId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await cancelOrderBackend(orderId);
@@ -109,11 +109,11 @@ export async function abandonUnpaidPayHereOrder(
 }
 
 /**
- * Abandon an entire multi-vendor order group (PayHere failure / cancel).
+ * Abandon an entire multi-vendor order group (card-payment failure / cancel).
  * Single RPC call: every sub-order's inventory is restored, payment row
  * is flipped to `cancelled`, status flips to `cancelled`.
  */
-export async function abandonUnpaidPayHereGroup(
+export async function abandonUnpaidOrderGroup(
   groupId: string,
 ): Promise<{ ok: true; cancelled: number; noop: number } | { ok: false; error: string }> {
   const res = await abandonOrderGroupBackend(groupId);

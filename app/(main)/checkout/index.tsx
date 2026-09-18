@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pressable } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pressable, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PaperBackground, ScreenHeader, SectionHeader } from "@/components/layout";
-import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
 import {
   AddressFormSheet,
   type AddressFormPayload,
@@ -17,7 +16,8 @@ import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
-import { getPayHereSession, getGuestPayHereSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { getPaymentsLkSession, getGuestPaymentsLkSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
 import { placeOrderGroupBackend, placeGuestOrderBackend, abandonOrderGroupBackend, getCheckoutOptionsBackend } from "@/lib/api/backend";
 import { Button } from "@/components/ui";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
@@ -31,7 +31,7 @@ import {
   restoreUnselectedCartItems,
 } from "@/lib/cart-checkout-session";
 import {
-  abandonUnpaidPayHereOrder,
+  abandonUnpaidCardOrder,
   cancelPlacedOrder,
   cartItemsToReservations,
   flushCartReservationSync,
@@ -54,6 +54,8 @@ const STEPS = [
   { key: 3, label: "Payment" },
   { key: 4, label: "Review" },
 ];
+
+const PAYMENTS_LK_ENABLED = process.env.EXPO_PUBLIC_PAYMENTS_LK_ENABLED === "true";
 
 function parsePlacedOrder(data: unknown): { id: string; order_number?: string } | null {
   if (!data) return null;
@@ -144,9 +146,6 @@ export default function CheckoutScreen() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
-  const [payhereVisible, setPayhereVisible] = useState(false);
-  const [payhereSession, setPayhereSession] = useState<{ action: string; fields: Record<string, string> } | null>(null);
-  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const pendingLoyaltyPointsRef = useRef(0);
   /** Synchronous re-entrancy guard for handlePlaceOrder — set before any
@@ -155,12 +154,11 @@ export default function CheckoutScreen() {
    *  the first tap into placing a duplicate order. */
   const isSubmittingRef = useRef(false);
   /** Order ids created during a multi-vendor place_order fan-out. The first
-   *  id is the PayHere-anchored order; the rest are tracked alongside it. */
+   *  id is the payment-anchored order; the rest are tracked alongside it. */
   const pendingOrderIdsRef = useRef<string[]>([]);
-  /** The order id that PayHere is currently processing (subset of
+  /** The order id the card checkout is currently processing (subset of
    *  pendingOrderIdsRef). */
   const pendingOrderIdsFirstRef = useRef<string | null>(null);
-  const pendingGuestPayRef = useRef<{ token: string; email: string } | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
   const [couponInput, setCouponInput] = useState(couponCode || "");
@@ -182,7 +180,7 @@ export default function CheckoutScreen() {
   const [country, setCountry] = useState("Sri Lanka");
   const [shippingKey, setShippingKey] = useState<ShippingKey>("standard");
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"cod" | "payhere">("cod");
+  const [paymentMethod, setPaymentMethod] = useState<"cod" | "paymentslk">("cod");
   const [addressSheetOpen, setAddressSheetOpen] = useState(false);
   const [guestEmail, setGuestEmail] = useState("");
   const isGuest = guest === "1" && !user;
@@ -284,8 +282,8 @@ export default function CheckoutScreen() {
   }, [user, storeIdsKey]);
 
   useEffect(() => {
-    if (codAllowed === false && paymentMethod === "cod") {
-      setPaymentMethod("payhere");
+    if (codAllowed === false && paymentMethod === "cod" && PAYMENTS_LK_ENABLED) {
+      setPaymentMethod("paymentslk");
     }
   }, [codAllowed, paymentMethod]);
 
@@ -710,17 +708,23 @@ export default function CheckoutScreen() {
       if (isGuest) {
         const token = (groupData as { guest_token?: string } | null)?.guest_token;
         orderPlaced = true;
-        if (paymentMethod === "payhere") {
-          const session = await getGuestPayHereSession(token ?? "", guestEmail.trim());
+        if (paymentMethod === "paymentslk") {
+          const session = await getGuestPaymentsLkSession(token ?? "", guestEmail.trim());
           if (!session.ok) {
             throw new Error(session.error);
           }
-          const firstId =
-            (groupData as { orders?: Array<{ id: string }> } | null)?.orders?.[0]?.id ?? token ?? "guest";
-          pendingGuestPayRef.current = { token: token ?? "", email: guestEmail.trim() };
-          setPlacedOrderId(firstId);
-          setPayhereSession(session.data);
-          setPayhereVisible(true);
+          const result = await runPaymentsLkCheckout(session.data.url);
+          await releaseCartReservations();
+          reservationsHeld = false;
+          clear();
+          if (result.status === "succeeded") {
+            toast("Payment submitted — check your guest order status", "success");
+          } else {
+            toast("Payment was not completed — look up your order to retry", "info");
+          }
+          router.replace(
+            `/(main)/orders/guest-lookup?token=${encodeURIComponent(token ?? "")}&email=${encodeURIComponent(guestEmail.trim())}` as never,
+          );
           return;
         }
         await releaseCartReservations();
@@ -743,21 +747,75 @@ export default function CheckoutScreen() {
       const firstOrderId = subOrders[0].id;
       const placed = subOrders;
 
-      if (paymentMethod === "payhere") {
+      if (paymentMethod === "paymentslk") {
         pendingLoyaltyPointsRef.current = freshPointsToUse;
-        const session = await getPayHereSession(firstOrderId, { groupId: placedGroupId });
+        const session = await getPaymentsLkSession(firstOrderId, { groupId: placedGroupId });
         if (!session.ok) {
           await abandonOrderGroupBackend(placedGroupId);
           orderPlaced = false;
           throw new Error(session.error);
         }
-        setPlacedOrderId(firstOrderId);
-        setPayhereSession(session.data);
-        setPayhereVisible(true);
-        // Stash sibling ids for the success page.
         pendingOrderIdsRef.current = placed.map((o) => o.id);
         pendingOrderIdsFirstRef.current = firstOrderId;
         await loyalty.reload();
+
+        const result = await runPaymentsLkCheckout(session.data.url);
+        if (result.status === "succeeded") {
+          setConfirmingPayment(true);
+          const poll = await pollOrderPaymentStatus(firstOrderId);
+          setConfirmingPayment(false);
+          if (!poll.ok) {
+            toast(poll.error, "error");
+            router.replace(`/(main)/account/orders/${firstOrderId}` as never);
+            return;
+          }
+          const pts = pendingLoyaltyPointsRef.current;
+          pendingLoyaltyPointsRef.current = 0;
+          if (pts > 0) {
+            const redeemRes = await loyalty.redeem(pts, firstOrderId);
+            if (!redeemRes.ok) {
+              toast(redeemRes.error ?? "Points could not be applied", "error");
+            }
+          }
+          const allIds = pendingOrderIdsRef.current;
+          pendingOrderIdsRef.current = [];
+          pendingOrderIdsFirstRef.current = null;
+          await releaseCartReservations();
+          reservationsHeld = false;
+          clear();
+          await loyalty.reload();
+          toast("Payment complete", "success");
+          const orderIdsParam = allIds.length > 0 ? allIds.join(",") : firstOrderId;
+          router.replace(
+            `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIdsParam)}` as never,
+          );
+          return;
+        }
+
+        // failed / canceled / expired / dismissed → abandon the unpaid order
+        const siblingIds = pendingOrderIdsRef.current.filter((id) => id !== firstOrderId);
+        pendingOrderIdsRef.current = [];
+        pendingOrderIdsFirstRef.current = null;
+        pendingLoyaltyPointsRef.current = 0;
+        const res = await abandonUnpaidCardOrder(firstOrderId);
+        if (!res.ok) {
+          toast(res.error ?? "Could not cancel order", "error");
+        } else if (siblingIds.length > 0) {
+          clear();
+          toast(
+            `Payment cancelled — ${siblingIds.length} other order${siblingIds.length === 1 ? "" : "s"} kept for cash on delivery`,
+            "info",
+          );
+        } else {
+          clear();
+          toast(
+            result.status === "dismissed"
+              ? "Payment cancelled — stock restored"
+              : "Payment not completed — stock restored",
+            "info",
+          );
+        }
+        router.replace("/(main)/cart");
         return;
       }
 
@@ -841,7 +899,8 @@ export default function CheckoutScreen() {
     setFreeShippingCoupon(false);
   };
 
-  const paymentLabel = paymentMethod === "cod" ? "Cash on delivery" : "Card via PayHere";
+  const paymentLabel =
+    paymentMethod === "cod" ? "Cash on delivery" : "Card via Payments.lk";
   const addressSummary = [line1, city].filter(Boolean).join(", ");
 
   if (authLoading) {
@@ -1011,7 +1070,9 @@ export default function CheckoutScreen() {
             )}
             {([
               { key: "cod" as const, label: "Cash on delivery", desc: "Pay when you receive", icon: "cash-outline" as const },
-              { key: "payhere" as const, label: "Card via PayHere", desc: "Visa · Mastercard · Amex", icon: "card-outline" as const },
+              ...(PAYMENTS_LK_ENABLED
+                ? [{ key: "paymentslk" as const, label: "Card via Payments.lk", desc: "Visa · Mastercard · Amex · LankaQR", icon: "card-outline" as const }]
+                : []),
             ] as const).filter((m) => !(m.key === "cod" && codAllowed === false)).map((m) => (
               <TouchableOpacity
                 key={m.key}
@@ -1265,106 +1326,11 @@ export default function CheckoutScreen() {
         )}
       </View>
 
-      {payhereSession && placedOrderId && (
-        <PayHereCheckout
-          visible={payhereVisible}
-          action={payhereSession.action}
-          fields={payhereSession.fields}
-          orderId={placedOrderId}
-          confirming={confirmingPayment}
-          onClose={async () => {
-            if (confirmingPayment) return;
-            const guest = pendingGuestPayRef.current;
-            pendingGuestPayRef.current = null;
-            setPayhereVisible(false);
-            const orderId = placedOrderId;
-            setPlacedOrderId(null);
-            setPayhereSession(null);
-            pendingLoyaltyPointsRef.current = 0;
-            const siblingIds = pendingOrderIdsRef.current.filter((id) => id !== orderId);
-            pendingOrderIdsRef.current = [];
-            pendingOrderIdsFirstRef.current = null;
-            if (guest) {
-              toast("Payment cancelled — look up your order with the guest token", "info");
-              router.replace(
-                `/(main)/orders/guest-lookup?token=${encodeURIComponent(guest.token)}&email=${encodeURIComponent(guest.email)}` as never,
-              );
-              return;
-            }
-            if (orderId) {
-              // Cancel the PayHere-anchored order. Sibling orders (from other
-              // stores in the multi-vendor split) stay intact — the user may
-              // pay those via cash on delivery or a follow-up.
-              const res = await abandonUnpaidPayHereOrder(orderId);
-              if (!res.ok) {
-                toast(res.error ?? "Could not cancel order", "error");
-              } else if (siblingIds.length > 0) {
-                clear();
-                toast(
-                  `Payment cancelled — ${siblingIds.length} other order${siblingIds.length === 1 ? "" : "s"} kept for cash on delivery`,
-                  "info",
-                );
-              } else {
-                clear();
-                toast("Payment cancelled — stock restored", "info");
-              }
-            }
-            router.replace("/(main)/cart");
-          }}
-          onReturnFromGateway={async () => {
-            if (confirmingPayment) return;
-            const guest = pendingGuestPayRef.current;
-            if (guest) {
-              pendingGuestPayRef.current = null;
-              setPayhereVisible(false);
-              setPayhereSession(null);
-              setPlacedOrderId(null);
-              await releaseCartReservations();
-              clear();
-              toast("Payment submitted — check your guest order status", "success");
-              router.replace(
-                `/(main)/orders/guest-lookup?token=${encodeURIComponent(guest.token)}&email=${encodeURIComponent(guest.email)}` as never,
-              );
-              return;
-            }
-            const orderId = placedOrderId;
-            if (!orderId) return;
-
-            setConfirmingPayment(true);
-            const poll = await pollOrderPaymentStatus(orderId);
-            setConfirmingPayment(false);
-
-            if (!poll.ok) {
-              toast(poll.error, "error");
-              router.replace(`/(main)/account/orders/${orderId}` as never);
-              return;
-            }
-
-            const pts = pendingLoyaltyPointsRef.current;
-            pendingLoyaltyPointsRef.current = 0;
-            if (pts > 0) {
-              const redeemRes = await loyalty.redeem(pts, orderId);
-              if (!redeemRes.ok) {
-                toast(redeemRes.error ?? "Points could not be applied", "error");
-              }
-            }
-
-            setPayhereVisible(false);
-            setPayhereSession(null);
-            setPlacedOrderId(null);
-            const allIds = pendingOrderIdsRef.current;
-            pendingOrderIdsRef.current = [];
-            pendingOrderIdsFirstRef.current = null;
-            await releaseCartReservations();
-            clear();
-            await loyalty.reload();
-            toast("Payment complete", "success");
-            const orderIdsParam = allIds.length > 0 ? allIds.join(",") : orderId;
-            router.replace(
-              `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIdsParam)}` as never,
-            );
-          }}
-        />
+      {confirmingPayment && (
+        <View style={styles.confirmOverlay}>
+          <ActivityIndicator size="large" color={colors.light.primary} />
+          <Body muted>Confirming payment…</Body>
+        </View>
       )}
 
       <AddressFormSheet
@@ -1892,5 +1858,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: "uppercase",
     fontFamily: fontFamilies.sans.semibold,
+  },
+  confirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[3],
+    zIndex: 20,
   },
 });

@@ -14,9 +14,9 @@ import {
 } from "@/lib/orders/seller-list";
 
 describe("formatCheckoutPayment", () => {
-  it("labels live card checkout as PayHere", () => {
-    expect(formatCheckoutPayment("payhere")).toBe("PayHere");
-    expect(formatCheckoutPayment("stripe")).toBe("PayHere");
+  it("labels live card checkout as Payments.lk", () => {
+    expect(formatCheckoutPayment("paymentslk")).toBe("Payments.lk");
+    expect(formatCheckoutPayment("stripe")).toBe("Stripe");
   });
 
   it("labels cash on delivery in full", () => {
@@ -111,7 +111,7 @@ describe("mapSellerOrderRow", () => {
       user_id: "u1",
       status: "processing",
       payment_status: "paid",
-      payment_method: "payhere",
+      payment_method: "paymentslk",
       total: 15552,
       currency: "LKR",
       placed_at: "2026-08-30T10:00:00Z",
@@ -124,7 +124,7 @@ describe("mapSellerOrderRow", () => {
         },
       ],
     });
-    expect(order.payment_method).toBe("payhere");
+    expect(order.payment_method).toBe("paymentslk");
     expect(order.items?.[0]?.product_name).toBe("Blazer");
     expect(order.items?.[0]?.quantity).toBe(2);
     expect(order.items?.[0]?.image_url).toBe("https://store-api.test.invalid/img.jpg");
@@ -154,7 +154,7 @@ describe("filterSellerOrders / counts", () => {
       id: "1",
       order_number: "LX-A",
       status: "processing",
-      payment_method: "payhere",
+      payment_method: "paymentslk",
       payment_status: "paid",
       total: 1,
       currency: "LKR",

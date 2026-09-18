@@ -19,7 +19,7 @@ export type PaymentPollResult =
   | { ok: true; paymentStatus: "paid" }
   | { ok: false; error: string; paymentStatus?: string };
 
-/** Poll until PayHere webhook marks the order paid (or terminal failure). */
+/** Poll until the payment webhook marks the order paid (or terminal failure). */
 export async function pollOrderPaymentStatus(
   orderId: string,
   opts: { intervalMs?: number; maxAttempts?: number } = {},
@@ -98,35 +98,40 @@ async function pollOrderPaymentStatusFallback(
   };
 }
 
-export interface PayHereSession {
-  action: string;
-  fields: Record<string, string>;
+export interface PaymentsLkSession {
+  url: string;
+  checkout_id?: string;
 }
 
-/** Fetch PayHere checkout session from the web store API (requires deployed store + env).
- *  Pass `groupId` to charge across multiple sub-orders atomically; otherwise
- *  falls back to the legacy single-order path.
- */
-export async function getPayHereSession(
+function extractPaymentsLkError(json: unknown): string {
+  const err = (json as { error?: unknown }).error;
+  return typeof err === "string"
+    ? err
+    : err && typeof err === "object" && err !== null && "message" in err
+      ? String((err as { message?: unknown }).message)
+      : "Payment session failed";
+}
+
+/** Fetch a Payments.lk hosted checkout URL for an authenticated order/group.
+ *  `platform: "mobile"` makes the backend build app-scheme return URLs so the
+ *  browser sheet can bounce back into the app via Linking.createURL. */
+export async function getPaymentsLkSession(
   orderIdOrFirstSubOrder: string,
   opts: { groupId?: string } = {},
-): Promise<
-  { ok: true; data: PayHereSession } | { ok: false; error: string }
-> {
+): Promise<{ ok: true; data: PaymentsLkSession } | { ok: false; error: string }> {
   if (!STORE_API_URL) {
     return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
   }
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    // L-04 AUDIT: Fail closed — payment session requires an authenticated session.
     if (!token) {
       return { ok: false, error: "Payment requires an authenticated session" };
     }
     const body: Record<string, string> = opts.groupId
-      ? { group_id: opts.groupId, order_id: orderIdOrFirstSubOrder }
-      : { order_id: orderIdOrFirstSubOrder };
-    const res = await fetch(`${STORE_API_URL}/api/payhere/checkout-session`, {
+      ? { group_id: opts.groupId, order_id: orderIdOrFirstSubOrder, platform: "mobile" }
+      : { order_id: orderIdOrFirstSubOrder, platform: "mobile" };
+    const res = await fetch(`${STORE_API_URL}/api/payments/paymentslk/checkout-session`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -136,35 +141,57 @@ export async function getPayHereSession(
     });
     const json = await res.json();
     if (!res.ok) {
-      const err = (json as { error?: unknown }).error;
-      const message =
-        typeof err === "string"
-          ? err
-          : err && typeof err === "object" && err !== null && "message" in err
-            ? String((err as { message?: unknown }).message)
-            : "Payment session failed";
-      return { ok: false, error: message };
+      return { ok: false, error: extractPaymentsLkError(json) };
     }
     const payload = (json && typeof json === "object" && "data" in json
-      ? (json as { data: PayHereSession }).data
-      : json) as PayHereSession;
-    if (!payload?.action || !payload?.fields) {
-      return { ok: false, error: "Payment session was missing checkout fields" };
+      ? (json as { data: PaymentsLkSession }).data
+      : json) as PaymentsLkSession;
+    if (!payload?.url) {
+      return { ok: false, error: "Payment session was missing the checkout URL" };
     }
-    return { ok: true, data: { action: payload.action, fields: payload.fields } };
+    return { ok: true, data: { url: payload.url, checkout_id: payload.checkout_id } };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "Network error" };
   }
 }
 
-export async function getGiftCardPayHereSession(input: {
+export async function getGuestPaymentsLkSession(
+  guestToken: string,
+  guestEmail: string,
+): Promise<{ ok: true; data: PaymentsLkSession } | { ok: false; error: string }> {
+  if (!STORE_API_URL) {
+    return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
+  }
+  try {
+    const res = await fetch(`${STORE_API_URL}/api/payments/paymentslk/guest-checkout-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guest_token: guestToken, guest_email: guestEmail, platform: "mobile" }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: extractPaymentsLkError(json) };
+    }
+    const payload = (json && typeof json === "object" && "data" in json
+      ? (json as { data: PaymentsLkSession }).data
+      : json) as PaymentsLkSession;
+    if (!payload?.url) {
+      return { ok: false, error: "Payment session was missing the checkout URL" };
+    }
+    return { ok: true, data: { url: payload.url, checkout_id: payload.checkout_id } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Network error" };
+  }
+}
+
+export async function getGiftCardPaymentsLkSession(input: {
   amount: number;
   currency?: string;
   recipient_email?: string;
   recipient_name?: string;
   message?: string;
   scheduled_for?: string;
-}): Promise<{ ok: true; data: PayHereSession & { pending_card_id?: string } } | { ok: false; error: string }> {
+}): Promise<{ ok: true; data: PaymentsLkSession & { pending_card_id?: string } } | { ok: false; error: string }> {
   if (!STORE_API_URL) {
     return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
   }
@@ -172,68 +199,25 @@ export async function getGiftCardPayHereSession(input: {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) return { ok: false, error: "Payment requires an authenticated session" };
-    const res = await fetch(`${STORE_API_URL}/api/payhere/gift-card-session`, {
+    const res = await fetch(`${STORE_API_URL}/api/payments/paymentslk/gift-card-session`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ currency: "LKR", ...input }),
+      body: JSON.stringify({ currency: "LKR", platform: "mobile", ...input }),
     });
     const json = await res.json();
     if (!res.ok) {
-      const err = (json as { error?: unknown }).error;
-      const message =
-        typeof err === "string"
-          ? err
-          : err && typeof err === "object" && err !== null && "message" in err
-            ? String((err as { message?: unknown }).message)
-            : "Payment session failed";
-      return { ok: false, error: message };
+      return { ok: false, error: extractPaymentsLkError(json) };
     }
     const payload = (json && typeof json === "object" && "data" in json
-      ? (json as { data: PayHereSession & { pending_card_id?: string } }).data
-      : json) as PayHereSession & { pending_card_id?: string };
-    if (!payload?.action || !payload?.fields) {
-      return { ok: false, error: "Payment session was missing checkout fields" };
+      ? (json as { data: PaymentsLkSession & { pending_card_id?: string } }).data
+      : json) as PaymentsLkSession & { pending_card_id?: string };
+    if (!payload?.url) {
+      return { ok: false, error: "Payment session was missing the checkout URL" };
     }
     return { ok: true, data: payload };
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? "Network error" };
-  }
-}
-
-export async function getGuestPayHereSession(
-  guestToken: string,
-  guestEmail: string,
-): Promise<{ ok: true; data: PayHereSession } | { ok: false; error: string }> {
-  if (!STORE_API_URL) {
-    return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
-  }
-  try {
-    const res = await fetch(`${STORE_API_URL}/api/payhere/guest-checkout-session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ guest_token: guestToken, guest_email: guestEmail }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      const err = (json as { error?: unknown }).error;
-      const message =
-        typeof err === "string"
-          ? err
-          : err && typeof err === "object" && err !== null && "message" in err
-            ? String((err as { message?: unknown }).message)
-            : "Payment session failed";
-      return { ok: false, error: message };
-    }
-    const payload = (json && typeof json === "object" && "data" in json
-      ? (json as { data: PayHereSession }).data
-      : json) as PayHereSession;
-    if (!payload?.action || !payload?.fields) {
-      return { ok: false, error: "Payment session was missing checkout fields" };
-    }
-    return { ok: true, data: { action: payload.action, fields: payload.fields } };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "Network error" };
   }

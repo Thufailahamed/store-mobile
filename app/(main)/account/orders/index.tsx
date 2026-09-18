@@ -136,7 +136,7 @@ function formatRelative(dateStr: string) {
 function paymentLabel(method?: string) {
   if (!method) return "Card";
   if (method === "cod") return "Cash on Delivery";
-  if (method === "payhere") return "Online Card Payment";
+  if (method === "paymentslk") return "Online Card Payment";
   return method.replace(/_/g, " ");
 }
 

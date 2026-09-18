@@ -670,7 +670,7 @@ export default function OrderSuccessScreen() {
           </TouchableOpacity>
 
           <Body size="xs" muted>
-            Paid with {order.payment_method === "cod" ? "Cash on Delivery" : "Card via PayHere"}
+            Paid with {order.payment_method === "cod" ? "Cash on Delivery" : "Card via Payments.lk"}
           </Body>
 
           {receiptExpanded && (

@@ -4,8 +4,8 @@ import { useLocalSearchParams } from "expo-router";
 import { ScreenHeader } from "@/components/layout";
 import { Button, useToast } from "@/components/ui";
 import { getGuestOrderBackend } from "@/lib/api/backend";
-import { getGuestPayHereSession } from "@/lib/api/payments";
-import { PayHereCheckout } from "@/components/payments/PayHereCheckout";
+import { getGuestPaymentsLkSession } from "@/lib/api/payments";
+import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -17,7 +17,6 @@ export default function GuestLookupScreen() {
   const [email, setEmail] = useState(params.email ?? "");
   const [loading, setLoading] = useState(false);
   const [paying, setPaying] = useState(false);
-  const [payhere, setPayhere] = useState<{ action: string; fields: Record<string, string> } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<{
     id?: string;
@@ -67,19 +66,28 @@ export default function GuestLookupScreen() {
       return;
     }
     setPaying(true);
-    const res = await getGuestPayHereSession(token.trim(), email.trim());
-    setPaying(false);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
+    try {
+      const res = await getGuestPaymentsLkSession(token.trim(), email.trim());
+      if (!res.ok) {
+        toast(res.error, "error");
+        return;
+      }
+      const result = await runPaymentsLkCheckout(res.data.url);
+      if (result.status === "succeeded") {
+        toast("Payment submitted — refreshing", "success");
+      } else if (result.status !== "dismissed") {
+        toast("Payment was not completed — you can retry any time", "info");
+      }
+      void lookup();
+    } finally {
+      setPaying(false);
     }
-    setPayhere(res.data);
   };
 
   const unpaidCard =
     order &&
     order.payment_status !== "paid" &&
-    (order.payment_method === "payhere" || order.payment_method === "stripe");
+    order.payment_method === "paymentslk";
 
   return (
     <View style={styles.screen}>
@@ -129,20 +137,6 @@ export default function GuestLookupScreen() {
           </View>
         ) : null}
       </View>
-      {payhere ? (
-        <PayHereCheckout
-          visible
-          action={payhere.action}
-          fields={payhere.fields}
-          orderId={order?.id ?? token}
-          onClose={() => setPayhere(null)}
-          onReturnFromGateway={() => {
-            setPayhere(null);
-            toast("Payment submitted — refreshing", "success");
-            void lookup();
-          }}
-        />
-      ) : null}
     </View>
   );
 }
