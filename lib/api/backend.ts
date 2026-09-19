@@ -1998,7 +1998,7 @@ export async function createCouponAdminBackend(c: Omit<Coupon, "id" | "used_coun
 }
 
 export async function toggleCouponBackend(id: string, isActive: boolean): Promise<ApiResult<{ coupon: Coupon }>> {
-  return fetchJson(`/api/admin/coupons/${id}/toggle`, { method: "PATCH", body: { is_active: isActive } });
+  return fetchJson(`/api/admin/coupons/${id}`, { method: "PATCH", body: { is_active: isActive } });
 }
 
 export async function getAdminCampaignsBackend(): Promise<ApiResult<{ campaigns: unknown[] }>> {

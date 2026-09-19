@@ -180,10 +180,20 @@ export async function getAdminBrandById(id: string): Promise<Result<{
   logo_url?: string | null;
   banner_url?: string | null;
   status?: string;
+  is_verified?: boolean;
+  is_featured?: boolean;
   rating?: number;
   total_followers?: number;
   total_products?: number;
-  products?: Array<{ id: string; name: string; status: string; total_sales: number }>;
+  products?: Array<{
+    id: string;
+    name: string;
+    status: string;
+    total_sales: number;
+    price?: number;
+    currency?: string;
+    images?: Array<{ url?: string; is_primary?: boolean }>;
+  }>;
 } | null>> {
   const res = await B.getAdminBrandByIdBackend(id);
   if (!res.ok) return fail(res.error);
@@ -1791,7 +1801,7 @@ export async function getAdminUsers(opts: {
   try {
     let q = supabase
       .from("users")
-      .select("id, email, full_name, role, is_suspended, is_verified, created_at", { count: "exact" });
+      .select("id, email, full_name, role, avatar_url, phone, created_at", { count: "exact" });
 
     if (cleanOpts.role && cleanOpts.role !== "all") {
       q = q.eq("role", cleanOpts.role);
@@ -2269,6 +2279,7 @@ export interface AdminCoupon {
   type: "percentage" | "fixed" | "free_shipping" | "bxgy";
   value: number;
   min_order_total?: number;
+  max_discount?: number;
   max_uses?: number;
   current_uses: number;
   starts_at?: string;
@@ -2293,21 +2304,26 @@ export async function getAdminCoupons(opts: {
   if (!res.ok) return fail(res.error);
   let list = (res.data.coupons as unknown[]).map((c) => {
     const row = c as {
-      id: string; code: string; discount_type: string; discount_value: number;
-      min_order_amount?: number; max_uses?: number | null; used_count?: number;
-      starts_at?: string; ends_at?: string | null; is_active: boolean;
-      scope?: string; created_at?: string;
+      id: string; code: string; type?: string; discount_type?: string;
+      value?: number; discount_value?: number;
+      min_order_value?: number; min_order_amount?: number;
+      max_discount?: number | null;
+      usage_limit?: number | null; max_uses?: number | null; used_count?: number;
+      starts_at?: string; expires_at?: string | null; ends_at?: string | null;
+      is_active: boolean; scope?: string; created_at?: string;
     };
+    const rawType = row.type ?? row.discount_type ?? "percentage";
     return {
       id: row.id,
       code: row.code,
-      type: (row.discount_type === "percent" ? "percentage" : row.discount_type === "fixed" ? "fixed" : row.discount_type === "free_shipping" ? "free_shipping" : "percentage") as AdminCoupon["type"],
-      value: row.discount_value,
-      min_order_total: row.min_order_amount,
-      max_uses: row.max_uses ?? undefined,
+      type: (rawType === "percent" ? "percentage" : rawType) as AdminCoupon["type"],
+      value: row.value ?? row.discount_value ?? 0,
+      min_order_total: row.min_order_value ?? row.min_order_amount,
+      max_discount: row.max_discount ?? undefined,
+      max_uses: row.usage_limit ?? row.max_uses ?? undefined,
       current_uses: row.used_count ?? 0,
       starts_at: row.starts_at,
-      ends_at: row.ends_at ?? undefined,
+      ends_at: row.expires_at ?? row.ends_at ?? undefined,
       is_active: row.is_active,
       scope: row.scope,
       created_at: row.created_at ?? new Date().toISOString(),
@@ -2372,8 +2388,9 @@ export async function createCoupon(c: Partial<AdminCoupon>): Promise<Result<Admi
     code: parsed.data.code,
     discount_type: parsed.data.type === "percentage" ? "percent" : parsed.data.type === "bxgy" ? "fixed" : (parsed.data.type as "percent" | "fixed" | "free_shipping"),
     discount_value: parsed.data.value,
-    min_order_amount: parsed.data.min_order_value,
-    max_uses: parsed.data.usage_limit,
+    min_order_value: parsed.data.min_order_value,
+    usage_limit: parsed.data.usage_limit,
+    expires_at: parsed.data.expires_at,
     is_active: parsed.data.is_active ?? true,
     scope: "global",
   });

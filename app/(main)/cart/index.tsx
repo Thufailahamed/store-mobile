@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { View, FlatList, StyleSheet, Pressable, TouchableOpacity, Share, ScrollView } from "react-native";
+import { View, FlatList, StyleSheet, TouchableOpacity, Share, ScrollView } from "react-native";
 import { navigateHome } from "@/lib/navigation";
 import { useRouter, useFocusEffect } from "expo-router";
 import { PaperBackground } from "@/components/layout";
@@ -8,14 +8,13 @@ import { useCart, useWishlist } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, colors, radii, shadows } from "@/lib/theme/tokens";
+import { spacing, colors, radii, shadows } from "@/lib/theme/tokens";
 import { computeCartTotals, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { CartItemCard } from "@/components/cart/CartItemCard";
 import { getVariantStock } from "@/components/cart/variant-utils";
 import { BagEmptyState } from "@/components/cart/BagEmptyState";
-import { SavedForLater } from "@/components/cart/SavedForLater";
 import { mapProducts } from "@/lib/api/product-mapper";
 import type { Product } from "@/lib/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -48,17 +47,12 @@ export default function CartScreen() {
     items: cartRecord,
     removeItem,
     updateQuantity,
-    subtotal,
-    itemCount,
     addItem,
     setGift,
   } = useCart();
-  const items = cartRecord ?? {};
+  const items = useMemo(() => cartRecord ?? {}, [cartRecord]);
   const wishlist = useWishlist();
   const tracker = useTrackEvent();
-  const [savedForLater, setSavedForLater] = useState<
-    Record<string, { product: Product | null }>
-  >({});
 
   const [addressText, setAddressText] = useState("Add delivery address");
   const [hasSavedAddress, setHasSavedAddress] = useState(false);
@@ -68,7 +62,7 @@ export default function CartScreen() {
   const [catalogVisibleStoreIds, setCatalogVisibleStoreIds] = useState<Set<string>>(new Set());
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
 
-  const cartItems = Object.entries(items);
+  const cartItems = useMemo(() => Object.entries(items), [items]);
 
   const cartProductIds = useMemo(() => {
     return Array.from(new Set(cartItems.map(([_, it]) => it.productId)));
@@ -136,7 +130,7 @@ export default function CartScreen() {
     return () => {
       cancelled = true;
     };
-  }, [cartProductIds.join(",")]);
+  }, [cartProductIds]);
 
   useEffect(() => {
     getCatalogVisibleStoreIds().then(setCatalogVisibleStoreIds);
@@ -194,7 +188,7 @@ export default function CartScreen() {
       });
       return changed ? next : prev;
     });
-  }, [cartItems]);
+  }, [cartItems, items]);
 
   const selectedCartItems = useMemo(() => {
     return cartItems.filter(([key]) => selectedKeys[key]);
@@ -345,11 +339,12 @@ export default function CartScreen() {
     return selectedCartItems.reduce((sum, [_, item]) => sum + item.price * item.quantity, 0);
   }, [selectedCartItems]);
 
-  // Total MRP = sum of item.mrp * qty for selected items (fallback: price * 1.5)
+  // Total MRP = sum of the real catalogue MRP, falling back to the sale price.
   const totalMrp = useMemo(() => {
     return selectedCartItems.reduce((sum, [_, item]) => {
       const product = productDetails[item.productId];
-      const mrp = product?.mrp || (item.price * 1.5);
+      const variant = product?.variants?.find((entry) => entry.id === item.variantId);
+      const mrp = variant?.mrp || product?.mrp || item.price;
       return sum + mrp * item.quantity;
     }, 0);
   }, [selectedCartItems, productDetails]);
@@ -376,7 +371,6 @@ export default function CartScreen() {
   const tax = cartTotals.tax;
   const totalAmount = cartTotals.total;
   const giftWrapFee = selectedCartItems.filter(([, item]) => item.is_gift).length * GIFT_WRAP_FEE;
-  const total = totalAmount;
   const count = useMemo(() => {
     return selectedCartItems.reduce((sum, [_, item]) => sum + item.quantity, 0);
   }, [selectedCartItems]);
@@ -391,21 +385,6 @@ export default function CartScreen() {
       toast(`${name} removed from bag`, "info");
     },
     [removeItem, toast, productDetails, items, tracker]
-  );
-
-  const handleSaveForLater = useCallback(
-    (key: string, productId: string) => {
-      const item = items[key];
-      if (!item) return;
-      setSavedForLater((prev) => ({
-        ...prev,
-        [key]: { product: prev[key]?.product ?? null },
-      }));
-      if (!wishlist.has(productId)) wishlist.toggle(productId);
-      removeItem(key);
-      toast(`Saved for later`, "success");
-    },
-    [items, removeItem, wishlist, toast]
   );
 
   // Load address
@@ -469,42 +448,6 @@ export default function CartScreen() {
     void navigateToCheckout(true);
   };
 
-  // Lazily fetch products for the saved-for-later rail.
-  const savedKeys = Object.keys(savedForLater);
-  const savedProductIds = useMemo(() => {
-    const ids = new Set<string>();
-    savedKeys.forEach((k) => {
-      const it = items[k];
-      if (it) ids.add(it.productId);
-    });
-    return Array.from(ids);
-  }, [savedKeys, items]);
-  useEffect(() => {
-    if (savedProductIds.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const res = await getProductsByIdsBackend(savedProductIds);
-      if (cancelled || !res.ok || !res.data) return;
-      const byId: Record<string, Product> = {};
-      mapProducts(res.data.products).forEach((p) => {
-        byId[p.id] = p;
-      });
-      setSavedForLater((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((k) => {
-          const it = items[k];
-          if (it && byId[it.productId]) {
-            next[k] = { product: byId[it.productId] };
-          }
-        });
-        return next;
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [savedProductIds.join(",")]);
-
   if (cartItems.length === 0) {
     return (
       <PaperBackground style={{ flex: 1 }}>
@@ -556,7 +499,10 @@ export default function CartScreen() {
         >
           <Ionicons name="close" size={20} color={theme.colors.foreground} />
         </TouchableOpacity>
-        <Display size="xl" style={[styles.headerTitle, { color: theme.colors.foreground }]}>My Bag</Display>
+        <View style={styles.headerCenter}>
+          <Display size="xl" style={[styles.headerTitle, { color: theme.colors.foreground }]}>My Bag</Display>
+          <Body size="xs" muted>{count} {count === 1 ? "piece" : "pieces"}</Body>
+        </View>
         <TouchableOpacity 
           onPress={() => router.push("/(main)/wishlist")} 
           style={[styles.headerRightBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
@@ -582,13 +528,21 @@ export default function CartScreen() {
             >
               <View style={styles.deliveryLeft}>
                 <View style={[styles.deliveryIconBg, { backgroundColor: theme.colors.secondary }]}>
-                  <Ionicons name="location-outline" size={20} color={theme.colors.primary} />
+                  <Ionicons name="location-outline" size={19} color={theme.colors.primary} />
                 </View>
                 <View style={styles.deliveryTextWrap}>
-                  <Body style={[styles.deliveryTitle, { color: theme.colors.foreground }]}>{addressText}</Body>
+                  <Label style={styles.deliveryEyebrow}>DELIVER TO</Label>
+                  <Body style={[styles.deliveryTitle, { color: theme.colors.foreground }]} numberOfLines={1}>
+                    {addressText}
+                  </Body>
+                  <Body size="xs" muted>
+                    {hasSavedAddress ? "Change delivery address" : "Add an address for delivery estimates"}
+                  </Body>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.foreground} />
+              <View style={styles.deliveryArrow}>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              </View>
             </TouchableOpacity>
 
             {/* Your Bag Title & Selection Bar */}
@@ -675,8 +629,19 @@ export default function CartScreen() {
           <View style={{ paddingBottom: 24 }}>
 
             {/* Price Details Card */}
-            <View style={[styles.priceCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, marginHorizontal: 16, marginBottom: 12 }]}>
-              <Body style={[styles.priceCardTitle, { color: theme.colors.foreground }]}>Price Details</Body>
+            <View style={[styles.priceCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={styles.priceCardHeader}>
+                <View style={styles.priceCardIcon}>
+                  <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
+                </View>
+                <View style={styles.priceCardHeaderText}>
+                  <Label style={styles.priceCardEyebrow}>ORDER SUMMARY</Label>
+                  <Body style={[styles.priceCardTitle, { color: theme.colors.foreground }]}>Price details</Body>
+                </View>
+                <View style={styles.priceItemPill}>
+                  <Label style={styles.priceItemPillText}>{count} {count === 1 ? "item" : "items"}</Label>
+                </View>
+              </View>
 
               <View style={styles.pdRow}>
                 <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Total MRP</Body>
@@ -721,7 +686,9 @@ export default function CartScreen() {
               {/* Savings pill */}
               {selectedCount > 0 && (
                 <View style={styles.savingsPill}>
-                  <Body style={styles.savingsPillEmoji}>🎉</Body>
+                  <View style={styles.savingsIcon}>
+                    <Ionicons name="sparkles" size={15} color={colors.olive[700]} />
+                  </View>
                   <Body style={styles.savingsPillText}>
                     You're saving <Body style={styles.savingsPillBold}>{formatPrice(discountOnMrp)}</Body> on this order
                   </Body>
@@ -791,20 +758,20 @@ export default function CartScreen() {
           },
         ]}
       >
-        <LinearGradient
-          colors={
-            theme.isDark
-              ? ["rgba(151, 168, 94, 0.16)", "rgba(151, 168, 94, 0.03)"]
-              : ["rgba(83, 94, 44, 0.1)", "rgba(83, 94, 44, 0.02)"]
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.selectionBand}
-        >
-          <Body style={[styles.selectionBandText, { color: theme.colors.foreground }]}>
-            {selectedCount} Item{selectedCount !== 1 ? "s" : ""} selected for order
-          </Body>
-        </LinearGradient>
+        <View style={styles.checkoutSummary}>
+          <View>
+            <Label style={styles.checkoutSummaryLabel}>ORDER TOTAL</Label>
+            <Price size="md" style={[styles.checkoutSummaryPrice, { color: theme.colors.foreground }]}>
+              {formatPrice(selectedCount === 0 ? 0 : totalAmount)}
+            </Price>
+          </View>
+          <View style={styles.checkoutSelectionPill}>
+            <Ionicons name="checkmark-circle" size={14} color={theme.colors.primary} />
+            <Body size="xs" style={[styles.checkoutSelectionText, { color: theme.colors.primary }]}>
+              {selectedCount} of {cartItems.length} selected
+            </Body>
+          </View>
+        </View>
 
         {selectedCount === 0 && (
           <View
@@ -858,7 +825,7 @@ export default function CartScreen() {
             )}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Body style={[styles.checkoutBtnText, { color: selectedCount === 0 || hasUnavailableItems ? theme.colors.mutedForeground : "#FFFFFF" }]}>
-                {hasUnavailableItems ? "Remove out of stock items" : "Place Order"}
+                {hasUnavailableItems ? "Remove out of stock items" : "Continue to checkout"}
               </Body>
               {selectedCount > 0 && !hasUnavailableItems && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
             </View>
@@ -918,6 +885,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 1,
+  },
   headerTitle: {
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "800",
@@ -928,9 +900,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radii.xl,
+    backgroundColor: `${colors.olive[500]}0D`,
   },
   storeGroupHeaderLeft: {
     flexDirection: "row",
@@ -953,11 +929,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: radii["2xl"],
+    backgroundColor: colors.paper.cream,
+    ...shadows.soft,
   },
   deliveryLeft: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -970,12 +951,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   deliveryTextWrap: {
+    flex: 1,
     gap: 2,
+  },
+  deliveryEyebrow: {
+    color: colors.olive[600],
+    fontSize: 8,
+    letterSpacing: 1.2,
   },
   deliveryTitle: {
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "700",
-    fontSize: 15,
+    fontSize: 14,
+  },
+  deliveryArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}10`,
   },
   optionsList: {
     marginTop: spacing[4],
@@ -1168,16 +1163,51 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   priceCard: {
-    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: radii["2xl"],
     borderWidth: 1,
     padding: 16,
-    gap: 12,
+    gap: 13,
+    ...shadows.soft,
+  },
+  priceCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    marginBottom: spacing[1],
+  },
+  priceCardIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}12`,
+  },
+  priceCardHeaderText: {
+    flex: 1,
+  },
+  priceCardEyebrow: {
+    color: colors.olive[600],
+    fontSize: 8,
+    letterSpacing: 1.2,
   },
   priceCardTitle: {
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "700",
-    fontSize: 15,
-    marginBottom: 4,
+    fontSize: 16,
+    marginTop: 2,
+  },
+  priceItemPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: colors.paper.warm,
+  },
+  priceItemPillText: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
   },
   pdRow: {
     flexDirection: "row",
@@ -1214,26 +1244,33 @@ const styles = StyleSheet.create({
   savingsPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#dcfce7",
-    borderRadius: 8,
+    backgroundColor: `${colors.olive[500]}10`,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: `${colors.olive[500]}20`,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     gap: 8,
     marginTop: 4,
   },
-  savingsPillEmoji: {
-    fontSize: 16,
+  savingsIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}16`,
   },
   savingsPillText: {
     flex: 1,
     fontSize: 13,
-    color: "#15803d",
+    color: colors.olive[700],
     fontFamily: fontFamilies.sans.regular,
   },
   savingsPillBold: {
     fontFamily: fontFamilies.sans.bold,
     fontWeight: "700",
-    color: "#15803d",
+    color: colors.olive[700],
   },
 
   trustRow: {
@@ -1276,17 +1313,35 @@ const styles = StyleSheet.create({
   },
   checkoutContainer: {
     borderTopWidth: 1,
+    ...shadows.editorial,
   },
-  selectionBand: {
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[5],
+  checkoutSummary: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
   },
-  selectionBandText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    textAlign: "center",
+  checkoutSummaryLabel: {
+    color: colors.olive[600],
+    fontSize: 8,
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  checkoutSummaryPrice: {
+    fontFamily: fontFamilies.display.semibold,
+  },
+  checkoutSelectionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[500]}10`,
+  },
+  checkoutSelectionText: {
+    fontFamily: fontFamilies.sans.semibold,
   },
   checkoutAction: {
     paddingHorizontal: spacing[5],
@@ -1345,8 +1400,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   checkboxSelected: {
-    backgroundColor: "#E02020",
-    borderColor: "#E02020",
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   checkboxUnselected: {
     backgroundColor: "transparent",
@@ -1359,10 +1414,15 @@ const styles = StyleSheet.create({
   selectionActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 7,
   },
   actionIconBtn: {
-    padding: 4,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.paper.warm,
   },
   warningBanner: {
     paddingVertical: spacing[2.5],

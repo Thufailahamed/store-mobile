@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { View, StyleSheet, Text, Share, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
@@ -6,9 +6,8 @@ import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedFlatList, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { spacing, radii } from "@/lib/theme/tokens";
+import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 import { useWishlist, useCart } from "@/lib/stores";
-import type { CartStore } from "@/lib/stores/cart-store";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { createWishlistShareBackend, getProductsByIdsBackend } from "@/lib/api/backend";
@@ -33,31 +32,8 @@ import type { Product } from "@/lib/types";
 import { useTrackViewableItems } from "@/lib/recommender";
 
 function getProductStock(product: Product): number {
-  return product.variants?.[0]?.stock ?? 0;
-}
-
-function addProductToCart(product: Product, cart: CartStore): boolean {
-  const variant = product.variants?.[0];
-  const stock = getProductStock(product);
-  if (stock <= 0) return false;
-
-  const image =
-    product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-
-  cart.addItem({
-    productId: product.id,
-    variantId: variant?.id ?? null,
-    storeId: product.store_id,
-    name: product.name,
-    variantLabel: variant
-      ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim()
-      : undefined,
-    price: product.price,
-    image,
-    stock,
-    quantity: 1,
-  });
-  return true;
+  if (!product.variants?.length) return Infinity;
+  return product.variants[0]?.stock ?? 0;
 }
 
 function formatCompactValue(amount: number, currency = "LKR") {
@@ -82,17 +58,19 @@ export default function WishlistScreen() {
   const [filter, setFilter] = useState<WishlistFilter>("all");
   const [sort, setSort] = useState<WishlistSort>("recent");
   const [addedAt, setAddedAt] = useState<Record<string, number>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const productIds = useMemo(
     () => Object.keys(wishlist.items),
     [wishlist.items]
   );
-  const idsKey = productIds.join(",");
 
   useEffect(() => {
     let cancelled = false;
     if (productIds.length === 0) {
       setProducts([]);
+      setLoadError(null);
       setLoading(false);
       return;
     }
@@ -113,12 +91,16 @@ export default function WishlistScreen() {
         if (cancelled) return;
         if (!res.ok) {
           console.error("[wishlist] fetch error:", res.error);
-          setProducts([]);
+          setLoadError(res.error || "Could not load your saved pieces");
         } else {
           setProducts(mapProducts(res.data?.products ?? []));
+          setLoadError(null);
         }
       } catch (err) {
-        if (!cancelled) console.error("[wishlist] fetch exception:", err);
+        if (!cancelled) {
+          console.error("[wishlist] fetch exception:", err);
+          setLoadError("Could not load your saved pieces");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -127,12 +109,12 @@ export default function WishlistScreen() {
     return () => {
       cancelled = true;
     };
-  }, [idsKey]);
+  }, [productIds, retryNonce]);
 
   const visibleProducts = useMemo(() => {
     let list = [...products];
     if (filter === "in_stock") {
-      list = list.filter((p) => (p.variants?.[0]?.stock ?? 0) > 0);
+      list = list.filter((p) => getProductStock(p) > 0);
     } else if (filter === "on_sale") {
       list = list.filter((p) => discountPct(p.mrp, p.price) > 0);
     }
@@ -157,7 +139,7 @@ export default function WishlistScreen() {
     [products]
   );
   const inStockCount = useMemo(
-    () => products.filter((p) => (p.variants?.[0]?.stock ?? 0) > 0).length,
+    () => products.filter((p) => getProductStock(p) > 0).length,
     [products]
   );
 
@@ -263,6 +245,18 @@ export default function WishlistScreen() {
         ListEmptyComponent={
           loading ? (
             <WishlistSkeleton />
+          ) : loadError ? (
+            <View style={styles.loadErrorCard}>
+              <View style={styles.loadErrorIcon}>
+                <Ionicons name="cloud-offline-outline" size={20} color={colors.accent2.rust} />
+              </View>
+              <Display size="md" style={styles.loadErrorTitle}>Your collection is still saved</Display>
+              <Body muted size="sm" style={styles.loadErrorText}>{loadError}</Body>
+              <Pressable onPress={() => setRetryNonce((value) => value + 1)} style={styles.retryBtn}>
+                <Ionicons name="refresh" size={14} color={colors.paper.cream} />
+                <Label style={styles.retryText}>Try again</Label>
+              </Pressable>
+            </View>
           ) : (
             <View style={styles.filterEmpty}>
               <Body muted>No pieces match this filter.</Body>
@@ -316,28 +310,32 @@ const styles = StyleSheet.create({
   },
   hero: {
     gap: spacing[2],
+    padding: spacing[5],
+    borderRadius: radii["2xl"],
+    backgroundColor: colors.olive[950],
+    ...shadows.editorial,
   },
   heroKicker: {
     fontSize: 10,
     letterSpacing: 1.2,
     textTransform: "uppercase",
-    color: "#6b6b6b",
+    color: colors.accent2.ochre,
   },
   heroTitle: {
     marginTop: spacing[1],
-    color: "#16170f",
+    color: colors.paper.cream,
     fontFamily: fontFamilies.display.regular,
     letterSpacing: -0.5,
   },
   heroSubtitle: {
     marginTop: spacing[1],
     lineHeight: 22,
-    color: "#6b6b6b",
+    color: `${colors.paper.cream}A0`,
   },
   heroValue: {
     fontFamily: fontFamilies.display.regular,
     fontStyle: "italic",
-    color: "#16170f",
+    color: colors.accent2.ochre,
   },
   shareBtn: {
     marginTop: spacing[2],
@@ -362,10 +360,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#e5e5e5",
-    borderRadius: radii.lg,
+    borderColor: `${colors.olive[700]}18`,
+    borderRadius: radii["2xl"],
     paddingVertical: spacing[4],
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.paper.cream,
+    ...shadows.soft,
   },
   stat: {
     flex: 1,
@@ -404,6 +403,46 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[10],
     alignItems: "center",
     justifyContent: "center",
+  },
+  loadErrorCard: {
+    marginTop: spacing[4],
+    padding: spacing[6],
+    alignItems: "center",
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: `${colors.accent2.rust}28`,
+    backgroundColor: colors.paper.cream,
+  },
+  loadErrorIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.accent2.rust}12`,
+    marginBottom: spacing[3],
+  },
+  loadErrorTitle: {
+    color: colors.light.foreground,
+    textAlign: "center",
+  },
+  loadErrorText: {
+    textAlign: "center",
+    marginTop: spacing[2],
+  },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing[4],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2.5],
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+  },
+  retryText: {
+    color: colors.paper.cream,
+    fontSize: 10,
   },
   footer: {
     paddingTop: spacing[2],

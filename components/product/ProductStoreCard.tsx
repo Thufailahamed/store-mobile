@@ -35,6 +35,7 @@ export function ProductStoreCard({ store }: ProductStoreCardProps) {
         style={styles.avatar}
       />
       <View style={styles.info}>
+        <Label style={styles.soldBy}>SOLD BY</Label>
         <View style={styles.nameRow}>
           <Body size="sm" style={styles.storeName}>{store.name}</Body>
           <View style={styles.verifiedBadge}>
@@ -57,7 +58,7 @@ export function ProductStoreCard({ store }: ProductStoreCardProps) {
       </View>
       <View style={styles.visitLink}>
         <Body size="xs" style={styles.visitText}>Visit</Body>
-        <Ionicons name="arrow-forward" size={12} color={colors.olive[600]} />
+        <Ionicons name="arrow-forward" size={12} color={colors.paper.cream} />
       </View>
     </TouchableOpacity>
   );
@@ -70,10 +71,10 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     marginHorizontal: spacing[5],
     padding: spacing[4],
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: `${colors.olive[600]}18`,
+    borderColor: `${colors.olive[700]}20`,
     ...shadows.soft,
   },
   avatar: {
@@ -82,6 +83,11 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     gap: 4,
+  },
+  soldBy: {
+    color: colors.olive[600],
+    fontSize: 8,
+    letterSpacing: 1.2,
   },
   nameRow: {
     flexDirection: "row",
@@ -133,13 +139,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: `${colors.olive[600]}08`,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
+    backgroundColor: colors.olive[900],
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: radii.full,
   },
   visitText: {
-    color: colors.olive[600],
+    color: colors.paper.cream,
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9.5,
     letterSpacing: 0.5,

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth";
@@ -20,7 +20,7 @@ export function useWishlistRemoteSync(): void {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const pullInFlightRef = useRef(false);
 
-  const schedulePull = (userId: string) => {
+  const schedulePull = useCallback((userId: string) => {
     if (!wishlistHydrated || isRemoteSyncPullSuppressed()) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
@@ -33,7 +33,7 @@ export function useWishlistRemoteSync(): void {
           pullInFlightRef.current = false;
         });
     }, DEBOUNCE_MS);
-  };
+  }, [wishlistHydrated]);
 
   useEffect(() => {
     if (loading || !user?.id || !session || !hasSupabaseEnv() || !wishlistHydrated) {
@@ -80,5 +80,5 @@ export function useWishlistRemoteSync(): void {
       }
       channelRef.current = null;
     };
-  }, [user?.id, session, loading, wishlistHydrated]);
+  }, [user?.id, session, loading, wishlistHydrated, schedulePull]);
 }

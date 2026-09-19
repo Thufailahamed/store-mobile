@@ -1,8 +1,7 @@
 import React from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
-import { Ionicons } from "@/components/ui/Icon";
 import { Label, Body } from "@/components/ui/Typography";
-import { colors, spacing, radii, typography } from "@/lib/theme/tokens";
+import { colors, spacing, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { ProductVariant } from "@/lib/types";
 
@@ -49,8 +48,6 @@ export function VariantSelector({
     );
     return v?.stock ?? 0;
   };
-
-  const isSizeSoldOut = (size: string) => getVariantStock(size) <= 0;
 
   return (
     <View style={styles.container}>
@@ -160,7 +157,7 @@ export function VariantSelector({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: spacing[4],
     gap: spacing[5],
   },
   section: {
@@ -172,7 +169,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sectionLabel: {
-    color: colors.light.foreground,
+    color: colors.olive[700],
+    fontSize: 10,
   },
   colorCountInline: {
     fontFamily: fontFamilies.sans.regular,
@@ -224,12 +222,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sizeChart: {
-    color: colors.olive[600],
+    color: colors.olive[700],
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    textDecorationLine: "underline",
-    textDecorationStyle: "solid",
-    textDecorationColor: colors.olive[600],
+    fontSize: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[500]}10`,
   },
   sizeGrid: {
     flexDirection: "row",
@@ -237,9 +236,9 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   sizeChip: {
-    minWidth: 46,
-    height: 40,
-    borderRadius: 8,
+    minWidth: 52,
+    height: 44,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.light.border,
     alignItems: "center",
@@ -248,8 +247,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.card,
   },
   sizeChipActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   sizeChipSoldOut: {
     opacity: 0.35,

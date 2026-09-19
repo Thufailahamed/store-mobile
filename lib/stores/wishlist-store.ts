@@ -4,8 +4,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { listWishlistBackend, addWishlistBackend, removeWishlistBackend } from "@/lib/api/backend";
 import { suppressRemoteSyncPull } from "@/lib/remote-sync-guard";
 
+type PendingWishlistOperation = "add" | "remove";
+
 interface WishlistStore {
   items: Record<string, boolean>;
+  pending: Record<string, PendingWishlistOperation>;
   /** True until the first server load has completed for the active user. */
   hydrated: boolean;
   toggle: (productId: string) => void;
@@ -19,18 +22,31 @@ interface WishlistStore {
 
 async function fetchServerWishlistItems(): Promise<Record<string, boolean>> {
   const res = await listWishlistBackend();
-  if (!res.ok) return {};
+  if (!res.ok) throw new Error(res.error || "Could not load wishlist");
   const serverItems: Record<string, boolean> = {};
-  for (const row of (res.data.items ?? []) as Array<{ product_id: string }>) {
+  for (const row of (res.data.items ?? []) as { product_id: string }[]) {
     serverItems[row.product_id] = true;
   }
   return serverItems;
+}
+
+function applyPendingOperations(
+  items: Record<string, boolean>,
+  pending: Record<string, PendingWishlistOperation>,
+): Record<string, boolean> {
+  const next = { ...items };
+  for (const [productId, operation] of Object.entries(pending)) {
+    if (operation === "add") next[productId] = true;
+    else delete next[productId];
+  }
+  return next;
 }
 
 export const useWishlist = create<WishlistStore>()(
   persist(
     (set, get) => ({
       items: {},
+      pending: {},
       hydrated: false,
 
       toggle: (productId) => {
@@ -39,6 +55,10 @@ export const useWishlist = create<WishlistStore>()(
           const { [productId]: _, ...rest } = state.items;
           return {
             items: exists ? rest : { ...state.items, [productId]: true },
+            pending: {
+              ...state.pending,
+              [productId]: exists ? "remove" : "add",
+            },
           };
         });
       },
@@ -48,38 +68,42 @@ export const useWishlist = create<WishlistStore>()(
       count: () => Object.keys(get().items).length,
 
       clear: () => {
-        const { items, hydrated } = get();
-        if (Object.keys(items).length === 0 && !hydrated) return;
-        set({ items: {}, hydrated: false });
+        const { items, pending, hydrated } = get();
+        if (Object.keys(items).length === 0 && Object.keys(pending).length === 0 && !hydrated) return;
+        set({ items: {}, pending: {}, hydrated: false });
       },
 
       syncToServer: async (_userId) => {
         if (!get().hydrated) return;
         suppressRemoteSyncPull();
-        try {
-          const localIds = new Set(Object.keys(get().items));
-          const serverItems = await fetchServerWishlistItems();
-          const remoteIds = new Set(Object.keys(serverItems));
-          const toInsert = [...localIds].filter((id) => !remoteIds.has(id));
-          const toDelete = [...remoteIds].filter((id) => !localIds.has(id));
-          for (const productId of toInsert) {
-            const res = await addWishlistBackend(productId);
-            if (!res.ok) break;
+        const operations = { ...get().pending };
+        for (const [productId, operation] of Object.entries(operations)) {
+          try {
+            const res = operation === "add"
+              ? await addWishlistBackend(productId)
+              : await removeWishlistBackend(productId);
+            if (!res.ok) continue;
+            set((state) => {
+              if (state.pending[productId] !== operation) return state;
+              const { [productId]: _, ...pending } = state.pending;
+              return { pending };
+            });
+          } catch {
+            // Silent fail — the persisted operation will retry on the next sync.
           }
-          for (const productId of toDelete) {
-            const res = await removeWishlistBackend(productId);
-            if (!res.ok) break;
-          }
-        } catch {
-          // Silent fail — local wishlist still works offline.
         }
       },
 
       loadFromServer: async (_userId) => {
         try {
           const serverItems = await fetchServerWishlistItems();
-          const merged = { ...serverItems, ...get().items };
-          set({ items: merged, hydrated: true });
+          const localItems = get().items;
+          const pending = { ...get().pending };
+          for (const productId of Object.keys(localItems)) {
+            if (!serverItems[productId] && !pending[productId]) pending[productId] = "add";
+          }
+          const merged = applyPendingOperations({ ...serverItems, ...localItems }, pending);
+          set({ items: merged, pending, hydrated: true });
         } catch {
           set({ hydrated: true });
         }
@@ -89,7 +113,9 @@ export const useWishlist = create<WishlistStore>()(
         if (!get().hydrated) return;
         try {
           const serverItems = await fetchServerWishlistItems();
-          set({ items: serverItems });
+          set((state) => ({
+            items: applyPendingOperations(serverItems, state.pending),
+          }));
         } catch {
           // Keep current local state on transient errors.
         }
@@ -98,7 +124,7 @@ export const useWishlist = create<WishlistStore>()(
     {
       name: "wishlist-v1",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ items: state.items }),
+      partialize: (state) => ({ items: state.items, pending: state.pending }),
     },
   ),
 );

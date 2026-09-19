@@ -21,11 +21,22 @@ const HIGHLIGHT_ITEMS = [
 export function TrustHighlights() {
   return (
     <View style={styles.container}>
+      <View style={styles.headingRow}>
+        <View style={styles.headingIcon}>
+          <Ionicons name="shield-checkmark-outline" size={17} color={colors.olive[700]} />
+        </View>
+        <View>
+          <Label style={styles.headingEyebrow}>SHOP WITH CONFIDENCE</Label>
+          <Body size="sm" style={styles.headingTitle}>Protected from checkout to delivery</Body>
+        </View>
+      </View>
       {/* Trust signals */}
       <View style={styles.trustRow}>
         {TRUST_ITEMS.map((item) => (
           <View key={item.label} style={styles.trustItem}>
-            <Ionicons name={item.icon} size={20} color={colors.olive[600]} />
+            <View style={styles.trustIcon}>
+              <Ionicons name={item.icon} size={18} color={colors.olive[700]} />
+            </View>
             <Body size="xs" style={styles.trustLabel}>{item.label}</Body>
             <Body size="xs" muted style={styles.trustSub}>{item.sub}</Body>
           </View>
@@ -47,8 +58,35 @@ export function TrustHighlights() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing[5],
+    marginHorizontal: spacing[4],
+    padding: spacing[4],
     gap: spacing[4],
+    borderRadius: radii["2xl"],
+    backgroundColor: colors.paper.cream,
+    borderWidth: 1,
+    borderColor: `${colors.olive[700]}18`,
+  },
+  headingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+  },
+  headingIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}12`,
+  },
+  headingEyebrow: {
+    color: colors.olive[600],
+    fontSize: 9,
+    marginBottom: 2,
+  },
+  headingTitle: {
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
   },
   trustRow: {
     flexDirection: "row",
@@ -59,11 +97,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     paddingVertical: spacing[3],
-    paddingHorizontal: spacing[2],
-    backgroundColor: `${colors.olive[600]}05`,
+    paddingHorizontal: spacing[1],
+    backgroundColor: colors.light.card,
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: `${colors.olive[600]}15`,
+    borderColor: colors.light.border,
+  },
+  trustIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}12`,
+    marginBottom: 2,
   },
   trustLabel: {
     color: colors.light.foreground,

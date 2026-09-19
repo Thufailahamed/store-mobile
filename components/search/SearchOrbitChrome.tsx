@@ -11,7 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 
 const INK = "#1b1c1c";
 const MUTED = "#5e5e5d";
@@ -108,13 +108,25 @@ export function SearchOrbitChrome({
       {!searched && !isTyping && onImageSearch ? (
         <View style={styles.quickActions}>
           <TouchableOpacity style={styles.quickBtn} onPress={onImageSearch} activeOpacity={0.8}>
-            <Ionicons name="image-outline" size={18} color={INK} />
-            <Text style={styles.quickBtnText}>Image search</Text>
+            <View style={styles.quickIcon}>
+              <Ionicons name="image-outline" size={17} color={colors.olive[800]} />
+            </View>
+            <View style={styles.quickTextWrap}>
+              <Text style={styles.quickBtnText}>Image search</Text>
+              <Text style={styles.quickBtnMeta}>Choose a photo</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
           </TouchableOpacity>
           {onCameraSearch ? (
             <TouchableOpacity style={styles.quickBtn} onPress={onCameraSearch} activeOpacity={0.8}>
-              <Ionicons name="camera-outline" size={18} color={INK} />
-              <Text style={styles.quickBtnText}>Camera search</Text>
+              <View style={styles.quickIcon}>
+                <Ionicons name="camera-outline" size={17} color={colors.olive[800]} />
+              </View>
+              <View style={styles.quickTextWrap}>
+                <Text style={styles.quickBtnText}>Camera</Text>
+                <Text style={styles.quickBtnMeta}>Scan an item</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -126,9 +138,9 @@ export function SearchOrbitChrome({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing[4],
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.paper.cream,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(27, 28, 28, 0.08)",
+    borderBottomColor: `${colors.olive[900]}12`,
     zIndex: 10,
   },
   topRow: {
@@ -138,22 +150,27 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[3],
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.muted,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
   searchField: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    height: 44,
+    height: 46,
     paddingHorizontal: spacing[3],
-    borderRadius: radii.lg,
-    backgroundColor: colors.light.muted,
+    borderRadius: radii.xl,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    ...shadows.soft,
   },
   searchInput: {
     flex: 1,
@@ -177,15 +194,34 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[1.5],
-    height: 40,
+    gap: spacing[2],
+    minHeight: 54,
+    paddingHorizontal: spacing[2],
+    borderRadius: radii.xl,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+  },
+  quickIcon: {
+    width: 32,
+    height: 32,
     borderRadius: radii.lg,
-    backgroundColor: colors.light.muted,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}12`,
+  },
+  quickTextWrap: {
+    flex: 1,
   },
   quickBtnText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
     color: INK,
+  },
+  quickBtnMeta: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 9,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
   },
 });

@@ -11,6 +11,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import type { CartItem } from "@/lib/stores/cart-store";
 import type { Product } from "@/lib/types";
@@ -21,17 +22,15 @@ import {
   getVariantStock,
 } from "@/components/cart/variant-utils";
 
-const ACCENT = "#E02020";
-const INK = "#161823";
-const MUTED = "#8A8B91";
-const PILL_BG = "#F1F1F2";
-const DEAL_BG = "#FFF0F3";
-const DEAL_TEXT = "#E02020";
+const ACCENT = colors.olive[900];
+const INK = colors.light.foreground;
+const MUTED = colors.light.mutedForeground;
+const PILL_BG = colors.paper.warm;
+const DEAL_BG = `${colors.accent2.rust}12`;
+const DEAL_TEXT = colors.accent2.rust;
 
-const CHECKBOX_SIZE = 22;
-const MEDIA_GAP = 10;
-const IMAGE_SIZE = 88;
-const LEADING_OFFSET = CHECKBOX_SIZE + MEDIA_GAP;
+const CHECKBOX_SIZE = 24;
+const IMAGE_SIZE = 96;
 
 interface CartItemCardProps {
   item: CartItem;
@@ -93,7 +92,7 @@ export function CartItemCard({
     onUpdateVariant?.(variantId, variantLabel);
   };
 
-  const mrp = activeVariant?.mrp || product?.mrp || item.price * 1.5;
+  const mrp = activeVariant?.mrp || product?.mrp || item.price;
   const discount =
     mrp > item.price ? Math.round(((mrp - item.price) / mrp) * 100) : 0;
 
@@ -125,7 +124,7 @@ export function CartItemCard({
   const isUnavailable = Boolean(unavailableMessage);
 
   return (
-    <View style={[styles.card, isUnavailable && styles.cardUnavailable, style]}>
+    <View style={[styles.card, selected && styles.cardSelected, isUnavailable && styles.cardUnavailable, style]}>
       {unavailableMessage ? (
         <View style={styles.unavailableBanner}>
           <Ionicons name="alert-circle" size={14} color="#B45309" />
@@ -250,14 +249,16 @@ export function CartItemCard({
           <View style={styles.qtyStepper}>
             <TouchableOpacity
               style={styles.qtyBtn}
-              onPress={item.quantity <= 1 ? onRemove : onDecrement}
+              onPress={onDecrement}
               activeOpacity={0.7}
+              disabled={item.quantity <= 1 || isUnavailable}
               hitSlop={6}
+              accessibilityLabel="Decrease quantity"
             >
               <Ionicons
-                name={item.quantity <= 1 ? "trash-outline" : "remove"}
+                name="remove"
                 size={16}
-                color={INK}
+                color={item.quantity <= 1 || isUnavailable ? MUTED : INK}
               />
             </TouchableOpacity>
             <Text style={styles.qtyValue}>{item.quantity}</Text>
@@ -267,6 +268,7 @@ export function CartItemCard({
               activeOpacity={0.7}
               disabled={atMaxQty || isUnavailable}
               hitSlop={6}
+              accessibilityLabel="Increase quantity"
             >
               <Ionicons
                 name="add"
@@ -282,7 +284,8 @@ export function CartItemCard({
           onPress={onRemove}
           activeOpacity={0.7}
         >
-          <Text style={styles.deleteText}>Delete</Text>
+          <Ionicons name="trash-outline" size={14} color={colors.accent2.rust} />
+          <Text style={styles.deleteText}>Remove</Text>
         </TouchableOpacity>
       </View>
 
@@ -308,15 +311,17 @@ export function CartItemCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#fff",
-    paddingTop: 14,
-    paddingBottom: 14,
-    paddingHorizontal: 14,
+    backgroundColor: colors.paper.cream,
+    padding: 14,
     marginHorizontal: 16,
-    marginBottom: 10,
-    borderRadius: 10,
+    marginBottom: 12,
+    borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.light.border,
+    ...shadows.soft,
+  },
+  cardSelected: {
+    borderColor: `${colors.olive[700]}38`,
   },
   cardUnavailable: {
     opacity: 0.72,
@@ -346,19 +351,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mediaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: MEDIA_GAP,
-    width: LEADING_OFFSET + IMAGE_SIZE,
+    position: "relative",
+    width: IMAGE_SIZE,
   },
   checkboxHit: {
+    position: "absolute",
+    top: 7,
+    left: 7,
+    zIndex: 2,
     width: CHECKBOX_SIZE,
     height: CHECKBOX_SIZE,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxSpacer: {
-    width: CHECKBOX_SIZE,
+    display: "none",
   },
   checkbox: {
     width: CHECKBOX_SIZE,
@@ -369,17 +376,18 @@ const styles = StyleSheet.create({
   },
   checkboxSelected: {
     backgroundColor: ACCENT,
-    borderWidth: 0,
+    borderWidth: 2,
+    borderColor: colors.paper.cream,
   },
   checkboxUnselected: {
-    backgroundColor: "transparent",
+    backgroundColor: `${colors.paper.cream}EE`,
     borderWidth: 1.5,
-    borderColor: "#C4C4C4",
+    borderColor: colors.light.mutedForeground,
   },
   imageWrap: {
     width: IMAGE_SIZE,
     height: IMAGE_SIZE,
-    borderRadius: 8,
+    borderRadius: radii.xl,
     overflow: "hidden",
     backgroundColor: PILL_BG,
   },
@@ -486,7 +494,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
     fontSize: 16,
     lineHeight: 20,
-    color: ACCENT,
+    color: colors.olive[800],
   },
   priceOriginal: {
     fontFamily: fontFamilies.sans.regular,
@@ -505,21 +513,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 12,
-    paddingLeft: LEADING_OFFSET,
+    marginTop: 14,
     gap: 12,
   },
   stepperSlot: {
-    width: IMAGE_SIZE,
+    width: 112,
   },
   qtyStepper: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: PILL_BG,
-    borderRadius: 8,
-    height: 32,
-    paddingHorizontal: 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    height: 36,
+    paddingHorizontal: 3,
   },
   qtyBtn: {
     width: 28,
@@ -536,18 +545,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   deleteBtn: {
-    backgroundColor: PILL_BG,
-    borderRadius: 8,
-    paddingHorizontal: 18,
-    height: 32,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 5,
+    backgroundColor: `${colors.accent2.rust}0D`,
+    borderRadius: radii.full,
+    paddingHorizontal: 13,
+    height: 36,
     justifyContent: "center",
     flexShrink: 0,
   },
   deleteText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
     lineHeight: 18,
-    color: INK,
+    color: colors.accent2.rust,
   },
 });

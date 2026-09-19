@@ -20,9 +20,11 @@ interface ProductCardProps {
   horizontal?: boolean;
   /** Full-width list card (image-left, info-right). */
   listMode?: boolean;
+  /** Rounded surface treatment for editorial grids such as search results. */
+  surface?: boolean;
 }
 
-export function ProductCard({ product, horizontal, listMode }: ProductCardProps) {
+export function ProductCard({ product, horizontal, listMode, surface }: ProductCardProps) {
   const router = useRouter();
   // Align with products/index.tsx grid (GRID_PADDING = 16, GRID_COL_GAP = 12); reactive
   // via useWindowDimensions so it stays correct on window resize (Android split-screen, foldables).
@@ -285,7 +287,7 @@ export function ProductCard({ product, horizontal, listMode }: ProductCardProps)
 
   return (
     <>
-    <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={styles.card}>
+    <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={[styles.card, surface && styles.cardSurface]}>
       <View style={[styles.imageWrap, { height: imageHeight }]}>
         {primaryImage ? (
           <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={300} />
@@ -371,6 +373,16 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     marginBottom: 24,
+  },
+  cardSurface: {
+    marginBottom: 4,
+    padding: 5,
+    paddingBottom: 10,
+    borderRadius: radii.xl,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    ...shadows.soft,
   },
   imageWrap: {
     width: "100%",

@@ -4,24 +4,25 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { spacing, radii } from "@/lib/theme/tokens";
-import { formatPrice } from "@/lib/utils";
+import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { discountPct, formatPrice } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
 import { useWishlistLayout } from "@/components/wishlist/layout";
 import { subscribeStockAlertBackend } from "@/lib/api/backend";
 
-const INK = "#16170f";
-const MUTED = "#6b6b6b";
-const BORDER = "#e5e5e5";
+const INK = colors.light.foreground;
+const MUTED = colors.light.mutedForeground;
+const BORDER = colors.light.border;
 
 interface WishlistItemCardProps {
   product: Product;
 }
 
 function getStock(product: Product) {
-  return product.variants?.[0]?.stock ?? 0;
+  if (!product.variants?.length) return Infinity;
+  return product.variants[0]?.stock ?? 0;
 }
 
 export function WishlistItemCard({ product }: WishlistItemCardProps) {
@@ -37,6 +38,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const variant = product.variants?.[0];
   const stock = getStock(product);
   const isOutOfStock = stock <= 0;
+  const discount = discountPct(product.mrp, product.price);
   const brandLabel = (product.store?.name || product.brand?.name || "LUXE").toUpperCase();
 
   const open = () =>
@@ -59,7 +61,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
           : undefined,
         price: product.price,
         image: primary,
-        stock: stock || 99,
+        stock: product.variants?.length ? stock : null,
         quantity: 1,
       });
       toggle(product.id);
@@ -98,8 +100,14 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
           accessibilityLabel="Remove from wishlist"
           style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.75 }]}
         >
-          <Ionicons name="trash-outline" size={15} color={INK} />
+          <Ionicons name="heart" size={16} color={colors.accent2.rust} />
         </Pressable>
+
+        {discount > 0 && !isOutOfStock ? (
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountText}>-{discount}%</Text>
+          </View>
+        ) : null}
 
         {isOutOfStock ? (
           <View style={styles.oosBanner}>
@@ -115,17 +123,33 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
         <Text style={styles.productName} numberOfLines={2}>
           {product.name}
         </Text>
-        <Text style={styles.price}>{formatPrice(product.price, product.currency)}</Text>
+        <View style={styles.priceRow}>
+          <Text style={styles.price}>{formatPrice(product.price, product.currency)}</Text>
+          {discount > 0 && product.mrp ? (
+            <Text style={styles.mrp}>{formatPrice(product.mrp, product.currency)}</Text>
+          ) : null}
+        </View>
+        <View style={styles.stockRow}>
+          <View style={[styles.stockDot, isOutOfStock && styles.stockDotOut]} />
+          <Text style={[styles.stockText, isOutOfStock && styles.stockTextOut]}>
+            {isOutOfStock ? "Out of stock" : "Ready to ship"}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.divider} />
 
       <TouchableOpacity
-        style={styles.actionBtn}
+        style={[styles.actionBtn, isOutOfStock && styles.actionBtnMuted]}
         onPress={isOutOfStock ? notifyMe : moveToBag}
         disabled={adding}
         activeOpacity={0.8}
       >
+        <Ionicons
+          name={isOutOfStock ? "notifications-outline" : "bag-add-outline"}
+          size={14}
+          color={isOutOfStock ? colors.olive[700] : colors.paper.cream}
+        />
         <Text style={[styles.actionText, isOutOfStock && styles.actionTextMuted]}>
           {isOutOfStock ? "NOTIFY ME" : adding ? "ADDING…" : "MOVE TO BAG"}
         </Text>
@@ -136,12 +160,13 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii.lg,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: `${colors.olive[700]}20`,
     overflow: "hidden",
     marginBottom: spacing[4],
+    ...shadows.soft,
   },
   imageWrap: {
     width: "100%",
@@ -161,14 +186,28 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 8,
     right: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: `${colors.paper.cream}F2`,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: `${colors.accent2.rust}30`,
+  },
+  discountBadge: {
+    position: "absolute",
+    left: 8,
+    top: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent2.ochre,
+  },
+  discountText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: colors.olive[950],
   },
   oosBanner: {
     position: "absolute",
@@ -204,11 +243,46 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     letterSpacing: -0.1,
   },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 2,
+  },
   price: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 12,
-    color: INK,
+    color: colors.olive[800],
+  },
+  mrp: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 9,
+    color: MUTED,
+    textDecorationLine: "line-through",
+  },
+  stockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     marginTop: 2,
+  },
+  stockDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.olive[500],
+  },
+  stockDotOut: {
+    backgroundColor: colors.accent2.rust,
+  },
+  stockText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9,
+    color: colors.olive[700],
+  },
+  stockTextOut: {
+    color: colors.accent2.rust,
   },
   divider: {
     height: 1,
@@ -216,18 +290,24 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     width: "100%",
-    minHeight: 40,
+    minHeight: 42,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
     paddingVertical: 10,
+    backgroundColor: colors.olive[900],
+  },
+  actionBtnMuted: {
+    backgroundColor: colors.paper.warm,
   },
   actionText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
-    color: INK,
+    fontSize: 9,
+    color: colors.paper.cream,
     letterSpacing: 1,
   },
   actionTextMuted: {
-    color: MUTED,
+    color: colors.olive[700],
   },
 });

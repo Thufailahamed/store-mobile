@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -22,7 +22,7 @@ import {
 } from "@/lib/api/facets";
 import * as api from "@/lib/api";
 import type { Brand, Category } from "@/lib/types";
-import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
+import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
@@ -36,11 +36,14 @@ const GENDERS = [
 
 const SORTS = [
   { key: "newest", label: "Newest" },
+  { key: "for_you", label: "For You" },
   { key: "rating", label: "Top Rated" },
   { key: "sale", label: "Biggest Sale" },
   { key: "price_asc", label: "Price: Low to High" },
   { key: "price_desc", label: "Price: High to Low" },
 ];
+
+const RATINGS = [3, 4, 4.5];
 
 interface FilterSheetProps {
   visible: boolean;
@@ -52,8 +55,35 @@ interface FilterSheetProps {
   resultCount: number;
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <Label style={styles.sectionKicker}>{children}</Label>;
+/** Drop duplicate facet rows (e.g. a subcategory named like its parent)
+ *  by normalized display name, keeping the first occurrence. */
+function uniqueByName<T extends { id: string; name: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    const key = r.name.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function SectionLabel({
+  children,
+  selected,
+}: {
+  children: React.ReactNode;
+  selected?: number;
+}) {
+  return (
+    <View style={styles.sectionHead}>
+      <Label style={styles.sectionKicker}>{children}</Label>
+      {selected ? (
+        <View style={styles.selectedPill}>
+          <Label style={styles.selectedPillText}>{selected} selected</Label>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function Chip({
@@ -70,7 +100,11 @@ function Chip({
       style={[styles.chip, active && styles.chipActive]}
       onPress={onPress}
       activeOpacity={0.8}
+      accessibilityState={{ selected: active }}
     >
+      {active ? (
+        <Ionicons name="checkmark" size={11} color={colors.light.primaryForeground} />
+      ) : null}
       <Label style={[styles.chipText, active && styles.chipTextActive]}>{label}</Label>
     </TouchableOpacity>
   );
@@ -89,6 +123,8 @@ export function FilterSheet({
   const [draftSort, setDraftSort] = useState(sort);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllBrands, setShowAllBrands] = useState(false);
   const [priceMinInput, setPriceMinInput] = useState(
     String(filters.price?.[0] ?? PRICE_BOUNDS.min)
   );
@@ -100,6 +136,8 @@ export function FilterSheet({
     if (visible) {
       setDraft(filters);
       setDraftSort(sort);
+      setShowAllCategories(false);
+      setShowAllBrands(false);
       setPriceMinInput(String(filters.price?.[0] ?? PRICE_BOUNDS.min));
       setPriceMaxInput(String(filters.price?.[1] ?? PRICE_BOUNDS.max));
     }
@@ -119,6 +157,23 @@ export function FilterSheet({
       cancelled = true;
     };
   }, [visible]);
+
+  const uniqueCategories = useMemo(() => uniqueByName(categories), [categories]);
+  const uniqueBrands = useMemo(() => uniqueByName(brands), [brands]);
+  const visibleCategories = useMemo(() => {
+    if (showAllCategories) return uniqueCategories;
+    const selected = new Set(draft.categories ?? []);
+    return uniqueCategories
+      .filter((item, index) => index < 8 || selected.has(item.id))
+      .slice(0, 12);
+  }, [draft.categories, showAllCategories, uniqueCategories]);
+  const visibleBrands = useMemo(() => {
+    if (showAllBrands) return uniqueBrands;
+    const selected = new Set(draft.brands ?? []);
+    return uniqueBrands
+      .filter((item, index) => index < 8 || selected.has(item.id))
+      .slice(0, 12);
+  }, [draft.brands, showAllBrands, uniqueBrands]);
 
   const handleApply = () => {
     const min = Number(priceMinInput) || PRICE_BOUNDS.min;
@@ -154,22 +209,39 @@ export function FilterSheet({
     return n;
   })();
 
+  const toggleId = (key: "brands" | "categories", id: string) => {
+    const list = draft[key] ?? [];
+    setDraft({
+      ...draft,
+      [key]: list.includes(id) ? list.filter((v) => v !== id) : [...list, id],
+    });
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <View style={styles.header}>
-          <View>
-            <Display size="xl">Refine</Display>
-            {draftCount > 0 ? (
-              <Label style={styles.headerSub}>
-                {draftCount} filter{draftCount === 1 ? "" : "s"} set
-              </Label>
-            ) : null}
+          <View style={styles.headerText}>
+            <Label style={styles.headerEyebrow}>Catalogue</Label>
+            <View style={styles.headerTitleRow}>
+              <Display size="xl">Refine</Display>
+              {draftCount > 0 ? (
+                <View style={styles.countBadge}>
+                  <Label style={styles.countBadgeText}>{draftCount}</Label>
+                </View>
+              ) : null}
+            </View>
+            <Body muted size="xs">Sort and narrow {resultCount} pieces</Body>
           </View>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color={colors.light.foreground} />
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={12}
+            style={styles.closeBtn}
+            accessibilityLabel="Close filters"
+          >
+            <Ionicons name="close" size={18} color={colors.light.foreground} />
           </TouchableOpacity>
         </View>
 
@@ -189,7 +261,16 @@ export function FilterSheet({
             ))}
           </View>
 
-          <SectionLabel>Price (LKR)</SectionLabel>
+          <SectionLabel
+            selected={
+              (Number(priceMinInput) || PRICE_BOUNDS.min) > PRICE_BOUNDS.min ||
+              (Number(priceMaxInput) || PRICE_BOUNDS.max) < PRICE_BOUNDS.max
+                ? 1
+                : 0
+            }
+          >
+            Price (LKR)
+          </SectionLabel>
           <View style={styles.priceRow}>
             <View style={styles.priceInputWrap}>
               <Label style={styles.priceInputLabel}>Min</Label>
@@ -233,7 +314,7 @@ export function FilterSheet({
             })}
           </View>
 
-          <SectionLabel>Discount</SectionLabel>
+          <SectionLabel selected={draft.minDiscount ? 1 : 0}>Discount</SectionLabel>
           <View style={styles.chipsWrap}>
             {DISCOUNTS.map((d) => (
               <Chip
@@ -250,9 +331,9 @@ export function FilterSheet({
             ))}
           </View>
 
-          <SectionLabel>Rating</SectionLabel>
+          <SectionLabel selected={draft.minRating ? 1 : 0}>Rating</SectionLabel>
           <View style={styles.chipsWrap}>
-            {[3, 4, 4.5].map((r) => (
+            {RATINGS.map((r) => (
               <Chip
                 key={r}
                 label={`${r}★ & up`}
@@ -264,85 +345,122 @@ export function FilterSheet({
             ))}
           </View>
 
-          {categories.length > 0 ? (
+          {uniqueCategories.length > 0 ? (
             <>
-              <SectionLabel>Category</SectionLabel>
+              <SectionLabel selected={draft.categories?.length ?? 0}>
+                Category
+              </SectionLabel>
               <View style={styles.chipsWrap}>
-                {categories.map((c) => {
-                  const list = draft.categories ?? [];
-                  const on = list.includes(c.id);
+                {visibleCategories.map((c) => {
+                  const on = (draft.categories ?? []).includes(c.id);
                   return (
                     <Chip
                       key={c.id}
                       label={c.name}
                       active={on}
-                      onPress={() =>
-                        setDraft({
-                          ...draft,
-                          categories: on ? list.filter((v) => v !== c.id) : [...list, c.id],
-                        })
-                      }
+                      onPress={() => toggleId("categories", c.id)}
                     />
                   );
                 })}
               </View>
+              {uniqueCategories.length > visibleCategories.length || showAllCategories ? (
+                <TouchableOpacity
+                  style={styles.expandButton}
+                  onPress={() => setShowAllCategories((value) => !value)}
+                >
+                  <Body size="xs" style={styles.expandText}>
+                    {showAllCategories
+                      ? "Show fewer categories"
+                      : `View ${uniqueCategories.length - visibleCategories.length} more categories`}
+                  </Body>
+                  <Ionicons
+                    name={showAllCategories ? "chevron-up" : "chevron-down"}
+                    size={14}
+                    color={colors.olive[700]}
+                  />
+                </TouchableOpacity>
+              ) : null}
             </>
           ) : null}
 
-          {brands.length > 0 ? (
+          {uniqueBrands.length > 0 ? (
             <>
-              <SectionLabel>Brand</SectionLabel>
+              <SectionLabel selected={draft.brands?.length ?? 0}>Brand</SectionLabel>
               <View style={styles.chipsWrap}>
-                {brands.map((b) => {
-                  const list = draft.brands ?? [];
-                  const on = list.includes(b.id);
+                {visibleBrands.map((b) => {
+                  const on = (draft.brands ?? []).includes(b.id);
                   return (
                     <Chip
                       key={b.id}
                       label={b.name}
                       active={on}
-                      onPress={() =>
-                        setDraft({
-                          ...draft,
-                          brands: on ? list.filter((v) => v !== b.id) : [...list, b.id],
-                        })
-                      }
+                      onPress={() => toggleId("brands", b.id)}
                     />
                   );
                 })}
               </View>
+              {uniqueBrands.length > visibleBrands.length || showAllBrands ? (
+                <TouchableOpacity
+                  style={styles.expandButton}
+                  onPress={() => setShowAllBrands((value) => !value)}
+                >
+                  <Body size="xs" style={styles.expandText}>
+                    {showAllBrands
+                      ? "Show fewer brands"
+                      : `View ${uniqueBrands.length - visibleBrands.length} more brands`}
+                  </Body>
+                  <Ionicons
+                    name={showAllBrands ? "chevron-up" : "chevron-down"}
+                    size={14}
+                    color={colors.olive[700]}
+                  />
+                </TouchableOpacity>
+              ) : null}
             </>
           ) : null}
 
-          <SectionLabel>Color</SectionLabel>
+          <SectionLabel selected={draft.colors?.length ?? 0}>Color</SectionLabel>
           <View style={styles.colorRow}>
             {COLORS.map((c) => {
               const list = draft.colors ?? [];
               const on = list.includes(c.name);
               return (
-                <TouchableOpacity
-                  key={c.name}
-                  onPress={() =>
-                    setDraft({
-                      ...draft,
-                      colors: on ? list.filter((v) => v !== c.name) : [...list, c.name],
-                    })
-                  }
-                  activeOpacity={0.8}
-                  accessibilityLabel={c.name}
-                  accessibilityState={{ selected: on }}
-                  style={[
-                    styles.swatch,
-                    { backgroundColor: c.hex },
-                    on && styles.swatchActive,
-                    c.name === "White" && styles.swatchBorder,
-                  ]}
-                />
+                <View key={c.name} style={styles.swatchItem}>
+                  <View style={[styles.swatchRing, on && styles.swatchRingActive]}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setDraft({
+                          ...draft,
+                          colors: on ? list.filter((v) => v !== c.name) : [...list, c.name],
+                        })
+                      }
+                      activeOpacity={0.8}
+                      accessibilityLabel={c.name}
+                      accessibilityState={{ selected: on }}
+                      style={[
+                        styles.swatch,
+                        { backgroundColor: c.hex },
+                        c.name === "White" && styles.swatchBorder,
+                      ]}
+                    >
+                      {on ? (
+                        <Ionicons
+                          name="checkmark"
+                          size={14}
+                          color={c.name === "White" || c.name === "Sand" ? colors.olive[900] : "#fff"}
+                        />
+                      ) : null}
+                    </TouchableOpacity>
+                  </View>
+                  <Body size="xs" style={[styles.swatchName, on && styles.swatchNameActive]}>
+                    {c.name}
+                  </Body>
+                </View>
               );
             })}
           </View>
 
-          <SectionLabel>Size</SectionLabel>
+          <SectionLabel selected={draft.sizes?.length ?? 0}>Size</SectionLabel>
           <View style={styles.chipsWrap}>
             {SIZES.map((s) => {
               const list = draft.sizes ?? [];
@@ -363,7 +481,7 @@ export function FilterSheet({
             })}
           </View>
 
-          <SectionLabel>Gender</SectionLabel>
+          <SectionLabel selected={draft.gender ? 1 : 0}>Gender</SectionLabel>
           <View style={styles.chipsWrap}>
             {GENDERS.map((g) => (
               <Chip
@@ -378,9 +496,12 @@ export function FilterSheet({
         </ScrollView>
 
         <View style={styles.footer}>
-          <Body muted size="sm">
-            {resultCount} {resultCount === 1 ? "piece" : "pieces"}
-          </Body>
+          <View style={styles.footerMeta}>
+            <Label style={styles.footerCount}>{resultCount}</Label>
+            <Body muted size="xs">
+              {resultCount === 1 ? "piece" : "pieces"}
+            </Body>
+          </View>
           <View style={styles.footerActions}>
             <Button variant="outline" size="sm" onPress={handleReset}>
               Reset
@@ -398,7 +519,7 @@ export function FilterSheet({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(22, 23, 15, 0.4)",
+    backgroundColor: "rgba(22, 23, 15, 0.45)",
   },
   sheet: {
     backgroundColor: colors.paper.cream,
@@ -406,6 +527,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii["2xl"],
     maxHeight: "88%",
     paddingBottom: spacing[4],
+    ...shadows.editorial,
   },
   handle: {
     width: 40,
@@ -418,46 +540,115 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    marginBottom: spacing[3],
+    paddingBottom: spacing[3],
+    marginBottom: spacing[1],
+    borderBottomWidth: 1,
+    borderBottomColor: `${colors.light.primary}12`,
   },
-  headerSub: {
-    color: colors.light.primary,
+  headerText: {
+    gap: 2,
+  },
+  headerEyebrow: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+  },
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  countBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countBadgeText: {
+    color: colors.paper.cream,
+    fontSize: 10,
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
     marginTop: 2,
   },
   content: {
     paddingHorizontal: spacing[5],
     paddingBottom: spacing[4],
   },
-  sectionKicker: {
-    color: colors.light.primary,
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: spacing[4],
     marginBottom: spacing[2],
+  },
+  sectionKicker: {
+    color: colors.light.primary,
+  },
+  selectedPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.accent2.ochre}20`,
+    borderWidth: 1,
+    borderColor: `${colors.accent2.ochre}55`,
+  },
+  selectedPillText: {
+    color: colors.accent2.ochre,
+    fontSize: 8,
   },
   chipsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing[2],
   },
+  expandButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    marginTop: spacing[2],
+    paddingHorizontal: 2,
+    paddingVertical: 5,
+  },
+  expandText: {
+    color: colors.olive[700],
+    fontFamily: fontFamilies.sans.semibold,
+  },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: radii.full,
     borderWidth: 1,
     borderColor: colors.light.border,
     backgroundColor: colors.light.card,
   },
   chipActive: {
-    backgroundColor: colors.light.foreground,
-    borderColor: colors.light.foreground,
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   chipText: {
     color: colors.light.foreground,
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: typography.letterSpacing.wide,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   chipTextActive: {
     color: colors.light.primaryForeground,
@@ -477,7 +668,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   priceInput: {
-    height: 40,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.light.border,
     backgroundColor: colors.light.card,
@@ -491,26 +682,45 @@ const styles = StyleSheet.create({
     width: 12,
     height: 1,
     backgroundColor: colors.light.border,
-    marginBottom: 20,
+    marginBottom: 22,
   },
   colorRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing[2],
+    gap: spacing[3],
+  },
+  swatchItem: {
+    alignItems: "center",
+    gap: 4,
+    width: 44,
   },
   swatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  swatchRing: {
+    padding: 3,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  swatchRingActive: {
+    borderColor: colors.accent2.ochre,
   },
   swatchBorder: {
     borderWidth: 1,
     borderColor: colors.light.border,
   },
-  swatchActive: {
-    borderWidth: 2,
-    borderColor: colors.light.primary,
-    transform: [{ scale: 1.05 }],
+  swatchName: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+  },
+  swatchNameActive: {
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
   },
   footer: {
     flexDirection: "row",
@@ -520,6 +730,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     borderTopWidth: 1,
     borderTopColor: colors.light.border,
+  },
+  footerMeta: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+  },
+  footerCount: {
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 13,
   },
   footerActions: {
     flexDirection: "row",

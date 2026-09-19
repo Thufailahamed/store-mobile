@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Body, Label } from "@/components/ui/Typography";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import {
   checkServiceability,
@@ -56,7 +56,10 @@ export function PincodeChecker() {
 
   return (
     <View style={styles.wrap}>
-      <Label style={styles.label}>Delivery ETA</Label>
+      <View style={styles.labelRow}>
+        <Ionicons name="location-outline" size={14} color={colors.olive[700]} />
+        <Label style={styles.label}>DELIVERY TO YOU</Label>
+      </View>
       <View style={styles.row}>
         <TextInput
           value={postal}
@@ -83,15 +86,16 @@ export function PincodeChecker() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: spacing[3], gap: 8 },
-  label: { fontSize: 11, letterSpacing: 1, color: colors.light.mutedForeground },
+  wrap: { gap: 8 },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  label: { fontSize: 10, letterSpacing: 1, color: colors.light.foreground },
   row: { flexDirection: "row", gap: 8 },
   input: {
     flex: 1,
-    height: 40,
+    height: 46,
     borderWidth: 1,
     borderColor: colors.light.border,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     paddingHorizontal: 12,
     fontFamily: fontFamilies.sans.regular,
     fontSize: 14,
@@ -99,10 +103,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.card,
   },
   btn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: radii.md,
-    backgroundColor: colors.olive[700],
+    height: 46,
+    paddingHorizontal: 18,
+    borderRadius: radii.lg,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
   },

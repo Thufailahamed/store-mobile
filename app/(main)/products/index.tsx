@@ -19,7 +19,7 @@ import { HeroCard } from "@/components/product/HeroCard";
 import { ProductsEmptyState } from "@/components/product/ProductsEmptyState";
 import { TodaysEdit } from "@/components/products/TodaysEdit";
 import { Label, Body, Display } from "@/components/ui/Typography";
-import { colors, spacing } from "@/lib/theme/tokens";
+import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { SORTS, EMPTY_FILTERS, activeFilterCount, type ProductFilters, type ViewMode } from "@/lib/api/facets";
 import type { Product } from "@/lib/types";
 import { useProductGrid } from "@/lib/hooks/useProductGrid";
@@ -121,7 +121,7 @@ export default function ProductsScreen() {
 
   const renderGridItem = ({ item }: { item: Product }) => (
     <View style={[styles.gridItem, { width: cardWidth }]}>
-      <ProductCard product={item} />
+      <ProductCard product={item} surface />
     </View>
   );
 
@@ -211,7 +211,7 @@ function pickAddedFacet(
   prev: ProductFilters,
   next: ProductFilters,
 ): string | null {
-  const checks: Array<[string, unknown[], unknown[]]> = [
+  const checks: [string, unknown[], unknown[]][] = [
     ["price", prev.price ?? [], next.price ?? []],
     ["colors", prev.colors ?? [], next.colors ?? []],
     ["sizes", prev.sizes ?? [], next.sizes ?? []],
@@ -285,16 +285,35 @@ function ProductsListHeader({
             </Label>
           </TouchableOpacity>
         ) : null}
-        <Label style={styles.heroKicker}>{hasActiveContext ? "Filtered" : "Shop"}</Label>
-        <Display size="3xl" style={styles.heroTitle} numberOfLines={2}>
-          {pageTitle}
-        </Display>
-        <Body muted size="sm" style={styles.heroSub}>
-          {loading
-            ? "Curating the room…"
-            : `${refinedCount} of ${total} piece${total === 1 ? "" : "s"}`}
-        </Body>
-        <View style={styles.heroRule} />
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="bag-handle-outline" size={16} color={colors.olive[800]} />
+            </View>
+            <Label style={styles.heroKicker}>{hasActiveContext ? "Filtered edit" : "Shop"}</Label>
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Label style={styles.liveText}>Live catalogue</Label>
+            </View>
+          </View>
+          <Display size="3xl" style={styles.heroTitle} numberOfLines={2}>
+            {pageTitle}
+          </Display>
+          <View style={styles.heroMetaRow}>
+            <Body muted size="sm" style={styles.heroSub}>
+              {loading
+                ? "Curating the room…"
+                : filterCount > 0
+                  ? `${refinedCount} matching ${total} piece${total === 1 ? "" : "s"}`
+                  : `${total} piece${total === 1 ? "" : "s"} available`}
+            </Body>
+            {filterCount > 0 ? (
+              <View style={styles.filterPill}>
+                <Label style={styles.filterPillText}>{filterCount} active</Label>
+              </View>
+            ) : null}
+          </View>
+        </View>
       </View>
 
       <ProductGridControls
@@ -325,7 +344,29 @@ const styles = StyleSheet.create({
   heroBlock: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],
-    paddingBottom: spacing[4],
+    paddingBottom: spacing[3],
+  },
+  heroCard: {
+    padding: spacing[4],
+    borderRadius: radii.xl,
+    backgroundColor: colors.paper.cream,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    ...shadows.soft,
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    marginBottom: spacing[2],
+  },
+  heroIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: colors.olive[100],
+    alignItems: "center",
+    justifyContent: "center",
   },
   breadcrumb: {
     flexDirection: "row",
@@ -343,17 +384,48 @@ const styles = StyleSheet.create({
   },
   heroKicker: {
     color: colors.light.primary,
-    marginBottom: spacing[1],
+    flex: 1,
+  },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.10)",
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[700],
+  },
+  liveText: {
+    color: colors.olive[700],
+    fontSize: 8.5,
   },
   heroTitle: {
     marginBottom: spacing[2],
   },
-  heroSub: {
-    marginBottom: spacing[3],
+  heroMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing[2],
   },
-  heroRule: {
-    height: 1,
-    backgroundColor: colors.light.border,
+  heroSub: {
+    flex: 1,
+  },
+  filterPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200,164,74,0.18)",
+  },
+  filterPillText: {
+    color: colors.olive[800],
+    fontSize: 9,
   },
   heroCardWrap: {
     paddingHorizontal: GRID_PADDING,

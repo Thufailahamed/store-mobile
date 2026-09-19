@@ -112,7 +112,7 @@ export function useSyncStores() {
       });
     useWishlist.setState({ hydrated: false });
     useWishlist.getState().loadFromServer(userId);
-  }, [user?.id, session, loading]);
+  }, [user?.id, session, loading, toast]);
 
   useEffect(() => {
     if (!user?.id) return;

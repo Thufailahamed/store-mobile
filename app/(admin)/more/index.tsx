@@ -5,8 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getAdminOverviewStats } from "@/lib/api";
-import { Card, StatusDot } from "@/components/ui";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import { StatusDot } from "@/components/ui";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 interface MenuItem {
@@ -42,6 +42,7 @@ export default function AdminMore() {
   });
 
   const s = statsQuery.data;
+  const pendingTotal = (s?.pendingStores ?? 0) + (s?.pendingBrands ?? 0) + (s?.pendingProducts ?? 0);
 
   const items: MenuItem[] = useMemo(
     () => [
@@ -87,7 +88,7 @@ export default function AdminMore() {
       </View>
 
       {/* Profile card */}
-      <Card style={styles.profile}>
+      <Pressable onPress={() => router.push("/(admin)/settings" as any)} style={styles.profile}>
         <View style={styles.profileRow}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
@@ -99,13 +100,27 @@ export default function AdminMore() {
               {user?.user_metadata?.full_name ?? "Admin"}
             </Text>
             <Text style={styles.profileEmail}>{user?.email ?? "—"}</Text>
-            <View style={styles.profileMeta}>
-              <StatusDot tone="live" />
+            <View style={styles.profileRolePill}>
+              <StatusDot tone="live" size={6} />
               <Text style={styles.profileRole}>Platform Administrator</Text>
             </View>
           </View>
+          <View style={styles.profileChevron}>
+            <Ionicons name="settings-outline" size={16} color="rgba(244,242,234,0.7)" />
+          </View>
         </View>
-      </Card>
+      </Pressable>
+
+      {/* Pending approvals strip */}
+      {pendingTotal > 0 ? (
+        <Pressable onPress={() => router.push("/(admin)/approvals" as any)} style={styles.attentionBanner}>
+          <Ionicons name="flash" size={15} color="#7a5b1a" />
+          <Text style={styles.attentionText}>
+            {pendingTotal} submission{pendingTotal > 1 ? "s" : ""} awaiting review
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color="#7a5b1a" />
+        </Pressable>
+      ) : null}
 
       {/* Grouped grid */}
       {(Object.entries(groups) as [string, MenuItem[]][]).map(([groupName, groupItems]) => (
@@ -137,7 +152,7 @@ export default function AdminMore() {
         </View>
       ))}
 
-      <Pressable onPress={signOut} style={styles.signOut}>
+      <Pressable onPress={signOut} style={({ pressed }) => [styles.signOut, pressed && styles.tilePressed]}>
         <Ionicons name="log-out-outline" size={18} color={colors.light.destructive} />
         <Text style={styles.signOutText}>Sign out of Console</Text>
       </Pressable>
@@ -172,10 +187,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
     padding: 16,
-    backgroundColor: colors.paper.DEFAULT,
+    backgroundColor: colors.olive[900],
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: colors.olive[800],
     ...shadows.soft,
   },
   profileRow: { flexDirection: "row", gap: 14, alignItems: "center" },
@@ -183,33 +198,72 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.light.primary,
+    backgroundColor: "rgba(244,242,234,0.12)",
+    borderWidth: 1,
+    borderColor: colors.accent2.ochre,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 20,
-    color: "#fff",
+    color: colors.accent2.ochre,
   },
   profileInfo: { flex: 1, gap: 2 },
   profileName: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 16,
-    color: colors.light.foreground,
+    color: colors.paper.cream,
   },
   profileEmail: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
-    color: colors.light.mutedForeground,
+    color: "rgba(244,242,234,0.55)",
   },
-  profileMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  profileRolePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full ?? 999,
+    backgroundColor: "rgba(212,169,60,0.15)",
+  },
   profileRole: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[600],
-    letterSpacing: 0.8,
+    fontSize: 9,
+    color: colors.accent2.ochre,
+    letterSpacing: 1,
     textTransform: "uppercase",
+  },
+  profileChevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(244,242,234,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attentionBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: radii.lg,
+    backgroundColor: "#f6ecd2",
+    borderWidth: 1,
+    borderColor: "#e3cf9d",
+  },
+  attentionText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: "#7a5b1a",
   },
   group: { marginTop: 20, paddingHorizontal: 16 },
   groupHeader: {
@@ -240,6 +294,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 3,
     minHeight: 90,
+    ...shadows.soft,
   },
   tilePressed: { opacity: 0.7 },
   tileIconWrap: {
@@ -286,10 +341,10 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 16,
     paddingVertical: 14,
-    backgroundColor: colors.light.card,
+    backgroundColor: "rgba(184,92,58,0.08)",
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(184,92,58,0.22)",
   },
   signOutText: {
     fontFamily: fontFamilies.sans.semibold,

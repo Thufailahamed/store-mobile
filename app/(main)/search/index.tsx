@@ -136,14 +136,14 @@ export default function SearchScreen() {
     };
   }, []);
 
-  const saveRecent = async (term: string) => {
+  const saveRecent = useCallback(async (term: string) => {
     // Cap to 20 most recent unique searches so AsyncStorage stays bounded.
     const next = [term, ...recentSearches.filter((r) => r !== term)].slice(0, 20);
     setRecentSearches(next);
     try {
       await AsyncStorage.setItem("luxe_search_history", JSON.stringify(next));
     } catch {}
-  };
+  }, [recentSearches]);
 
   const clearRecent = async () => {
     setRecentSearches([]);
@@ -177,7 +177,7 @@ export default function SearchScreen() {
 
     // Track the search for personalization.
     tracker.search(q, tokenizeQuery(q), productCount);
-  }, [recentSearches, tracker]);
+  }, [saveRecent, tracker]);
 
   const handleResultPress = useCallback(
     (p: Product) => {
@@ -203,7 +203,7 @@ export default function SearchScreen() {
         // Pick the first added facet key in the same order the products screen
         // would have picked — colours/sizes/brands/etc. The exact value isn't
         // load-bearing for the ranker; the surface+key combo is.
-        const keys: Array<keyof ProductFilters> = [
+        const keys: (keyof ProductFilters)[] = [
           "price",
           "colors",
           "sizes",
@@ -305,7 +305,7 @@ export default function SearchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user]);
 
   /** Run an image / camera scan, upload, then route to the match (or /scan). */
   const runScan = useCallback(
@@ -436,12 +436,14 @@ export default function SearchScreen() {
 
   const matchedBrands = brands;
   const matchedStores = stores;
-  const matchedCategories = categories;
 
   const productCount = filtered.length;
   const brandCount = matchedBrands.length;
   const storeCount = matchedStores.length;
   const totalCount = productCount + brandCount + storeCount;
+  const displayedCount =
+    tab === "products" ? productCount : tab === "brands" ? brandCount : tab === "stores" ? storeCount : totalCount;
+  const showingProducts = tab === "all" || tab === "products";
 
   const activeFilterCount = computeActiveFilterCount(filters);
 
@@ -601,7 +603,12 @@ export default function SearchScreen() {
           /* ─── Results ─── */
           <View style={styles.resultsContainer}>
             {/* Tabs */}
-            <View style={styles.tabBar}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabBarBleed}
+              contentContainerStyle={styles.tabBar}
+            >
               {TABS.map((t) => {
                 const count =
                   t.key === "all" ? totalCount :
@@ -635,65 +642,74 @@ export default function SearchScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
 
-            <View style={styles.quickRefineBleed}>
-              <QuickRefine
-                filters={filters}
-                onChange={setFilters}
-                onOpenSheet={() => setFilterVisible(true)}
-                activeCount={activeFilterCount}
-              />
-            </View>
+            {showingProducts ? (
+              <View style={styles.quickRefineBleed}>
+                <QuickRefine
+                  filters={filters}
+                  onChange={setFilters}
+                  onOpenSheet={() => setFilterVisible(true)}
+                  activeCount={activeFilterCount}
+                />
+              </View>
+            ) : null}
 
             {/* Controls bar */}
             <View style={styles.controlsBar}>
-              <Body size="xs" muted style={styles.resultLabel}>
-                {productCount} result{productCount === 1 ? "" : "s"}
-              </Body>
-              <View style={styles.controlsRight}>
-                {/* Sort */}
-                <TouchableOpacity
-                  style={styles.sortBtn}
-                  onPress={() => {
-                    const keys = SORTS.map((s) => s.value);
-                    const idx = keys.indexOf(sort);
-                    handleSearchSortChange(keys[(idx + 1) % keys.length]);
-                  }}
-                >
-                  <Ionicons name="swap-vertical" size={14} color={colors.light.mutedForeground} />
-                  <Body size="xs">{SORTS.find((s) => s.value === sort)?.label || "Sort"}</Body>
-                </TouchableOpacity>
-
-                {/* Filter */}
-                <TouchableOpacity
-                  style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
-                  onPress={() => setFilterVisible(true)}
-                >
-                  <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? colors.light.primaryForeground : colors.light.mutedForeground} />
-                  {activeFilterCount > 0 && (
-                    <View style={styles.filterBadge}>
-                      <Body style={styles.filterBadgeText}>{activeFilterCount}</Body>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                {/* View toggle */}
-                <View style={styles.viewToggle}>
-                  <TouchableOpacity
-                    style={[styles.viewBtn, view === "grid" && styles.viewBtnActive]}
-                    onPress={() => setView("grid")}
-                  >
-                    <Ionicons name="grid" size={14} color={view === "grid" ? colors.light.primaryForeground : colors.light.mutedForeground} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.viewBtn, view === "list" && styles.viewBtnActive]}
-                    onPress={() => setView("list")}
-                  >
-                    <Ionicons name="list" size={14} color={view === "list" ? colors.light.primaryForeground : colors.light.mutedForeground} />
-                  </TouchableOpacity>
-                </View>
+              <View>
+                <Body size="xs" muted style={styles.resultLabel}>
+                  {displayedCount} result{displayedCount === 1 ? "" : "s"}
+                </Body>
+                <Body size="xs" muted style={styles.resultContext} numberOfLines={1}>
+                  {tab === "all" ? `Across products, brands and stores` : `Showing ${TABS.find((t) => t.key === tab)?.label.toLowerCase()}`}
+                </Body>
               </View>
+              {showingProducts ? (
+                <View style={styles.controlsRight}>
+                  {/* Sort */}
+                  <TouchableOpacity
+                    style={styles.sortBtn}
+                    onPress={() => {
+                      const keys = SORTS.map((s) => s.value);
+                      const idx = keys.indexOf(sort);
+                      handleSearchSortChange(keys[(idx + 1) % keys.length]);
+                    }}
+                  >
+                    <Ionicons name="swap-vertical" size={14} color={colors.light.mutedForeground} />
+                    <Body size="xs">{SORTS.find((s) => s.value === sort)?.label || "Sort"}</Body>
+                  </TouchableOpacity>
+
+                  {/* Filter */}
+                  <TouchableOpacity
+                    style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+                    onPress={() => setFilterVisible(true)}
+                  >
+                    <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? colors.light.primaryForeground : colors.light.mutedForeground} />
+                    {activeFilterCount > 0 && (
+                      <View style={styles.filterBadge}>
+                        <Body style={styles.filterBadgeText}>{activeFilterCount}</Body>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* View toggle */}
+                  <View style={styles.viewToggle}>
+                    <TouchableOpacity
+                      style={[styles.viewBtn, view === "grid" && styles.viewBtnActive]}
+                      onPress={() => setView("grid")}
+                    >
+                      <Ionicons name="grid" size={14} color={view === "grid" ? colors.light.primaryForeground : colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.viewBtn, view === "list" && styles.viewBtnActive]}
+                      onPress={() => setView("list")}
+                    >
+                      <Ionicons name="list" size={14} color={view === "list" ? colors.light.primaryForeground : colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
             </View>
 
             {/* Scrollable results list */}
@@ -704,7 +720,7 @@ export default function SearchScreen() {
               contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
             >
               {/* Active filter chips */}
-              {activeFilterCount > 0 && (
+              {showingProducts && activeFilterCount > 0 && (
                 <View style={styles.activeChipsRow}>
                   {filters.colors?.map((c) => (
                     <TouchableOpacity
@@ -815,7 +831,7 @@ export default function SearchScreen() {
                     <View style={styles.grid}>
                       {filtered.map((p) => (
                         <View key={p.id} style={[styles.gridItem, { width: cardWidth }]}>
-                          <ProductCard product={p} />
+                          <ProductCard product={p} surface />
                         </View>
                       ))}
                     </View>
@@ -838,13 +854,21 @@ export default function SearchScreen() {
                   )}
                   <View style={styles.brandGrid}>
                     {matchedBrands.map((b) => (
-                      <View key={b.id} style={styles.brandCard}>
+                      <TouchableOpacity
+                        key={b.id}
+                        style={styles.brandCard}
+                        activeOpacity={0.8}
+                        onPress={() => router.push(`/(main)/brands/${b.slug}` as never)}
+                      >
                         <Avatar name={b.name} uri={b.logo_url} size={44} />
                         <View style={styles.brandInfo}>
                           <Body size="sm" style={{ fontWeight: "600" }}>{b.name}</Body>
                           <Body size="xs" muted>{b.total_followers} followers</Body>
                         </View>
-                      </View>
+                        <View style={styles.resultChevron}>
+                          <Ionicons name="chevron-forward" size={13} color={colors.olive[700]} />
+                        </View>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 </View>
@@ -864,7 +888,12 @@ export default function SearchScreen() {
                     </View>
                   )}
                   {matchedStores.map((s) => (
-                    <View key={s.id} style={styles.storeCard}>
+                    <TouchableOpacity
+                      key={s.id}
+                      style={styles.storeCard}
+                      activeOpacity={0.8}
+                      onPress={() => router.push(`/(main)/stores/${s.slug}` as never)}
+                    >
                       <Avatar name={s.name} uri={s.logo_url} size={48} />
                       <View style={styles.storeInfo}>
                         <Body size="sm" style={{ fontWeight: "600" }}>{s.name}</Body>
@@ -876,7 +905,10 @@ export default function SearchScreen() {
                           <Body size="xs" muted>{s.total_products} products</Body>
                         </View>
                       </View>
-                    </View>
+                      <View style={styles.resultChevron}>
+                        <Ionicons name="chevron-forward" size={13} color={colors.olive[700]} />
+                      </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
@@ -1119,18 +1151,25 @@ const styles = StyleSheet.create({
   },
 
   /* Tabs */
+  tabBarBleed: {
+    marginHorizontal: -spacing[5],
+  },
   tabBar: {
     flexDirection: "row",
     gap: spacing[2],
+    paddingHorizontal: spacing[5],
+    paddingRight: spacing[7],
   },
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 5,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
     borderRadius: radii.full,
-    ...GLASS,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
   tabActive: {
     backgroundColor: INK,
@@ -1161,6 +1200,14 @@ const styles = StyleSheet.create({
     letterSpacing: typography.letterSpacing.wide,
     textTransform: "uppercase",
     fontSize: 10,
+    color: colors.olive[700],
+  },
+  resultContext: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+    maxWidth: 165,
   },
   controlsRight: {
     flexDirection: "row",
@@ -1249,9 +1296,17 @@ const styles = StyleSheet.create({
     marginTop: spacing[2],
   },
   sectionNum: {
-    fontSize: 22,
-    fontFamily: fontFamilies.display.semibold,
-    color: `${colors.light.foreground}25`,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.olive[100],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+    textAlign: "center",
+    lineHeight: 30,
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    color: colors.olive[700],
   },
   sectionTitles: {
     flex: 1,
@@ -1339,11 +1394,24 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     padding: spacing[3],
     borderRadius: radii.xl,
-    ...GLASS,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    ...shadows.soft,
   },
   brandInfo: {
     flex: 1,
     gap: 2,
+  },
+  resultChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.paper.cream,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* Stores */
@@ -1353,7 +1421,10 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     padding: spacing[3],
     borderRadius: radii.xl,
-    ...GLASS,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    ...shadows.soft,
   },
   storeInfo: {
     flex: 1,
@@ -1368,10 +1439,12 @@ const styles = StyleSheet.create({
 
   /* Related */
   relatedSection: {
-    marginTop: spacing[4],
-    paddingTop: spacing[4],
-    borderTopWidth: 1,
-    borderTopColor: "rgba(27, 28, 28, 0.08)",
+    marginTop: spacing[5],
+    padding: spacing[4],
+    borderRadius: radii.xl,
+    backgroundColor: colors.paper.warm,
+    borderWidth: 1,
+    borderColor: colors.light.border,
     gap: spacing[3],
   },
 

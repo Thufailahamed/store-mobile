@@ -9,11 +9,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { spacing, radii } from "@/lib/theme/tokens";
+import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 
-const INK = "#16170f";
-const BORDER = "#16170f";
-const MUTED = "#6b6b6b";
+const INK = colors.light.foreground;
+const BORDER = colors.light.border;
+const MUTED = colors.light.mutedForeground;
 
 export type WishlistFilter = "all" | "in_stock" | "on_sale";
 export type WishlistSort =
@@ -138,6 +138,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[2],
     width: "100%",
+    padding: spacing[2],
+    borderRadius: radii.xl,
+    backgroundColor: colors.paper.warm,
   },
   filters: {
     flex: 1,
@@ -157,11 +160,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   chipActive: {
-    backgroundColor: INK,
-    borderColor: INK,
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   chipIdle: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.paper.cream,
     borderColor: BORDER,
   },
   chipText: {
@@ -175,15 +178,16 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   sortBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: BORDER,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    ...shadows.soft,
   },
   backdrop: {
     flex: 1,
@@ -191,7 +195,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.paper.cream,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 10,

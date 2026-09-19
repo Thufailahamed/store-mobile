@@ -154,10 +154,17 @@ const styles = StyleSheet.create({
   allBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
   allBtnText: {
     color: colors.light.primary,
+    fontSize: 9.5,
   },
   dot: {
     width: 6,

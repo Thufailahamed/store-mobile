@@ -68,7 +68,6 @@ export default function ProductDetailScreen() {
   const tracker = useTrackEvent();
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const AnimatedTouchableOpacity = useMemo(() => Animated.createAnimatedComponent(TouchableOpacity), []);
 
   const fetchProduct = useCallback(async () => {
     if (!slug) return;
@@ -118,10 +117,11 @@ export default function ProductDetailScreen() {
     if (r.ok) setReviews(r.data);
   }, [product]);
 
+  const viewedProductId = product?.id;
   useEffect(() => {
-    if (!product) return;
-    recordRecentlyViewed(user?.id, product.id);
-  }, [product?.id, user?.id]);
+    if (!viewedProductId) return;
+    recordRecentlyViewed(user?.id, viewedProductId);
+  }, [viewedProductId, user?.id]);
 
   const images = useMemo(
     () => product?.images?.sort((a, b) => a.position - b.position) || [],
@@ -281,7 +281,10 @@ export default function ProductDetailScreen() {
       >
         <TouchableOpacity
           style={styles.topBtn}
-          onPress={() => navigateHome(router)}
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else navigateHome(router);
+          }}
           activeOpacity={0.8}
         >
           <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
@@ -365,7 +368,20 @@ export default function ProductDetailScreen() {
         </View>
 
         {/* Variant selectors */}
-        <View style={styles.section}>
+        <View style={styles.purchasePanel}>
+          <View style={styles.purchaseHeader}>
+            <View>
+              <Label style={styles.purchaseEyebrow}>YOUR SELECTION</Label>
+              <Display size="md" style={styles.purchaseTitle}>Choose your options</Display>
+            </View>
+            <View style={[styles.stockPill, soldOut && styles.stockPillSoldOut]}>
+              <View style={[styles.stockDot, soldOut && styles.stockDotSoldOut]} />
+              <Label style={[styles.stockText, soldOut && styles.stockTextSoldOut]}>
+                {soldOut ? "Sold out" : "In stock"}
+              </Label>
+            </View>
+          </View>
+          <View style={styles.purchaseDivider} />
           <VariantSelector
             variants={product.variants || []}
             selectedColor={selectedColor}
@@ -396,10 +412,9 @@ export default function ProductDetailScreen() {
             }}
             onOpenSizeGuide={() => setShowSizeGuide(true)}
           />
-        </View>
 
-        {/* Quantity */}
-        <View style={styles.qtySection}>
+          {/* Quantity */}
+          <View style={styles.qtySection}>
           {product?.id ? (
             <View style={{ marginBottom: spacing[3] }}>
               <OverlapWarningBanner
@@ -408,27 +423,37 @@ export default function ProductDetailScreen() {
               />
             </View>
           ) : null}
-          <View style={styles.qtyLabel}>
-            <View style={styles.qtyDot} />
-            <Display size="sm" style={styles.qtyLabelText}>QUANTITY</Display>
+          <View style={styles.qtyControlRow}>
+            <View style={styles.qtyLabel}>
+              <View style={styles.qtyIcon}>
+                <Ionicons name="layers-outline" size={14} color={colors.olive[700]} />
+              </View>
+              <View>
+                <Label style={styles.qtyLabelText}>QUANTITY</Label>
+                <Body size="xs" muted>Choose how many</Body>
+              </View>
+            </View>
+            <View style={styles.qtyContainer}>
+              <TouchableOpacity
+                style={styles.qtyPillBtn}
+                onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                activeOpacity={0.7}
+                accessibilityLabel="Decrease quantity"
+              >
+                <Ionicons name="remove" size={16} color={colors.light.foreground} />
+              </TouchableOpacity>
+              <Display size="sm" style={styles.qtyValue}>{quantity}</Display>
+              <TouchableOpacity
+                style={styles.qtyPillBtn}
+                onPress={() => setQuantity(Math.min(currentStock || 99, quantity + 1))}
+                activeOpacity={0.7}
+                accessibilityLabel="Increase quantity"
+              >
+                <Ionicons name="add" size={16} color={colors.light.foreground} />
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.qtyContainer}>
-            <TouchableOpacity
-              style={styles.qtyPillBtn}
-              onPress={() => setQuantity(Math.max(1, quantity - 1))}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="remove" size={16} color={colors.light.foreground} />
-            </TouchableOpacity>
-            <Display size="sm" style={styles.qtyValue}>{quantity}</Display>
-            <TouchableOpacity
-              style={styles.qtyPillBtn}
-              onPress={() => setQuantity(Math.min(currentStock || 99, quantity + 1))}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="add" size={16} color={colors.light.foreground} />
-            </TouchableOpacity>
-          </View>
+          <View style={styles.purchaseDivider} />
 
           {/* Action buttons directly below quantity selection */}
           <PincodeChecker />
@@ -454,14 +479,15 @@ export default function ProductDetailScreen() {
               Buy Now
             </Button>
           </View>
-          {!soldOut && (
-            <PriceAlertPill
-              productId={product.id}
-              variantId={selectedVariant?.id ?? null}
-              currency={product.currency || "LKR"}
-              currentPrice={unitPrice}
-            />
-          )}
+            {!soldOut && (
+              <PriceAlertPill
+                productId={product.id}
+                variantId={selectedVariant?.id ?? null}
+                currency={product.currency || "LKR"}
+                currentPrice={unitPrice}
+              />
+            )}
+          </View>
         </View>
 
         {/* Trust & highlights */}
@@ -714,9 +740,73 @@ const styles = StyleSheet.create({
   section: {
     marginTop: spacing[4],
   },
-  qtySection: {
+  purchasePanel: {
     marginTop: spacing[5],
-    paddingHorizontal: spacing[5],
+    marginHorizontal: spacing[4],
+    paddingVertical: spacing[4],
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: `${colors.olive[700]}1A`,
+    ...shadows.soft,
+  },
+  purchaseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing[3],
+    paddingHorizontal: spacing[4],
+  },
+  purchaseEyebrow: {
+    color: colors.olive[600],
+    fontSize: 9,
+    marginBottom: 3,
+  },
+  purchaseTitle: {
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  stockPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[500]}12`,
+  },
+  stockPillSoldOut: {
+    backgroundColor: `${colors.accent2.rust}12`,
+  },
+  stockDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[500],
+  },
+  stockDotSoldOut: {
+    backgroundColor: colors.accent2.rust,
+  },
+  stockText: {
+    color: colors.olive[700],
+    fontSize: 9,
+  },
+  stockTextSoldOut: {
+    color: colors.accent2.rust,
+  },
+  purchaseDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: `${colors.olive[900]}12`,
+    marginVertical: spacing[4],
+  },
+  qtySection: {
+    paddingHorizontal: spacing[4],
+    gap: spacing[3],
+  },
+  qtyControlRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing[3],
   },
   qtyLabel: {
@@ -724,22 +814,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[2],
   },
-  qtyDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[600],
+  qtyIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.olive[500]}12`,
   },
   qtyLabelText: {
     color: colors.light.foreground,
+    fontSize: 10,
   },
   qtyContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: `${colors.light.primary}08`,
+    backgroundColor: colors.paper.warm,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: `${colors.light.primary}15`,
+    borderColor: colors.light.border,
     alignSelf: "flex-start",
     paddingHorizontal: spacing[1],
     paddingVertical: spacing[1],
@@ -776,16 +869,17 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: 12,
+    height: 50,
+    borderRadius: radii.xl,
     borderWidth: 1.5,
-    borderColor: colors.light.primary,
-    backgroundColor: colors.light.card,
+    borderColor: colors.olive[800],
+    backgroundColor: colors.paper.cream,
   },
   buyNowBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: 12,
+    height: 50,
+    borderRadius: radii.xl,
+    backgroundColor: colors.olive[900],
   },
   /* Floating Sticky Bottom Bar */
   stickyBottomBar: {
@@ -793,9 +887,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.light.background,
+    backgroundColor: colors.paper.cream,
     borderTopWidth: 1,
-    borderTopColor: `${colors.light.primary}18`,
+    borderTopColor: `${colors.olive[700]}20`,
     paddingTop: spacing[3],
     paddingHorizontal: spacing[5],
     ...shadows.editorial,
@@ -821,7 +915,7 @@ const styles = StyleSheet.create({
     flex: 1.2,
   },
   stickyAddBtn: {
-    height: 44,
-    borderRadius: 10,
+    height: 48,
+    borderRadius: radii.xl,
   },
 });

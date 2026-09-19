@@ -5,7 +5,7 @@ import { Ionicons } from "@/components/ui/Icon";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Body, Label } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { typography, spacing, radii } from "@/lib/theme/tokens";
+import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 
 interface WishlistEmptyStateProps {
   hasBagItems?: boolean;
@@ -21,6 +21,7 @@ export function WishlistEmptyState({
 
   return (
     <View style={[styles.wrap, style]}>
+      <View style={styles.emptyCard}>
       <View
         style={[
           styles.medallion,
@@ -102,6 +103,12 @@ export function WishlistEmptyState({
           </Body>
         </Pressable>
       ) : null}
+
+      <View style={styles.syncNote}>
+        <Ionicons name="shield-checkmark-outline" size={14} color={colors.olive[700]} />
+        <Body size="xs" style={styles.syncNoteText}>Saved pieces stay with your collection</Body>
+      </View>
+      </View>
     </View>
   );
 }
@@ -111,32 +118,62 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing[8],
-    paddingVertical: spacing[10],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[8],
+  },
+  emptyCard: {
+    width: "100%",
+    maxWidth: 390,
+    alignItems: "center",
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[8],
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: `${colors.olive[700]}18`,
+    backgroundColor: colors.paper.cream,
+    ...shadows.soft,
   },
   medallion: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
   },
   medallionInner: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
   },
   cta: {
-    marginTop: 32,
-    height: 56,
+    marginTop: 28,
+    minWidth: 236,
+    height: 54,
     paddingHorizontal: 28,
-    borderRadius: radii.lg,
+    borderRadius: radii.full,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 10,
+    ...shadows.glow,
+  },
+  syncNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing[6],
+    paddingTop: spacing[4],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+    width: "100%",
+    justifyContent: "center",
+  },
+  syncNoteText: {
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
   },
 });

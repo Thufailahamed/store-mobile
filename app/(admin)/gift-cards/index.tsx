@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import {
-  View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert, Modal, TextInput, ScrollView,
+  View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert, Modal, ScrollView,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
@@ -8,8 +8,8 @@ import {
   getAdminGiftCards, createGiftCard, adjustAdminGiftCard, voidAdminGiftCard,
   getAdminGiftCardTransactions,
 } from "@/lib/api";
-import { Card, EmptyState, Badge, Skeleton, Input, Button } from "@/components/ui";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import { Card, EmptyState, Skeleton, Input, Button } from "@/components/ui";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
@@ -38,61 +38,56 @@ export default function AdminGiftCards() {
     queryKey: ["admin-gift-cards"],
     queryFn: async () => {
       const r = await getAdminGiftCards();
-      return r.ok ? r.data : [];
+      if (r.ok) return { list: r.data, error: null as string | null };
+      return { list: [] as any[], error: r.error ?? "Failed to load gift cards" };
     },
   });
+
+  const cards = q.data?.list ?? [];
+  const loadError = q.data?.error ?? null;
+  const activeCards = cards.filter((c: any) => !c.voided_at);
+  const outstanding = activeCards.reduce((n: number, c: any) => n + (c.current_balance ?? 0), 0);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
           <Text style={styles.eyebrow}>GIFT</Text>
           <Text style={styles.title}>Gift Cards</Text>
+          <Text style={styles.subtitle}>
+            {cards.length
+              ? `${activeCards.length} active · ${formatPrice(outstanding, "LKR")} outstanding`
+              : "Issue and manage gift cards"}
+          </Text>
         </View>
         <Pressable onPress={() => setShowCreate(true)} style={styles.addBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
+          <Ionicons name="add" size={20} color="#fff" />
         </Pressable>
       </View>
-      <FlatList
-        data={q.data ?? []}
-        keyExtractor={(c: any) => c.id}
-        contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} />}
-        ListEmptyComponent={q.isLoading ? <Skeleton height={80} /> : <EmptyState icon="gift-outline" title="No gift cards" />}
-        renderItem={({ item, index }: any) => {
-          const isVoided = !!item.voided_at;
-          const isScheduled = !!item.scheduled_for && !item.email_sent_at;
-          return (
-            <Pressable onPress={() => setManaging(item)}>
-              <Card style={StyleSheet.flatten([
-                styles.card,
-                isVoided && { opacity: 0.55 },
-                isScheduled && { borderColor: colors.olive[400] },
-              ])}>
-                <View style={styles.row}>
-                  <Text style={[styles.index, { color: colors.light.mutedForeground }]}>{String(index + 1).padStart(2, "0")}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.code}>{item.code}</Text>
-                    <Text style={styles.meta}>
-                      {item.recipient_email ?? item.issued_to_email ?? "unissued"} · {rel(item.created_at)} ago
-                    </Text>
-                    <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                      {isVoided && <Badge text="Voided" variant="destructive" />}
-                      {!isVoided && isScheduled && <Badge text={`Scheduled`} variant="outline" />}
-                      {!isVoided && item.email_sent_at && <Badge text="Sent" variant="secondary" />}
-                      {!isVoided && item.redeemed_by && <Badge text="Redeemed" variant="secondary" />}
-                    </View>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={styles.balance}>{formatPrice(item.current_balance, item.currency ?? "LKR")}</Text>
-                    <Text style={styles.balanceSub}>of {formatPrice(item.initial_balance, item.currency ?? "LKR")}</Text>
-                    <Text style={styles.viewLedger}>Manage ›</Text>
-                  </View>
-                </View>
-              </Card>
-            </Pressable>
-          );
-        }}
-      />
+
+      {q.isLoading ? (
+        <View style={styles.list}>
+          <Skeleton height={96} style={{ borderRadius: radii.xl }} />
+          <Skeleton height={96} style={{ borderRadius: radii.xl }} />
+          <Skeleton height={96} style={{ borderRadius: radii.xl }} />
+        </View>
+      ) : loadError ? (
+        <EmptyState icon="cloud-offline-outline" title="Couldn't load gift cards" description={loadError} />
+      ) : cards.length === 0 ? (
+        <EmptyState icon="gift-outline" title="No gift cards" description="Issue your first card with the + button." />
+      ) : (
+        <FlatList
+          data={cards}
+          keyExtractor={(c: any) => c.id}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />
+          }
+          renderItem={({ item }: any) => (
+            <GiftCardRow item={item} onPress={() => setManaging(item)} />
+          )}
+        />
+      )}
       <CreateModal visible={showCreate} onClose={() => setShowCreate(false)} onCreated={() => { qc.invalidateQueries({ queryKey: ["admin-gift-cards"] }); setShowCreate(false); }} />
       {managing && (
         <ManageModal
@@ -102,6 +97,84 @@ export default function AdminGiftCards() {
         />
       )}
     </View>
+  );
+}
+
+function GiftCardRow({ item, onPress }: { item: any; onPress: () => void }) {
+  const isVoided = !!item.voided_at;
+  const isScheduled = !!item.scheduled_for && !item.email_sent_at;
+  const currency = item.currency ?? "LKR";
+  const remainingPct =
+    !isVoided && item.initial_balance > 0
+      ? Math.max(0, Math.min(1, (item.current_balance ?? 0) / item.initial_balance))
+      : 0;
+  const fullyUsed = !isVoided && (item.current_balance ?? 0) <= 0;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        isVoided && styles.cardVoided,
+        isScheduled && styles.cardScheduled,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.row}>
+        <View style={[styles.iconTile, isVoided && styles.iconTileVoided]}>
+          <Ionicons name="gift-outline" size={18} color={isVoided ? colors.light.mutedForeground : "#8a6a2a"} />
+        </View>
+        <View style={styles.cardBody}>
+          <Text style={styles.code} numberOfLines={1}>{item.code}</Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {item.recipient_email ?? item.issued_to_email ?? "unissued"} · {rel(item.created_at)} ago
+          </Text>
+          <View style={styles.pillRow}>
+            {isVoided ? (
+              <View style={[styles.pill, styles.pillVoided]}>
+                <Text style={[styles.pillText, { color: colors.accent2.rust }]}>Voided</Text>
+              </View>
+            ) : (
+              <>
+                {isScheduled ? (
+                  <View style={[styles.pill, styles.pillScheduled]}>
+                    <Text style={[styles.pillText, { color: "#8a6a2a" }]}>Scheduled</Text>
+                  </View>
+                ) : null}
+                {item.email_sent_at ? (
+                  <View style={[styles.pill, styles.pillNeutral]}>
+                    <Text style={[styles.pillText, { color: colors.olive[800] }]}>Sent</Text>
+                  </View>
+                ) : null}
+                {item.redeemed_by ? (
+                  <View style={[styles.pill, styles.pillNeutral]}>
+                    <Text style={[styles.pillText, { color: colors.olive[800] }]}>Redeemed</Text>
+                  </View>
+                ) : null}
+                {fullyUsed ? (
+                  <View style={[styles.pill, styles.pillNeutral]}>
+                    <Text style={[styles.pillText, { color: colors.light.mutedForeground }]}>Spent</Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </View>
+        </View>
+        <View style={styles.balanceCol}>
+          <Text style={[styles.balance, isVoided && styles.balanceVoided]}>
+            {formatPrice(item.current_balance, currency)}
+          </Text>
+          <Text style={styles.balanceSub}>of {formatPrice(item.initial_balance, currency)}</Text>
+        </View>
+      </View>
+      <View style={styles.cardFooter}>
+        <View style={styles.meterTrack}>
+          <View style={[styles.meterFill, { width: `${Math.round(remainingPct * 100)}%` as never }]} />
+        </View>
+        <Text style={styles.manageHint}>Manage</Text>
+        <Ionicons name="chevron-forward" size={12} color={colors.olive[700]} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -291,16 +364,57 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", padding: 20, paddingBottom: 12 },
   eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.primary, letterSpacing: 1.4 },
   title: { fontFamily: fontFamilies.display.regular, fontSize: 28, color: colors.light.foreground, marginTop: 4, letterSpacing: -0.5 },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.light.primary, alignItems: "center", justifyContent: "center" },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 4 },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center", ...shadows.soft },
   list: { padding: 20, paddingBottom: 100, gap: 10 },
-  card: { padding: 16, ...shadows.soft },
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  index: { fontFamily: fontFamilies.mono.regular, fontSize: 11, width: 24 },
+  pressed: { opacity: 0.8 },
+  card: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    padding: 14,
+    gap: 10,
+    ...shadows.soft,
+  },
+  cardVoided: { opacity: 0.6 },
+  cardScheduled: { borderColor: "rgba(200,164,74,0.55)" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+    backgroundColor: "#fdf3d7",
+    borderWidth: 1,
+    borderColor: "#eedeac",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconTileVoided: { backgroundColor: colors.light.muted, borderColor: colors.light.border },
+  cardBody: { flex: 1, gap: 2 },
   code: { fontFamily: fontFamilies.mono.semibold, fontSize: 14, letterSpacing: 0.5, color: colors.light.foreground },
-  meta: { fontFamily: fontFamilies.sans.regular, fontSize: 11, marginTop: 2, color: colors.light.mutedForeground },
-  balance: { fontFamily: fontFamilies.display.semibold, fontSize: 18, letterSpacing: -0.3, color: colors.light.foreground },
+  meta: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.light.mutedForeground },
+  pillRow: { flexDirection: "row", gap: 6, marginTop: 3, flexWrap: "wrap" },
+  pill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radii.full },
+  pillVoided: { backgroundColor: "rgba(184,92,58,0.12)" },
+  pillScheduled: { backgroundColor: "rgba(200,164,74,0.20)" },
+  pillNeutral: { backgroundColor: "rgba(83,94,44,0.12)" },
+  pillText: { fontFamily: fontFamilies.mono.semibold, fontSize: 8.5, letterSpacing: 0.5, textTransform: "uppercase" },
+  balanceCol: { alignItems: "flex-end" },
+  balance: { fontFamily: fontFamilies.display.semibold, fontSize: 17, letterSpacing: -0.3, color: colors.light.foreground },
+  balanceVoided: { textDecorationLine: "line-through", color: colors.light.mutedForeground },
   balanceSub: { fontFamily: fontFamilies.mono.regular, fontSize: 10, marginTop: 2, color: colors.light.mutedForeground },
-  viewLedger: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.olive[700], marginTop: 4 },
+  cardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  meterTrack: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.light.muted, overflow: "hidden" },
+  meterFill: { height: 5, borderRadius: 3, backgroundColor: "#c8a44a" },
+  manageHint: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: colors.olive[700] },
   modal: { flex: 1, backgroundColor: colors.light.background, padding: 20, paddingTop: 60 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   modalEyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 9, color: colors.light.primary, letterSpacing: 1.4 },

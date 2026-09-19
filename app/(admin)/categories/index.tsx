@@ -20,7 +20,7 @@ import {
   updateCategory,
   type AdminCategory,
 } from "@/lib/api";
-import { Card, EmptyState, Skeleton, Input, Button, Badge, Chip } from "@/components/ui";
+import { EmptyState, Skeleton, Input, Button, Chip } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import {
@@ -62,7 +62,7 @@ export default function AdminCategories() {
     () =>
       flattenCategoryTree(
         buildCategoryTree((q.data ?? []) as Parameters<typeof buildCategoryTree>[0]) as Parameters<typeof flattenCategoryTree>[0],
-      ) as Array<AdminCategory & { depth: number }>,
+      ) as (AdminCategory & { depth: number })[],
     [q.data],
   );
 
@@ -89,9 +89,12 @@ export default function AdminCategories() {
         <View>
           <Text style={styles.eyebrow}>STRUCTURE</Text>
           <Text style={styles.title}>Categories</Text>
+          <Text style={styles.subtitle}>
+            {flat.length ? `${flat.length} categories in the tree` : "Build the catalogue tree"}
+          </Text>
         </View>
         <Pressable onPress={() => openCreate(null)} style={styles.addBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
+          <Ionicons name="add" size={20} color="#fff" />
         </Pressable>
       </View>
 
@@ -156,27 +159,41 @@ function CategoryRow({
   onAddChild: () => void;
 }) {
   return (
-    <Pressable onLongPress={onEdit}>
-      <Card style={[styles.card, { marginLeft: item.depth * 16 }] as never}>
+    <Pressable onPress={onEdit} onLongPress={onEdit} style={({ pressed }) => [pressed && styles.pressed]}>
+      <View style={[styles.card, { marginLeft: item.depth * 16 }] as never}>
+        {item.depth > 0 ? <View style={styles.depthBar} /> : null}
         <View style={styles.row}>
-          <Text style={styles.icon}>{item.icon || "📁"}</Text>
-          <View style={{ flex: 1 }}>
-            <View style={styles.nameRow}>
-              <Text style={styles.name}>{item.name}</Text>
-              {!item.is_active && <Badge variant="outline">inactive</Badge>}
-            </View>
-            <Text style={styles.meta}>
-              /{item.slug} · {item.product_count} products · {item.child_count} children · #{item.position}
-            </Text>
+          <View style={styles.iconTile}>
+            <Text style={styles.icon}>{item.icon || "📁"}</Text>
           </View>
-          <Pressable onPress={onAddChild} hitSlop={8}>
-            <Ionicons name="add-circle-outline" size={18} color={colors.light.primary} />
-          </Pressable>
-          <Pressable onPress={onDelete} hitSlop={8}>
-            <Ionicons name="trash-outline" size={18} color={colors.light.muted} />
-          </Pressable>
+          <View style={styles.body}>
+            <View style={styles.nameRow}>
+              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+              {!item.is_active ? (
+                <View style={styles.inactivePill}>
+                  <Text style={styles.inactivePillText}>Inactive</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.meta} numberOfLines={1}>/{item.slug}</Text>
+            <View style={styles.statsRow}>
+              <Ionicons name="cube-outline" size={11} color={colors.light.mutedForeground} />
+              <Text style={styles.statText}>{item.product_count}</Text>
+              <Ionicons name="git-branch-outline" size={11} color={colors.light.mutedForeground} />
+              <Text style={styles.statText}>{item.child_count}</Text>
+              <Text style={styles.positionText}>#{item.position}</Text>
+            </View>
+          </View>
+          <View style={styles.actions}>
+            <Pressable onPress={onAddChild} hitSlop={8} style={styles.actionBtn}>
+              <Ionicons name="add" size={15} color={colors.olive[800]} />
+            </Pressable>
+            <Pressable onPress={onDelete} hitSlop={8} style={styles.actionBtn}>
+              <Ionicons name="trash-outline" size={14} color={colors.accent2.rust} />
+            </Pressable>
+          </View>
         </View>
-      </Card>
+      </View>
     </Pressable>
   );
 }
@@ -334,7 +351,7 @@ function DeleteModal({
       setLoadingImpact(false);
       if (!r.ok) Alert.alert("Error", r.error);
     });
-  }, [category?.id]);
+  }, [category]);
 
   const validationError = useMemo(() => {
     if (!category || !impact) return null;
@@ -466,14 +483,74 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", padding: 20, paddingBottom: 12 },
   eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.primary, letterSpacing: 1.4 },
   title: { fontFamily: fontFamilies.display.regular, fontSize: 28, color: colors.light.foreground, marginTop: 4, letterSpacing: -0.5 },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.light.primary, alignItems: "center", justifyContent: "center" },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 4 },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center", ...shadows.soft },
   list: { padding: 20, paddingBottom: 100, gap: 10 },
-  card: { padding: 14, ...shadows.soft },
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  icon: { fontSize: 18, width: 28, textAlign: "center" },
+  pressed: { opacity: 0.75 },
+  card: {
+    backgroundColor: colors.light.card,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    overflow: "hidden",
+    ...shadows.soft,
+  },
+  depthBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: "rgba(83,94,44,0.35)",
+  },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, paddingLeft: 16 },
+  iconTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+    backgroundColor: "#eef0e2",
+    borderWidth: 1,
+    borderColor: "#dde0c9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  icon: { fontSize: 19 },
+  body: { flex: 1, gap: 2 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  name: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.light.foreground },
-  meta: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2, letterSpacing: 0.5, textTransform: "uppercase" },
+  name: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.light.foreground, flexShrink: 1 },
+  inactivePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.muted,
+  },
+  inactivePillText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8,
+    color: colors.light.mutedForeground,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  meta: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 },
+  statText: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.mutedForeground, marginRight: 6 },
+  positionText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.olive[700],
+    marginLeft: 2,
+  },
+  actions: { flexDirection: "row", gap: 6 },
+  actionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#f8f6f0",
+    borderWidth: 1,
+    borderColor: "#e4dfd3",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   modal: { flex: 1, backgroundColor: colors.light.background },
   modalContent: { padding: 20, paddingTop: 60, paddingBottom: 40 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
