@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,8 +12,9 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
 } from "react-native";
-import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
@@ -26,14 +27,30 @@ import {
 } from "@/lib/api";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice, pluralize } from "@/lib/utils";
+import { SellerBackButton } from "@/components/seller/SellerBackButton";
+import { SellerStateView } from "@/components/seller/chrome";
+import { Skeleton } from "@/components/ui/Skeleton";
 import type { AdminCoupon } from "@/lib/api";
 
+const CREAM = colors.paper.cream;
+const GOLD = colors.accent2.ochre;
+const RUST = colors.accent2.rust;
+const INK = colors.olive[950];
+
 const COUPON_TYPES = [
-  { key: "percentage", label: "Percentage", icon: "percent-outline" as const },
+  { key: "percentage", label: "Percentage", icon: "pricetag-outline" as const },
   { key: "fixed", label: "Fixed Amount", icon: "cash-outline" as const },
   { key: "free_shipping", label: "Free Shipping", icon: "bicycle-outline" as const },
   { key: "bxgy", label: "Buy X Get Y", icon: "gift-outline" as const },
 ] as const;
+
+const TYPE_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  percentage: { label: "Percentage", icon: "pricetag-outline" },
+  fixed: { label: "Fixed amount", icon: "cash-outline" },
+  free_shipping: { label: "Free shipping", icon: "bicycle-outline" },
+  bxgy: { label: "Buy X get Y", icon: "gift-outline" },
+};
 
 /** Map a coupon type to its badge background style. Was previously a
  *  ternary that silently treated `bxgy` as `free_shipping` ("FREE" badge). */
@@ -49,19 +66,59 @@ function typeBadgeStyle(type: AdminCoupon["type"]) {
 
 function typeBadgeLabel(coupon: AdminCoupon) {
   if (coupon.type === "percentage") return `${coupon.value}%`;
-  if (coupon.type === "fixed") return `Rs.${coupon.value}`;
+  if (coupon.type === "fixed") return formatPrice(coupon.value ?? 0);
   if (coupon.type === "bxgy") return "BXGY";
   return "FREE";
 }
 
+function couponSummary(coupon: AdminCoupon): string {
+  const base =
+    coupon.type === "percentage"
+      ? `${coupon.value}% off`
+      : coupon.type === "fixed"
+        ? `${formatPrice(coupon.value ?? 0)} off`
+        : coupon.type === "bxgy"
+          ? "Buy X get Y"
+          : "Free shipping";
+  return coupon.min_order_total
+    ? `${base} · min ${formatPrice(coupon.min_order_total)}`
+    : base;
+}
+
+function isExpired(coupon: AdminCoupon): boolean {
+  if (!coupon.ends_at) return false;
+  const d = new Date(coupon.ends_at);
+  return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
+}
+
+function CouponsSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} style={{ flex: 1 }} height={72} borderRadius={16} />
+        ))}
+      </View>
+      {[0, 1].map((i) => (
+        <View key={i} style={s.skelCard}>
+          <Skeleton width="55%" height={18} />
+          <Skeleton width="70%" height={12} />
+          <Skeleton width="40%" height={12} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function SellerCoupons() {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AdminCoupon | null>(null);
 
   // Create/edit form
@@ -87,7 +144,7 @@ export default function SellerCoupons() {
   const [pickerOpen, setPickerOpen] = useState<null | "buy" | "get">(null);
   const [pickerQuery, setPickerQuery] = useState("");
   const [pickerResults, setPickerResults] = useState<
-    Array<{ id: string; name: string; slug?: string; price?: number; image_url?: string | null }>
+    { id: string; name: string; slug?: string; price?: number; image_url?: string | null }[]
   >([]);
   const [pickerSearching, setPickerSearching] = useState(false);
 
@@ -121,6 +178,18 @@ export default function SellerCoupons() {
     setRefreshing(true);
     fetchData();
   }, [fetchData]);
+
+  const stats = useMemo(() => {
+    const active = coupons.filter((c) => c.is_active && !isExpired(c)).length;
+    const redemptions = coupons.reduce((sum, c) => sum + (c.current_uses ?? 0), 0);
+    return { total: coupons.length, active, inactive: coupons.length - active, redemptions };
+  }, [coupons]);
+
+  const headerSubtitle = loadError && coupons.length === 0
+    ? "Promotions unavailable"
+    : coupons.length === 0
+      ? "No promotions yet"
+      : `${stats.active} active · ${pluralize(stats.redemptions, "redemption")}`;
 
   const handleToggle = async (coupon: AdminCoupon) => {
     const res = await updateStoreCoupon(coupon.id, { is_active: !coupon.is_active });
@@ -157,6 +226,12 @@ export default function SellerCoupons() {
     );
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    resetForm();
+    setFormOpen(true);
+  };
+
   const openEdit = (coupon: AdminCoupon) => {
     setEditing(coupon);
     setCode(coupon.code);
@@ -169,50 +244,86 @@ export default function SellerCoupons() {
     setBxgyGetProductIds(coupon.bxgy_get_product_ids ?? []);
     setBxgyGetQuantity(String(coupon.bxgy_get_quantity ?? 1));
     setBxgyGetDiscountPct(String(coupon.bxgy_get_discount_pct ?? 100));
+    setFormOpen(true);
   };
 
-  const closeEdit = () => {
+  const closeForm = () => {
+    setFormOpen(false);
     setEditing(null);
     resetForm();
   };
 
-  const handleCreate = async () => {
+  const validateForm = (): boolean => {
     if (!code.trim()) {
       Alert.alert("Error", "Coupon code is required");
-      return;
+      return false;
     }
     // Free shipping and BXGY carry no flat discount value — free shipping is
     // the discount, and BXGY is priced by `bxgy_get_discount_pct`.
     if (needsValue) {
       if (!value || Number(value) <= 0) {
         Alert.alert("Error", "Enter a valid discount value");
-        return;
+        return false;
       }
       if (type === "percentage" && Number(value) > 100) {
         Alert.alert("Error", "Percentage coupons cannot exceed 100%");
-        return;
+        return false;
       }
     }
     if (minOrder.trim() && (!Number.isFinite(Number(minOrder)) || Number(minOrder) < 0)) {
       Alert.alert("Error", "Minimum order total must be a valid, non-negative number");
-      return;
+      return false;
     }
-    if (
-      maxUses.trim() &&
-      (!Number.isInteger(Number(maxUses)) || Number(maxUses) <= 0)
-    ) {
+    if (maxUses.trim() && (!Number.isInteger(Number(maxUses)) || Number(maxUses) <= 0)) {
       Alert.alert("Error", "Maximum uses must be a whole number greater than 0");
-      return;
+      return false;
     }
     if (type === "bxgy") {
       if (bxgyBuyProductIds.length === 0 || bxgyGetProductIds.length === 0) {
         Alert.alert("Error", "Pick at least one buy and one get product for BXGY");
-        return;
+        return false;
       }
       if (Number(bxgyGetDiscountPct) <= 0 || Number(bxgyGetDiscountPct) > 100) {
         Alert.alert("Error", "Get discount must be between 1 and 100");
-        return;
+        return false;
       }
+    }
+    return true;
+  };
+
+  const buildPatch = (): Partial<AdminCoupon> => ({
+    code: code.trim().toUpperCase(),
+    type: type as AdminCoupon["type"],
+    // Switching an existing coupon to free shipping / BXGY must clear any
+    // stale flat discount, otherwise the old value keeps applying.
+    value: needsValue ? Number(value) : 0,
+    min_order_total: minOrder ? Number(minOrder) : undefined,
+    max_uses: maxUses ? Number(maxUses) : undefined,
+    ...(type === "bxgy"
+      ? {
+          bxgy_buy_product_ids: bxgyBuyProductIds,
+          bxgy_buy_quantity: Number(bxgyBuyQuantity) || 1,
+          bxgy_get_product_ids: bxgyGetProductIds,
+          bxgy_get_quantity: Number(bxgyGetQuantity) || 1,
+          bxgy_get_discount_pct: Number(bxgyGetDiscountPct) || 100,
+        }
+      : {}),
+  });
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    if (editing) {
+      setSaving(true);
+      const res = await updateStoreCoupon(editing.id, buildPatch());
+      setSaving(false);
+      if (res.ok) {
+        setCoupons((prev) => prev.map((c) => (c.id === editing.id ? res.data : c)));
+        closeForm();
+      } else {
+        Alert.alert("Update failed", res.error);
+      }
+      return;
     }
 
     setCreating(true);
@@ -221,81 +332,18 @@ export default function SellerCoupons() {
       setCreating(false);
       return;
     }
-
-    const coupon: Partial<AdminCoupon> = {
-      code: code.trim().toUpperCase(),
-      type: type as any,
-      value: needsValue ? Number(value) : 0,
-      min_order_total: minOrder ? Number(minOrder) : undefined,
-      max_uses: maxUses ? Number(maxUses) : undefined,
+    const res = await createStoreCoupon({
+      ...buildPatch(),
       current_uses: 0,
       is_active: true,
       scope: storeRes.data.id,
-      ...(type === "bxgy"
-        ? {
-            bxgy_buy_product_ids: bxgyBuyProductIds,
-            bxgy_buy_quantity: Number(bxgyBuyQuantity) || 1,
-            bxgy_get_product_ids: bxgyGetProductIds,
-            bxgy_get_quantity: Number(bxgyGetQuantity) || 1,
-            bxgy_get_discount_pct: Number(bxgyGetDiscountPct) || 100,
-          }
-        : {}),
-    };
-
-    const res = await createStoreCoupon(coupon);
+    });
     setCreating(false);
-
     if (res.ok) {
       setCoupons((prev) => [res.data, ...prev]);
-      setShowCreate(false);
-      resetForm();
+      closeForm();
     } else {
       Alert.alert("Error", res.error);
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editing) return;
-    if (!code.trim()) {
-      Alert.alert("Error", "Coupon code is required");
-      return;
-    }
-    if (needsValue) {
-      if (!value || Number(value) <= 0) {
-        Alert.alert("Error", "Enter a valid discount value");
-        return;
-      }
-      if (type === "percentage" && Number(value) > 100) {
-        Alert.alert("Error", "Percentage coupons cannot exceed 100%");
-        return;
-      }
-    }
-    setSaving(true);
-    const patch: Partial<AdminCoupon> = {
-      code: code.trim().toUpperCase(),
-      type: type as AdminCoupon["type"],
-      min_order_total: minOrder ? Number(minOrder) : undefined,
-      max_uses: maxUses ? Number(maxUses) : undefined,
-      ...(type === "bxgy"
-        ? {
-            bxgy_buy_product_ids: bxgyBuyProductIds,
-            bxgy_buy_quantity: Number(bxgyBuyQuantity) || 1,
-            bxgy_get_product_ids: bxgyGetProductIds,
-            bxgy_get_quantity: Number(bxgyGetQuantity) || 1,
-            bxgy_get_discount_pct: Number(bxgyGetDiscountPct) || 100,
-          }
-        : {}),
-    };
-    // Switching an existing coupon to free shipping / BXGY must clear any
-    // stale flat discount, otherwise the old value keeps applying.
-    patch.value = needsValue ? Number(value) : 0;
-    const res = await updateStoreCoupon(editing.id, patch);
-    setSaving(false);
-    if (res.ok) {
-      setCoupons((prev) => prev.map((c) => (c.id === editing.id ? res.data : c)));
-      closeEdit();
-    } else {
-      Alert.alert("Update failed", res.error);
     }
   };
 
@@ -349,181 +397,222 @@ export default function SellerCoupons() {
     }
   };
 
-  if (loading) {
-    return (
-      <View style={s.loadingWrap}>
-        <Ionicons name="pricetag-outline" size={32} color={colors.light.mutedForeground} />
-        <Text style={s.loadingText}>Loading coupons...</Text>
-      </View>
-    );
-  }
+  const formBusy = creating || saving;
 
   return (
-    <ScrollView
-      style={s.container}
-      contentContainerStyle={s.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.light.primary} />}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={s.header}>
-        <View style={s.heroBg} />
-        <View style={s.heroContent}>
-          <TouchableOpacity
-            style={s.backBtn}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
-          </TouchableOpacity>
-          <View style={s.heroRow}>
-            <View>
-              <Text style={s.kicker}>PROMOTIONS</Text>
-              <Text style={s.heroTitle}>Coupons</Text>
+    <View style={s.container}>
+      <StatusBar barStyle="dark-content" />
+      <ScrollView
+        contentContainerStyle={s.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[800]} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+          <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
+          <View style={s.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.kicker}>Atelier · Promotions</Text>
+              <Text style={s.title}>Coupons</Text>
+              <Text style={s.subtitle}>{headerSubtitle}</Text>
             </View>
             <TouchableOpacity
               style={s.addBtn}
-              onPress={() => setShowCreate(true)}
+              onPress={openCreate}
               accessibilityRole="button"
               accessibilityLabel="Create coupon"
             >
-              <Ionicons name="add" size={22} color="#fff" />
+              <Ionicons name="add" size={20} color={CREAM} />
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+        <View style={s.goldRule} />
 
-      {/* Stats */}
-      <View style={s.statsRow}>
-        <View style={s.statCard}>
-          <Text style={s.statValue}>{coupons.length}</Text>
-          <Text style={s.statLabel}>Total</Text>
-        </View>
-        <View style={s.statCard}>
-          <Text style={[s.statValue, { color: colors.olive[600] }]}>
-            {coupons.filter((c) => c.is_active).length}
-          </Text>
-          <Text style={s.statLabel}>Active</Text>
-        </View>
-        <View style={s.statCard}>
-          <Text style={[s.statValue, { color: colors.light.mutedForeground }]}>
-            {coupons.filter((c) => !c.is_active).length}
-          </Text>
-          <Text style={s.statLabel}>Inactive</Text>
-        </View>
-      </View>
-
-      {/* Coupons List */}
-      <View style={s.listSection}>
-        {coupons.length === 0 ? (
-          <View style={s.emptyCard}>
-            <Ionicons name="pricetag-outline" size={32} color={colors.light.mutedForeground} />
-            <Text style={s.emptyTitle}>{loadError ? "Couldn’t load coupons" : "No coupons yet"}</Text>
-            <Text style={s.emptySub}>
-              {loadError ?? "Create your first coupon to attract customers"}
-            </Text>
-            {!loadError ? (
-              <TouchableOpacity style={s.emptyBtn} onPress={() => setShowCreate(true)}>
-                <Text style={s.emptyBtnText}>Create Coupon</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
+        {loading ? (
+          <CouponsSkeleton />
+        ) : loadError && coupons.length === 0 ? (
+          <SellerStateView
+            variant="error"
+            icon="cloud-offline-outline"
+            title="Couldn’t load coupons"
+            description={loadError}
+            actionLabel="Try again"
+            onAction={onRefresh}
+            style={{ marginTop: 40 }}
+          />
         ) : (
-          coupons.map((coupon) => (
-            <TouchableOpacity
-              key={coupon.id}
-              style={s.couponCard}
-              activeOpacity={0.7}
-              onPress={() => openEdit(coupon)}
-              accessibilityLabel={`Edit coupon ${coupon.code}`}
-            >
-              <View style={s.couponHeader}>
-                <View style={s.couponCodeRow}>
-                  <View style={[s.couponTypeBadge, typeBadgeStyle(coupon.type)]}>
-                    <Text style={s.couponTypeText}>
-                      {typeBadgeLabel(coupon)}
-                    </Text>
-                  </View>
-                  <Text style={s.couponCode}>{coupon.code}</Text>
+          <View style={s.body}>
+            {/* Stats */}
+            <View style={s.statsRow}>
+              <View style={s.statCard}>
+                <View style={[s.statIcon, { backgroundColor: colors.olive[50] }]}>
+                  <Ionicons name="pricetag-outline" size={14} color={colors.olive[700]} />
                 </View>
-                <Switch
-                  value={coupon.is_active}
-                  onValueChange={() => handleToggle(coupon)}
-                  trackColor={{ false: colors.light.muted, true: colors.olive[300] }}
-                  thumbColor={coupon.is_active ? colors.olive[600] : colors.light.mutedForeground}
-                />
+                <Text style={s.statValue}>{stats.total}</Text>
+                <Text style={s.statLabel}>Total</Text>
               </View>
-              <View style={s.couponMeta}>
-                <Text style={s.couponMetaText}>
-                  {coupon.type === "percentage"
-                    ? `${coupon.value}% off`
-                    : coupon.type === "fixed"
-                    ? `Rs. ${coupon.value} off`
-                    : coupon.type === "bxgy"
-                    ? "Buy X get Y"
-                    : "Free shipping"}
-                  {coupon.min_order_total ? ` (min Rs. ${coupon.min_order_total})` : ""}
-                </Text>
-                <Text style={s.couponMetaText}>
-                  {coupon.current_uses}/{coupon.max_uses ?? "unlimited"} used
-                </Text>
+              <View style={s.statCard}>
+                <View style={[s.statIcon, { backgroundColor: "rgba(106,118,57,0.14)" }]}>
+                  <Ionicons name="checkmark-circle-outline" size={14} color={colors.olive[600]} />
+                </View>
+                <Text style={[s.statValue, { color: colors.olive[600] }]}>{stats.active}</Text>
+                <Text style={s.statLabel}>Active</Text>
               </View>
-              {coupon.ends_at && (
-                <Text style={s.couponExpiry}>
-                  Expires: {new Date(coupon.ends_at).toLocaleDateString("en-LK", { month: "short", day: "numeric", year: "numeric" })}
-                </Text>
-              )}
-              <View style={s.couponActions}>
-                <TouchableOpacity
-                  style={s.couponActionBtn}
-                  onPress={() => openEdit(coupon)}
-                  accessibilityLabel={`Edit ${coupon.code}`}
-                >
-                  <Ionicons name="create-outline" size={16} color={colors.olive[700]} />
-                  <Text style={s.couponActionText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.couponActionBtn, s.couponDeleteBtn]}
-                  onPress={() => handleDelete(coupon)}
-                  disabled={deletingId === coupon.id}
-                  accessibilityLabel={`Delete ${coupon.code}`}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#dc2626" />
-                  <Text style={[s.couponActionText, { color: "#dc2626" }]}>
-                    {deletingId === coupon.id ? "Deleting..." : "Delete"}
-                  </Text>
-                </TouchableOpacity>
+              <View style={s.statCard}>
+                <View style={[s.statIcon, { backgroundColor: "rgba(200,164,74,0.16)" }]}>
+                  <Ionicons name="ticket-outline" size={14} color="#8a6a2a" />
+                </View>
+                <Text style={s.statValue}>{stats.redemptions}</Text>
+                <Text style={s.statLabel}>Redeemed</Text>
               </View>
-            </TouchableOpacity>
-          ))
+            </View>
+
+            {/* Coupons list */}
+            {coupons.length === 0 ? (
+              <SellerStateView
+                variant="empty"
+                icon="pricetag-outline"
+                title="No coupons yet"
+                description="Create your first coupon to reward customers and drive repeat orders."
+                actionLabel="Create coupon"
+                onAction={openCreate}
+                style={{ marginTop: 8 }}
+              />
+            ) : (
+              coupons.map((coupon) => {
+                const expired = isExpired(coupon);
+                const live = coupon.is_active && !expired;
+                const usageCap = coupon.max_uses ?? null;
+                const usagePct = usageCap ? Math.min(1, (coupon.current_uses ?? 0) / usageCap) : 0;
+                const usageFull = usageCap != null && (coupon.current_uses ?? 0) >= usageCap;
+                return (
+                  <TouchableOpacity
+                    key={coupon.id}
+                    style={[s.couponCard, !live && s.couponCardDim]}
+                    activeOpacity={0.85}
+                    onPress={() => openEdit(coupon)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit coupon ${coupon.code}`}
+                  >
+                    <View style={s.couponTop}>
+                      <View style={[s.couponTypeBadge, typeBadgeStyle(coupon.type)]}>
+                        <Ionicons
+                          name={TYPE_META[coupon.type]?.icon ?? "pricetag-outline"}
+                          size={12}
+                          color={colors.olive[900]}
+                        />
+                        <Text style={s.couponTypeText}>{typeBadgeLabel(coupon)}</Text>
+                      </View>
+                      <Text style={s.couponCode} numberOfLines={1}>{coupon.code}</Text>
+                      <Switch
+                        value={coupon.is_active}
+                        onValueChange={() => handleToggle(coupon)}
+                        trackColor={{ false: colors.olive[100], true: colors.olive[300] }}
+                        thumbColor={coupon.is_active ? colors.olive[700] : colors.ink.mute}
+                      />
+                    </View>
+
+                    <View style={s.couponMetaRow}>
+                      <Text style={s.couponMetaText}>{couponSummary(coupon)}</Text>
+                      {expired ? (
+                        <View style={s.expiredChip}>
+                          <Text style={s.expiredChipText}>Expired</Text>
+                        </View>
+                      ) : coupon.ends_at ? (
+                        <View style={s.metaItem}>
+                          <Ionicons name="calendar-outline" size={11} color={colors.ink.mute} />
+                          <Text style={s.couponMetaText}>
+                            Ends {new Date(coupon.ends_at).toLocaleDateString("en-LK", { month: "short", day: "numeric", year: "numeric" })}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={s.couponMetaText}>No expiry</Text>
+                      )}
+                    </View>
+
+                    <View style={s.usageRow}>
+                      <View style={s.usageBarBg}>
+                        <View
+                          style={[
+                            s.usageBarFill,
+                            { width: `${usageCap ? Math.max(usagePct * 100, usagePct > 0 ? 4 : 0) : 0}%` },
+                            usageFull && s.usageBarFull,
+                          ]}
+                        />
+                      </View>
+                      <Text style={s.usageText}>
+                        {coupon.current_uses ?? 0}/{usageCap ?? "∞"} used
+                      </Text>
+                    </View>
+
+                    <View style={s.couponActions}>
+                      <View style={s.liveRow}>
+                        <View style={[s.liveDot, { backgroundColor: live ? colors.olive[500] : colors.ink.mute }]} />
+                        <Text style={s.liveText}>{expired ? "Expired" : live ? "Live" : "Paused"}</Text>
+                      </View>
+                      <View style={s.actionGroup}>
+                        <TouchableOpacity
+                          style={s.couponActionBtn}
+                          onPress={() => openEdit(coupon)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${coupon.code}`}
+                        >
+                          <Ionicons name="create-outline" size={14} color={colors.olive[700]} />
+                          <Text style={s.couponActionText}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.deleteBtn}
+                          onPress={() => handleDelete(coupon)}
+                          disabled={deletingId === coupon.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete ${coupon.code}`}
+                        >
+                          <Ionicons name="trash-outline" size={14} color={RUST} />
+                          <Text style={s.deleteText}>
+                            {deletingId === coupon.id ? "Deleting…" : "Delete"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
         )}
-      </View>
 
-      <View style={{ height: 40 }} />
+        <View style={{ height: 40 }} />
+      </ScrollView>
 
-      {/* Create Modal */}
-      <Modal visible={showCreate} animationType="slide" presentationStyle="pageSheet">
+      {/* Create / edit modal — shared form; `editing` decides the verb. */}
+      <Modal visible={formOpen} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <View style={s.modalContainer}>
             <View style={s.modalHeader}>
-              <TouchableOpacity onPress={() => { setShowCreate(false); resetForm(); }}>
+              <TouchableOpacity onPress={closeForm} accessibilityRole="button">
                 <Text style={s.modalCancel}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={s.modalTitle}>New Coupon</Text>
-              <TouchableOpacity onPress={handleCreate} disabled={creating}>
-                <Text style={[s.modalSave, creating && { opacity: 0.5 }]}>
-                  {creating ? "Creating..." : "Create"}
+              <Text style={s.modalTitle}>{editing ? "Edit coupon" : "New coupon"}</Text>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                disabled={formBusy}
+                accessibilityRole="button"
+                accessibilityLabel={editing ? "Save coupon" : "Create coupon"}
+              >
+                <Text style={[s.modalSave, formBusy && { opacity: 0.5 }]}>
+                  {creating ? "Creating…" : saving ? "Saving…" : editing ? "Save" : "Create"}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={s.modalContent} keyboardShouldPersistTaps="handled">
               {/* Coupon Type */}
-              <Text style={s.fieldLabel}>Coupon Type</Text>
+              <Text style={s.fieldLabel}>Coupon type</Text>
               <View style={s.typeRow}>
                 {COUPON_TYPES.map((t) => {
                   const active = type === t.key;
@@ -532,8 +621,13 @@ export default function SellerCoupons() {
                       key={t.key}
                       style={[s.typeChip, active && s.typeChipActive]}
                       onPress={() => setType(t.key)}
+                      accessibilityRole="button"
                     >
-                      <Ionicons name={t.icon as any} size={18} color={active ? "#fff" : colors.light.mutedForeground} />
+                      <Ionicons
+                        name={t.icon}
+                        size={16}
+                        color={active ? CREAM : colors.ink.mute}
+                      />
                       <Text style={[s.typeChipText, active && s.typeChipTextActive]}>{t.label}</Text>
                     </TouchableOpacity>
                   );
@@ -541,13 +635,13 @@ export default function SellerCoupons() {
               </View>
 
               {/* Code */}
-              <Text style={s.fieldLabel}>Coupon Code</Text>
+              <Text style={s.fieldLabel}>Coupon code</Text>
               <TextInput
                 style={s.input}
                 value={code}
                 onChangeText={(t) => setCode(t.toUpperCase())}
                 placeholder="SUMMER25"
-                placeholderTextColor={colors.light.mutedForeground}
+                placeholderTextColor={colors.ink.mute}
                 autoCapitalize="characters"
                 autoCorrect={false}
               />
@@ -556,14 +650,14 @@ export default function SellerCoupons() {
               {needsValue ? (
                 <>
                   <Text style={s.fieldLabel}>
-                    {type === "percentage" ? "Discount Percentage" : "Discount Amount (Rs.)"}
+                    {type === "percentage" ? "Discount percentage" : "Discount amount (Rs.)"}
                   </Text>
                   <TextInput
                     style={s.input}
                     value={value}
                     onChangeText={setValue}
                     placeholder={type === "percentage" ? "25" : "500"}
-                    placeholderTextColor={colors.light.mutedForeground}
+                    placeholderTextColor={colors.ink.mute}
                     keyboardType="numeric"
                   />
                 </>
@@ -573,27 +667,30 @@ export default function SellerCoupons() {
                 </Text>
               ) : null}
 
-              {/* Min Order */}
-              <Text style={s.fieldLabel}>Minimum Order Total (Rs.)</Text>
-              <TextInput
-                style={s.input}
-                value={minOrder}
-                onChangeText={setMinOrder}
-                placeholder="Optional"
-                placeholderTextColor={colors.light.mutedForeground}
-                keyboardType="numeric"
-              />
-
-              {/* Max Uses */}
-              <Text style={s.fieldLabel}>Maximum Uses</Text>
-              <TextInput
-                style={s.input}
-                value={maxUses}
-                onChangeText={setMaxUses}
-                placeholder="Unlimited"
-                placeholderTextColor={colors.light.mutedForeground}
-                keyboardType="numeric"
-              />
+              <View style={s.fieldRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fieldLabel}>Minimum order (Rs.)</Text>
+                  <TextInput
+                    style={s.input}
+                    value={minOrder}
+                    onChangeText={setMinOrder}
+                    placeholder="Optional"
+                    placeholderTextColor={colors.ink.mute}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fieldLabel}>Maximum uses</Text>
+                  <TextInput
+                    style={s.input}
+                    value={maxUses}
+                    onChangeText={setMaxUses}
+                    placeholder="Unlimited"
+                    placeholderTextColor={colors.ink.mute}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
 
               {/* BXGY fields — only relevant when type === 'bxgy' */}
               {type === "bxgy" && (
@@ -606,13 +703,14 @@ export default function SellerCoupons() {
                       setPickerResults([]);
                       setPickerOpen("buy");
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={s.productPickerBtnText}>
                       {bxgyBuyProductIds.length === 0
                         ? "Pick products customer must buy"
                         : `${bxgyBuyProductIds.length} selected`}
                     </Text>
-                    <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
+                    <Ionicons name="chevron-forward" size={18} color={colors.ink.mute} />
                   </TouchableOpacity>
 
                   <Text style={s.fieldLabel}>Buy quantity</Text>
@@ -621,7 +719,7 @@ export default function SellerCoupons() {
                     value={bxgyBuyQuantity}
                     onChangeText={setBxgyBuyQuantity}
                     placeholder="1"
-                    placeholderTextColor={colors.light.mutedForeground}
+                    placeholderTextColor={colors.ink.mute}
                     keyboardType="numeric"
                   />
 
@@ -633,13 +731,14 @@ export default function SellerCoupons() {
                       setPickerResults([]);
                       setPickerOpen("get");
                     }}
+                    accessibilityRole="button"
                   >
                     <Text style={s.productPickerBtnText}>
                       {bxgyGetProductIds.length === 0
                         ? "Pick products customer receives"
                         : `${bxgyGetProductIds.length} selected`}
                     </Text>
-                    <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
+                    <Ionicons name="chevron-forward" size={18} color={colors.ink.mute} />
                   </TouchableOpacity>
 
                   <Text style={s.fieldLabel}>Get quantity</Text>
@@ -648,7 +747,7 @@ export default function SellerCoupons() {
                     value={bxgyGetQuantity}
                     onChangeText={setBxgyGetQuantity}
                     placeholder="1"
-                    placeholderTextColor={colors.light.mutedForeground}
+                    placeholderTextColor={colors.ink.mute}
                     keyboardType="numeric"
                   />
 
@@ -658,167 +757,7 @@ export default function SellerCoupons() {
                     value={bxgyGetDiscountPct}
                     onChangeText={setBxgyGetDiscountPct}
                     placeholder="100"
-                    placeholderTextColor={colors.light.mutedForeground}
-                    keyboardType="numeric"
-                  />
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Edit Modal — mirrors create modal but pre-filled, no value field for BXGY */}
-      <Modal visible={!!editing} animationType="slide" presentationStyle="pageSheet">
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <View style={s.modalContainer}>
-            <View style={s.modalHeader}>
-              <TouchableOpacity onPress={closeEdit}>
-                <Text style={s.modalCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={s.modalTitle}>Edit Coupon</Text>
-              <TouchableOpacity onPress={handleSaveEdit} disabled={saving}>
-                <Text style={[s.modalSave, saving && { opacity: 0.5 }]}>
-                  {saving ? "Saving..." : "Save"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={s.modalContent} keyboardShouldPersistTaps="handled">
-              <Text style={s.fieldLabel}>Coupon Type</Text>
-              <View style={s.typeRow}>
-                {COUPON_TYPES.map((t) => {
-                  const active = type === t.key;
-                  return (
-                    <TouchableOpacity
-                      key={t.key}
-                      style={[s.typeChip, active && s.typeChipActive]}
-                      onPress={() => setType(t.key)}
-                    >
-                      <Ionicons name={t.icon as any} size={18} color={active ? "#fff" : colors.light.mutedForeground} />
-                      <Text style={[s.typeChipText, active && s.typeChipTextActive]}>{t.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={s.fieldLabel}>Coupon Code</Text>
-              <TextInput
-                style={s.input}
-                value={code}
-                onChangeText={(t) => setCode(t.toUpperCase())}
-                placeholder="SUMMER25"
-                placeholderTextColor={colors.light.mutedForeground}
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
-
-              {needsValue ? (
-                <>
-                  <Text style={s.fieldLabel}>
-                    {type === "percentage" ? "Discount Percentage" : "Discount Amount (Rs.)"}
-                  </Text>
-                  <TextInput
-                    style={s.input}
-                    value={value}
-                    onChangeText={setValue}
-                    placeholder={type === "percentage" ? "25" : "500"}
-                    placeholderTextColor={colors.light.mutedForeground}
-                    keyboardType="numeric"
-                  />
-                </>
-              ) : type === "free_shipping" ? (
-                <Text style={s.fieldHint}>
-                  Free shipping coupons waive the delivery fee — no discount value needed.
-                </Text>
-              ) : null}
-
-              <Text style={s.fieldLabel}>Minimum Order Total (Rs.)</Text>
-              <TextInput
-                style={s.input}
-                value={minOrder}
-                onChangeText={setMinOrder}
-                placeholder="Optional"
-                placeholderTextColor={colors.light.mutedForeground}
-                keyboardType="numeric"
-              />
-
-              <Text style={s.fieldLabel}>Maximum Uses</Text>
-              <TextInput
-                style={s.input}
-                value={maxUses}
-                onChangeText={setMaxUses}
-                placeholder="Unlimited"
-                placeholderTextColor={colors.light.mutedForeground}
-                keyboardType="numeric"
-              />
-
-              {type === "bxgy" && (
-                <View>
-                  <Text style={s.fieldLabel}>Buy products</Text>
-                  <TouchableOpacity
-                    style={s.productPickerBtn}
-                    onPress={() => {
-                      setPickerQuery("");
-                      setPickerResults([]);
-                      setPickerOpen("buy");
-                    }}
-                  >
-                    <Text style={s.productPickerBtnText}>
-                      {bxgyBuyProductIds.length === 0
-                        ? "Pick products customer must buy"
-                        : `${bxgyBuyProductIds.length} selected`}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
-                  </TouchableOpacity>
-
-                  <Text style={s.fieldLabel}>Buy quantity</Text>
-                  <TextInput
-                    style={s.input}
-                    value={bxgyBuyQuantity}
-                    onChangeText={setBxgyBuyQuantity}
-                    placeholder="1"
-                    placeholderTextColor={colors.light.mutedForeground}
-                    keyboardType="numeric"
-                  />
-
-                  <Text style={s.fieldLabel}>Get products</Text>
-                  <TouchableOpacity
-                    style={s.productPickerBtn}
-                    onPress={() => {
-                      setPickerQuery("");
-                      setPickerResults([]);
-                      setPickerOpen("get");
-                    }}
-                  >
-                    <Text style={s.productPickerBtnText}>
-                      {bxgyGetProductIds.length === 0
-                        ? "Pick products customer receives"
-                        : `${bxgyGetProductIds.length} selected`}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
-                  </TouchableOpacity>
-
-                  <Text style={s.fieldLabel}>Get quantity</Text>
-                  <TextInput
-                    style={s.input}
-                    value={bxgyGetQuantity}
-                    onChangeText={setBxgyGetQuantity}
-                    placeholder="1"
-                    placeholderTextColor={colors.light.mutedForeground}
-                    keyboardType="numeric"
-                  />
-
-                  <Text style={s.fieldLabel}>Get discount (%)</Text>
-                  <TextInput
-                    style={s.input}
-                    value={bxgyGetDiscountPct}
-                    onChangeText={setBxgyGetDiscountPct}
-                    placeholder="100"
-                    placeholderTextColor={colors.light.mutedForeground}
+                    placeholderTextColor={colors.ink.mute}
                     keyboardType="numeric"
                   />
                 </View>
@@ -838,7 +777,7 @@ export default function SellerCoupons() {
         >
           <View style={s.modalContainer}>
             <View style={s.modalHeader}>
-              <TouchableOpacity onPress={() => setPickerOpen(null)}>
+              <TouchableOpacity onPress={() => setPickerOpen(null)} accessibilityRole="button">
                 <Text style={s.modalCancel}>Done</Text>
               </TouchableOpacity>
               <Text style={s.modalTitle}>
@@ -852,7 +791,7 @@ export default function SellerCoupons() {
                 value={pickerQuery}
                 onChangeText={(t) => runProductSearch(t)}
                 placeholder="Search products..."
-                placeholderTextColor={colors.light.mutedForeground}
+                placeholderTextColor={colors.ink.mute}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -872,17 +811,18 @@ export default function SellerCoupons() {
                         key={p.id}
                         style={[s.pickerRow, selected && s.pickerRowSelected]}
                         onPress={() => togglePickerProduct(p.id)}
+                        accessibilityRole="button"
                       >
                         <View style={{ flex: 1 }}>
                           <Text style={s.pickerName}>{p.name}</Text>
                           {p.price != null && (
-                            <Text style={s.pickerPrice}>Rs. {p.price}</Text>
+                            <Text style={s.pickerPrice}>{formatPrice(p.price)}</Text>
                           )}
                         </View>
                         <Ionicons
                           name={selected ? "checkmark-circle" : "ellipse-outline"}
                           size={22}
-                          color={selected ? colors.olive[600] : colors.light.mutedForeground}
+                          color={selected ? colors.olive[600] : colors.ink.mute}
                         />
                       </TouchableOpacity>
                     );
@@ -893,173 +833,337 @@ export default function SellerCoupons() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
   content: { paddingBottom: 20 },
-  loadingWrap: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12, backgroundColor: colors.light.background },
-  loadingText: { fontSize: typography.fontSizes.base, color: colors.light.mutedForeground },
+  body: { paddingHorizontal: spacing[5] },
 
-  header: { position: "relative", marginBottom: 20 },
-  heroBg: {
-    position: "absolute", top: 0, left: 0, right: 0, height: 130,
-    backgroundColor: colors.olive[700],
-    borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
+  header: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
   },
-  heroContent: { paddingTop: 56, paddingHorizontal: 24, paddingBottom: 20 },
-  backBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    justifyContent: "center", alignItems: "center",
-    marginBottom: 10,
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 12,
   },
-  heroRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 10, letterSpacing: 3, textTransform: "uppercase",
-    color: colors.olive[200], marginBottom: 4,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+    marginBottom: 2,
   },
-  heroTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: typography.fontSizes["2xl"],
-    fontWeight: typography.fontWeights.bold as any,
-    color: "#fff",
+  title: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    color: INK,
+    letterSpacing: -0.4,
+  },
+  subtitle: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.ink.mute,
+    marginTop: 3,
   },
   addBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center", alignItems: "center",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.olive[800],
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  goldRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(200,164,74,0.55)",
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[4],
   },
 
-  statsRow: {
-    flexDirection: "row", gap: 12,
-    paddingHorizontal: 24, marginBottom: 20,
-  },
+  statsRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
   statCard: {
-    flex: 1, backgroundColor: colors.light.card,
-    borderRadius: radii.lg, borderWidth: 1, borderColor: colors.light.border,
-    padding: 14, alignItems: "center",
+    flex: 1,
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    padding: 14,
+    gap: 4,
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  statIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
   statValue: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    color: INK,
+    letterSpacing: -0.4,
   },
   statLabel: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground, marginTop: 2,
-  },
-
-  listSection: { paddingHorizontal: 24 },
-  emptyCard: {
-    alignItems: "center", paddingVertical: 40, gap: 8,
-    backgroundColor: colors.light.card, borderRadius: radii.xl,
-    borderWidth: 1, borderColor: colors.light.border,
-  },
-  emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-  },
-  emptySub: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground, textAlign: "center",
-  },
-  emptyBtn: {
-    marginTop: 12, paddingHorizontal: 20, paddingVertical: 10,
-    backgroundColor: colors.olive[600], borderRadius: radii.full,
-  },
-  emptyBtnText: {
-    fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold as any,
-    color: "#fff",
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.ink.mute,
   },
 
   couponCard: {
-    backgroundColor: colors.light.card, borderRadius: radii.xl,
-    borderWidth: 1, borderColor: colors.light.border,
-    padding: 16, marginBottom: 12,
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
-  couponHeader: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginBottom: 10,
+  couponCardDim: { opacity: 0.62 },
+  couponTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  couponCodeRow: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
   couponTypeBadge: {
-    paddingHorizontal: 10, paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radii.full,
   },
   badgePercentage: { backgroundColor: colors.olive[100] },
-  badgeFixed: { backgroundColor: "#dbeafe" },
-  badgeShipping: { backgroundColor: "#fef3c7" },
-  badgeBxgy: { backgroundColor: "#ede9fe" },
+  badgeFixed: { backgroundColor: "rgba(200,164,74,0.22)" },
+  badgeShipping: { backgroundColor: "rgba(83,94,44,0.12)" },
+  badgeBxgy: { backgroundColor: "rgba(184,92,58,0.14)" },
   couponTypeText: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.olive[800],
+    color: colors.olive[900],
   },
   couponCode: {
+    flex: 1,
     fontFamily: fontFamilies.mono.medium,
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.light.foreground, letterSpacing: 1,
+    color: INK,
+    letterSpacing: 1.4,
   },
-  couponMeta: {
-    flexDirection: "row", justifyContent: "space-between",
+  couponMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 10,
   },
-  couponMetaText: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground },
-  couponExpiry: {
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  couponMetaText: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground, marginTop: 6,
+    color: colors.ink.mute,
+    flexShrink: 1,
+  },
+  expiredChip: {
+    backgroundColor: "rgba(184,92,58,0.12)",
+    borderRadius: radii.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  expiredChipText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10,
+    color: RUST,
+  },
+  usageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+  },
+  usageBarBg: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.olive[100],
+    overflow: "hidden",
+  },
+  usageBarFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: colors.olive[500],
+  },
+  usageBarFull: { backgroundColor: RUST },
+  usageText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: colors.ink.mute,
   },
   couponActions: {
     flexDirection: "row",
-    gap: 8,
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 12,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(83,94,44,0.12)",
   },
+  liveRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  liveDot: { width: 7, height: 7, borderRadius: 4 },
+  liveText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: colors.ink.soft,
+  },
+  actionGroup: { flexDirection: "row", gap: 8 },
   couponActionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.md,
+    paddingVertical: 7,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.background,
-  },
-  couponDeleteBtn: {
-    borderColor: "#fecaca",
-    backgroundColor: "#fef2f2",
+    borderColor: "rgba(83,94,44,0.22)",
+    backgroundColor: colors.paper.DEFAULT,
   },
   couponActionText: {
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium as any,
+    color: colors.olive[800],
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.3)",
+    backgroundColor: "rgba(184,92,58,0.08)",
+  },
+  deleteText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.xs,
+    color: RUST,
+  },
+
+  modalContainer: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(83,94,44,0.14)",
+  },
+  modalCancel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    color: colors.ink.mute,
+  },
+  modalTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: typography.fontSizes.md,
+    color: INK,
+  },
+  modalSave: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
     color: colors.olive[700],
   },
+  modalContent: { padding: 20, paddingBottom: 48 },
+  fieldLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+    marginBottom: 8,
+    marginTop: 18,
+  },
+  fieldHint: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.xs,
+    color: colors.ink.mute,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  fieldRow: { flexDirection: "row", gap: 12 },
+  input: {
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.18)",
+    borderRadius: radii.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.base,
+    color: INK,
+  },
+  typeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  typeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.18)",
+  },
+  typeChipActive: { backgroundColor: colors.olive[800], borderColor: colors.olive[800] },
+  typeChipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    color: colors.ink.soft,
+  },
+  typeChipTextActive: { color: CREAM },
+
   productPickerBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.light.card,
+    backgroundColor: CREAM,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(83,94,44,0.18)",
     borderRadius: radii.lg,
     padding: 14,
   },
   productPickerBtnText: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.base,
-    color: colors.light.foreground,
+    color: INK,
   },
   pickerHint: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
+    color: colors.ink.mute,
     textAlign: "center",
     paddingVertical: 24,
   },
@@ -1069,74 +1173,34 @@ const s = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    borderRadius: radii.lg,
+    marginTop: 6,
+    backgroundColor: CREAM,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.1)",
   },
   pickerRowSelected: {
-    backgroundColor: colors.olive[100],
+    borderColor: colors.olive[500],
+    backgroundColor: colors.olive[50],
   },
   pickerName: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    color: INK,
   },
   pickerPrice: {
+    fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
+    color: colors.ink.mute,
     marginTop: 2,
   },
 
-  // Modal
-  modalContainer: { flex: 1, backgroundColor: colors.light.background },
-  modalHeader: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingHorizontal: 20, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: colors.light.border,
+  skelCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.08)",
+    gap: 10,
   },
-  modalCancel: { fontSize: typography.fontSizes.base, color: colors.light.mutedForeground },
-  modalTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-  },
-  modalSave: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.olive[600],
-  },
-  modalContent: { padding: 24, gap: 4 },
-
-  fieldLabel: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
-    marginTop: 16, marginBottom: 8,
-  },
-  fieldHint: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    lineHeight: 19,
-    marginTop: 16,
-  },
-  input: {
-    backgroundColor: colors.light.card,
-    borderWidth: 1, borderColor: colors.light.border,
-    borderRadius: radii.lg, padding: 14,
-    fontSize: typography.fontSizes.base,
-    color: colors.light.foreground,
-  },
-  typeRow: { flexDirection: "row", gap: 10 },
-  typeChip: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 12,
-    backgroundColor: colors.light.card, borderRadius: radii.lg,
-    borderWidth: 1, borderColor: colors.light.border,
-  },
-  typeChipActive: { backgroundColor: colors.olive[600], borderColor: colors.olive[600] },
-  typeChipText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.mutedForeground,
-  },
-  typeChipTextActive: { color: "#fff" },
 });

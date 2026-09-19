@@ -264,9 +264,10 @@ export default function SellerSettings() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingHorizontal: spacing[5], gap: spacing[4] },
+  content: { paddingHorizontal: spacing[5], gap: spacing[4], paddingBottom: spacing[7] },
   centered: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 8 },
-  header: { paddingBottom: spacing[3] },
+  header: { paddingBottom: spacing[4] },
+
   backBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -281,9 +282,9 @@ const styles = StyleSheet.create({
     color: colors.olive[800],
   },
   kicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.3,
     textTransform: "uppercase",
     color: colors.olive[700],
     marginBottom: 2,

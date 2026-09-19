@@ -71,6 +71,33 @@ class ImageSyncError extends Error {
   }
 }
 
+function EditorSection({
+  icon,
+  kicker,
+  title,
+  children,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  kicker: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionIcon}>
+          <Ionicons name={icon} size={17} color={colors.olive[800]} />
+        </View>
+        <View>
+          <Text style={styles.sectionKicker}>{kicker}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}
+
 export default function SellerProductEdit() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -593,17 +620,23 @@ export default function SellerProductEdit() {
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => router.back()}
-            accessibilityLabel="Back"
+            accessibilityLabel="Back to products"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="chevron-back" size={20} color={colors.olive[800]} />
-            <Text style={styles.backButton}>Back</Text>
+            <Ionicons name="chevron-back" size={19} color={INK} />
           </TouchableOpacity>
-          <Text style={styles.kicker}>Atelier</Text>
-          <Text style={styles.title}>{isNew ? "New piece" : "Edit piece"}</Text>
-          <Text style={styles.subtitle}>Lookbook, stock, and listing details</Text>
+          <View style={styles.headerCopy}>
+            <Text style={styles.kicker}>{isNew ? "NEW PRODUCT" : "PRODUCT EDITOR"}</Text>
+            <Text style={styles.title}>{isNew ? "Add product" : "Edit product"}</Text>
+            <Text style={styles.subtitle}>Photos, details, variants and publishing</Text>
+          </View>
+          <View style={[styles.headerStatus, status === "active" && styles.headerStatusLive]}>
+            <View style={[styles.headerStatusDot, status === "active" && styles.headerStatusDotLive]} />
+            <Text style={[styles.headerStatusText, status === "active" && styles.headerStatusTextLive]}>
+              {status === "active" ? "Live" : status === "pending" ? "Review" : status === "archived" ? "Archived" : "Draft"}
+            </Text>
+          </View>
         </View>
-        <View style={styles.goldRule} />
         {moderation ? <ModerationResultBanner result={moderation} isNew={isNew} /> : null}
 
         <ProductMediaSection
@@ -618,6 +651,7 @@ export default function SellerProductEdit() {
           onMoveExisting={!isNew ? handleMoveExisting : undefined}
         />
 
+        <EditorSection icon="information-circle-outline" kicker="ESSENTIALS" title="Product details">
         <View style={styles.field}>
           <Text style={styles.label}>Name</Text>
           <TextInput
@@ -686,6 +720,7 @@ export default function SellerProductEdit() {
           />
           <Text style={[styles.fieldHint, { marginBottom: 0 }]}>Percent, e.g. 15 for 15% VAT.</Text>
         </View>
+        </EditorSection>
 
         <ProductVariantsSection
           variants={variants}
@@ -693,6 +728,7 @@ export default function SellerProductEdit() {
           onChange={trackRemovedVariant}
         />
 
+        <EditorSection icon="document-text-outline" kicker="STORY" title="Description & attributes">
         <View style={styles.field}>
           <Text style={styles.label}>Short description</Text>
           <TextInput
@@ -802,7 +838,9 @@ export default function SellerProductEdit() {
             placeholderTextColor={colors.light.mutedForeground}
           />
         </View>
+        </EditorSection>
 
+        <EditorSection icon="pricetags-outline" kicker="ORGANISE" title="Classification">
         <View style={styles.field}>
           <Text style={styles.label}>Brand</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
@@ -872,7 +910,9 @@ export default function SellerProductEdit() {
             ))}
           </View>
         </View>
+        </EditorSection>
 
+        <EditorSection icon="storefront-outline" kicker="PUBLISH" title="Store visibility">
         <View style={styles.field}>
           <Text style={styles.label}>Listing</Text>
           {isLive ? (
@@ -956,6 +996,7 @@ export default function SellerProductEdit() {
             Updates as you type. Final check runs on save.
           </Text>
         </View>
+        </EditorSection>
 
         {!isNew ? (
           <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProduct}>
@@ -966,17 +1007,28 @@ export default function SellerProductEdit() {
         <View style={{ height: 24 }} />
       </ScrollView>
       <View style={styles.saveBar}>
+        <View style={styles.saveSummary}>
+          <View style={styles.saveSummaryIcon}>
+            <Ionicons name={saving ? "sync-outline" : "checkmark"} size={16} color={colors.olive[800]} />
+          </View>
+          <View style={styles.saveSummaryCopy}>
+            <Text style={styles.saveSummaryTitle}>{saving ? "Saving changes" : isNew ? "Ready to add" : "Ready to update"}</Text>
+            <Text style={styles.saveSummaryHint} numberOfLines={1}>{pendingImages.length > 0 ? `${pendingImages.length} new photo${pendingImages.length === 1 ? "" : "s"}` : `${variants.length} variant${variants.length === 1 ? "" : "s"}`}</Text>
+          </View>
+        </View>
         <TouchableOpacity
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
           onPress={handleSave}
           disabled={saving}
+          accessibilityRole="button"
         >
           {saving ? (
             <ActivityIndicator color={CREAM} />
           ) : (
-            <Text style={styles.saveButtonText}>
-              {isNew ? "Add to collection" : "Save piece"}
-            </Text>
+            <>
+              <Text style={styles.saveButtonText}>{isNew ? "Add product" : "Save changes"}</Text>
+              <Ionicons name="arrow-forward" size={16} color={CREAM} />
+            </>
           )}
         </TouchableOpacity>
       </View>
@@ -987,7 +1039,7 @@ export default function SellerProductEdit() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: spacing[4] },
+  content: { paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: spacing[7] },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1025,62 +1077,55 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
 
-  header: { marginBottom: spacing[3] },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing[5] },
   backBtn: {
-    flexDirection: "row",
+    width: 42,
+    height: 42,
+    borderRadius: 15,
     alignItems: "center",
-    gap: 2,
-    minHeight: 44,
-    marginLeft: -8,
-    marginBottom: 4,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
   },
-  backButton: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[800],
-    fontFamily: fontFamilies.sans.medium,
-  },
+  headerCopy: { flex: 1, minWidth: 0 },
   kicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
-    textTransform: "uppercase",
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8,
+    letterSpacing: 1.2,
     color: colors.olive[700],
     marginBottom: 2,
   },
-  title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: INK,
-    letterSpacing: -0.4,
-  },
-  subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginBottom: spacing[4],
-  },
+  title: { fontFamily: fontFamilies.display.semibold, fontSize: 25, lineHeight: 30, color: INK, letterSpacing: -0.4 },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2 },
+  headerStatus: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radii.full, backgroundColor: colors.paper.warm },
+  headerStatusLive: { backgroundColor: colors.olive[50] },
+  headerStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.ink.mute },
+  headerStatusDotLive: { backgroundColor: colors.olive[700] },
+  headerStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 9, color: colors.ink.mute },
+  headerStatusTextLive: { color: colors.olive[800] },
+  sectionCard: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, padding: 16, marginBottom: 16 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
+  sectionIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  sectionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.1, color: colors.olive[600], marginBottom: 2 },
+  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK },
 
   field: { marginBottom: 16 },
   label: {
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.medium,
-    color: colors.olive[800],
-    letterSpacing: 0.4,
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
+    color: colors.olive[700],
+    letterSpacing: 0.8,
     textTransform: "uppercase",
-    marginBottom: 6,
+    marginBottom: 7,
   },
   input: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FAF9F5",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
-    borderRadius: radii.xl,
+    borderRadius: 15,
     paddingHorizontal: 14,
-    minHeight: 48,
+    minHeight: 52,
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.regular,
     color: INK,
@@ -1164,26 +1209,34 @@ const styles = StyleSheet.create({
   featureTextOn: { color: INK },
 
   saveBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     paddingHorizontal: spacing[5],
     paddingTop: 10,
     paddingBottom: 10,
-    backgroundColor: colors.light.background,
+    backgroundColor: "#FFFFFF",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(200,164,74,0.35)",
+    borderTopColor: "rgba(83,94,44,0.14)",
   },
+  saveSummary: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 },
+  saveSummaryIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  saveSummaryCopy: { flex: 1, minWidth: 0 },
+  saveSummaryTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: INK },
+  saveSummaryHint: { marginTop: 1, fontFamily: fontFamilies.sans.regular, fontSize: 9, color: colors.ink.mute },
   saveButton: {
-    backgroundColor: colors.olive[800],
+    minWidth: 142,
     minHeight: 48,
+    flexDirection: "row",
+    gap: 7,
+    backgroundColor: colors.olive[900],
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 18,
   },
   saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: {
-    color: CREAM,
-    fontSize: typography.fontSizes.base,
-    fontFamily: fontFamilies.sans.semibold,
-  },
+  saveButtonText: { color: CREAM, fontSize: typography.fontSizes.sm, fontFamily: fontFamilies.sans.semibold },
   deleteButton: {
     marginTop: 8,
     minHeight: 44,

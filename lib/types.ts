@@ -174,6 +174,12 @@ export interface Review {
   seller_reply?: string | null;
   seller_replied_at?: string | null;
   user?: Pick<User, "id" | "full_name" | "avatar_url">;
+  product?: {
+    id: string;
+    name: string;
+    slug?: string;
+    images?: { url: string; is_primary?: boolean }[];
+  };
 }
 
 export interface EligibleReviewOrder {

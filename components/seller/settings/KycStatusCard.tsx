@@ -2,11 +2,10 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { PayoutProfileView } from "@/lib/seller-access";
 
-const CREAM = colors.paper.cream;
 const INK = colors.olive[950];
 
 interface Props {
@@ -32,9 +31,12 @@ export function KycStatusCard({ profile, loadError }: Props) {
       accessibilityLabel="Payout settings"
     >
       <View style={styles.header}>
-        <View>
-          <Text style={styles.kicker}>Ledger</Text>
-          <Text style={styles.title}>Payouts</Text>
+        <View style={styles.headerTitle}>
+          <View style={styles.headerIcon}><Ionicons name="wallet-outline" size={17} color={colors.olive[800]} /></View>
+          <View>
+            <Text style={styles.kicker}>LEDGER</Text>
+            <Text style={styles.title}>Payouts</Text>
+          </View>
         </View>
         {profile.kycLabel ? (
           <View style={[styles.pill, { backgroundColor: TONE[profile.kycTone].bg }]}>
@@ -49,6 +51,23 @@ export function KycStatusCard({ profile, loadError }: Props) {
         <Text style={styles.error}>{loadError}</Text>
       ) : (
         <View style={styles.body}>
+          {profile.loaded ? (
+            <View style={styles.progressBlock}>
+              <View style={styles.progressHeader}>
+                <Text style={styles.progressLabel}>Payout setup</Text>
+                <Text style={styles.progressPct}>{setupPct(profile)}%</Text>
+              </View>
+              <View style={styles.progressBg}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${setupPct(profile)}%` },
+                    setupPct(profile) === 100 && styles.progressDone,
+                  ]}
+                />
+              </View>
+            </View>
+          ) : null}
           <Fact label="Method" value={formatMethod(profile.method)} />
           <Fact label="Bank" value={profile.bankSummary} />
           <Fact label="Stripe" value={profile.stripeConnected ? "Connected" : null} />
@@ -62,15 +81,32 @@ export function KycStatusCard({ profile, loadError }: Props) {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>Payout settings</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.olive[700]} />
+        <View style={styles.footerChevron}>
+          <Ionicons name="chevron-forward" size={14} color={colors.olive[700]} />
+        </View>
       </View>
     </TouchableOpacity>
   );
 }
 
+/** Bank wire needs 3 facts on file; other methods just need the method picked. */
+function setupPct(profile: PayoutProfileView): number {
+  if (profile.method === "bank") {
+    return Math.round(((3 - Math.min(profile.missing.length, 3)) / 3) * 100);
+  }
+  return profile.method ? 100 : 0;
+}
+
+const METHOD_LABELS: Record<string, string> = {
+  bank: "Bank wire",
+  upi: "UPI",
+  paypal: "PayPal",
+  stripe_connect: "Stripe Connect",
+};
+
 function formatMethod(method: string | null) {
   if (!method) return null;
-  return method.replace(/_/g, " ");
+  return METHOD_LABELS[method] ?? method.replace(/_/g, " ");
 }
 
 function Fact({ label, value }: { label: string; value: string | null }) {
@@ -86,14 +122,17 @@ function Fact({ label, value }: { label: string; value: string | null }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
     padding: spacing[4],
     gap: spacing[3],
+    ...shadows.soft,
   },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 },
+  headerTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
+  headerIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
@@ -116,6 +155,32 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   body: { gap: 8 },
+  progressBlock: { gap: 6, marginBottom: 2 },
+  progressHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  progressLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+  },
+  progressPct: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: colors.olive[800],
+  },
+  progressBg: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.olive[100],
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: colors.accent2.ochre,
+  },
+  progressDone: { backgroundColor: colors.olive[600] },
   fact: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   factLabel: {
     fontFamily: fontFamilies.mono.medium,
@@ -146,10 +211,29 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.accent2.rust,
   },
-  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: 44 },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    minHeight: 44,
+    marginTop: 2,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(83,94,44,0.12)",
+  },
   footerText: {
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
     color: colors.olive[800],
+  },
+  footerChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

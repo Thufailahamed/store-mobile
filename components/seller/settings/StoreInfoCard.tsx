@@ -1,8 +1,9 @@
 import React from "react";
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { Ionicons, type IonIconName } from "@/components/ui/Icon";
-import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
 
@@ -52,10 +53,11 @@ export function StoreInfoCard({
   onCancel,
   onSave,
 }: Props) {
+  const router = useRouter();
   const monogram = (store.name || "S").trim().charAt(0).toUpperCase();
   const live = store.is_online === true;
   const status = String(store.status ?? "").trim();
-  const rows: Array<{ icon: IonIconName; label: string; value: string | null }> = [
+  const rows: { icon: IonIconName; label: string; value: string | null }[] = [
     { icon: "link-outline", label: "Slug", value: displayValue(store.slug) },
     { icon: "document-text-outline", label: "Description", value: displayValue(store.description) },
     { icon: "call-outline", label: "Phone", value: displayValue(phone) },
@@ -91,6 +93,7 @@ export function StoreInfoCard({
             accessibilityRole="button"
             accessibilityLabel="Edit store details"
           >
+            <Ionicons name="create-outline" size={14} color={colors.olive[800]} />
             <Text style={styles.editBtnText}>Edit</Text>
           </TouchableOpacity>
         ) : null}
@@ -136,20 +139,34 @@ export function StoreInfoCard({
           </View>
         </View>
       ) : (
-        rows.map((r) => (
-          <View key={r.label} style={styles.row}>
-            <Ionicons name={r.icon} size={16} color={colors.olive[700]} />
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>{r.label}</Text>
-              <Text
-                style={[styles.rowValue, !r.value && styles.rowValueEmpty]}
-                numberOfLines={r.label === "Description" ? 3 : 2}
-              >
-                {r.value ?? "Not on file"}
-              </Text>
+        <>
+          {rows.map((r, i) => (
+            <View key={r.label} style={[styles.row, i > 0 && styles.rowBorder]}>
+              <View style={styles.rowIcon}>
+                <Ionicons name={r.icon} size={16} color={colors.olive[800]} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowLabel}>{r.label}</Text>
+                <Text
+                  style={[styles.rowValue, !r.value && styles.rowValueEmpty]}
+                  numberOfLines={r.label === "Description" ? 3 : 2}
+                >
+                  {r.value ?? "Not on file"}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))
+          ))}
+          <TouchableOpacity
+            style={styles.storefrontLink}
+            onPress={() => router.push(`/store/${store.slug || store.id}` as any)}
+            accessibilityRole="button"
+            accessibilityLabel="View public storefront"
+          >
+            <Ionicons name="storefront-outline" size={15} color={colors.olive[800]} />
+            <Text style={styles.storefrontLinkText}>View public storefront</Text>
+            <Ionicons name="arrow-forward" size={13} color={colors.olive[700]} />
+          </TouchableOpacity>
+        </>
       )}
     </View>
   );
@@ -191,19 +208,20 @@ function Field({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
     padding: spacing[4],
-    gap: spacing[3],
+    gap: spacing[4],
+    ...shadows.soft,
   },
   identity: { flexDirection: "row", alignItems: "center", gap: 12 },
-  logo: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.olive[100] },
+  logo: { width: 58, height: 58, borderRadius: 20, backgroundColor: colors.olive[100] },
   monogram: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 58,
+    height: 58,
+    borderRadius: 20,
     backgroundColor: colors.olive[900],
     borderWidth: 1,
     borderColor: GOLD,
@@ -250,13 +268,15 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
   },
   editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     minHeight: 44,
     minWidth: 44,
     paddingHorizontal: 14,
     borderRadius: radii.full,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.18)",
-    alignItems: "center",
     justifyContent: "center",
   },
   editBtnText: {
@@ -264,8 +284,14 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.olive[800],
   },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: spacing[3] },
-  rowText: { flex: 1 },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  rowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(83,94,44,0.1)",
+    paddingTop: 12,
+  },
+  rowIcon: { width: 31, height: 31, borderRadius: 10, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  rowText: { flex: 1, paddingTop: 1 },
   rowLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
@@ -282,6 +308,22 @@ const styles = StyleSheet.create({
   rowValueEmpty: {
     color: colors.light.mutedForeground,
     fontStyle: "italic",
+  },
+  storefrontLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    minHeight: 44,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.22)",
+    backgroundColor: colors.olive[50],
+  },
+  storefrontLinkText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.xs,
+    color: colors.olive[800],
   },
   form: { gap: spacing[3], marginTop: 4 },
   field: { gap: 6 },

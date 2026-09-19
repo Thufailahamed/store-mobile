@@ -95,8 +95,8 @@ describe("getSellerKPIsBackend", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.data.topProducts).toEqual([
-      { id: "p1", name: "Linen Shirt", revenue: 48000 },
-      { id: "p2", name: "Wool Coat", revenue: 32000 },
+      { id: "p1", name: "Linen Shirt", revenue: 48000, units: 0 },
+      { id: "p2", name: "Wool Coat", revenue: 32000, units: 0 },
     ]);
   });
 
@@ -120,7 +120,7 @@ describe("getSellerKPIsBackend", () => {
     const res = await getSellerKPIsBackend();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.data.topProducts).toEqual([{ id: "p9", name: "Real", revenue: 0 }]);
+    expect(res.data.topProducts).toEqual([{ id: "p9", name: "Real", revenue: 0, units: 0 }]);
   });
 
   it("propagates backend failures", async () => {

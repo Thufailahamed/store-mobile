@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Image } from "expo-image";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { getAdminOrders } from "@/lib/api";
@@ -19,6 +20,16 @@ import { Skeleton } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { orderStatusTone } from "@/lib/seller/status-tones";
+import {
+  formatCheckoutPayment,
+  formatPaymentStatus,
+  firstLineItem,
+  countOrderUnits,
+} from "@/lib/orders/seller-list";
+
+const RUST = "#7a2f1a";
+const CREAM = "#f4f2ea";
 
 const STATUS_TABS = [
   { key: "all", label: "All" },
@@ -44,26 +55,11 @@ function formatRelative(dateStr?: string) {
   return d.toLocaleDateString("en-LK", { month: "short", day: "numeric" });
 }
 
-function getStatusStyle(status: string) {
-  switch (status.toLowerCase()) {
-    case "delivered":
-      return { bg: "#ecfdf5", border: "#a7f3d0", text: "#065f46", label: "Delivered" };
-    case "pending":
-      return { bg: "#fffbeb", border: "#fde68a", text: "#92400e", label: "Pending" };
-    case "processing":
-      return { bg: "#f0fdf4", border: "#bbf7d0", text: "#166534", label: "Processing" };
-    case "confirmed":
-      return { bg: "#eff6ff", border: "#bfdbfe", text: "#1e40af", label: "Confirmed" };
-    case "shipped":
-      return { bg: "#faf5ff", border: "#e9d5ff", text: "#6b21a8", label: "Shipped" };
-    case "cancelled":
-      return { bg: "#fef2f2", border: "#fecaca", text: "#991b1b", label: "Cancelled" };
-    case "returned":
-      return { bg: "#fff1f2", border: "#fecdd3", text: "#9f1239", label: "Returned" };
-    default:
-      return { bg: "#f5f3f0", border: "#dfdacd", text: "#716d64", label: status };
-  }
+function statusLabel(status: string) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+const IN_FLIGHT = new Set(["confirmed", "processing", "shipped", "out_for_delivery"]);
 
 export default function AdminOrders() {
   const router = useRouter();
@@ -79,22 +75,40 @@ export default function AdminOrders() {
     refetchInterval: 30_000,
   });
 
-  const orders = (ordersQuery.data ?? []) as Order[];
+  const orders = React.useMemo(
+    () => (ordersQuery.data ?? []) as Order[],
+    [ordersQuery.data],
+  );
+  const isFiltered = status !== "all" || search.trim().length > 0;
+
+  const summary = React.useMemo(() => {
+    const pending = orders.filter((o) => o.status === "pending").length;
+    const inFlight = orders.filter((o) => IN_FLIGHT.has(o.status)).length;
+    const volume = orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+    return { pending, inFlight, volume };
+  }, [orders]);
 
   const renderOrder = ({ item }: { item: Order }) => {
-    const badge = getStatusStyle(item.status);
+    const tone = orderStatusTone(item.status);
     const user = (item as any).user;
     const customerName = user?.full_name ?? user?.email ?? "Direct Customer";
     const customerInitial = customerName.charAt(0).toUpperCase();
     const orderNumber = item.order_number ?? item.id.slice(0, 8).toUpperCase();
-    const itemsCount = (item as any).order_items?.length;
+    const items = (item as any).items ?? (item as any).order_items;
+    const units = countOrderUnits(items) ?? (Array.isArray(items) && items.length > 0 ? items.length : null);
+    const line = firstLineItem(items);
+    const extraUnits = units != null && units > 1 ? units - 1 : 0;
+    const method = formatCheckoutPayment(item.payment_method);
+    const payStatus = formatPaymentStatus(item.payment_status);
+    const codUnpaid = item.payment_method === "cod" && item.payment_status !== "paid";
 
     return (
-      <Pressable
-        onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: item.id } })}
-        style={styles.cardPressable}
-      >
-        <View style={styles.orderCard}>
+      <View style={[styles.orderCard, codUnpaid && styles.orderCardWarn]}>
+        <View style={[styles.statusAccent, { backgroundColor: tone.text }]} />
+        <Pressable
+          onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: item.id } })}
+          style={styles.orderMain}
+        >
           {/* Top Row: Customer Avatar & Status */}
           <View style={styles.orderTop}>
             <View style={styles.customerRow}>
@@ -111,24 +125,47 @@ export default function AdminOrders() {
               </View>
             </View>
 
-            <View style={[styles.statusBadge, { backgroundColor: badge.bg, borderColor: badge.border }]}>
-              <Text style={[styles.statusBadgeText, { color: badge.text }]}>
-                {badge.label}
+            <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
+              <Text style={[styles.statusBadgeText, { color: tone.text }]}>
+                {statusLabel(item.status)}
               </Text>
             </View>
           </View>
 
-          {/* Middle Row: Items summary if available */}
-          {itemsCount ? (
-            <View style={styles.itemsSummaryRow}>
-              <Ionicons name="cube-outline" size={13} color={colors.olive[700]} />
-              <Text style={styles.itemsSummaryText}>
-                {itemsCount} {itemsCount === 1 ? "item" : "items"} in consignment
-              </Text>
+          {/* Middle Row: Product thumbnail & name */}
+          {line || units != null ? (
+            <View style={styles.productRow}>
+              <View style={styles.thumbWrap}>
+                {line?.imageUrl ? (
+                  <Image
+                    source={{ uri: line.imageUrl }}
+                    style={styles.thumb}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbEmpty]}>
+                    <Ionicons name="bag-outline" size={18} color={colors.olive[700]} />
+                  </View>
+                )}
+                {extraUnits > 0 ? (
+                  <View style={styles.thumbBadge}>
+                    <Text style={styles.thumbBadgeText}>+{extraUnits}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.productInfo}>
+                <Text style={styles.itemName} numberOfLines={1}>
+                  {line?.name ?? "Order items"}
+                  {line?.variant ? ` · ${line.variant}` : ""}
+                </Text>
+                <Text style={styles.itemsSummaryText}>
+                  {units ?? 0} {units === 1 ? "item" : "items"} in consignment
+                </Text>
+              </View>
             </View>
           ) : null}
 
-          {/* Bottom Row: Price & Navigation Chevron */}
+          {/* Bottom Row: Price & Payment */}
           <View style={styles.orderBottom}>
             <View style={styles.priceWrap}>
               <Text style={styles.priceLabel}>ORDER TOTAL</Text>
@@ -136,13 +173,27 @@ export default function AdminOrders() {
                 {formatPrice(item.total, item.currency ?? "LKR")}
               </Text>
             </View>
-            <View style={styles.viewRow}>
-              <Text style={styles.viewDetailsText}>View Order</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.olive[800]} />
+            <View style={styles.orderBottomRight}>
+              <View style={[styles.paymentPill, codUnpaid && styles.paymentPillWarn]}>
+                <Ionicons
+                  name={codUnpaid ? "alert-circle-outline" : "checkmark-circle-outline"}
+                  size={12}
+                  color={codUnpaid ? RUST : colors.olive[700]}
+                />
+                <Text
+                  style={[styles.paymentPillText, codUnpaid && styles.paymentPillTextWarn]}
+                  numberOfLines={1}
+                >
+                  {method} · {payStatus}
+                </Text>
+              </View>
+              <View style={styles.chevronCircle}>
+                <Ionicons name="chevron-forward" size={14} color={colors.olive[800]} />
+              </View>
             </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
     );
   };
 
@@ -226,6 +277,48 @@ export default function AdminOrders() {
           })}
         </ScrollView>
       </View>
+
+      {/* Fulfilment summary / filtered results bar */}
+      {!ordersQuery.isLoading && orders.length > 0 ? (
+        isFiltered ? (
+          <View style={styles.resultsBar}>
+            <Text style={styles.resultsText}>
+              {orders.length} {orders.length === 1 ? "order" : "orders"} shown
+            </Text>
+            <Pressable
+              onPress={() => {
+                setSearch("");
+                setStatus("all");
+              }}
+              hitSlop={8}
+              style={styles.resultsClear}
+            >
+              <Text style={styles.resultsClearText}>Clear</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>PENDING</Text>
+              <Text style={[styles.summaryValue, summary.pending > 0 && styles.summaryValueWarn]}>
+                {summary.pending}
+              </Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>IN FLIGHT</Text>
+              <Text style={styles.summaryValue}>{summary.inFlight}</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryCell}>
+              <Text style={styles.summaryLabel}>VISIBLE VOLUME</Text>
+              <Text style={styles.summaryValue} numberOfLines={1}>
+                {formatPrice(summary.volume)}
+              </Text>
+            </View>
+          </View>
+        )
+      ) : null}
 
       {/* Order List / Skeleton / Empty State */}
       {ordersQuery.isLoading ? (
@@ -425,22 +518,103 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.bold,
   },
 
+  /* Summary + results bar */
+  summaryCard: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.olive[900],
+    borderRadius: radii.xl,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    ...shadows.soft,
+  },
+  summaryCell: {
+    flex: 1,
+    gap: 2,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(244,242,234,0.16)",
+    marginHorizontal: 12,
+  },
+  summaryLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 8.5,
+    color: "rgba(244,242,234,0.55)",
+    letterSpacing: 0.9,
+  },
+  summaryValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: CREAM,
+    letterSpacing: -0.3,
+  },
+  summaryValueWarn: {
+    color: colors.accent2.ochre,
+  },
+  resultsBar: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#ffffff",
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: "#e8e3d8",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    ...shadows.soft,
+  },
+  resultsText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.light.foreground,
+  },
+  resultsClear: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.background,
+    borderWidth: 1,
+    borderColor: "#e4dfd3",
+  },
+  resultsClearText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.olive[800],
+  },
+
   /* Order List */
   list: {
     paddingHorizontal: 20,
     paddingBottom: 40,
     gap: 12,
   },
-  cardPressable: {
-    marginBottom: 2,
-  },
   orderCard: {
-    padding: 16,
     backgroundColor: "#ffffff",
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: "#e8e3d8",
+    overflow: "hidden",
     ...shadows.soft,
+  },
+  orderCardWarn: {
+    borderColor: "rgba(184,92,58,0.45)",
+  },
+  statusAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
+  orderMain: {
+    padding: 16,
+    paddingLeft: 18,
   },
   orderTop: {
     flexDirection: "row",
@@ -455,9 +629,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatarCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.olive[100],
     alignItems: "center",
     justifyContent: "center",
@@ -484,48 +658,91 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
   },
   statusBadgeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
     textTransform: "uppercase",
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
   },
 
-  itemsSummaryRow: {
+  productRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 10,
     marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#f4f1ea",
+  },
+  thumbWrap: {
+    position: "relative",
+  },
+  thumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+  },
+  thumbEmpty: {
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: colors.olive[800],
+    borderWidth: 1.5,
+    borderColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbBadgeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: CREAM,
+  },
+  productInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  itemName: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.light.foreground,
   },
   itemsSummaryText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.olive[800],
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
   },
 
   orderBottom: {
     marginTop: 12,
     paddingTop: 10,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#f0ece3",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
   },
   priceWrap: {
     gap: 2,
   },
   priceLabel: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 8.5,
     color: colors.olive[700],
     letterSpacing: 1,
   },
@@ -535,19 +752,42 @@ const styles = StyleSheet.create({
     color: colors.olive[900],
     letterSpacing: -0.3,
   },
-  viewRow: {
+  orderBottomRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 1,
+  },
+  paymentPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: radii.md,
-    backgroundColor: "#f8f6f0",
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    flexShrink: 1,
   },
-  viewDetailsText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.olive[900],
+  paymentPillWarn: {
+    backgroundColor: "rgba(184,92,58,0.12)",
+  },
+  paymentPillText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10.5,
+    color: colors.olive[800],
+  },
+  paymentPillTextWarn: {
+    color: RUST,
+  },
+  chevronCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f8f6f0",
+    borderWidth: 1,
+    borderColor: "#e4dfd3",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* Skeletons */

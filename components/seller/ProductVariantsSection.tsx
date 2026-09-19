@@ -61,10 +61,15 @@ export function ProductVariantsSection({ variants, basePrice, onChange }: Props)
   return (
     <View style={styles.section}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.kicker}>Stock room</Text>
-          <Text style={styles.title}>Variants</Text>
-          <Text style={styles.subtitle}>Size, colour, SKU, and quantity</Text>
+        <View style={styles.headerTitleRow}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="git-branch-outline" size={17} color={colors.olive[800]} />
+          </View>
+          <View>
+            <Text style={styles.kicker}>STOCK ROOM</Text>
+            <Text style={styles.title}>Variants</Text>
+            <Text style={styles.subtitle}>{variants.length} variant{variants.length === 1 ? "" : "s"} · size, colour and stock</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={addVariant} activeOpacity={0.85}>
           <Ionicons name="add" size={16} color={colors.paper.cream} />
@@ -208,38 +213,25 @@ const CREAM = colors.paper.cream;
 const INK = colors.olive[950];
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 22 },
+  section: { marginBottom: 16, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, padding: 16 },
   header: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
-    gap: 12,
+    marginBottom: 16,
+    gap: 10,
   },
-  kicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
-    textTransform: "uppercase",
-    color: colors.olive[700],
-  },
-  title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: INK,
-  },
-  subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
+  headerTitleRow: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 },
+  headerIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  kicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.1, color: colors.olive[600] },
+  title: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK, marginTop: 2 },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2 },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.olive[800],
-    paddingHorizontal: 14,
+    backgroundColor: colors.olive[900],
+    paddingHorizontal: 12,
     minHeight: 36,
     borderRadius: radii.full,
   },
@@ -249,11 +241,11 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.semibold,
   },
   card: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FAF9F5",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    borderRadius: radii.xl,
-    padding: 14,
+    borderRadius: 17,
+    padding: 13,
     marginBottom: 10,
   },
   cardHeader: {
@@ -278,12 +270,12 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   input: {
-    backgroundColor: colors.light.background,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
-    borderRadius: radii.lg,
+    borderRadius: 13,
     paddingHorizontal: 12,
-    minHeight: 44,
+    minHeight: 46,
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.regular,
     color: INK,

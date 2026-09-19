@@ -26,7 +26,6 @@ import {
 import {
   Card,
   ListRow,
-  EmptyState,
   StatusDot,
   ProgressBar,
   Skeleton,
@@ -250,10 +249,13 @@ export default function AdminOverview() {
       ) : (
         <Card style={styles.heroDeck}>
           <View style={styles.heroTop}>
-            <Text style={styles.heroEyebrow}>MARKETPLACE VOLUME</Text>
+            <View style={styles.heroIconWrap}>
+              <Ionicons name="bar-chart-outline" size={15} color={colors.accent2.ochre} />
+            </View>
+            <Text style={styles.heroEyebrow}>Marketplace volume</Text>
             <View style={styles.heroBadge}>
-              <Ionicons name="trending-up" size={12} color={colors.olive[700]} />
-              <Text style={styles.heroBadgeText}>GROSS REVENUE</Text>
+              <Ionicons name="trending-up" size={12} color={colors.olive[800]} />
+              <Text style={styles.heroBadgeText}>GROSS</Text>
             </View>
           </View>
 
@@ -308,7 +310,7 @@ export default function AdminOverview() {
             </Pressable>
           ) : (
             <View style={styles.nominalBanner}>
-              <Ionicons name="checkmark-circle-outline" size={14} color={colors.olive[700]} />
+              <Ionicons name="checkmark-circle-outline" size={14} color={colors.accent2.ochre} />
               <Text style={styles.nominalBannerText}>All submission queues nominal · 0 pending</Text>
             </View>
           )}
@@ -334,10 +336,14 @@ export default function AdminOverview() {
             <Text style={styles.emptySub}>All submissions have been approved or handled.</Text>
           </View>
         ) : (
-          merged.map((row, i) => (
+          merged.map((row) => (
             <ListRow
               key={`${row.kind}-${row.id}`}
-              index={i + 1}
+              leftIcon={
+                <View style={[styles.queueIcon, { backgroundColor: kindBg(row.kind) }]}>
+                  <Ionicons name={kindIcon(row.kind)} size={15} color={kindFg(row.kind)} />
+                </View>
+              }
               title={row.name}
               subtitle={`${row.kind} · Submitted ${formatRelative(row.created_at)}`}
               right={
@@ -615,6 +621,30 @@ function HubTile({
   );
 }
 
+function kindIcon(kind: string): keyof typeof Ionicons.glyphMap {
+  switch (kind) {
+    case "Store": return "storefront-outline";
+    case "Brand": return "ribbon-outline";
+    default: return "cube-outline";
+  }
+}
+
+function kindBg(kind: string) {
+  switch (kind) {
+    case "Store": return "#dde4d6";
+    case "Brand": return "#fdf3d7";
+    default: return "#fbe5dc";
+  }
+}
+
+function kindFg(kind: string) {
+  switch (kind) {
+    case "Store": return colors.olive[800];
+    case "Brand": return "#7a5b1a";
+    default: return "#7a2f1a";
+  }
+}
+
 function pillBg(tone: string) {
   switch (tone) {
     case "success": return "#dce8c4";
@@ -748,33 +778,41 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
     padding: 20,
-    backgroundColor: colors.light.card,
+    backgroundColor: colors.olive[900],
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: colors.olive[800],
     ...shadows.soft,
   },
   heroTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
+  },
+  heroIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   heroEyebrow: {
+    flex: 1,
     fontFamily: fontFamilies.mono.medium,
     fontSize: 9,
-    color: colors.light.mutedForeground,
+    color: "rgba(244,242,234,0.62)",
     letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.olive[50],
+    backgroundColor: colors.accent2.ochre,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.olive[200],
   },
   heroBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
@@ -785,14 +823,14 @@ const styles = StyleSheet.create({
   heroMainValue: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 34,
-    color: colors.light.foreground,
+    color: colors.paper.cream,
     letterSpacing: -0.8,
-    marginTop: 8,
+    marginTop: 10,
   },
   heroSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
-    color: colors.light.mutedForeground,
+    color: "rgba(244,242,234,0.62)",
     marginTop: 2,
   },
   heroTripleRow: {
@@ -800,7 +838,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingTop: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
+    borderTopColor: "rgba(244,242,234,0.14)",
   },
   tripleCol: {
     flex: 1,
@@ -808,31 +846,31 @@ const styles = StyleSheet.create({
   tripleDivider: {
     width: 1,
     height: 36,
-    backgroundColor: colors.light.border,
+    backgroundColor: "rgba(244,242,234,0.14)",
     marginHorizontal: 10,
     alignSelf: "center",
   },
   tripleLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 8.5,
-    color: colors.light.mutedForeground,
+    color: "rgba(244,242,234,0.5)",
     letterSpacing: 0.8,
   },
   tripleValue: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 16,
-    color: colors.light.foreground,
+    color: colors.paper.cream,
     marginTop: 2,
   },
   tripleTotal: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
-    color: colors.light.mutedForeground,
+    color: "rgba(244,242,234,0.5)",
   },
   tripleSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 10,
-    color: colors.light.mutedForeground,
+    color: "rgba(244,242,234,0.5)",
     marginTop: 1,
   },
   actionBanner: {
@@ -873,7 +911,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: colors.olive[50],
+    backgroundColor: "rgba(255,255,255,0.08)",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radii.lg,
@@ -882,7 +920,7 @@ const styles = StyleSheet.create({
   nominalBannerText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 11,
-    color: colors.olive[800],
+    color: "rgba(244,242,234,0.78)",
   },
 
   /* ── 3. Section Cards ───────────────────────── */
@@ -935,6 +973,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.light.mutedForeground,
     textAlign: "center",
+  },
+  queueIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
   queueActions: {
     flexDirection: "row",

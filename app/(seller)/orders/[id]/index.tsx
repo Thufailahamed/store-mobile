@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
+import { Ionicons } from "@/components/ui/Icon";
 import { getSellerStore, getSellerOrderById, transitionOrderStatus, cancelOrder } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
 import { canSellerCancelOrder } from "@/lib/order-lifecycle";
@@ -25,12 +26,7 @@ import { CUSTOMER_STATUS_STEPS, getSellerNextStatus } from "@/lib/order-lifecycl
 import { formatCheckoutPayment, formatOrderStatusLabel, formatPaymentStatus } from "@/lib/orders/seller-list";
 import { orderStatusTone } from "@/lib/seller/status-tones";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import {
-  SellerStickyBar,
-  SellerPrimaryButton,
-  SellerGhostButton,
-  SellerStatusPill,
-} from "@/components/seller/chrome";
+import { SellerStatusPill } from "@/components/seller/chrome";
 import { Skeleton, SkeletonListRow } from "@/components/ui/Skeleton";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -234,6 +230,7 @@ export default function SellerOrderDetail() {
   // track, so a step bar with nothing highlighted would just look broken.
   const isTerminal = statusIndex < 0;
   const completedCount = statusIndex >= 0 ? statusIndex : 0;
+  const progressPct = statusIndex >= 0 ? Math.round(((statusIndex + 1) / STATUSES.length) * 100) : 0;
   const nextOnTrack =
     statusIndex >= 0 && statusIndex < STATUSES.length - 1
       ? STATUSES[statusIndex + 1]
@@ -251,14 +248,13 @@ export default function SellerOrderDetail() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />
       }
     >
-      {/* Header */}
       <View style={styles.header}>
         <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.orderNumber}>{order.order_number}</Text>
-            <Text style={styles.orderDate}>{formatDate(order.placed_at)}</Text>
-          </View>
+      </View>
+
+      <View style={styles.orderHero}>
+        <View style={styles.heroTopRow}>
+          <Text style={styles.heroEyebrow}>ORDER DETAILS</Text>
           <SellerStatusPill
             label={formatOrderStatusLabel(order.status)}
             bg={sc.bg}
@@ -266,67 +262,60 @@ export default function SellerOrderDetail() {
             dotted={order.status === "pending" || order.status === "processing"}
           />
         </View>
+        <Text style={styles.orderNumber} numberOfLines={1}>{order.order_number}</Text>
+        <Text style={styles.orderDate}>{formatDate(order.placed_at)}</Text>
+        <View style={styles.heroDivider} />
+        <View style={styles.heroFooter}>
+          <View>
+            <Text style={styles.heroMetaLabel}>ORDER TOTAL</Text>
+            <Text style={styles.heroTotal}>{formatPrice(order.total)}</Text>
+          </View>
+          <View style={styles.heroPayment}>
+            <Ionicons name={order.payment_status === "paid" ? "checkmark-circle-outline" : "time-outline"} size={14} color="#E8CF8F" />
+            <View>
+              <Text style={styles.heroPaymentMethod}>{formatCheckoutPayment(order.payment_method)}</Text>
+              <Text style={styles.heroPaymentStatus}>{formatPaymentStatus(order.payment_status)}</Text>
+            </View>
+          </View>
+        </View>
       </View>
 
-      {/* Compact vertical stepper — current + next only */}
       {isTerminal ? (
         <View style={[styles.terminalNotice, { backgroundColor: sc.bg }]}>
-          <Text style={[styles.terminalNoticeText, { color: sc.text }]}>
-            This order is {formatOrderStatusLabel(order.status).toLowerCase()} — fulfilment has
-            stopped.
-          </Text>
+          <Ionicons name="information-circle-outline" size={17} color={sc.text} />
+          <Text style={[styles.terminalNoticeText, { color: sc.text }]}>This order is {formatOrderStatusLabel(order.status).toLowerCase()} and fulfilment has stopped.</Text>
         </View>
       ) : (
         <View style={styles.stepperCard}>
-          <Text style={styles.stepperMeta}>
-            {completedCount} of {STATUSES.length} steps complete
-          </Text>
-          <View style={styles.stepperRow}>
-            <View style={styles.stepperRail}>
-              <View style={[styles.stepDot, styles.stepDotCurrent]} />
-              {nextOnTrack ? <View style={styles.stepConnector} /> : null}
-              {nextOnTrack ? <View style={styles.stepDot} /> : null}
+          <View style={styles.progressHeader}>
+            <View>
+              <Text style={styles.stepperMeta}>FULFILLMENT PROGRESS</Text>
+              <Text style={styles.progressTitle}>{completedCount + 1} of {STATUSES.length} steps</Text>
             </View>
-            <View style={styles.stepperLabels}>
-              <View style={styles.stepLabelBlock}>
-                <Text style={styles.stepLabelKicker}>Current</Text>
-                <Text style={styles.stepLabelCurrent}>
-                  {formatOrderStatusLabel(order.status)}
-                </Text>
+            <Text style={styles.progressPercent}>{progressPct}%</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+          </View>
+          <View style={styles.stepperLabels}>
+            <View style={styles.stepLabelBlock}>
+              <View style={styles.currentDot} />
+              <View>
+                <Text style={styles.stepLabelKicker}>CURRENT</Text>
+                <Text style={styles.stepLabelCurrent}>{formatOrderStatusLabel(order.status)}</Text>
               </View>
-              {nextOnTrack ? (
-                <View style={styles.stepLabelBlock}>
-                  <Text style={styles.stepLabelKicker}>Next</Text>
-                  <Text style={styles.stepLabelNext}>
-                    {formatOrderStatusLabel(nextOnTrack)}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.stepLabelBlock}>
-                  <Text style={styles.stepLabelKicker}>Next</Text>
-                  <Text style={styles.stepLabelNext}>Fulfilment complete</Text>
-                </View>
-              )}
+            </View>
+            <Ionicons name="arrow-forward" size={16} color={colors.ink.mute} />
+            <View style={[styles.stepLabelBlock, styles.nextLabelBlock]}>
+              <View style={styles.nextDot} />
+              <View>
+                <Text style={styles.stepLabelKicker}>NEXT</Text>
+                <Text style={styles.stepLabelNext}>{nextOnTrack ? formatOrderStatusLabel(nextOnTrack) : "Complete"}</Text>
+              </View>
             </View>
           </View>
         </View>
       )}
-
-      {/* Status Banner */}
-      <View style={styles.banner}>
-        <View style={styles.bannerRow}>
-          <View>
-            <Text style={styles.bannerStatus}>{formatOrderStatusLabel(order.status)}</Text>
-            <Text style={styles.bannerPayment}>
-              {formatPaymentStatus(order.payment_status)}
-            </Text>
-          </View>
-          <View style={styles.bannerRight}>
-            <Text style={styles.bannerTotal}>{formatPrice(order.total)}</Text>
-            <Text style={styles.bannerMethod}>{formatCheckoutPayment(order.payment_method)}</Text>
-          </View>
-        </View>
-      </View>
 
       {/* COD collect reminder */}
       {order.payment_method === "cod" && order.payment_status !== "paid" ? (
@@ -336,31 +325,42 @@ export default function SellerOrderDetail() {
         </View>
       ) : null}
 
-      {/* Items */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Items ({itemsCount})</Text>
-        {order.items?.map((item) => (
-          <View key={item.id} style={styles.itemCard}>
-            {item.image_url ? (
-              <Image source={{ uri: item.image_url }} style={styles.itemThumb} contentFit="cover" />
-            ) : (
-              <View style={[styles.itemThumb, styles.itemThumbEmpty]} />
-            )}
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName} numberOfLines={1}>{item.product_name}</Text>
-              {item.variant_label && (
-                <Text style={styles.itemVariant}>{item.variant_label}</Text>
-              )}
-              <Text style={styles.itemQty}>Qty: {item.quantity}</Text>
-            </View>
-            <Text style={styles.itemPrice}>{formatPrice(item.total)}</Text>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionIcon}><Ionicons name="bag-handle-outline" size={17} color={colors.olive[800]} /></View>
+          <View>
+            <Text style={styles.sectionEyebrow}>ORDER CONTENTS</Text>
+            <Text style={styles.sectionTitle}>Items</Text>
           </View>
-        ))}
+          <View style={styles.sectionCount}><Text style={styles.sectionCountText}>{itemsCount}</Text></View>
+        </View>
+        <View style={styles.itemsCard}>
+          {order.items?.map((item, index) => (
+            <View key={item.id} style={[styles.itemCard, index === (order.items?.length ?? 0) - 1 && styles.itemCardLast]}>
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.itemThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.itemThumb, styles.itemThumbEmpty]}><Ionicons name="image-outline" size={19} color={colors.ink.mute} /></View>
+              )}
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName} numberOfLines={2}>{item.product_name}</Text>
+                {item.variant_label ? <Text style={styles.itemVariant}>{item.variant_label}</Text> : null}
+                <View style={styles.qtyPill}><Text style={styles.itemQty}>Qty {item.quantity}</Text></View>
+              </View>
+              <View style={styles.itemPriceWrap}>
+                <Text style={styles.itemPrice}>{formatPrice(item.total)}</Text>
+                <Text style={styles.itemUnitPrice}>{formatPrice(item.total / Math.max(1, item.quantity))} each</Text>
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
 
-      {/* Summary */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Price breakdown</Text>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionIcon}><Ionicons name="receipt-outline" size={17} color={colors.olive[800]} /></View>
+          <View><Text style={styles.sectionEyebrow}>PAYMENT</Text><Text style={styles.sectionTitle}>Price breakdown</Text></View>
+        </View>
         <View style={styles.summaryCard}>
           <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
           <SummaryRow label="Shipping" value={formatPrice(order.shipping_fee)} />
@@ -371,10 +371,12 @@ export default function SellerOrderDetail() {
         </View>
       </View>
 
-      {/* Shipping Address */}
       {ship && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Shipping Address</Text>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}><Ionicons name="location-outline" size={17} color={colors.olive[800]} /></View>
+            <View><Text style={styles.sectionEyebrow}>DELIVERY</Text><Text style={styles.sectionTitle}>Shipping address</Text></View>
+          </View>
           <View style={styles.addressCard}>
             <Text style={styles.addressName}>{ship.full_name}</Text>
             <Text style={styles.addressPhone}>{ship.phone}</Text>
@@ -388,10 +390,12 @@ export default function SellerOrderDetail() {
         </View>
       )}
 
-      {/* Notes */}
       {order.notes && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notes</Text>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}><Ionicons name="document-text-outline" size={17} color={colors.olive[800]} /></View>
+            <View><Text style={styles.sectionEyebrow}>CUSTOMER</Text><Text style={styles.sectionTitle}>Order notes</Text></View>
+          </View>
           <View style={styles.notesCard}>
             <Text style={styles.notesText}>{order.notes}</Text>
           </View>
@@ -446,45 +450,33 @@ export default function SellerOrderDetail() {
         </View>
       </KeyboardAvoidingView>
     </Modal>
-    {(nextStatus || canRefund || canSellerCancelOrder(order.status)) && (
-      <SellerStickyBar>
+    {(nextStatus || canRefund || canSellerCancelOrder(order.status)) ? (
+      <View style={styles.actionBar}>
         {canSellerCancelOrder(order.status) ? (
-          <SellerGhostButton
-            label={updating ? "Working…" : "Cancel"}
-            onPress={handleCancel}
-            disabled={updating}
-            danger
-            style={{ minWidth: 96 }}
-          />
+          <TouchableOpacity style={styles.dangerAction} onPress={handleCancel} disabled={updating} accessibilityLabel="Cancel order">
+            <Ionicons name="close-circle-outline" size={16} color={colors.accent2.rust} />
+            <Text style={styles.dangerActionText}>Cancel</Text>
+          </TouchableOpacity>
         ) : null}
-        {canRefund && !nextStatus ? (
-          <SellerGhostButton
-            label={updating ? "Working…" : "Refund order"}
-            onPress={openRefundDialog}
-            disabled={updating}
-            danger
-            style={{ flex: 1 }}
-          />
-        ) : null}
-        {canRefund && nextStatus ? (
-          <SellerGhostButton
-            label="Refund"
-            onPress={openRefundDialog}
-            disabled={updating}
-            danger
-            style={{ minWidth: 96 }}
-          />
+        {canRefund ? (
+          <TouchableOpacity style={styles.dangerAction} onPress={openRefundDialog} disabled={updating} accessibilityLabel="Refund order">
+            <Ionicons name="return-down-back-outline" size={16} color={colors.accent2.rust} />
+            <Text style={styles.dangerActionText}>Refund</Text>
+          </TouchableOpacity>
         ) : null}
         {nextStatus ? (
-          <SellerPrimaryButton
-            label={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+          <TouchableOpacity
+            style={[styles.primaryAction, updating && styles.actionDisabled]}
             onPress={() => handleTransition(nextStatus)}
             disabled={updating}
-            loading={updating}
-          />
+            accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+          >
+            <Text style={styles.primaryActionText}>{updating ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus)}`}</Text>
+            <Ionicons name="arrow-forward" size={16} color={CREAM} />
+          </TouchableOpacity>
         ) : null}
-      </SellerStickyBar>
-    )}
+      </View>
+    ) : null}
     </SafeAreaView>
   );
 }
@@ -568,111 +560,38 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
 
-  terminalNotice: {
-    padding: 14,
-    borderRadius: radii.lg,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.08)",
-  },
-  terminalNoticeText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
-    lineHeight: 20,
-  },
+  terminalNotice: { flexDirection: "row", alignItems: "flex-start", gap: 9, padding: 14, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: "rgba(83,94,44,0.08)" },
+  terminalNoticeText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 12, lineHeight: 18 },
 
-  header: { marginBottom: 16 },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginTop: 4,
-  },
-  orderNumber: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 22,
-    color: INK,
-    letterSpacing: -0.3,
-  },
-  orderDate: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-  },
-  statusText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    textTransform: "capitalize",
-  },
+  header: { marginBottom: 12 },
+  orderHero: { backgroundColor: "#1A1915", borderRadius: 24, padding: 18, marginBottom: 14 },
+  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  heroEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: "#AAA396" },
+  orderNumber: { marginTop: 13, fontFamily: fontFamilies.mono.semibold, fontSize: 22, color: "#FAF8F1", letterSpacing: -0.3 },
+  orderDate: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "#AAA396", marginTop: 5 },
+  heroDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.14)", marginVertical: 15 },
+  heroFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  heroMetaLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 7, letterSpacing: 1, color: "#AAA396" },
+  heroTotal: { marginTop: 3, fontFamily: fontFamilies.display.semibold, fontSize: 25, color: "#FAF8F1" },
+  heroPayment: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(200,164,74,0.12)" },
+  heroPaymentMethod: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: "#E8CF8F" },
+  heroPaymentStatus: { marginTop: 1, fontFamily: fontFamilies.sans.regular, fontSize: 8, color: "#AAA396" },
 
-  stepperCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: 16,
-    marginBottom: 16,
-  },
-  stepperMeta: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[700],
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-    marginBottom: 14,
-  },
-  stepperRow: { flexDirection: "row", gap: 14 },
-  stepperRail: { alignItems: "center", width: 16, paddingTop: 4 },
-  stepDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "rgba(83,94,44,0.18)",
-    borderWidth: 1.5,
-    borderColor: "rgba(83,94,44,0.22)",
-  },
-  stepDotCurrent: {
-    backgroundColor: colors.olive[700],
-    borderColor: colors.olive[700],
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-  },
-  stepConnector: {
-    width: 2,
-    flex: 1,
-    minHeight: 28,
-    backgroundColor: "rgba(83,94,44,0.18)",
-    marginVertical: 4,
-  },
-  stepperLabels: { flex: 1, gap: 18 },
-  stepLabelBlock: { minHeight: 36, justifyContent: "center" },
-  stepLabelKicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    color: colors.olive[700],
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  stepLabelCurrent: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.base,
-    color: INK,
-    textTransform: "capitalize",
-  },
-  stepLabelNext: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    textTransform: "capitalize",
-  },
+  stepperCard: { backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", padding: 16, marginBottom: 16 },
+  progressHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  stepperMeta: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, color: colors.olive[600], letterSpacing: 1.1 },
+  progressTitle: { marginTop: 3, fontFamily: fontFamilies.display.semibold, fontSize: 17, color: INK },
+  progressPercent: { fontFamily: fontFamilies.mono.semibold, fontSize: 12, color: colors.olive[700] },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: colors.olive[50], overflow: "hidden", marginVertical: 15 },
+  progressFill: { height: "100%", borderRadius: 3, backgroundColor: colors.olive[700] },
+  stepperLabels: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  stepLabelBlock: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  nextLabelBlock: { justifyContent: "flex-end" },
+  currentDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.olive[700] },
+  nextDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.olive[100], borderWidth: 1, borderColor: colors.olive[300] },
+  stepLabelKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 7, color: colors.ink.mute, letterSpacing: 0.8, marginBottom: 2 },
+  stepLabelCurrent: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: INK },
+  stepLabelNext: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.light.mutedForeground },
 
   banner: {
     backgroundColor: CREAM,
@@ -814,26 +733,21 @@ const styles = StyleSheet.create({
   },
 
   section: { marginBottom: 20 },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.lg,
-    color: INK,
-    marginBottom: 10,
-  },
-
-  itemCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: 12,
-    marginBottom: 8,
-  },
-  itemThumb: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.olive[50] },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 11 },
+  sectionIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.1, color: colors.olive[600], marginBottom: 2 },
+  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: INK },
+  sectionCount: { marginLeft: "auto", minWidth: 28, height: 28, borderRadius: 14, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center", paddingHorizontal: 7 },
+  sectionCountText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: CREAM },
+  itemsCard: { backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", overflow: "hidden" },
+  itemCard: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(83,94,44,0.12)" },
+  itemCardLast: { borderBottomWidth: 0 },
+  itemThumb: { width: 58, height: 58, borderRadius: 15, backgroundColor: colors.olive[50] },
   itemThumbEmpty: { alignItems: "center", justifyContent: "center" },
+  itemInfo: { flex: 1, minWidth: 0 },
+  qtyPill: { alignSelf: "flex-start", marginTop: 5, borderRadius: radii.full, backgroundColor: colors.olive[50], paddingHorizontal: 7, paddingVertical: 3 },
+  itemPriceWrap: { alignItems: "flex-end", gap: 3 },
+  itemUnitPrice: { fontFamily: fontFamilies.sans.regular, fontSize: 8, color: colors.ink.mute },
   codBanner: {
     backgroundColor: "rgba(184,92,58,0.08)",
     borderWidth: 1,
@@ -879,16 +793,16 @@ const styles = StyleSheet.create({
   },
 
   summaryCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    padding: 14,
+    padding: 16,
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
   summaryLabel: {
     fontFamily: fontFamilies.sans.regular,
@@ -909,11 +823,11 @@ const styles = StyleSheet.create({
   },
 
   addressCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    padding: 14,
+    padding: 16,
   },
   addressName: {
     fontFamily: fontFamilies.sans.semibold,
@@ -934,11 +848,11 @@ const styles = StyleSheet.create({
   },
 
   notesCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    padding: 14,
+    padding: 16,
   },
   notesText: {
     fontFamily: fontFamilies.sans.regular,
@@ -946,4 +860,10 @@ const styles = StyleSheet.create({
     color: INK,
     lineHeight: 20,
   },
+  actionBar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: "#FFFFFF", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.14)" },
+  dangerAction: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 12, borderRadius: radii.full, borderWidth: 1, borderColor: "rgba(184,92,58,0.28)", backgroundColor: "rgba(184,92,58,0.05)" },
+  dangerActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: colors.accent2.rust },
+  primaryAction: { flex: 1, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: radii.full, backgroundColor: colors.olive[900], paddingHorizontal: 16 },
+  primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: CREAM },
+  actionDisabled: { opacity: 0.6 },
 });

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet, TextInput, FlatList } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Image } from "expo-image";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import {
   getAdminProducts,
@@ -11,10 +12,51 @@ import {
   approveBrand,
   approveProduct,
 } from "@/lib/api";
-import { Card, EmptyState, Skeleton, Badge } from "@/components/ui";
+import { EmptyState, Skeleton } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, resolveImageUrl } from "@/lib/utils";
+
+const RUST = "#7a2f1a";
+const GOLD = "#8a6a2a";
+
+const STATUS_TONES: Record<string, { bg: string; text: string }> = {
+  active: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
+  approved: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
+  live: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
+  pending: { bg: "rgba(200,164,74,0.20)", text: GOLD },
+  draft: { bg: colors.light.muted, text: colors.light.mutedForeground },
+  archived: { bg: colors.light.muted, text: colors.light.mutedForeground },
+  inactive: { bg: colors.light.muted, text: colors.light.mutedForeground },
+  off: { bg: colors.light.muted, text: colors.light.mutedForeground },
+  rejected: { bg: "rgba(184,92,58,0.14)", text: RUST },
+};
+
+function StatusPill({ status }: { status: string }) {
+  const tone = STATUS_TONES[status] ?? STATUS_TONES.draft;
+  return (
+    <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
+      <Text style={[styles.statusPillText, { color: tone.text }]}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Text>
+    </View>
+  );
+}
+
+function primaryImage(images: any): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const primary = images.find((i: any) => i?.is_primary) ?? images[0];
+  const url = primary?.url;
+  return typeof url === "string" && url ? resolveImageUrl(url) || url : null;
+}
+
+function Chevron() {
+  return (
+    <View style={styles.chevronCircle}>
+      <Ionicons name="chevron-forward" size={13} color={colors.olive[800]} />
+    </View>
+  );
+}
 
 const TABS = [
   { key: "products", label: "Products", icon: "cube-outline" as const },
@@ -27,7 +69,6 @@ const PRODUCT_TABS = ["all", "active", "pending", "draft", "archived"];
 const BRAND_TABS = ["all", "approved", "pending", "rejected"];
 
 export default function CatalogueHub() {
-  const router = useRouter();
   const qc = useQueryClient();
   const [tab, setTab] = useState("products");
   const [search, setSearch] = useState("");
@@ -143,10 +184,12 @@ function ProductsList({ search, status, sub, setSub, statusTabs, onApprove, onRe
     queryKey: ["cat-products", status, search],
     queryFn: async () => {
       const r = await getAdminProducts({ status, search, limit: 100 });
-      return r.ok ? r.data : { products: [], total: 0 };
+      if (r.ok) return { products: r.data.products, total: r.data.total, error: null as string | null };
+      return { products: [], total: 0, error: r.error ?? "Failed to load products" };
     },
   });
   const products = q.data?.products ?? [];
+  const loadError = q.data?.error ?? null;
 
   return (
     <FlatList
@@ -154,58 +197,93 @@ function ProductsList({ search, status, sub, setSub, statusTabs, onApprove, onRe
       keyExtractor={(p: any) => p.id}
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
-      ListHeaderComponent={<SubFilters tabs={statusTabs} sub={sub} setSub={setSub} />}
+      ListHeaderComponent={
+        <View>
+          <SubFilters tabs={statusTabs} sub={sub} setSub={setSub} />
+          <Text style={styles.listCount}>
+            {q.data?.total ?? products.length} {(q.data?.total ?? products.length) === 1 ? "product" : "products"}
+          </Text>
+        </View>
+      }
       ListEmptyComponent={
         q.isLoading ? (
           <View style={{ gap: 10 }}>
             <Skeleton height={70} style={{ borderRadius: radii.xl }} />
             <Skeleton height={70} style={{ borderRadius: radii.xl }} />
           </View>
+        ) : loadError ? (
+          <EmptyState
+            icon="cloud-offline-outline"
+            title="Couldn't load products"
+            description={loadError}
+          />
         ) : (
           <EmptyState icon="cube-outline" title="No products found" description="No products match your current search or status filter." />
         )
       }
-      renderItem={({ item, index }: any) => (
-        <Pressable
-          onPress={() => router.push({ pathname: "/(admin)/products/[id]", params: { id: item.id } } as any)}
-          style={{ marginBottom: 2 }}
-        >
-          <Card style={styles.itemCard}>
-            <View style={styles.itemRow}>
-              <View style={styles.productAvatar}>
-                <Ionicons name="cube-outline" size={16} color={colors.olive[700]} />
-              </View>
-              <View style={{ flex: 1 }}>
+      renderItem={({ item }: any) => {
+        const img = primaryImage(item.images);
+        const pending = item.status === "pending";
+        const hasDiscount = Number(item.mrp ?? 0) > Number(item.price ?? 0);
+        const subMeta = [
+          item.category?.name,
+          item.total_sales ? `${item.total_sales} sold` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <View style={[styles.itemCard, pending && styles.itemCardPending]}>
+            {pending ? <View style={styles.pendingAccent} /> : null}
+            <Pressable
+              onPress={() => router.push({ pathname: "/(admin)/products/[id]", params: { id: item.id } } as any)}
+              style={styles.itemRow}
+            >
+              {img ? (
+                <Image source={{ uri: img }} style={styles.productThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.productThumb, styles.productAvatar]}>
+                  <Ionicons name="cube-outline" size={18} color={colors.olive[700]} />
+                </View>
+              )}
+              <View style={{ flex: 1, gap: 3 }}>
                 <Text style={styles.itemName} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <Text style={styles.itemMeta}>
-                  {item.store?.name ?? "Independent Atelier"} {item.brand?.name ? `· ${item.brand.name}` : ""}
+                <Text style={styles.itemMeta} numberOfLines={1}>
+                  {item.store?.name ?? "Independent Atelier"}
+                  {item.brand?.name ? ` · ${item.brand.name}` : ""}
                 </Text>
+                {subMeta ? (
+                  <Text style={styles.itemStock} numberOfLines={1}>
+                    {subMeta}
+                  </Text>
+                ) : null}
               </View>
               <View style={{ alignItems: "flex-end", gap: 3 }}>
-                <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
-                <Badge variant={item.status === "active" ? "default" : item.status === "pending" ? "secondary" : "outline"}>
-                  {item.status}
-                </Badge>
+                {hasDiscount ? (
+                  <Text style={styles.itemMrp}>{formatPrice(item.mrp, item.currency)}</Text>
+                ) : null}
+                <Text style={styles.itemPrice}>{formatPrice(item.price, item.currency)}</Text>
+                <StatusPill status={item.status} />
               </View>
-            </View>
+              <Chevron />
+            </Pressable>
 
-            {item.status === "pending" && (
+            {pending ? (
               <View style={styles.itemActions}>
                 <Pressable onPress={() => onApprove(item.id)} style={[styles.btn, styles.btnApprove]}>
                   <Ionicons name="checkmark" size={13} color="#fff" />
-                  <Text style={styles.btnApproveText}>Approve</Text>
+                  <Text style={styles.btnApproveText}>Approve listing</Text>
                 </Pressable>
                 <Pressable onPress={() => onReject(item.id)} style={[styles.btn, styles.btnReject]}>
                   <Ionicons name="close" size={13} color={colors.light.destructive} />
                   <Text style={styles.btnRejectText}>Reject</Text>
                 </Pressable>
               </View>
-            )}
-          </Card>
-        </Pressable>
-      )}
+            ) : null}
+          </View>
+        );
+      }}
       showsVerticalScrollIndicator={false}
     />
   );
@@ -217,10 +295,12 @@ function BrandsList({ search, status, sub, setSub, statusTabs, onApprove, onReje
     queryKey: ["cat-brands", status, search],
     queryFn: async () => {
       const r = await getAdminBrands({ status, search, limit: 100 });
-      return r.ok ? r.data : { brands: [], total: 0 };
+      if (r.ok) return { brands: r.data.brands, total: r.data.total, error: null as string | null };
+      return { brands: [], total: 0, error: r.error ?? "Failed to load brands" };
     },
   });
   const brands = q.data?.brands ?? [];
+  const loadError = q.data?.error ?? null;
 
   return (
     <FlatList
@@ -232,38 +312,57 @@ function BrandsList({ search, status, sub, setSub, statusTabs, onApprove, onReje
       ListEmptyComponent={
         q.isLoading ? (
           <Skeleton height={70} style={{ borderRadius: radii.xl }} />
+        ) : loadError ? (
+          <EmptyState
+            icon="cloud-offline-outline"
+            title="Couldn't load brands"
+            description={loadError}
+          />
         ) : (
           <EmptyState icon="pricetag-outline" title="No brands found" description="No brands match your search or filter." />
         )
       }
-      renderItem={({ item }: any) => (
-        <Card style={styles.itemCard}>
-          <View style={styles.itemRow}>
-            <View style={[styles.productAvatar, { backgroundColor: "#fdf3d7" }]}>
-              <Ionicons name="pricetag-outline" size={16} color="#7a5b1a" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemMeta}>@{item.slug} · {item.total_followers ?? 0} followers</Text>
-            </View>
-            <Badge variant={item.status === "approved" ? "default" : item.status === "pending" ? "secondary" : "destructive"}>
-              {item.status}
-            </Badge>
+      renderItem={({ item }: any) => {
+        const logo = item.logo_url ? resolveImageUrl(item.logo_url) || item.logo_url : null;
+        const pending = item.status === "pending";
+        return (
+          <View style={[styles.itemCard, pending && styles.itemCardPending]}>
+            {pending ? <View style={styles.pendingAccent} /> : null}
+            <Pressable
+              onPress={() => router.push({ pathname: "/(admin)/brands/[id]", params: { id: item.id } } as any)}
+              style={styles.itemRow}
+            >
+              {logo ? (
+                <Image source={{ uri: logo }} style={styles.productThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.productThumb, { backgroundColor: "#fdf3d7" }]}>
+                  <Ionicons name="pricetag-outline" size={18} color={GOLD} />
+                </View>
+              )}
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.itemMeta} numberOfLines={1}>
+                  @{item.slug} · {item.total_followers ?? 0} followers · {item.total_products ?? 0} products
+                </Text>
+              </View>
+              <StatusPill status={item.status} />
+              <Chevron />
+            </Pressable>
+            {pending ? (
+              <View style={styles.itemActions}>
+                <Pressable onPress={() => onApprove(item.id)} style={[styles.btn, styles.btnApprove]}>
+                  <Ionicons name="checkmark" size={13} color="#fff" />
+                  <Text style={styles.btnApproveText}>Approve brand</Text>
+                </Pressable>
+                <Pressable onPress={() => onReject(item.id)} style={[styles.btn, styles.btnReject]}>
+                  <Ionicons name="close" size={13} color={colors.light.destructive} />
+                  <Text style={styles.btnRejectText}>Reject</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-          {item.status === "pending" && (
-            <View style={styles.itemActions}>
-              <Pressable onPress={() => onApprove(item.id)} style={[styles.btn, styles.btnApprove]}>
-                <Ionicons name="checkmark" size={13} color="#fff" />
-                <Text style={styles.btnApproveText}>Approve</Text>
-              </Pressable>
-              <Pressable onPress={() => onReject(item.id)} style={[styles.btn, styles.btnReject]}>
-                <Ionicons name="close" size={13} color={colors.light.destructive} />
-                <Text style={styles.btnRejectText}>Reject</Text>
-              </Pressable>
-            </View>
-          )}
-        </Card>
-      )}
+        );
+      }}
       showsVerticalScrollIndicator={false}
     />
   );
@@ -291,21 +390,21 @@ function CategoriesList() {
         </Pressable>
       }
       ListEmptyComponent={q.isLoading ? <Skeleton height={70} style={{ borderRadius: radii.xl }} /> : <EmptyState icon="albums-outline" title="No categories" />}
-      renderItem={({ item, index }: any) => (
-        <Card style={styles.itemCard}>
+      renderItem={({ item }: any) => (
+        <View style={styles.itemCard}>
           <View style={styles.itemRow}>
-            <View style={[styles.productAvatar, { backgroundColor: "#dde4d6" }]}>
-              <Ionicons name="albums-outline" size={16} color={colors.olive[800]} />
+            <View style={[styles.productThumb, { backgroundColor: "#dde4d6" }]}>
+              <Ionicons name="albums-outline" size={18} color={colors.olive[800]} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemMeta}>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.itemMeta} numberOfLines={1}>
                 @{item.slug} · {item.gender ?? "all"} · {item.product_count ?? 0} products
               </Text>
             </View>
-            <Badge variant={item.is_active ? "default" : "outline"}>{item.is_active ? "active" : "inactive"}</Badge>
+            <StatusPill status={item.is_active ? "active" : "inactive"} />
           </View>
-        </Card>
+        </View>
       )}
       showsVerticalScrollIndicator={false}
     />
@@ -327,20 +426,29 @@ function BannersList() {
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
       ListEmptyComponent={q.isLoading ? <Skeleton height={70} style={{ borderRadius: radii.xl }} /> : <EmptyState icon="images-outline" title="No banners" />}
-      renderItem={({ item }: any) => (
-        <Card style={styles.itemCard}>
-          <View style={styles.itemRow}>
-            <View style={[styles.productAvatar, { backgroundColor: "#fbe5dc" }]}>
-              <Ionicons name="images-outline" size={16} color="#7a2f1a" />
+      renderItem={({ item }: any) => {
+        const bannerImg = item.image_url ? resolveImageUrl(item.image_url) || item.image_url : null;
+        return (
+          <View style={styles.itemCard}>
+            <View style={styles.itemRow}>
+              {bannerImg ? (
+                <Image source={{ uri: bannerImg }} style={styles.bannerThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.productThumb, { backgroundColor: "#fbe5dc" }]}>
+                  <Ionicons name="images-outline" size={18} color={RUST} />
+                </View>
+              )}
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={styles.itemName} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.itemMeta} numberOfLines={1}>
+                  {item.position ?? "hero"} · order {item.display_order}
+                </Text>
+              </View>
+              <StatusPill status={item.is_active ? "live" : "off"} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.title}</Text>
-              <Text style={styles.itemMeta}>{item.position ?? "hero"} · order {item.display_order}</Text>
-            </View>
-            <Badge variant={item.is_active ? "default" : "outline"}>{item.is_active ? "live" : "off"}</Badge>
           </View>
-        </Card>
-      )}
+        );
+      }}
       showsVerticalScrollIndicator={false}
     />
   );
@@ -451,21 +559,48 @@ const styles = StyleSheet.create({
   },
 
   itemCard: {
-    padding: 14,
     backgroundColor: colors.light.card,
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.light.border,
+    overflow: "hidden",
     ...shadows.soft,
   },
-  itemRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  productAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  itemCardPending: {
+    borderColor: "rgba(200,164,74,0.55)",
+  },
+  pendingAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: "#c8a44a",
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    paddingLeft: 18,
+  },
+  productThumb: {
+    width: 46,
+    height: 46,
+    borderRadius: 11,
     backgroundColor: colors.olive[100],
+  },
+  productAvatar: {
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
+  bannerThumb: {
+    width: 66,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: "#fbe5dc",
   },
   itemName: {
     fontFamily: fontFamilies.sans.semibold,
@@ -476,18 +611,61 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
     color: colors.light.mutedForeground,
-    marginTop: 2,
+  },
+  itemStock: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10.5,
+    color: colors.olive[700],
+  },
+  itemMrp: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    color: colors.light.mutedForeground,
+    textDecorationLine: "line-through",
+  },
+  listCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    color: colors.light.mutedForeground,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    paddingHorizontal: 16,
+    marginTop: -2,
+    marginBottom: 8,
   },
   itemPrice: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.light.foreground,
+  },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+  },
+  statusPillText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  chevronCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#f8f6f0",
+    borderWidth: 1,
+    borderColor: "#e4dfd3",
+    alignItems: "center",
+    justifyContent: "center",
   },
   itemActions: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
     paddingTop: 10,
+    marginTop: 2,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.light.border,
   },
@@ -497,26 +675,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    paddingVertical: 8,
-    borderRadius: radii.md,
+    paddingVertical: 9,
+    borderRadius: radii.full,
     borderWidth: 1,
   },
   btnApprove: {
-    backgroundColor: colors.olive[600],
-    borderColor: colors.olive[600],
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   btnApproveText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
+    fontSize: 12,
     color: "#fff",
   },
   btnReject: {
-    backgroundColor: colors.light.card,
-    borderColor: colors.light.border,
+    backgroundColor: "rgba(184,92,58,0.08)",
+    borderColor: "rgba(184,92,58,0.35)",
   },
   btnRejectText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.light.destructive,
   },
 });

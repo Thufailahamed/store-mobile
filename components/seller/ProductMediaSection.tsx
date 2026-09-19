@@ -77,11 +77,17 @@ export function ProductMediaSection({
   return (
     <View style={styles.section}>
       <View style={styles.header}>
-        <Text style={styles.kicker}>Lookbook</Text>
-        <Text style={styles.title}>Photos</Text>
-        <Text style={styles.subtitle}>
-          {total === 0 ? "Add at least one photo of this piece" : `${total} photo${total === 1 ? "" : "s"}`}
-        </Text>
+        <View style={styles.headerIcon}>
+          <Ionicons name="images-outline" size={17} color={colors.olive[800]} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.kicker}>LOOKBOOK</Text>
+          <Text style={styles.title}>Product photos</Text>
+          <Text style={styles.subtitle}>{total === 0 ? "Add a clear cover photo" : "Tap a photo to manage its cover"}</Text>
+        </View>
+        <View style={styles.countPill}>
+          <Text style={styles.countText}>{total}/10</Text>
+        </View>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -90,8 +96,11 @@ export function ProductMediaSection({
             <ActivityIndicator color={colors.light.primary} />
           ) : (
             <>
-              <Ionicons name="camera-outline" size={22} color={colors.olive[800]} />
-              <Text style={styles.addText}>Add</Text>
+              <View style={styles.addIcon}>
+                <Ionicons name="camera-outline" size={21} color={colors.olive[800]} />
+              </View>
+              <Text style={styles.addText}>Add photo</Text>
+              <Text style={styles.addHint}>JPG or PNG</Text>
             </>
           )}
         </TouchableOpacity>
@@ -172,50 +181,39 @@ export function ProductMediaSection({
   );
 }
 
-const TILE_W = 96;
-const TILE_H = 128;
+const TILE_W = 108;
+const TILE_H = 144;
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 22 },
-  header: { marginBottom: 12, gap: 2 },
-  kicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
-    textTransform: "uppercase",
-    color: colors.olive[700],
-  },
-  title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: INK,
-  },
-  subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-  },
-  row: { gap: 10, paddingRight: 4 },
+  section: { marginBottom: 16, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, paddingVertical: 16 },
+  header: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 15, paddingHorizontal: 16 },
+  headerIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  headerCopy: { flex: 1, minWidth: 0 },
+  kicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.1, color: colors.olive[600] },
+  title: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK, marginTop: 2 },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2 },
+  countPill: { minWidth: 42, height: 28, borderRadius: 14, backgroundColor: colors.paper.warm, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+  countText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: colors.ink.mute },
+  row: { gap: 10, paddingHorizontal: 16 },
   addTile: {
     width: TILE_W,
     height: TILE_H,
-    borderRadius: radii.xl,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.18)",
-    backgroundColor: CREAM,
+    borderStyle: "dashed",
+    borderColor: "rgba(83,94,44,0.24)",
+    backgroundColor: "#FAF9F5",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
   },
-  addText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[800],
-    fontFamily: fontFamilies.sans.medium,
-  },
+  addIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  addText: { fontSize: typography.fontSizes.xs, color: colors.olive[800], fontFamily: fontFamilies.sans.semibold },
+  addHint: { fontSize: 8, color: colors.ink.mute, fontFamily: fontFamilies.sans.regular },
   tile: {
     width: TILE_W,
     height: TILE_H,
-    borderRadius: radii.xl,
+    borderRadius: 18,
     overflow: "hidden",
     backgroundColor: colors.paper.warm,
     borderWidth: 1,

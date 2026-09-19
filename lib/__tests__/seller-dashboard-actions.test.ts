@@ -2,14 +2,12 @@ import { describe, expect, it } from "vitest";
 import { SELLER_DASHBOARD_ACTIONS } from "../seller/dashboard-actions";
 
 describe("SELLER_DASHBOARD_ACTIONS", () => {
-  it("has exactly 6 actions in web-parity order", () => {
+  it("keeps the mobile dashboard focused on daily seller operations", () => {
     expect(SELLER_DASHBOARD_ACTIONS.map((a) => a.key)).toEqual([
       "orders",
       "products",
+      "inventory",
       "payouts",
-      "analytics",
-      "returns",
-      "alerts",
     ]);
   });
 
@@ -20,10 +18,8 @@ describe("SELLER_DASHBOARD_ACTIONS", () => {
     expect(routes).toEqual({
       orders: "/(seller)/orders",
       products: "/(seller)/products",
+      inventory: "/(seller)/inventory",
       payouts: "/(seller)/payouts",
-      analytics: "/(seller)/analytics",
-      returns: "/(seller)/returns",
-      alerts: "/(seller)/notifications",
     });
   });
 
@@ -35,17 +31,7 @@ describe("SELLER_DASHBOARD_ACTIONS", () => {
     }
   });
 
-  it("wires badges to returns and alerts only", () => {
-    const badges = Object.fromEntries(
-      SELLER_DASHBOARD_ACTIONS.map((a) => [a.key, a.badgeKey ?? null]),
-    );
-    expect(badges).toEqual({
-      orders: null,
-      products: null,
-      payouts: null,
-      analytics: null,
-      returns: "returns",
-      alerts: "alerts",
-    });
+  it("does not duplicate attention badges already shown in the dashboard summary", () => {
+    expect(SELLER_DASHBOARD_ACTIONS.every((a) => a.badgeKey == null)).toBe(true);
   });
 });

@@ -33,15 +33,11 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import {
   SellerSearchField,
   SellerFilterTab,
-  sellerBorder,
   SELLER_CREAM,
   SELLER_INK,
-  SELLER_GOLD,
   SELLER_RUST,
 } from "@/components/seller/chrome";
 import type { Product } from "@/lib/types";
-
-const GOLD = SELLER_GOLD;
 const RUST = SELLER_RUST;
 const CREAM = SELLER_CREAM;
 const INK = SELLER_INK;
@@ -662,9 +658,10 @@ export default function SellerProducts() {
     const selected = selectedIds.has(item.id);
     const sc = statusTone(item.status);
     const sold = item.total_sales ?? 0;
+    const tone = stockColors(stock.tone);
     return (
       <View style={[styles.productCard, selected && styles.productCardSelected]}>
-        {selectMode && (
+        {selectMode ? (
           <TouchableOpacity
             style={styles.checkbox}
             onPress={() => toggleSelect(item.id)}
@@ -674,9 +671,23 @@ export default function SellerProducts() {
           >
             <Ionicons
               name={selected ? "checkbox" : "square-outline"}
-              size={22}
-              color={selected ? colors.olive[700] : colors.light.mutedForeground}
+              size={23}
+              color={selected ? CREAM : INK}
             />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={() => showActions(item, (key) => handleAction(item, key))}
+            disabled={busyId === item.id}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="More product actions"
+          >
+            {busyId === item.id ? (
+              <ActivityIndicator size="small" color={colors.olive[700]} />
+            ) : (
+              <Ionicons name="ellipsis-horizontal" size={18} color={INK} />
+            )}
           </TouchableOpacity>
         )}
         <TouchableOpacity
@@ -684,52 +695,37 @@ export default function SellerProducts() {
           onPress={() => openProduct(item)}
           onLongPress={() => onLongPressProduct(item)}
           delayLongPress={350}
-          activeOpacity={0.75}
+          activeOpacity={0.78}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.name}, ${sc.label}, ${stock.label}`}
         >
-          <ProductThumb uri={productImageUrl(item)} style={styles.productImage} />
-          <View style={styles.productInfo}>
-            <View style={styles.productHeader}>
-              <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-              <View style={styles.badges}>
-                <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-                  <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
-                </View>
-                <ModerationChip p={item} />
-              </View>
+          <View style={styles.productImageWrap}>
+            <ProductThumb uri={productImageUrl(item)} style={styles.productImage} />
+            <View style={[styles.imageStatus, { backgroundColor: sc.bg }]}>
+              <View style={[styles.imageStatusDot, { backgroundColor: sc.text }]} />
+              <Text style={[styles.imageStatusText, { color: sc.text }]}>{sc.label}</Text>
             </View>
-            <Text style={styles.productSku}>{item.sku ?? item.slug ?? "—"}</Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaPrice}>{productPrice(item)}</Text>
-              <Text style={styles.metaSep}>·</Text>
-              <Text style={[styles.metaItem, stock.tone === "out" && styles.stockOut, stock.tone === "low" && styles.stockLow]}>
-                {stock.label}
-              </Text>
-              <Text style={styles.metaSep}>·</Text>
-              <Text style={styles.metaItem}>{sold} sold</Text>
-              {item.created_at ? (
-                <>
-                  <Text style={styles.metaSep}>·</Text>
-                  <Text style={styles.metaItem}>{formatDate(item.created_at)}</Text>
-                </>
-              ) : null}
+          </View>
+          <View style={styles.productInfo}>
+            <View style={styles.moderationRow}>
+              <ModerationChip p={item} />
+              {item.created_at ? <Text style={styles.createdDate}>{formatDate(item.created_at)}</Text> : null}
+            </View>
+            <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+            <Text style={styles.productSku} numberOfLines={1}>{item.sku ?? item.slug ?? "—"}</Text>
+            <Text style={styles.metaPrice}>{productPrice(item)}</Text>
+            <View style={styles.productStats}>
+              <View style={[styles.stockPill, { backgroundColor: tone.bg }]}>
+                <View style={[styles.stockDot, { backgroundColor: tone.text }]} />
+                <Text style={[styles.stockPillText, { color: tone.text }]}>{stock.label}</Text>
+              </View>
+              <View style={styles.soldStat}>
+                <Ionicons name="bag-check-outline" size={12} color={colors.ink.mute} />
+                <Text style={styles.soldText}>{sold} sold</Text>
+              </View>
             </View>
           </View>
         </TouchableOpacity>
-        {!selectMode && (
-          <TouchableOpacity
-            style={styles.moreBtn}
-            onPress={() => showActions(item, (k) => handleAction(item, k))}
-            disabled={busyId === item.id}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel="More actions"
-          >
-            {busyId === item.id ? (
-              <ActivityIndicator size="small" color={colors.olive[700]} />
-            ) : (
-              <Ionicons name="ellipsis-vertical" size={18} color={colors.ink.mute} />
-            )}
-          </TouchableOpacity>
-        )}
       </View>
     );
   };
@@ -879,16 +875,18 @@ export default function SellerProducts() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.kicker}>Catalogue</Text>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.kicker}>Seller catalogue</Text>
           <Text style={styles.title}>Products</Text>
-          <Text style={styles.count}>{countLabel}</Text>
+          <Text style={styles.count}>
+            {countLabel}{stats ? ` · ${stats.active} live` : ""}
+          </Text>
         </View>
         <View style={styles.headerActions}>
           {selectMode ? (
             <TouchableOpacity style={styles.cancelSelectBtn} onPress={exitSelect}>
-              <Text style={styles.cancelSelectText}>Cancel</Text>
+              <Text style={styles.cancelSelectText}>Done</Text>
             </TouchableOpacity>
           ) : (
             <>
@@ -896,93 +894,107 @@ export default function SellerProducts() {
                 style={styles.iconBtn}
                 onPress={openOverflowMenu}
                 disabled={exporting}
-                accessibilityLabel="More actions"
+                accessibilityLabel="Catalogue actions"
               >
                 {exporting ? (
                   <ActivityIndicator size="small" color={INK} />
                 ) : (
-                  <Ionicons name="ellipsis-horizontal" size={18} color={INK} />
+                  <Ionicons name="ellipsis-horizontal" size={19} color={INK} />
                 )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => router.push("/(seller)/products/new" as any)}
-                accessibilityLabel="Add a piece"
+                accessibilityLabel="Add product"
               >
-                <Ionicons name="add" size={18} color={CREAM} />
-                <Text style={styles.addButtonText}>Add</Text>
+                <Ionicons name="add" size={19} color={CREAM} />
+                <Text style={styles.addButtonText}>Add product</Text>
               </TouchableOpacity>
             </>
           )}
         </View>
       </View>
-      <View style={styles.goldRule} />
 
       <View style={styles.searchContainer}>
         <SellerSearchField
           value={search}
           onChangeText={setSearch}
-          placeholder="Search the collection"
-          style={{ flex: 1 }}
+          placeholder="Search products or SKU"
         />
+      </View>
+
+      <View style={styles.toolbar}>
+        <TouchableOpacity
+          style={styles.sortTrigger}
+          onPress={openSortMenu}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort by ${sortLabel}`}
+        >
+          <View style={styles.sortIcon}>
+            <Ionicons name="swap-vertical" size={14} color={colors.olive[800]} />
+          </View>
+          <View style={styles.sortCopy}>
+            <Text style={styles.sortLabel}>SORT BY</Text>
+            <Text style={styles.sortValue} numberOfLines={1}>{sortLabel}</Text>
+          </View>
+          <Ionicons name="chevron-down" size={14} color={colors.ink.mute} />
+        </TouchableOpacity>
         <View style={styles.viewToggle}>
           <TouchableOpacity
             style={[styles.viewBtn, viewMode === "list" && styles.viewBtnActive]}
             onPress={() => setViewMode("list")}
             accessibilityLabel="List view"
           >
-            <Ionicons
-              name="list-outline"
-              size={16}
-              color={viewMode === "list" ? CREAM : colors.olive[800]}
-            />
+            <Ionicons name="list-outline" size={17} color={viewMode === "list" ? CREAM : colors.olive[800]} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.viewBtn, viewMode === "grid" && styles.viewBtnActive]}
             onPress={() => setViewMode("grid")}
             accessibilityLabel="Grid view"
           >
-            <Ionicons
-              name="grid-outline"
-              size={16}
-              color={viewMode === "grid" ? CREAM : colors.olive[800]}
-            />
+            <Ionicons name="grid-outline" size={16} color={viewMode === "grid" ? CREAM : colors.olive[800]} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.chipRow}>
-        <TouchableOpacity
-          style={[styles.sortChip, styles.sortTrigger]}
-          onPress={openSortMenu}
-          accessibilityRole="button"
-          accessibilityLabel={`Sort by ${sortLabel}`}
-        >
-          <Ionicons name="swap-vertical" size={14} color={colors.olive[800]} />
-          <Text style={styles.sortChipText} numberOfLines={1}>
-            {sortLabel}
-          </Text>
-        </TouchableOpacity>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={STATUS_TABS}
-          keyExtractor={(s) => s.key}
-          style={styles.statusList}
-          renderItem={({ item: s }) => {
-            const active = status === s.key;
-            const count = stats ? stats[s.key] : undefined;
-            return (
-              <SellerFilterTab
-                label={s.label}
-                count={typeof count === "number" ? count : undefined}
-                active={active}
-                onPress={() => setStatus(s.key)}
-              />
-            );
-          }}
-          contentContainerStyle={styles.tabsContent}
-        />
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={STATUS_TABS}
+        keyExtractor={(item) => item.key}
+        style={styles.statusList}
+        renderItem={({ item }) => {
+          const active = status === item.key;
+          const itemCount = stats ? stats[item.key] : undefined;
+          return (
+            <SellerFilterTab
+              label={item.label}
+              count={typeof itemCount === "number" ? itemCount : undefined}
+              active={active}
+              onPress={() => setStatus(item.key)}
+            />
+          );
+        }}
+        contentContainerStyle={styles.tabsContent}
+      />
+
+      <View style={styles.resultsHeader}>
+        <View>
+          <Text style={styles.resultsEyebrow}>{status === "all" ? "CATALOGUE" : status.toUpperCase()}</Text>
+          <Text style={styles.resultsTitle}>{total || products.length} {(total || products.length) === 1 ? "product" : "products"}</Text>
+        </View>
+        {status !== "all" || search ? (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => {
+              setStatus("all");
+              setSearch("");
+            }}
+          >
+            <Ionicons name="close" size={13} color={colors.olive[800]} />
+            <Text style={styles.clearButtonText}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {viewMode === "grid" ? (
@@ -1065,42 +1077,39 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "center",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[5],
     gap: 12,
   },
+  headerCopy: { flex: 1, minWidth: 0 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   kicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
     color: colors.olive[700],
-    marginBottom: 2,
+    marginBottom: 3,
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 32,
+    lineHeight: 38,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.6,
   },
   count: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
+    marginTop: 3,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: CREAM,
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
     alignItems: "center",
@@ -1109,109 +1118,50 @@ const styles = StyleSheet.create({
   addButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: colors.olive[800],
-    paddingHorizontal: 16,
-    minHeight: 44,
-    borderRadius: radii.full,
+    gap: 5,
+    backgroundColor: colors.olive[900],
+    paddingHorizontal: 15,
+    minHeight: 42,
+    borderRadius: 15,
   },
-  addButtonText: {
-    color: CREAM,
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fontFamilies.sans.semibold,
-  },
+  addButtonText: { color: CREAM, fontSize: 12, fontFamily: fontFamilies.sans.semibold },
   cancelSelectBtn: {
     paddingHorizontal: 16,
-    minHeight: 44,
+    minHeight: 42,
     justifyContent: "center",
     borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
+    backgroundColor: colors.olive[900],
   },
-  cancelSelectText: {
-    color: colors.light.foreground,
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fontFamilies.sans.medium,
-  },
-
-  searchContainer: {
-    flexDirection: "row",
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
-    marginBottom: spacing[2],
-    gap: 8,
-    alignItems: "center",
-  },
-  searchInputWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-    borderRadius: radii.xl,
-    paddingHorizontal: 12,
-    minHeight: 44,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fontFamilies.sans.regular,
-    color: colors.light.foreground,
-  },
-  viewToggle: {
-    flexDirection: "row",
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-  },
-  viewBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md,
-  },
-  viewBtnActive: { backgroundColor: colors.olive[800] },
-
-  chipRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    paddingLeft: spacing[5],
-    gap: 8,
-  },
-  statusList: { flexGrow: 0, flexShrink: 1 },
-  tabsContent: { paddingRight: spacing[5], gap: 8 },
-  sortChip: {
-    paddingHorizontal: 14,
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.full,
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-  },
+  cancelSelectText: { color: CREAM, fontSize: typography.fontSizes.sm, fontFamily: fontFamilies.sans.semibold },
+  searchContainer: { paddingHorizontal: spacing[5], marginBottom: 10 },
+  toolbar: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing[5], gap: 10, marginBottom: 10 },
   sortTrigger: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 50,
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    maxWidth: 120,
-    flexShrink: 0,
+    gap: 9,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
   },
-  sortChipActive: {
-    backgroundColor: colors.olive[800],
-    borderColor: colors.olive[800],
-  },
-  sortChipText: {
-    fontSize: 12,
-    color: colors.olive[800],
-    fontFamily: fontFamilies.sans.medium,
-  },
-  sortChipTextActive: { color: CREAM },
+  sortIcon: { width: 30, height: 30, borderRadius: 10, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  sortCopy: { flex: 1, minWidth: 0, gap: 1 },
+  sortLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 7, letterSpacing: 0.9, color: colors.ink.mute },
+  sortValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: INK },
+  viewToggle: { flexDirection: "row", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 3, borderWidth: 1, borderColor: "rgba(83,94,44,0.14)" },
+  viewBtn: { width: 42, height: 42, alignItems: "center", justifyContent: "center", borderRadius: 13 },
+  viewBtnActive: { backgroundColor: colors.olive[900] },
+  statusList: { flexGrow: 0, flexShrink: 0, marginBottom: spacing[4] },
+  tabsContent: { paddingHorizontal: spacing[5], gap: 8 },
+  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing[5], marginBottom: 12 },
+  resultsEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: colors.olive[600], marginBottom: 2 },
+  resultsTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK },
+  clearButton: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.olive[50] },
+  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: colors.olive[800] },
 
   listContent: { padding: spacing[5], paddingTop: 4 },
 
@@ -1227,102 +1177,71 @@ const styles = StyleSheet.create({
   },
 
   productCard: {
-    flexDirection: "row",
-    backgroundColor: CREAM,
-    borderRadius: radii.xl,
+    position: "relative",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    marginBottom: 10,
+    marginBottom: 12,
     overflow: "hidden",
-    alignItems: "stretch",
   },
-  productCardSelected: {
-    borderColor: colors.olive[600],
-    backgroundColor: colors.olive[50],
-  },
-  productCardMain: { flex: 1, flexDirection: "row" },
+  productCardSelected: { borderColor: colors.olive[700], borderWidth: 2, backgroundColor: colors.olive[50] },
+  productCardMain: { flexDirection: "row", gap: 12, padding: 10, minHeight: 146 },
   checkbox: {
-    width: 44,
+    position: "absolute",
+    top: 17,
+    left: 17,
+    zIndex: 3,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: "rgba(83,94,44,0.12)",
-    backgroundColor: colors.light.background,
+    backgroundColor: "rgba(20,25,10,0.82)",
   },
   moreBtn: {
-    width: 44,
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 3,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: "rgba(83,94,44,0.12)",
+    backgroundColor: "#F6F4ED",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
   },
-  productImage: { width: 80, height: 104 },
-  thumbEmpty: {
-    backgroundColor: colors.paper.warm,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  productInfo: { flex: 1, paddingVertical: 12, paddingHorizontal: 12, justifyContent: "center" },
-  productHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  productName: {
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fontFamilies.display.semibold,
-    color: INK,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  statusText: {
-    fontSize: 10,
-    fontFamily: fontFamilies.sans.semibold,
-    letterSpacing: 0.3,
-  },
-  badges: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 0 },
+  productImageWrap: { position: "relative" },
+  productImage: { width: 96, height: 126, borderRadius: 16 },
+  thumbEmpty: { backgroundColor: colors.paper.warm, justifyContent: "center", alignItems: "center" },
+  imageStatus: { position: "absolute", left: 7, bottom: 7, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: radii.full },
+  imageStatusDot: { width: 5, height: 5, borderRadius: 3 },
+  imageStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 8, letterSpacing: 0.3 },
+  productInfo: { flex: 1, minWidth: 0, paddingVertical: 3, paddingRight: 4 },
+  moderationRow: { minHeight: 23, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6, paddingRight: 36 },
+  createdDate: { fontFamily: fontFamilies.mono.regular, fontSize: 8, color: colors.ink.mute, textTransform: "uppercase" },
+  productName: { marginTop: 3, fontSize: 15, lineHeight: 19, fontFamily: fontFamilies.display.semibold, color: INK },
   modChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.full,
     borderWidth: 1,
+    alignSelf: "flex-start",
   },
-  modChipText: { fontSize: 10, fontFamily: fontFamilies.sans.semibold },
-
-  productSku: {
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.mono.regular,
-    marginTop: 4,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: 8,
-    gap: 4,
-  },
-  metaPrice: {
-    fontSize: typography.fontSizes.xs,
-    fontFamily: fontFamilies.sans.semibold,
-    color: INK,
-  },
-  metaItem: {
-    fontSize: typography.fontSizes.xs,
-    fontFamily: fontFamilies.sans.regular,
-    color: colors.light.mutedForeground,
-  },
-  metaSep: { fontSize: 10, color: colors.light.mutedForeground, opacity: 0.5 },
-  stockOut: { color: RUST, fontFamily: fontFamilies.sans.semibold },
-  stockLow: { color: GOLD, fontFamily: fontFamilies.sans.semibold },
+  modChipText: { fontSize: 9, fontFamily: fontFamilies.sans.semibold },
+  productSku: { fontSize: 9, color: colors.light.mutedForeground, fontFamily: fontFamilies.mono.regular, marginTop: 4 },
+  metaPrice: { marginTop: 7, fontSize: 13, fontFamily: fontFamilies.sans.semibold, color: INK },
+  productStats: { marginTop: "auto", paddingTop: 7, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  stockPill: { maxWidth: "64%", flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 4 },
+  stockDot: { width: 5, height: 5, borderRadius: 3 },
+  stockPillText: { flexShrink: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 9 },
+  soldStat: { flexDirection: "row", alignItems: "center", gap: 4 },
+  soldText: { fontFamily: fontFamilies.sans.medium, fontSize: 9, color: colors.ink.mute },
 
   gridRow: {
     gap: 10,

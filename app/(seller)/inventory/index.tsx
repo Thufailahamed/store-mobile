@@ -240,13 +240,13 @@ export default function SellerInventory() {
   const totalValue = useMemo(() => {
     let sum = 0;
     let any = false;
-    for (const r of filtered) {
+    for (const r of rows) {
       if (r.onHand == null || r.price == null) continue;
       any = true;
       sum += r.onHand * r.price;
     }
     return any ? sum : null;
-  }, [filtered]);
+  }, [rows]);
 
   const confirmReservedStock = (
     targets: InventoryRow[],
@@ -382,24 +382,22 @@ export default function SellerInventory() {
 
   const groups = useMemo(() => groupSellerRows(filtered), [filtered]);
 
-  const countLabel = (() => {
-    if (loading && rows.length === 0) return "Loading";
-    const value = totalValue == null ? "On-hand —" : `On-hand ${money(totalValue)}`;
-    return `${filtered.length} of ${rows.length} SKUs · ${value}`;
-  })();
+  const countLabel = loading && rows.length === 0
+    ? "Loading inventory"
+    : `${filtered.length} of ${rows.length} SKUs · ${groups.length} ${groups.length === 1 ? "product" : "products"}`;
 
   const listHeader = (
     <>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.kicker}>Stock</Text>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.kicker}>Stock control</Text>
           <Text style={styles.title}>Inventory</Text>
           <Text style={styles.count}>{countLabel}</Text>
         </View>
         <View style={styles.headerActions}>
           {selectMode ? (
             <TouchableOpacity style={styles.cancelSelectBtn} onPress={exitSelect}>
-              <Text style={styles.cancelSelectText}>Cancel</Text>
+              <Text style={styles.cancelSelectText}>Done</Text>
             </TouchableOpacity>
           ) : (
             <>
@@ -409,7 +407,7 @@ export default function SellerInventory() {
                 disabled={filtered.length === 0}
                 accessibilityLabel="Select SKUs"
               >
-                <Ionicons name="checkmark-circle-outline" size={18} color={INK} />
+                <Ionicons name="checkmark-done-outline" size={19} color={INK} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconBtn}
@@ -417,51 +415,60 @@ export default function SellerInventory() {
                 disabled={filtered.length === 0}
                 accessibilityLabel="Export CSV"
               >
-                <Ionicons name="share-outline" size={18} color={INK} />
+                <Ionicons name="share-outline" size={19} color={INK} />
               </TouchableOpacity>
             </>
           )}
         </View>
       </View>
-      <View style={styles.goldRule} />
 
-      <View style={styles.ledger}>
-        <TouchableOpacity
-          style={styles.ledgerStat}
-          onPress={() => setFilter("healthy")}
-          accessibilityRole="button"
-          accessibilityLabel={`${stats.healthy} healthy`}
-        >
-          <Text style={[styles.ledgerValue, { color: colors.olive[700] }]}>{stats.healthy}</Text>
-          <Text style={styles.ledgerLabel}>Healthy</Text>
-        </TouchableOpacity>
-        <View style={styles.ledgerRule} />
-        <TouchableOpacity
-          style={styles.ledgerStat}
-          onPress={() => setFilter("low")}
-          accessibilityRole="button"
-          accessibilityLabel={`${stats.low} low`}
-        >
-          <Text style={[styles.ledgerValue, { color: "#8a6a2a" }]}>{stats.low}</Text>
-          <Text style={styles.ledgerLabel}>Low</Text>
-        </TouchableOpacity>
-        <View style={styles.ledgerRule} />
-        <TouchableOpacity
-          style={styles.ledgerStat}
-          onPress={() => setFilter("out")}
-          accessibilityRole="button"
-          accessibilityLabel={`${stats.out} out`}
-        >
-          <Text style={[styles.ledgerValue, { color: RUST }]}>{stats.out}</Text>
-          <Text style={styles.ledgerLabel}>Out</Text>
-        </TouchableOpacity>
+      <View style={styles.overviewCard}>
+        <View style={styles.overviewTop}>
+          <View>
+            <Text style={styles.overviewLabel}>TOTAL ON-HAND VALUE</Text>
+            <Text style={styles.overviewValue}>{money(totalValue)}</Text>
+          </View>
+          <View style={styles.skuPill}>
+            <Ionicons name="layers-outline" size={13} color="#E8CF8F" />
+            <Text style={styles.skuPillText}>{rows.length} SKUs</Text>
+          </View>
+        </View>
+        <Text style={styles.overviewHint}>
+          {(stats.low + stats.out) > 0
+            ? `${stats.low + stats.out} SKUs need your attention`
+            : rows.length > 0
+              ? "Stock levels look healthy"
+              : "Your inventory summary will appear here"}
+        </Text>
+      </View>
+
+      <View style={styles.healthGrid}>
+        {([
+          { key: "healthy" as const, label: "Healthy", value: stats.healthy, icon: "checkmark-circle-outline" as const, color: colors.olive[700], bg: colors.olive[50] },
+          { key: "low" as const, label: "Low stock", value: stats.low, icon: "alert-circle-outline" as const, color: "#8a6a2a", bg: "rgba(200,164,74,0.12)" },
+          { key: "out" as const, label: "Out", value: stats.out, icon: "close-circle-outline" as const, color: RUST, bg: "rgba(184,92,58,0.08)" },
+        ]).map((item) => (
+          <TouchableOpacity
+            key={item.key}
+            style={[styles.healthCard, filter === item.key && { borderColor: item.color }]}
+            onPress={() => setFilter(item.key)}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.value} ${item.label}`}
+          >
+            <View style={[styles.healthIcon, { backgroundColor: item.bg }]}>
+              <Ionicons name={item.icon} size={15} color={item.color} />
+            </View>
+            <Text style={[styles.healthValue, { color: item.color }]}>{item.value}</Text>
+            <Text style={styles.healthLabel}>{item.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <View style={styles.searchWrap}>
         <SellerSearchField
           value={search}
           onChangeText={setSearch}
-          placeholder="Search SKU, piece, size, colour"
+          placeholder="Search SKU, product, size or colour"
         />
       </View>
       <View style={styles.filterTabs}>
@@ -470,15 +477,34 @@ export default function SellerInventory() {
           { key: "healthy" as const, label: "Healthy", count: stats.healthy },
           { key: "low" as const, label: "Low", count: stats.low },
           { key: "out" as const, label: "Out", count: stats.out },
-        ]).map((f) => (
+        ]).map((item) => (
           <SellerFilterTab
-            key={f.key}
-            label={f.label}
-            count={f.count}
-            active={filter === f.key}
-            onPress={() => setFilter(f.key)}
+            key={item.key}
+            label={item.label}
+            count={item.count}
+            active={filter === item.key}
+            onPress={() => setFilter(item.key)}
           />
         ))}
+      </View>
+
+      <View style={styles.resultsHeader}>
+        <View>
+          <Text style={styles.resultsEyebrow}>{filter === "all" ? "CATALOGUE" : filter.toUpperCase()}</Text>
+          <Text style={styles.resultsTitle}>{groups.length} {groups.length === 1 ? "product" : "products"}</Text>
+        </View>
+        {filter !== "all" || search ? (
+          <TouchableOpacity
+            style={styles.clearButton}
+            onPress={() => {
+              setFilter("all");
+              setSearch("");
+            }}
+          >
+            <Ionicons name="close" size={13} color={colors.olive[800]} />
+            <Text style={styles.clearButtonText}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </>
   );
@@ -622,43 +648,39 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "center",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[5],
     gap: 12,
   },
+  headerCopy: { flex: 1, minWidth: 0 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   kicker: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
     color: colors.olive[700],
-    marginBottom: 2,
+    marginBottom: 3,
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 32,
+    lineHeight: 38,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.6,
   },
   count: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
     color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[3],
+    marginTop: 3,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: CREAM,
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
     alignItems: "center",
@@ -666,73 +688,47 @@ const styles = StyleSheet.create({
   },
   cancelSelectBtn: {
     paddingHorizontal: 16,
-    minHeight: 44,
+    minHeight: 42,
     justifyContent: "center",
     borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
+    backgroundColor: colors.olive[900],
   },
   cancelSelectText: {
-    color: colors.light.foreground,
+    color: CREAM,
     fontSize: typography.fontSizes.sm,
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
   },
-
-  ledger: {
-    flexDirection: "row",
+  overviewCard: {
     marginHorizontal: spacing[5],
-    marginBottom: spacing[3],
-    backgroundColor: CREAM,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    paddingVertical: 10,
+    marginBottom: 12,
+    borderRadius: 22,
+    backgroundColor: "#1A1915",
+    padding: 18,
   },
-  ledgerStat: { flex: 1, alignItems: "center", minHeight: 44, justifyContent: "center" },
-  ledgerRule: { width: StyleSheet.hairlineWidth, backgroundColor: "rgba(83,94,44,0.14)" },
-  ledgerValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: INK,
-  },
-  ledgerLabel: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-
-  searchWrap: {
-    marginHorizontal: spacing[5],
-    marginBottom: 10,
-  },
+  overviewTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
+  overviewLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: "#AAA396" },
+  overviewValue: { marginTop: 5, fontFamily: fontFamilies.display.semibold, fontSize: 27, lineHeight: 33, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
+  overviewHint: { marginTop: 12, paddingTop: 11, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.12)", fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "#AAA396" },
+  skuPill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radii.full, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(200,164,74,0.14)" },
+  skuPillText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 0.5, color: "#E8CF8F" },
+  healthGrid: { flexDirection: "row", gap: 9, marginHorizontal: spacing[5], marginBottom: spacing[4] },
+  healthCard: { flex: 1, minWidth: 0, minHeight: 96, justifyContent: "space-between", borderRadius: 18, borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", backgroundColor: "#FFFFFF", padding: 11 },
+  healthIcon: { width: 30, height: 30, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  healthValue: { fontFamily: fontFamilies.display.semibold, fontSize: 22, lineHeight: 25, fontVariant: ["tabular-nums"] },
+  healthLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 9, color: colors.ink.mute },
+  searchWrap: { marginHorizontal: spacing[5], marginBottom: 10 },
   filterTabs: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: spacing[5],
-    marginBottom: 12,
+    marginBottom: spacing[5],
   },
-  filterTab: {
-    paddingHorizontal: 14,
-    minHeight: 44,
-    justifyContent: "center",
-    borderRadius: radii.full,
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-  },
-  filterTabActive: {
-    backgroundColor: colors.olive[800],
-    borderColor: colors.olive[800],
-  },
-  filterTabText: {
-    fontSize: 12,
-    fontFamily: fontFamilies.sans.medium,
-    color: colors.olive[800],
-  },
-  filterTabTextActive: { color: CREAM },
+  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing[5], marginBottom: 12 },
+  resultsEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: colors.olive[600], marginBottom: 2 },
+  resultsTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK },
+  clearButton: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.olive[50] },
+  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: colors.olive[800] },
 
   listContent: { paddingBottom: 24 },
   skeletonCard: {

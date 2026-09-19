@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ScrollView, View, Text, StyleSheet, Alert, TouchableOpacity, StatusBar } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
@@ -10,6 +10,9 @@ import {
   updatePayoutSettingsBackend,
 } from "@/lib/api/backend";
 import { MethodPicker } from "@/components/payouts/MethodPicker";
+import { SellerBackButton } from "@/components/seller/SellerBackButton";
+import { SellerStateView } from "@/components/seller/chrome";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { colors, spacing, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { mergePayoutSettings, toPayoutPayload, validatePayoutDraft, withPayoutDefaults } from "@/lib/payouts/settings";
@@ -34,8 +37,30 @@ async function loadPayoutSettings(): Promise<PayoutSettings> {
   );
 }
 
+function SettingsSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
+      <View style={styles.skelCard}>
+        <Skeleton width="40%" height={14} />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Skeleton style={{ flex: 1 }} height={52} borderRadius={14} />
+          <Skeleton style={{ flex: 1 }} height={52} borderRadius={14} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Skeleton style={{ flex: 1 }} height={52} borderRadius={14} />
+          <Skeleton style={{ flex: 1 }} height={52} borderRadius={14} />
+        </View>
+      </View>
+      <View style={styles.skelCard}>
+        <Skeleton width="50%" height={14} />
+        <Skeleton width="90%" height={44} borderRadius={12} />
+        <Skeleton width="90%" height={44} borderRadius={12} />
+      </View>
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -87,22 +112,42 @@ export default function SettingsScreen() {
     },
   });
 
+  const header = (
+    <>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+        <SellerBackButton label="Payouts" fallbackHref="/(seller)/payouts" style={{ marginBottom: 6 }} />
+        <Text style={styles.kicker}>Atelier · Ledger</Text>
+        <Text style={styles.title}>Payout settings</Text>
+        <Text style={styles.subtitle}>Where your earnings are sent</Text>
+      </View>
+      <View style={styles.goldRule} />
+    </>
+  );
+
   if (isLoading || !hydrated || !draft) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.body}>Loading payout details…</Text>
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        {header}
+        <SettingsSkeleton />
       </View>
     );
   }
 
   if (isError) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top, paddingHorizontal: 32 }]}>
-        <Text style={styles.emptyTitle}>Couldn’t load payouts</Text>
-        <Text style={styles.body}>{error instanceof Error ? error.message : "Try again."}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => void refetch()}>
-          <Text style={styles.retryText}>Try again</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        {header}
+        <SellerStateView
+          variant="error"
+          icon="cloud-offline-outline"
+          title="Couldn’t load payout settings"
+          description={error instanceof Error ? error.message : "Try again."}
+          actionLabel="Try again"
+          onAction={() => void refetch()}
+          style={{ marginTop: 48 }}
+        />
       </View>
     );
   }
@@ -113,26 +158,12 @@ export default function SettingsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: Math.max(insets.top, 12) + 8, paddingBottom: 40 + insets.bottom },
+          { paddingBottom: 40 + insets.bottom },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-          >
-            <Ionicons name="chevron-back" size={20} color={INK} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>Ledger</Text>
-            <Text style={styles.title}>Payouts</Text>
-          </View>
-        </View>
-        <View style={styles.goldRule} />
+        {header}
 
         <View style={styles.panel}>
           <MethodPicker value={draft} onChange={setDraft} />
@@ -145,30 +176,28 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Save payout settings"
         >
+          <Ionicons
+            name={mutation.isPending ? "hourglass-outline" : "checkmark-circle-outline"}
+            size={16}
+            color={CREAM}
+          />
           <Text style={styles.saveText}>{mutation.isPending ? "Saving…" : "Save payout settings"}</Text>
         </TouchableOpacity>
+        <Text style={styles.saveHint}>Changes apply to future settlements only.</Text>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.light.background, gap: 8 },
-  content: { paddingHorizontal: spacing[5], gap: spacing[4] },
-  header: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingBottom: spacing[2] },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  content: { paddingBottom: 20 },
+  header: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
   },
   kicker: {
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
     letterSpacing: typography.letterSpacing.editorial,
     textTransform: "uppercase",
@@ -181,23 +210,46 @@ const styles = StyleSheet.create({
     color: INK,
     letterSpacing: -0.4,
   },
+  subtitle: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    color: colors.ink.mute,
+    marginTop: 3,
+  },
   goldRule: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(200,164,74,0.55)",
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[4],
   },
   panel: {
+    marginHorizontal: spacing[5],
     backgroundColor: CREAM,
     borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
     padding: spacing[4],
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   saveBtn: {
     minHeight: 52,
+    marginHorizontal: spacing[5],
+    marginTop: spacing[4],
+    flexDirection: "row",
+    gap: 8,
     borderRadius: radii.full,
     backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   saveBtnDisabled: { opacity: 0.6 },
   saveText: {
@@ -205,30 +257,19 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: CREAM,
   },
-  body: {
+  saveHint: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
+    fontSize: typography.fontSizes.xs,
+    color: colors.ink.mute,
     textAlign: "center",
+    marginTop: 10,
   },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: INK,
-    textAlign: "center",
-  },
-  retryBtn: {
-    marginTop: 8,
-    minHeight: 44,
-    paddingHorizontal: 20,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  retryText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: CREAM,
+  skelCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    padding: spacing[4],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.08)",
+    gap: 12,
   },
 });

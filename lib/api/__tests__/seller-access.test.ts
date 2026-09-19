@@ -16,7 +16,7 @@ const baseStore = {
 };
 
 const basePayout = {
-  bank_name: "Test Bank",
+  bank_name: "Commercial Bank of Ceylon",
   account_name: "Acme LLC",
   account_number_last4: "1234",
   tax_form_submitted: true,
@@ -131,8 +131,18 @@ describe("describePayoutProfile", () => {
   it("does not invent verified KYC from bank fields", () => {
     const view = describePayoutProfile(basePayout, true);
     expect(view.kycLabel).toBeNull();
-    expect(view.bankSummary).toContain("Test Bank");
+    expect(view.bankSummary).toContain("Commercial Bank of Ceylon");
     expect(view.missing).toEqual([]);
+  });
+
+  it("treats placeholder bank seed data as not on file", () => {
+    const view = describePayoutProfile(
+      { ...basePayout, bank_name: "Grandfathered Bank", account_number_last4: "0000" },
+      true,
+    );
+    expect(view.bankSummary).toBeNull();
+    expect(view.missing).toContain("bank name");
+    expect(view.missing).toContain("bank account details");
   });
 
   it("uses API kyc_status when present", () => {

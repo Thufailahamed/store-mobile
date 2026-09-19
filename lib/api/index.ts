@@ -52,7 +52,7 @@ import {
 } from "@/lib/api/delivery-api";
 import { getSellerAccessState, getSellerComplianceGaps, readStorefrontContact, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
 import { getBrowsableStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
-import { summarizeInventoryHealth, readInventoryQuantities } from "@/lib/inventory";
+import { summarizeInventoryHealth, readInventoryQuantities, LOW_STOCK_THRESHOLD } from "@/lib/inventory";
 import { mapSellerOrderRow, isAmbiguousRelationshipError, SELLER_ORDERS_LIST_SELECT } from "@/lib/orders/seller-list";
 import { mapSellerReturnRow } from "@/lib/returns/seller-list";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
@@ -2002,7 +2002,7 @@ export async function getAdminOrders(opts: {
     let q = supabase
       .from("orders")
       .select(
-        "id, order_number, user_id, status, payment_status, payment_method, subtotal, discount, shipping_fee, tax, total, currency, placed_at, delivered_at, created_at, user:users!orders_user_id_fkey(id, full_name, email), order_items:order_items(id, product_id, quantity, unit_price, total, product:products(name, slug))",
+        "id, order_number, user_id, status, payment_status, payment_method, subtotal, discount, shipping_fee, tax, total, currency, placed_at, delivered_at, created_at, user:users!orders_user_id_fkey(id, full_name, email), order_items:order_items(id, product_id, quantity, unit_price, total, product:products(name, slug, images:product_images(url, is_primary)))",
       )
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -2032,6 +2032,12 @@ export async function getAdminOrders(opts: {
   }
 }
 
+export async function getAdminProductDetail(id: string): Promise<Result<B.AdminProductDetail>> {
+  const res = await B.getAdminProductByIdBackend(id);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
+
 export async function getAdminProducts(opts: {
   status?: string;
   search?: string;
@@ -2056,7 +2062,7 @@ export async function getAdminProducts(opts: {
     let q = supabase
       .from("products")
       .select(
-        "id, name, slug, price, mrp, currency, discount_pct, status, is_active, is_featured, stock, total_sales, created_at, category_id, brand_id, store_id, " +
+        "id, name, slug, price, mrp, currency, discount_pct, status, is_active, is_featured, total_sales, created_at, category_id, brand_id, store_id, " +
         "images:product_images(url, is_primary, position), " +
         "store:stores!products_store_id_fkey(id, name, slug, logo_url), " +
         "brand:brands(id, name, slug, logo_url), " +
@@ -3611,23 +3617,55 @@ export async function deleteStoreCoupon(id: string): Promise<Result<void>> {
   return ok(undefined);
 }
 
-export async function getStoreAnalytics(
-  _storeId: string,
-  range: B.SellerAnalyticsRange = "30d",
-): Promise<Result<{
+export type SellerAnalyticsData = {
   totalRevenue: number;
   totalOrders: number;
   totalProducts: number;
   avgOrderValue: number;
   refundRate: number;
+  unitsSold: number;
+  deltas: { revenue: number; orders: number; aov: number };
   revenueByMonth: { month: string; revenue: number; orders: number }[];
+  dayOfWeek: { day: string; revenue: number; orders: number }[];
   topProducts: { id: string; name: string; revenue: number; units: number }[];
   ordersByStatus: Record<string, number>;
-}>> {
-  const [analytics, products, orders] = await Promise.all([
+  statusTotals: Record<string, number>;
+  paymentMethods: { method: string; count: number; revenue: number }[];
+  basket: { singleItemOrders: number; multiItemOrders: number; avgUnitsPerOrder: number };
+  inventory: {
+    totalUnits: number;
+    valuation: number;
+    totalSkus: number;
+    healthy: number;
+    low: number;
+    out: number;
+    reserved: number;
+  };
+  catalog: { total: number; active: number; draft: number; archived: number; avgPrice: number };
+  merchandise: {
+    sizes: { label: string; count: number; pct: number }[];
+    colors: { label: string; count: number; pct: number }[];
+  };
+  reviews: {
+    avgRating: number;
+    total: number;
+    breakdown: Record<number, number>;
+    recent: { id: string; rating: number; content: string; productName: string; createdAt: string }[];
+  };
+  coupons: { total: number; active: number; redemptions: number };
+};
+
+export async function getStoreAnalytics(
+  storeId: string,
+  range: B.SellerAnalyticsRange = "30d",
+): Promise<Result<SellerAnalyticsData>> {
+  const [analytics, products, orders, inventory, reviews, coupons] = await Promise.all([
     B.getSellerKPIsBackend(range),
-    B.getSellerProductsBackend({ limit: 1 }),
+    B.getSellerProductsBackend({ limit: 200 }),
     B.getSellerOrdersBackend({ limit: 200 }),
+    B.getSellerInventoryBackend(),
+    B.getStoreReviewsBackend(storeId, { limit: 10 }),
+    B.getStoreCouponsBackend(),
   ]);
   if (!analytics.ok) return fail(analytics.error);
 
@@ -3635,33 +3673,189 @@ export async function getStoreAnalytics(
     products.ok && products.data.stats && typeof products.data.stats === "object"
       ? products.data.stats
       : undefined;
+  const productList = products.ok ? loose<Array<{ price?: unknown; status?: unknown }>>(products.data.products ?? []) : [];
+  const pricedProducts = productList
+    .map((p) => firstFiniteNumber(p.price))
+    .filter((n): n is number => n != null && n > 0);
+  const catalog = {
+    total:
+      (products.ok
+        ? firstFiniteNumber(products.data.total, stats?.all, stats?.total)
+        : null) ?? productList.length,
+    active: firstFiniteNumber(stats?.active) ?? productList.filter((p) => p.status === "active").length,
+    draft: firstFiniteNumber(stats?.draft) ?? productList.filter((p) => p.status === "draft").length,
+    archived: firstFiniteNumber(stats?.archived) ?? productList.filter((p) => p.status === "archived").length,
+    avgPrice: pricedProducts.length
+      ? Math.round(pricedProducts.reduce((s, n) => s + n, 0) / pricedProducts.length)
+      : 0,
+  };
+
+  const days = range === "7d" ? 7 : range === "90d" ? 90 : range === "1y" ? 365 : 30;
+  const cutoff = Date.now() - days * 86_400_000;
+  const orderList = orders.ok ? loose<B.Order[]>(orders.data.orders ?? []) : [];
+  const horizonOrders = orderList.filter((o) => {
+    const t = new Date(String(o?.created_at ?? 0)).getTime();
+    return Number.isFinite(t) && t >= cutoff;
+  });
 
   const ordersByStatus: Record<string, number> = {};
-  if (orders.ok) {
-    for (const order of loose<Order[]>(orders.data.orders ?? [])) {
-      const key = String(order?.status ?? "unknown");
-      ordersByStatus[key] = (ordersByStatus[key] ?? 0) + 1;
+  const statusTotals: Record<string, number> = {};
+  for (const order of orderList) {
+    const key = String(order?.status ?? "unknown").toLowerCase();
+    ordersByStatus[key] = (ordersByStatus[key] ?? 0) + 1;
+    statusTotals[key] = (statusTotals[key] ?? 0) + Number(order?.total ?? 0);
+  }
+
+  const paymentMap = new Map<string, { count: number; revenue: number }>();
+  let unitsSold = 0;
+  let singleItemOrders = 0;
+  let multiItemOrders = 0;
+  for (const order of horizonOrders) {
+    const status = String(order?.status ?? "").toLowerCase();
+    if (status === "cancelled" || status === "failed") continue;
+    const items = Array.isArray(order?.items) ? order.items : [];
+    const units = items.reduce((s, it) => s + (firstFiniteNumber(it?.quantity) ?? 1), 0);
+    unitsSold += units;
+    if (units <= 1) singleItemOrders += 1;
+    else multiItemOrders += 1;
+    const paid = order?.payment_status === "paid" || order?.payment_status === "captured";
+    if (paid) {
+      const pm = String(order?.payment_method ?? "cod").toUpperCase();
+      const cur = paymentMap.get(pm) ?? { count: 0, revenue: 0 };
+      cur.count += 1;
+      cur.revenue += Number(order?.total ?? 0);
+      paymentMap.set(pm, cur);
     }
+  }
+  const paidOrderCount = horizonOrders.filter(
+    (o) => o?.payment_status === "paid" || o?.payment_status === "captured",
+  ).length;
+  const basket = {
+    singleItemOrders,
+    multiItemOrders,
+    avgUnitsPerOrder:
+      paidOrderCount > 0
+        ? Number((unitsSold / Math.max(paidOrderCount, 1)).toFixed(1))
+        : 0,
+  };
+
+  const inventoryRows = inventory.ok ? loose<Array<Record<string, unknown>>>(inventory.data.inventory ?? []) : [];
+  let totalUnits = 0;
+  let valuation = 0;
+  let reserved = 0;
+  let healthy = 0;
+  let low = 0;
+  let out = 0;
+  const sizeMap = new Map<string, number>();
+  const colorMap = new Map<string, number>();
+  for (const row of inventoryRows) {
+    const q = readInventoryQuantities(row as Parameters<typeof readInventoryQuantities>[0]);
+    const qty = q.quantity ?? 0;
+    totalUnits += qty;
+    reserved += q.reserved;
+    const avail = q.available ?? Math.max(0, qty - q.reserved);
+    valuation += qty * (firstFiniteNumber(row.price) ?? 0);
+    if (avail <= 0) out += 1;
+    else if (avail <= LOW_STOCK_THRESHOLD) low += 1;
+    else healthy += 1;
+    const size = typeof row.size === "string" && row.size.trim() ? row.size : "Standard";
+    const color = typeof row.color === "string" && row.color.trim() ? row.color : "Standard";
+    sizeMap.set(size, (sizeMap.get(size) ?? 0) + qty);
+    colorMap.set(color, (colorMap.get(color) ?? 0) + qty);
+  }
+  const totalVariantUnits = Math.max(1, totalUnits);
+  const toDistribution = (map: Map<string, number>) =>
+    [...map.entries()]
+      .map(([label, count]) => ({
+        label,
+        count,
+        pct: Number(((count / totalVariantUnits) * 100).toFixed(1)),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+  const reviewList = reviews.ok ? loose<B.Review[]>(reviews.data.reviews ?? []) : [];
+  const breakdown: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+  for (const r of reviewList) {
+    const star = Math.round(Number(r?.rating ?? 0));
+    if (star >= 1 && star <= 5) breakdown[star] += 1;
+  }
+  const reviewsTotal =
+    (reviews.ok ? firstFiniteNumber(reviews.data.total) : null) ?? reviewList.length;
+  const computedAvg =
+    reviewList.length > 0
+      ? reviewList.reduce((s, r) => s + Number(r?.rating ?? 0), 0) / reviewList.length
+      : 0;
+
+  const couponList = coupons.ok ? loose<Array<{ is_active?: boolean; used_count?: number }>>(coupons.data.coupons ?? []) : [];
+
+  const series = analytics.data.series;
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const dayOfWeek = dayNames.map((day) => ({ day, revenue: 0, orders: 0 }));
+  for (const p of series) {
+    const d = new Date(p.date);
+    if (Number.isNaN(d.getTime())) continue;
+    const idx = (d.getDay() + 6) % 7; // Sunday → index 6 (Sun last)
+    dayOfWeek[idx].revenue += p.revenue;
+    dayOfWeek[idx].orders += p.orders;
   }
 
   return ok({
     totalRevenue: analytics.data.revenue,
     totalOrders: analytics.data.orders,
-    totalProducts: (products.ok ? firstFiniteNumber(products.data.total, stats?.all, stats?.total) : null) ?? 0,
+    totalProducts: catalog.total,
     avgOrderValue: analytics.data.aov,
     refundRate: analytics.data.refundRate,
-    revenueByMonth: analytics.data.series.map((p) => ({
+    unitsSold,
+    deltas: analytics.data.deltas,
+    revenueByMonth: series.map((p) => ({
       month: p.date,
       revenue: p.revenue,
       orders: p.orders,
     })),
+    dayOfWeek,
     topProducts: analytics.data.topProducts.map((p) => ({
       id: p.id,
       name: p.name,
       revenue: p.revenue,
-      units: 0,
+      units: p.units,
     })),
     ordersByStatus,
+    statusTotals,
+    paymentMethods: [...paymentMap.entries()]
+      .map(([method, v]) => ({ method, count: v.count, revenue: v.revenue }))
+      .sort((a, b) => b.revenue - a.revenue),
+    basket,
+    inventory: {
+      totalUnits,
+      valuation: Math.round(valuation),
+      totalSkus: inventoryRows.length,
+      healthy,
+      low,
+      out,
+      reserved,
+    },
+    catalog,
+    merchandise: { sizes: toDistribution(sizeMap), colors: toDistribution(colorMap) },
+    reviews: {
+      avgRating:
+        (reviews.ok ? firstFiniteNumber(reviews.data.avg_rating) : null) ??
+        Number(computedAvg.toFixed(1)),
+      total: reviewsTotal,
+      breakdown,
+      recent: reviewList.slice(0, 3).map((r) => ({
+        id: String(r.id ?? ""),
+        rating: Number(r.rating ?? 0),
+        content: String(r.comment ?? ""),
+        productName: String(r.product?.name ?? "Product"),
+        createdAt: String(r.created_at ?? ""),
+      })),
+    },
+    coupons: {
+      total: couponList.length,
+      active: couponList.filter((c) => c.is_active).length,
+      redemptions: couponList.reduce((s, c) => s + (firstFiniteNumber(c.used_count) ?? 0), 0),
+    },
   });
 }
 

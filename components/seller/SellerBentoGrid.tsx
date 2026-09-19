@@ -1,9 +1,8 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import { colors, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { SELLER_CREAM, sellerBorder } from "@/components/seller/chrome";
 
 export interface SellerBentoItem {
   key: string;
@@ -15,10 +14,6 @@ export interface SellerBentoItem {
   onPress: () => void;
 }
 
-/**
- * Dashboard-only bento quick-action grid (web `QuickActionBento` feel).
- * Do NOT reuse for the More screen — that keeps `SellerShortcutGrid`.
- */
 export function SellerBentoGrid({ items }: { items: SellerBentoItem[] }) {
   return (
     <View style={styles.grid}>
@@ -29,34 +24,28 @@ export function SellerBentoGrid({ items }: { items: SellerBentoItem[] }) {
           onPress={item.onPress}
           activeOpacity={0.78}
           accessibilityRole="button"
-          accessibilityLabel={
-            item.badge != null && item.badge > 0
-              ? `${item.label}, ${item.badge} pending`
-              : item.label
-          }
+          accessibilityLabel={item.badge != null && item.badge > 0 ? `${item.label}, ${item.badge} pending` : item.label}
         >
-          <View style={styles.topRow}>
-            <View style={styles.iconBadge}>
-              <Ionicons name={item.icon} size={18} color="#141311" />
-              {item.badge != null && item.badge > 0 ? (
-                <View
-                  style={[
-                    styles.badge,
-                    item.tone === "critical" && { backgroundColor: "#B85C3A" },
-                    item.tone === "warn" && { backgroundColor: "#C8A44A" },
-                  ]}
-                >
-                  <Text style={styles.badgeText}>
-                    {item.badge > 99 ? "99+" : String(item.badge)}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <Ionicons name="chevron-forward" size={13} color="#A49E93" />
+          <View style={styles.iconBadge}>
+            <Ionicons name={item.icon} size={18} color={colors.olive[900]} />
+            {item.badge != null && item.badge > 0 ? (
+              <View
+                style={[
+                  styles.badge,
+                  item.tone === "critical" && styles.badgeCritical,
+                  item.tone === "warn" && styles.badgeWarn,
+                ]}
+              >
+                <Text style={styles.badgeText}>{item.badge > 99 ? "99+" : String(item.badge)}</Text>
+              </View>
+            ) : null}
           </View>
-          <View>
+          <View style={styles.copy}>
             <Text style={styles.label}>{item.label}</Text>
-            <Text style={styles.hint}>{item.hint.toUpperCase()}</Text>
+            <Text style={styles.hint}>{item.hint}</Text>
+          </View>
+          <View style={styles.arrow}>
+            <Ionicons name="chevron-forward" size={13} color={colors.ink.mute} />
           </View>
         </TouchableOpacity>
       ))}
@@ -69,43 +58,25 @@ const styles = StyleSheet.create({
   tile: {
     width: "47.5%",
     flexGrow: 1,
-    minHeight: 110,
+    minHeight: 82,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     backgroundColor: "#FFFFFF",
-    borderRadius: 20,
+    borderRadius: 19,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    justifyContent: "space-between",
-    gap: 12,
+    borderColor: "rgba(83,94,44,0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     ...shadows.soft,
   },
-  topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  iconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#F7F5EE",
-    borderWidth: 1,
-    borderColor: "#ECE8DD",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    backgroundColor: "#C8A44A",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "#FFFFFF",
-  },
-  badgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: "#141311" },
-  label: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: "#141311" },
-  hint: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.2, color: "#8E8B82", marginTop: 2 },
+  iconBadge: { width: 38, height: 38, borderRadius: 13, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  copy: { flex: 1, minWidth: 0, gap: 2 },
+  label: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[950] },
+  hint: { fontFamily: fontFamilies.sans.regular, fontSize: 9, color: colors.ink.mute },
+  arrow: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.paper.warm, alignItems: "center", justifyContent: "center" },
+  badge: { position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: colors.olive[800], alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#FFFFFF" },
+  badgeCritical: { backgroundColor: colors.accent2.rust },
+  badgeWarn: { backgroundColor: colors.accent2.ochre },
+  badgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, color: "#FFFFFF" },
 });

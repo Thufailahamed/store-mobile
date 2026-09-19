@@ -1,4 +1,5 @@
 import type { Store } from "@/lib/types";
+import { coercePayoutSettings } from "@/lib/payouts/settings";
 
 export interface SellerPayoutCompliance {
   bank_name?: string | null;
@@ -198,9 +199,14 @@ export function describePayoutProfile(
     };
   }
 
-  const missing = BANK_FIELDS.filter((field) => !hasValue(payout?.[field.key])).map((field) => field.label);
-  const last4 = firstNonEmpty(payout?.account_number_last4);
-  const bankName = firstNonEmpty(payout?.bank_name);
+  // Placeholder seed values ("Grandfathered Bank", "0000") are coerced to
+  // null so the settings card says "not on file" instead of echoing junk.
+  const coerced = coercePayoutSettings(payout as Record<string, unknown> | null);
+  const missing = BANK_FIELDS.filter(
+    (field) => !hasValue(coerced[field.key as keyof typeof coerced]),
+  ).map((field) => field.label);
+  const last4 = coerced.account_number_last4 ?? null;
+  const bankName = coerced.bank_name ?? null;
   const bankSummary = bankName && last4 ? `${bankName} · ••••${last4}` : bankName ?? (last4 ? `••••${last4}` : null);
 
   const raw = String(payout?.kyc_status ?? "").toLowerCase().trim();

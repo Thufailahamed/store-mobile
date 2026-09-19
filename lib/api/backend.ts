@@ -1338,7 +1338,7 @@ export type SellerKPIs = {
   refundRate: number;
   deltas: { revenue: number; orders: number; aov: number; refund: number };
   series: SellerAnalyticsPoint[];
-  topProducts: Array<{ id: string; name: string; revenue: number }>;
+  topProducts: Array<{ id: string; name: string; revenue: number; units: number }>;
 };
 
 export async function getSellerAnalyticsBackend(
@@ -1386,7 +1386,12 @@ export async function getSellerKPIsBackend(
       })),
       topProducts: (Array.isArray(res.data?.top_products) ? res.data.top_products : [])
         .filter((p) => p && typeof p.id === "string")
-        .map((p) => ({ id: p.id, name: String(p.name ?? "Untitled"), revenue: num(p.total_sales) })),
+        .map((p) => ({
+          id: p.id,
+          name: String(p.name ?? "Untitled"),
+          revenue: num(p.total_sales),
+          units: num((p as { units?: unknown }).units),
+        })),
     },
   };
 }
@@ -1909,6 +1914,55 @@ export async function updateAdminDeliveryCompanyBackend(
   patch: { is_approved: boolean; is_active?: boolean },
 ): Promise<ApiResult<{ company: Record<string, unknown> }>> {
   return fetchJson(`/api/admin/delivery-companies/${id}`, { method: "PATCH", body: patch });
+}
+
+export interface AdminProductDetail {
+  product: Record<string, unknown> & {
+    id: string;
+    name: string;
+    slug: string;
+    sku?: string | null;
+    status: string;
+    description?: string | null;
+    price: number;
+    mrp?: number | null;
+    currency?: string;
+    discount_pct?: number;
+    total_sales?: number;
+    view_count?: number;
+    rating?: number;
+    total_reviews?: number;
+    wishlist_count?: number;
+    created_at?: string;
+    images?: { url: string; is_primary?: boolean; position?: number }[];
+    store?: { id: string; name: string; slug?: string } | null;
+    brand?: { id: string; name: string; slug?: string; logo_url?: string | null } | null;
+    category?: { id: string; name: string; slug?: string } | null;
+  };
+  totals: {
+    revenue: number;
+    units: number;
+    recentRevenue: number;
+    recentUnits: number;
+    viewCount: number;
+    wishlistCount: number;
+    rating: number;
+    reviews: number;
+  };
+  inventory: { lowStockCount: number; outOfStockCount: number; variants: number };
+  revenueTrend: { date: string; total: number }[];
+  recentOrders: {
+    id?: string;
+    order_number?: string;
+    customer?: string;
+    quantity?: number;
+    total?: number;
+    placed_at?: string;
+  }[];
+}
+
+export async function getAdminProductByIdBackend(id: string): Promise<ApiResult<AdminProductDetail>> {
+  return fetchJson(`/api/admin/products/${id}/analytics`);
 }
 
 export async function approveProductBackend(id: string, status: "active" | "rejected" | "archived"): Promise<ApiResult<{ product: CatalogProduct }>> {

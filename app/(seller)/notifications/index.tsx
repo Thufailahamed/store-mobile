@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerNotifications, markSellerNotificationRead, markAllSellerNotificationsRead } from "@/lib/api";
-import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { colors, shadows, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -112,11 +112,18 @@ function InboxSkeleton() {
     <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
       {[0, 1, 2, 3].map((i) => (
         <View key={i} style={styles.skelCard}>
-          <Skeleton width={40} height={40} borderRadius={12} />
+          <Skeleton width={50} height={50} borderRadius={16} />
           <View style={{ flex: 1, gap: 8 }}>
-            <Skeleton width="45%" height={14} />
-            <Skeleton width="90%" height={12} />
-            <Skeleton width="30%" height={10} />
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Skeleton width="45%" height={14} />
+              <Skeleton width={60} height={14} borderRadius={8} />
+            </View>
+            <Skeleton width="70%" height={12} />
+            <Skeleton width="35%" height={12} />
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+              <Skeleton width={50} height={10} />
+              <Skeleton width={90} height={22} borderRadius={12} />
+            </View>
           </View>
         </View>
       ))}
@@ -202,7 +209,7 @@ export default function SellerNotifications() {
 
   const rows = useMemo(() => toRows(visible), [visible]);
 
-  const headerCount = loadError && notifications.length === 0
+  const headerSubtitle = loadError && notifications.length === 0
     ? "Unavailable"
     : unreadCount > 0
       ? `${unreadCount} unread`
@@ -237,7 +244,12 @@ export default function SellerNotifications() {
 
   const renderRow = ({ item: row }: { item: ListRow }) => {
     if (row.kind === "header") {
-      return <Text style={styles.sectionLabel}>{row.title}</Text>;
+      return (
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionLabel}>{row.title}</Text>
+          <View style={styles.sectionLine} />
+        </View>
+      );
     }
     const item = row.item;
     const bucket = normalizeSellerNotifType(item.type);
@@ -256,22 +268,25 @@ export default function SellerNotifications() {
       <TouchableOpacity
         style={[styles.card, unread && styles.cardUnread]}
         onPress={() => handlePress(item)}
-        activeOpacity={0.75}
+        activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={`${item.title}${unread ? ", unread" : ""}`}
       >
         <View style={[styles.iconWrap, { backgroundColor: meta.bg }]}>
-          <Ionicons name={meta.icon} size={18} color={meta.color} />
+          <Ionicons name={meta.icon} size={20} color={meta.color} />
         </View>
         <View style={styles.cardBody}>
-          <View style={styles.topRow}>
-            <Text style={styles.title} numberOfLines={2}>{item.title || "Update"}</Text>
-            {unread ? <View style={styles.unreadDot} /> : null}
+          <View style={styles.cardTop}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>{item.title || "Update"}</Text>
+              {unread ? <View style={styles.unreadDot} /> : null}
+            </View>
+            <View style={[styles.typeChip, { backgroundColor: meta.bg }]}>
+              <Text style={[styles.typeChipText, { color: meta.color }]}>{meta.label}</Text>
+            </View>
           </View>
-          <View style={[styles.typeChip, { backgroundColor: meta.bg }]}>
-            <Text style={[styles.typeChipText, { color: meta.color }]}>{meta.label}</Text>
-          </View>
-          {parsed.orderNumber || parsed.amount != null ? (
+
+          {parsed.orderNumber || parsed.amount != null || parsed.storeName ? (
             <View style={styles.facts}>
               {parsed.orderNumber ? (
                 <Text style={styles.orderRef}>{parsed.orderNumber}</Text>
@@ -286,9 +301,15 @@ export default function SellerNotifications() {
           ) : facts ? (
             <Text style={styles.body}>{facts}</Text>
           ) : null}
+
           <View style={styles.footer}>
             <Text style={styles.time}>{formatRelative(item.created_at)}</Text>
-            {actionLabel ? <Text style={styles.action}>{actionLabel}</Text> : null}
+            {actionLabel ? (
+              <View style={styles.actionPill}>
+                <Text style={styles.action}>{actionLabel}</Text>
+                <Ionicons name="arrow-forward" size={12} color={colors.olive[700]} />
+              </View>
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -298,28 +319,26 @@ export default function SellerNotifications() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-        <SellerBackButton label="Back" fallbackHref="/(seller)/more" style={{ marginBottom: 4 }} />
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
+        <SellerBackButton label="Back" fallbackHref="/(seller)/more" style={{ marginBottom: 8 }} />
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.kicker}>Atelier</Text>
             <Text style={styles.pageTitle}>Notifications</Text>
+            <Text style={styles.subtitle}>{headerSubtitle}</Text>
           </View>
-          <View style={styles.headerRight}>
-            <Text style={styles.count}>{headerCount}</Text>
-            {unreadCount > 0 ? (
-              <TouchableOpacity
-                style={styles.markAllBtn}
-                onPress={handleMarkAllRead}
-                disabled={markingAll}
-                accessibilityRole="button"
-                accessibilityLabel="Mark all as read"
-              >
-                <Ionicons name="checkmark-done" size={16} color={CREAM} />
-                <Text style={styles.markAllText}>{markingAll ? "Saving…" : "Mark all read"}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
+          {unreadCount > 0 ? (
+            <TouchableOpacity
+              style={styles.markAllBtn}
+              onPress={handleMarkAllRead}
+              disabled={markingAll}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all as read"
+            >
+              <Ionicons name="checkmark-done-outline" size={18} color={CREAM} />
+              <Text style={styles.markAllText}>{markingAll ? "Saving…" : "Mark all"}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
       <View style={styles.goldRule} />
@@ -348,6 +367,30 @@ export default function SellerNotifications() {
           />
         ))}
       </ScrollView>
+
+      {!loading && (search || tab !== "all") ? (
+        <View style={styles.resultsBar}>
+          <Text style={styles.resultsText}>
+            {visible.length} result{visible.length === 1 ? "" : "s"}
+            {tab !== "all" ? ` · ${TABS.find((t) => t.key === tab)?.label}` : ""}
+            {search ? ` for “${search}”` : ""}
+          </Text>
+          {(search || tab !== "all") && (
+            <TouchableOpacity
+              onPress={() => {
+                setSearchInput("");
+                setSearch("");
+                setTab("all");
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear filters"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.resultsClear}>Clear</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : null}
 
       {loading ? (
         <InboxSkeleton />
@@ -393,7 +436,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[2],
+    paddingBottom: spacing[4],
   },
   headerRow: {
     flexDirection: "row",
@@ -401,44 +444,36 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 12,
   },
-  backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: -6,
-    marginBottom: 2,
-  },
   kicker: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
     color: colors.olive[700],
-    marginBottom: 2,
+    marginBottom: 4,
   },
   pageTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 32,
+    lineHeight: 38,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.6,
   },
-  headerRight: { alignItems: "flex-end", gap: 8, paddingBottom: 2 },
-  count: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    letterSpacing: 0.4,
+  subtitle: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
     color: colors.olive[700],
+    marginTop: 4,
   },
   markAllBtn: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 44,
+    minHeight: 40,
     paddingHorizontal: 14,
     gap: 6,
     backgroundColor: colors.olive[900],
-    borderRadius: radii.full,
+    borderRadius: 18,
+    ...shadows.soft,
   },
   markAllText: {
     fontFamily: fontFamilies.sans.semibold,
@@ -452,129 +487,115 @@ const styles = StyleSheet.create({
     marginBottom: spacing[3],
   },
   searchContainer: { paddingHorizontal: spacing[5], marginBottom: spacing[3] },
-  searchInputWrap: {
+  tabsContainer: { marginBottom: 6, flexGrow: 0 },
+  tabsContent: { paddingHorizontal: spacing[5], gap: 8, paddingBottom: 6 },
+  resultsBar: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 44,
-    paddingHorizontal: 14,
-    gap: 8,
-    backgroundColor: CREAM,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.16)",
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: INK,
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[5],
     paddingVertical: 10,
+    marginBottom: 2,
   },
-  tabsContainer: { marginBottom: 8, flexGrow: 0 },
-  tabsContent: { paddingHorizontal: spacing[5], gap: 8, paddingBottom: 4 },
-  tab: {
+  resultsText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.sm,
+    color: colors.olive[700],
+  },
+  resultsClear: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+    color: colors.olive[900],
+  },
+  listContent: { paddingHorizontal: spacing[5], paddingTop: 4, paddingBottom: 48 },
+  sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 36,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.16)",
-    gap: 6,
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 10,
   },
-  tabActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
+  sectionLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(83,94,44,0.14)",
   },
-  tabText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[800],
-  },
-  tabTextActive: { color: CREAM, fontFamily: fontFamilies.sans.semibold },
-  tabCount: {
-    backgroundColor: "rgba(83,94,44,0.1)",
-    borderRadius: radii.full,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    minWidth: 20,
-    alignItems: "center",
-  },
-  tabCountActive: { backgroundColor: "rgba(250,248,241,0.18)" },
-  tabCountText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[800],
-  },
-  tabCountTextActive: { color: CREAM },
-  listContent: { paddingHorizontal: spacing[5], paddingTop: 8, paddingBottom: 48 },
   sectionLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.4,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     color: colors.olive[700],
-    marginBottom: 8,
-    marginTop: 8,
   },
   card: {
     flexDirection: "row",
-    gap: 12,
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    gap: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: 14,
-    marginBottom: 10,
+    borderColor: "rgba(83,94,44,0.10)",
+    padding: 16,
+    marginBottom: 12,
+    ...shadows.soft,
   },
   cardUnread: {
-    borderColor: "rgba(83,94,44,0.28)",
-    borderLeftWidth: 3,
+    borderLeftWidth: 5,
     borderLeftColor: colors.olive[800],
+    backgroundColor: "#FCFBF6",
   },
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 50,
+    height: 50,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 2,
   },
-  cardBody: { flex: 1, minWidth: 0 },
-  topRow: {
+  cardBody: { flex: 1, minWidth: 0, gap: 8 },
+  cardTop: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "flex-start",
+    gap: 10,
+  },
+  titleRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
+    minWidth: 0,
   },
   title: {
     flex: 1,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: INK,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 15,
+    color: colors.olive[800],
     lineHeight: 20,
+  },
+  titleUnread: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: INK,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.olive[800],
-    marginTop: 6,
+    flexShrink: 0,
   },
   typeChip: {
-    alignSelf: "flex-start",
-    marginTop: 6,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.full,
   },
   typeChipText: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  facts: { marginTop: 8, gap: 2 },
+  facts: { gap: 3 },
   orderRef: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 12,
@@ -583,17 +604,17 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontSize: 18,
     color: INK,
+    marginTop: 1,
   },
   storeName: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
-    color: colors.olive[800],
+    color: colors.olive[700],
     lineHeight: 20,
   },
   body: {
-    marginTop: 8,
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.olive[800],
@@ -603,68 +624,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 4,
     gap: 8,
   },
   time: {
     fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.light.mutedForeground,
+  },
+  actionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: radii.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.10)",
   },
   action: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.olive[800],
-  },
-  emptyWrap: {
-    alignItems: "center",
-    paddingTop: 48,
-    paddingHorizontal: 24,
-    gap: 8,
-  },
-  emptyIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: INK,
-    textAlign: "center",
-  },
-  emptySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 10,
     color: colors.olive[700],
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  retryBtn: {
-    marginTop: 14,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[700],
-  },
-  retryLabel: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
-    color: CREAM,
   },
   skelCard: {
     flexDirection: "row",
-    gap: 12,
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
-    padding: 14,
+    gap: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 16,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.08)",
+    marginBottom: 12,
+    ...shadows.soft,
   },
 });
