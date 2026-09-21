@@ -6,6 +6,7 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
+  ScrollView,
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
@@ -27,7 +28,7 @@ import type { Notification } from "@/lib/types";
 import { Skeleton, useToast } from "@/components/ui";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { spacing, radii, typography } from "@/lib/theme/tokens";
+import { spacing, radii, shadows, typography } from "@/lib/theme/tokens";
 import { PaperBackground } from "@/components/layout";
 import { useNotificationsRealtime } from "@/lib/hooks/useNotificationsRealtime";
 
@@ -35,14 +36,14 @@ type NotifFilter = "all" | "messages" | "alerts" | "social" | "saved";
 
 const FILTERS: {
   key: NotifFilter;
-  label?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  { key: "all", label: "All" },
-  { key: "messages", icon: "chatbubble-outline" },
-  { key: "alerts", icon: "flag-outline" },
-  { key: "social", icon: "people-outline" },
-  { key: "saved", icon: "bookmark-outline" },
+  { key: "all", label: "All", icon: "notifications-outline" },
+  { key: "messages", label: "Messages", icon: "chatbubble-outline" },
+  { key: "alerts", label: "Alerts", icon: "flag-outline" },
+  { key: "social", label: "Social", icon: "people-outline" },
+  { key: "saved", label: "Saved", icon: "bookmark-outline" },
 ];
 
 const FILTER_TYPES: Record<Exclude<NotifFilter, "all">, string[]> = {
@@ -52,25 +53,33 @@ const FILTER_TYPES: Record<Exclude<NotifFilter, "all">, string[]> = {
   saved: ["promo", "promotion", "loyalty", "drop", "rewards"],
 };
 
-const TYPE_BADGE: Record<
+type TypeTone = "olive" | "rust" | "ochre" | "ink";
+
+const TYPE_META: Record<
   string,
-  keyof typeof Ionicons.glyphMap
+  { icon: keyof typeof Ionicons.glyphMap; tone: TypeTone; label: string }
 > = {
-  order: "receipt-outline",
-  delivery: "bicycle-outline",
-  promo: "pricetag-outline",
-  promotion: "pricetag-outline",
-  marketing: "pricetag-outline",
-  review: "star-outline",
-  payment: "wallet-outline",
-  stock: "alert-circle-outline",
-  inventory: "alert-circle-outline",
-  system: "settings-outline",
-  loyalty: "gift-outline",
-  rewards: "gift-outline",
-  drop: "sparkles-outline",
-  welcome: "sparkles-outline",
-  social: "people-outline",
+  order: { icon: "receipt-outline", tone: "olive", label: "Order" },
+  delivery: { icon: "bicycle-outline", tone: "olive", label: "Delivery" },
+  payment: { icon: "wallet-outline", tone: "ochre", label: "Payment" },
+  promo: { icon: "pricetag-outline", tone: "rust", label: "Offer" },
+  promotion: { icon: "pricetag-outline", tone: "rust", label: "Offer" },
+  marketing: { icon: "pricetag-outline", tone: "rust", label: "Offer" },
+  review: { icon: "star-outline", tone: "ochre", label: "Review" },
+  stock: { icon: "alert-circle-outline", tone: "rust", label: "Stock" },
+  inventory: { icon: "alert-circle-outline", tone: "rust", label: "Stock" },
+  system: { icon: "settings-outline", tone: "ink", label: "System" },
+  loyalty: { icon: "gift-outline", tone: "ochre", label: "Rewards" },
+  rewards: { icon: "gift-outline", tone: "ochre", label: "Rewards" },
+  drop: { icon: "sparkles-outline", tone: "ochre", label: "Drop" },
+  welcome: { icon: "sparkles-outline", tone: "ochre", label: "Welcome" },
+  social: { icon: "people-outline", tone: "olive", label: "Social" },
+};
+
+const DEFAULT_TYPE_META = {
+  icon: "bookmark-outline" as keyof typeof Ionicons.glyphMap,
+  tone: "ink" as TypeTone,
+  label: "Update",
 };
 
 function formatRelativeShort(dateStr: string): string {
@@ -87,6 +96,22 @@ function formatRelativeShort(dateStr: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function dayLabel(dateStr: string): string {
+  const date = new Date(dateStr);
+  const today = new Date();
+  const startOfDay = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round(
+    (startOfDay(today) - startOfDay(date)) / 86400000
+  );
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) {
+    return date.toLocaleDateString("en-LK", { weekday: "long" });
+  }
+  return "Earlier";
 }
 
 /** In-app relative path only — no scheme/host, no "..", reasonable length. */
@@ -139,7 +164,8 @@ export default function NotificationsScreen() {
     queryFn: async () => {
       if (!user) return [];
       const res = await getNotifications(user.id);
-      return res.ok ? res.data : [];
+      if (!res.ok) throw new Error(res.error);
+      return res.data;
     },
     enabled: !!user,
   });
@@ -237,7 +263,10 @@ export default function NotificationsScreen() {
     showLocalPush: true,
   });
 
-  const notifications = notificationsQuery.data ?? [];
+  const notifications = useMemo(
+    () => notificationsQuery.data ?? [],
+    [notificationsQuery.data]
+  );
 
   const unreadByFilter = useMemo(() => {
     const counts: Record<NotifFilter, number> = {
@@ -300,8 +329,6 @@ export default function NotificationsScreen() {
     [markReadMutation, router, toast]
   );
 
-  const accent = theme.accent2.rust;
-
   return (
     <PaperBackground style={styles.screen}>
       <View
@@ -309,169 +336,228 @@ export default function NotificationsScreen() {
           styles.header,
           {
             paddingTop: insets.top + spacing[2],
-            backgroundColor: theme.colors.card,
             borderBottomColor: theme.colors.border,
           },
         ]}
       >
         <TouchableOpacity
           onPress={() => navigateHome(router)}
-          style={styles.headerBtn}
+          style={[
+            styles.headerBtn,
+            { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
+          ]}
           hitSlop={8}
+          accessibilityLabel="Go back"
         >
-          <Ionicons name="chevron-back" size={24} color={theme.colors.foreground} />
+          <Ionicons name="chevron-back" size={20} color={theme.colors.foreground} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.foreground }]}>
-          Notifications
-        </Text>
-        <TouchableOpacity
-          onPress={() =>
-            Alert.alert("Clear all notifications?", "This removes every notification from your inbox.", [
-              { text: "Cancel", style: "cancel" },
-              { text: "Clear all", style: "destructive", onPress: () => clearAllMutation.mutate() },
-            ])
-          }
-          style={styles.headerBtn}
-          disabled={notifications.length === 0}
-          hitSlop={8}
-          accessibilityLabel="Clear all notifications"
-        >
-          <Ionicons
-            name="trash-outline"
-            size={20}
-            color={
-              notifications.length > 0
-                ? theme.colors.foreground
-                : theme.colors.mutedForeground
+
+        <View style={styles.headerCenter}>
+          <Text style={[styles.headerEyebrow, { color: theme.accent2.rust }]}>
+            INBOX
+          </Text>
+          <Text style={[styles.headerTitle, { color: theme.colors.foreground }]}>
+            Notifications
+          </Text>
+          <Text
+            style={[styles.headerSub, { color: theme.colors.mutedForeground }]}
+          >
+            {unreadByFilter.all > 0
+              ? `${unreadByFilter.all} unread`
+              : "You're all caught up"}
+          </Text>
+        </View>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => unreadByFilter.all > 0 && markAllMutation.mutate()}
+            style={[
+              styles.headerBtn,
+              { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
+            ]}
+            disabled={unreadByFilter.all === 0}
+            hitSlop={8}
+            accessibilityLabel="Mark all as read"
+          >
+            <Ionicons
+              name="checkmark-done-outline"
+              size={18}
+              color={
+                unreadByFilter.all > 0
+                  ? theme.olive[700]
+                  : theme.colors.mutedForeground
+              }
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() =>
+              Alert.alert("Clear all notifications?", "This removes every notification from your inbox.", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Clear all", style: "destructive", onPress: () => clearAllMutation.mutate() },
+              ])
             }
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => unreadByFilter.all > 0 && markAllMutation.mutate()}
-          style={styles.headerBtn}
-          disabled={unreadByFilter.all === 0}
-          hitSlop={8}
-        >
-          <Ionicons
-            name="checkmark-done-outline"
-            size={22}
-            color={
-              unreadByFilter.all > 0
-                ? theme.colors.foreground
-                : theme.colors.mutedForeground
-            }
-          />
-        </TouchableOpacity>
+            style={[
+              styles.headerBtn,
+              { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
+            ]}
+            disabled={notifications.length === 0}
+            hitSlop={8}
+            accessibilityLabel="Clear all notifications"
+          >
+            <Ionicons
+              name="trash-outline"
+              size={17}
+              color={
+                notifications.length > 0
+                  ? theme.accent2.rust
+                  : theme.colors.mutedForeground
+              }
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View
-        style={[
-          styles.filterBar,
-          { backgroundColor: theme.colors.secondary },
-        ]}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterRow}
       >
-        {FILTERS.map((item, index) => {
+        {FILTERS.map((item) => {
           const selected = filter === item.key;
           const unread = unreadByFilter[item.key];
 
           return (
-            <React.Fragment key={item.key}>
-              {index > 0 && (
-                <View
-                  style={[styles.filterDivider, { backgroundColor: theme.colors.border }]}
-                />
-              )}
-              <Pressable
-                onPress={() => setFilter(item.key)}
-                style={({ pressed }) => [
-                  item.label ? styles.filterPill : styles.filterIconBtn,
-                  item.label &&
-                    selected && {
-                      backgroundColor: theme.colors.card,
-                      shadowColor: theme.colors.foreground,
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.08,
-                      shadowRadius: 2,
-                      elevation: 1,
-                    },
-                  pressed && { opacity: 0.75 },
+            <Pressable
+              key={item.key}
+              onPress={() => setFilter(item.key)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                {
+                  backgroundColor: selected
+                    ? theme.olive[800]
+                    : theme.colors.card,
+                  borderColor: selected
+                    ? theme.olive[800]
+                    : theme.colors.border,
+                },
+                pressed && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Ionicons
+                name={item.icon}
+                size={14}
+                color={
+                  selected ? theme.paper.cream : theme.colors.mutedForeground
+                }
+              />
+              <Text
+                style={[
+                  styles.filterChipText,
+                  {
+                    color: selected
+                      ? theme.paper.cream
+                      : theme.colors.foreground,
+                  },
                 ]}
               >
-                {item.label ? (
+                {item.label}
+              </Text>
+              {unread > 0 && (
+                <View
+                  style={[
+                    styles.filterCount,
+                    {
+                      backgroundColor: selected
+                        ? theme.paper.cream
+                        : theme.accent2.rust,
+                    },
+                  ]}
+                >
                   <Text
                     style={[
-                      styles.filterPillText,
-                      {
-                        color: selected
-                          ? theme.colors.foreground
-                          : theme.colors.mutedForeground,
-                        fontFamily: selected
-                          ? fontFamilies.sans.bold
-                          : fontFamilies.sans.medium,
-                      },
+                      styles.filterCountText,
+                      { color: selected ? theme.olive[800] : "#fff" },
                     ]}
                   >
-                    {item.label}
+                    {unread}
                   </Text>
-                ) : (
-                  <View>
-                    <Ionicons
-                      name={item.icon!}
-                      size={18}
-                      color={
-                        selected
-                          ? theme.colors.foreground
-                          : theme.colors.mutedForeground
-                      }
-                    />
-                    {unread > 0 && (
-                      <View style={[styles.filterDot, { backgroundColor: accent }]} />
-                    )}
-                  </View>
-                )}
-              </Pressable>
-            </React.Fragment>
+                </View>
+              )}
+            </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {notificationsQuery.isLoading ? (
         <View style={styles.loadingList}>
           {[1, 2, 3, 4].map((i) => (
             <View
               key={i}
-              style={[styles.row, { borderBottomColor: theme.colors.border }]}
+              style={[
+                styles.card,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border,
+                },
+              ]}
             >
-              <Skeleton width={44} height={44} borderRadius={22} />
+              <Skeleton width={42} height={42} borderRadius={12} />
               <View style={{ flex: 1, gap: 8 }}>
                 <Skeleton width="85%" height={14} />
-                <Skeleton width="30%" height={12} />
+                <Skeleton width="40%" height={11} />
               </View>
-              <Skeleton width={52} height={52} borderRadius={8} />
             </View>
           ))}
+        </View>
+      ) : notificationsQuery.isError ? (
+        <View style={styles.emptyWrap}>
+          <View
+            style={[styles.emptyIcon, { backgroundColor: theme.olive[50] }]}
+          >
+            <Ionicons
+              name="cloud-offline-outline"
+              size={30}
+              color={theme.olive[600]}
+            />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.colors.foreground }]}>
+            Couldn't load notifications
+          </Text>
+          <Text style={[styles.emptySub, { color: theme.colors.mutedForeground }]}>
+            Check your connection and try again.
+          </Text>
+          <TouchableOpacity
+            onPress={() => notificationsQuery.refetch()}
+            style={[styles.retryBtn, { backgroundColor: theme.olive[800] }]}
+            accessibilityRole="button"
+          >
+            <Ionicons name="refresh" size={15} color={theme.paper.cream} />
+            <Text style={[styles.retryText, { color: theme.paper.cream }]}>
+              Retry
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : visibleNotifications.length === 0 ? (
         <View style={styles.emptyWrap}>
           <View
-            style={[
-              styles.emptyIcon,
-              { backgroundColor: theme.colors.secondary },
-            ]}
+            style={[styles.emptyIcon, { backgroundColor: theme.olive[50] }]}
           >
             <Ionicons
               name="notifications-off-outline"
-              size={32}
-              color={theme.colors.mutedForeground}
+              size={30}
+              color={theme.olive[600]}
             />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.colors.foreground }]}>
-            No notifications
+            {filter === "all" ? "No notifications" : "Nothing here yet"}
           </Text>
           <Text style={[styles.emptySub, { color: theme.colors.mutedForeground }]}>
             {filter === "all"
-              ? "You're all caught up"
-              : "Nothing in this category yet"}
+              ? "Order updates, offers and alerts will show up here."
+              : "Nothing in this category yet."}
           </Text>
         </View>
       ) : (
@@ -479,7 +565,10 @@ export default function NotificationsScreen() {
           data={visibleNotifications}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + spacing[6] }}
+          contentContainerStyle={{
+            paddingHorizontal: spacing[4],
+            paddingBottom: insets.bottom + spacing[6],
+          }}
           refreshControl={
             <RefreshControl
               refreshing={notificationsQuery.isFetching && !notificationsQuery.isLoading}
@@ -487,19 +576,36 @@ export default function NotificationsScreen() {
               tintColor={theme.colors.primary}
             />
           }
-          renderItem={({ item }) => (
-            <NotificationRow
-              item={item}
-              onPress={() => handlePress(item)}
-              onDelete={() =>
-                Alert.alert("Delete notification?", undefined, [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(item.id) },
-                ])
-              }
-              accent={accent}
-            />
-          )}
+          renderItem={({ item, index }) => {
+            const label = dayLabel(item.created_at);
+            const showLabel =
+              index === 0 ||
+              dayLabel(visibleNotifications[index - 1].created_at) !== label;
+            return (
+              <View>
+                {showLabel && (
+                  <Text
+                    style={[
+                      styles.dayLabel,
+                      { color: theme.colors.mutedForeground },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                )}
+                <NotificationRow
+                  item={item}
+                  onPress={() => handlePress(item)}
+                  onDelete={() =>
+                    Alert.alert("Delete notification?", undefined, [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(item.id) },
+                    ])
+                  }
+                />
+              </View>
+            );
+          }}
         />
       )}
     </PaperBackground>
@@ -510,68 +616,88 @@ function NotificationRow({
   item,
   onPress,
   onDelete,
-  accent,
 }: {
   item: Notification;
   onPress: () => void;
   onDelete: () => void;
-  accent: string;
 }) {
   const theme = useTheme();
   const isUnread = !item.read_at;
   const imageUrl = getNotificationImage(item);
-  const badgeIcon = TYPE_BADGE[(item.type ?? "").toLowerCase()] ?? "bookmark-outline";
+  const meta =
+    TYPE_META[(item.type ?? "").toLowerCase()] ?? DEFAULT_TYPE_META;
+  const tint =
+    meta.tone === "olive"
+      ? theme.olive[600]
+      : meta.tone === "rust"
+        ? theme.accent2.rust
+        : meta.tone === "ochre"
+          ? theme.accent2.ochre
+          : theme.ink.soft;
   const message = item.body?.trim() ? item.body : item.title;
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.row,
+        styles.card,
         {
-          backgroundColor: theme.colors.card,
-          borderBottomColor: theme.colors.border,
+          backgroundColor: isUnread ? theme.olive[50] : theme.colors.card,
+          borderColor: isUnread ? theme.olive[200] : theme.colors.border,
         },
-        pressed && { opacity: 0.85 },
+        pressed && { opacity: 0.88 },
       ]}
+      accessibilityRole="button"
     >
-      <View style={styles.rowLeft}>
-        {isUnread ? (
-          <View style={[styles.unreadDot, { backgroundColor: accent }]} />
-        ) : (
-          <View style={styles.unreadDotPlaceholder} />
+      <View
+        style={[
+          styles.iconTile,
+          { backgroundColor: `${tint}1A` },
+        ]}
+      >
+        <Ionicons name={meta.icon} size={19} color={tint} />
+        {isUnread && (
+          <View
+            style={[
+              styles.unreadDot,
+              {
+                backgroundColor: theme.accent2.rust,
+                borderColor: isUnread ? theme.olive[50] : theme.colors.card,
+              },
+            ]}
+          />
         )}
-
-        <View style={styles.avatarWrap}>
-          <View
-            style={[
-              styles.avatar,
-              { backgroundColor: theme.colors.foreground },
-            ]}
-          >
-            <Text style={[styles.avatarText, { color: theme.colors.card }]}>L</Text>
-          </View>
-          <View
-            style={[
-              styles.avatarBadge,
-              { backgroundColor: accent, borderColor: theme.colors.card },
-            ]}
-          >
-            <Ionicons name={badgeIcon} size={9} color="#fff" />
-          </View>
-        </View>
       </View>
 
       <View style={styles.rowBody}>
         <Text
-          style={[styles.message, { color: theme.colors.foreground }]}
+          style={[
+            styles.message,
+            {
+              color: theme.colors.foreground,
+              fontFamily: isUnread
+                ? fontFamilies.sans.bold
+                : fontFamilies.sans.semibold,
+            },
+          ]}
           numberOfLines={3}
         >
           {message}
         </Text>
-        <Text style={[styles.time, { color: theme.colors.mutedForeground }]}>
-          {formatRelativeShort(item.created_at)}
-        </Text>
+        <View style={styles.metaRow}>
+          <Text style={[styles.typeLabel, { color: tint }]}>
+            {meta.label.toUpperCase()}
+          </Text>
+          <View
+            style={[
+              styles.metaDot,
+              { backgroundColor: theme.colors.mutedForeground },
+            ]}
+          />
+          <Text style={[styles.time, { color: theme.colors.mutedForeground }]}>
+            {formatRelativeShort(item.created_at)}
+          </Text>
+        </View>
       </View>
 
       {imageUrl ? (
@@ -581,28 +707,21 @@ function NotificationRow({
           contentFit="cover"
           transition={200}
         />
-      ) : (
-        <View
-          style={[
-            styles.thumb,
-            styles.thumbPlaceholder,
-            { backgroundColor: theme.colors.secondary },
-          ]}
-        >
-          <Ionicons
-            name="image-outline"
-            size={18}
-            color={theme.colors.mutedForeground}
-          />
-        </View>
-      )}
+      ) : null}
+
       <TouchableOpacity
         onPress={onDelete}
-        hitSlop={8}
+        hitSlop={10}
         accessibilityLabel="Delete notification"
-        style={{ padding: 4 }}
+        style={[
+          styles.deleteBtn,
+          {
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.card,
+          },
+        ]}
       >
-        <Ionicons name="close" size={16} color={theme.colors.mutedForeground} />
+        <Ionicons name="close" size={13} color={theme.colors.mutedForeground} />
       </TouchableOpacity>
     </Pressable>
   );
@@ -615,134 +734,162 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[3],
-    borderBottomWidth: 1,
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold,
-  },
-  filterBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: spacing[4],
-    marginTop: spacing[4],
-    marginBottom: spacing[2],
-    borderRadius: radii.xl,
-    padding: spacing[1],
-    minHeight: 48,
-  },
-  filterPill: {
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
-    borderRadius: radii.lg,
-    marginRight: spacing[1],
-  },
-  filterPillText: {
-    fontSize: typography.fontSizes.sm,
-  },
-  filterIconBtn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing[2.5],
-    minWidth: 44,
-  },
-  filterDivider: {
-    width: 1,
-    height: 22,
-  },
-  filterDot: {
-    position: "absolute",
-    top: -2,
-    right: -4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  loadingList: {
-    paddingTop: spacing[2],
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing[4],
-    paddingHorizontal: spacing[4],
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: spacing[3],
   },
-  rowLeft: {
+  headerBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCenter: {
+    flex: 1,
+  },
+  headerEyebrow: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.editorial,
+  },
+  headerTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: typography.fontSizes["2xl"],
+    lineHeight: 28,
+  },
+  headerSub: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: typography.fontSizes.xs,
+    marginTop: 1,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: spacing[2],
+  },
+  filterScroll: {
+    flexGrow: 0,
+  },
+  filterRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[1],
   },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  unreadDotPlaceholder: {
-    width: 8,
-  },
-  avatarWrap: {
-    width: 44,
-    height: 44,
-    position: "relative",
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  filterChip: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    height: 34,
+    paddingHorizontal: spacing[3.5],
+    borderRadius: radii.full,
+    borderWidth: 1,
   },
-  avatarText: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    lineHeight: 26,
+  filterChipText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
   },
-  avatarBadge: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    width: 18,
-    height: 18,
+  filterCount: {
+    minWidth: 17,
+    height: 17,
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1.5,
+    paddingHorizontal: 4,
+  },
+  filterCountText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10,
+  },
+  dayLabel: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: typography.letterSpacing.widest,
+    textTransform: "uppercase",
+    marginTop: spacing[4],
+    marginBottom: spacing[2],
+    marginLeft: spacing[1],
+  },
+  loadingList: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    gap: spacing[2.5],
+  },
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    paddingVertical: spacing[3],
+    paddingLeft: spacing[3],
+    paddingRight: spacing[4],
+    gap: spacing[3],
+    marginBottom: spacing[2.5],
+    ...shadows.soft,
+  },
+  iconTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadDot: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
   },
   rowBody: {
     flex: 1,
-    gap: spacing[1.5],
-    paddingRight: spacing[1],
+    gap: 4,
   },
   message: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
     lineHeight: 19,
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  typeLabel: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: typography.letterSpacing.wider,
+  },
+  metaDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    opacity: 0.5,
+  },
   time: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.xs,
   },
   thumb: {
-    width: 52,
-    height: 52,
-    borderRadius: radii.md,
+    width: 48,
+    height: 48,
+    borderRadius: radii.lg,
   },
-  thumbPlaceholder: {
+  deleteBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "flex-start",
+    marginTop: 2,
   },
   emptyWrap: {
     flex: 1,
@@ -767,5 +914,18 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.base,
     textAlign: "center",
+  },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: spacing[3],
+    paddingHorizontal: spacing[5],
+    height: 40,
+    borderRadius: radii.full,
+  },
+  retryText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
   },
 });
