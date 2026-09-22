@@ -752,7 +752,7 @@ export async function resendOrderReceiptBackend(id: string): Promise<ApiResult<{
   return fetchJson(`/api/orders/${id}/resend-receipt`, { method: "POST" });
 }
 
-export async function aiSearchBackend(prompt: string): Promise<ApiResult<{ products?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }> }>> {
+export async function aiSearchBackend(prompt: string): Promise<ApiResult<{ products?: Array<{ id: string; name: string; slug: string; price: number; mrp?: number; discount_pct?: number; rating?: number; total_reviews?: number; image_url?: string }> }>> {
   return fetchJson("/api/ai/search", { method: "POST", body: { prompt } });
 }
 
@@ -763,7 +763,7 @@ export async function aiOutfitBackend(input: {
   return fetchJson("/api/ai/outfit", { method: "POST", body: input });
 }
 
-export async function aiTrendsBackend(): Promise<ApiResult<{ trends?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string; category?: string }> }>> {
+export async function aiTrendsBackend(): Promise<ApiResult<{ trends?: Array<{ id: string; name: string; slug: string; price: number; currency?: string; image_url?: string | null; category?: string; score?: number }> }>> {
   return fetchJson("/api/ai/trends");
 }
 

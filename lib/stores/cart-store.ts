@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCartBackend, putCartBackend } from "@/lib/api/backend";
 import { getVariantAvailableStock } from "@/lib/inventory";
 import type { CartReconciliation } from "@/lib/cart-validation";
-import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, assertStoreConsistency, buildCartLineKey } from "@/lib/cart-line-key";
+import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, mergeCartItemRecordsFromRemotePull, assertStoreConsistency, buildCartLineKey } from "@/lib/cart-line-key";
 import { clearCheckoutSession } from "@/lib/cart-checkout-session";
 import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
 import { suppressRemoteSyncPull, beginPushInFlight, endPushInFlight } from "@/lib/remote-sync-guard";
@@ -120,7 +120,6 @@ export const useCart = create<CartStore>()(
             knownStock != null && knownStock > 0
               ? Math.min(knownStock, fallbackCap)
               : fallbackCap;
-          const { image: _image, ...rest } = item;
           const next = existing
             ? Math.min(existing.quantity + requestedQty, effectiveCap)
             : Math.min(requestedQty, effectiveCap);
@@ -145,7 +144,8 @@ export const useCart = create<CartStore>()(
             items: {
               ...state.items,
               [key]: {
-                ...rest,
+                ...item,
+                image: item.image ?? existing?.image,
                 quantity: next,
                 stock: knownStock ?? null,
                 is_gift: existing?.is_gift ?? item.is_gift ?? false,
@@ -277,6 +277,7 @@ export const useCart = create<CartStore>()(
             return { ok: false, error: loadFailed };
           }
 
+          const local = migrateCartItemRecord(get().items);
           const remoteRows = (res.data.lines ?? []) as unknown[];
           const serverItems: Record<string, CartItem> = {};
           for (const row of remoteRows) {
@@ -295,7 +296,8 @@ export const useCart = create<CartStore>()(
             };
             if (!r.product_id || !r.store_id) continue;
             const productInactive =
-              r.product?.status !== "active" || r.product?.is_active === false;
+              r.product != null &&
+              (r.product.status !== "active" || r.product.is_active === false);
             const variantInactive = r.variant?.is_active === false;
             if (productInactive || variantInactive) continue;
 
@@ -304,12 +306,17 @@ export const useCart = create<CartStore>()(
               productId: r.product_id,
               variantId: r.variant_id ?? null,
             });
+            const prior = local[key];
             serverItems[key] = {
               productId: r.product_id,
               variantId: r.variant_id ?? null,
               storeId: r.store_id,
-              name: r.product_name ?? r.product?.name ?? "Product",
-              variantLabel: r.variant_label ?? undefined,
+              name: r.product_name ?? r.product?.name ?? prior?.name ?? "Product",
+              variantLabel:
+                r.variant_label ??
+                (`${r.variant?.color ?? ""} ${r.variant?.size ?? ""}`.trim() || undefined) ??
+                prior?.variantLabel,
+              image: prior?.image,
               price: Number(r.unit_price ?? 0),
               quantity: Number(r.quantity ?? 1),
               stock: getVariantAvailableStock(
@@ -321,17 +328,6 @@ export const useCart = create<CartStore>()(
             };
           }
 
-          const local = migrateCartItemRecord(get().items);
-          let mergedItems: Record<string, CartItem>;
-          let quantityConflicts = 0;
-          if (mergeMode === "remote") {
-            mergedItems = serverItems;
-          } else {
-            const merged = mergeCartItemRecords(serverItems, local);
-            mergedItems = merged.items;
-            quantityConflicts = merged.quantityConflicts;
-          }
-
           const productIndex: Record<string, { id: string; store_id: string }> = {};
           for (const row of remoteRows) {
             const r = row as { product_id: string; product?: { id: string; store_id?: string } };
@@ -339,14 +335,24 @@ export const useCart = create<CartStore>()(
               productIndex[r.product_id] = { id: r.product.id, store_id: r.product.store_id };
             }
           }
-          const consistency = assertStoreConsistency(mergedItems, productIndex);
-          if (
-            consistency.dropped.length > 0 ||
-            consistency.rekeyed.length > 0 ||
-            consistency.recapped.length > 0
-          ) {
-            set({ items: consistency.next, hydrated: true });
-            return { ok: true, quantityConflicts };
+          // The consistency check only applies to server lines — productIndex
+          // is built from the remote payload, so local-only lines (not yet
+          // pushed) would all look "missing" and get dropped. When the backend
+          // returns no product embeds at all, skip the check entirely rather
+          // than wiping the bag.
+          const consistentServerItems =
+            Object.keys(productIndex).length > 0
+              ? assertStoreConsistency(serverItems, productIndex).next
+              : serverItems;
+
+          let mergedItems: Record<string, CartItem>;
+          let quantityConflicts = 0;
+          if (mergeMode === "remote") {
+            mergedItems = mergeCartItemRecordsFromRemotePull(consistentServerItems, local);
+          } else {
+            const merged = mergeCartItemRecords(consistentServerItems, local);
+            mergedItems = merged.items;
+            quantityConflicts = merged.quantityConflicts;
           }
 
           set({ items: mergedItems, hydrated: true });

@@ -1,14 +1,28 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import { ScreenHeader } from "@/components/layout";
 import { Body, Label } from "@/components/ui/Typography";
-import { colors, spacing } from "@/lib/theme/tokens";
+import { Ionicons } from "@/components/ui/Icon";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { fontFamilies } from "@/lib/theme/fonts";
 
 const LINKS = [
-  { label: "Smart search", route: "/(main)/ai/search" },
-  { label: "Outfit builder", route: "/(main)/ai/outfit" },
-  { label: "Trends", route: "/(main)/ai/trends" },
+  {
+    label: "Smart search",
+    route: "/(main)/ai/search",
+    icon: "sparkles-outline" as const,
+  },
+  {
+    label: "Outfit builder",
+    route: "/(main)/ai/outfit",
+    icon: "shirt-outline" as const,
+  },
+  {
+    label: "Trends",
+    route: "/(main)/ai/trends",
+    icon: "trending-up-outline" as const,
+  },
 ];
 
 export function AiPageShell({
@@ -21,27 +35,89 @@ export function AiPageShell({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   return (
     <View style={styles.screen}>
       <ScreenHeader title={title} onBack={() => router.back()} />
       <View style={styles.nav}>
-        {LINKS.map((l) => (
-          <TouchableOpacity key={l.route} onPress={() => router.push(l.route as never)}>
-            <Label style={styles.navLink}>{l.label}</Label>
-          </TouchableOpacity>
-        ))}
+        {LINKS.map((l) => {
+          const active = pathname === l.route.replace(/^\(main\)/, "") ||
+            pathname.endsWith(l.route.split("/").pop() ?? "");
+          return (
+            <TouchableOpacity
+              key={l.route}
+              onPress={() => !active && router.push(l.route as never)}
+              style={[styles.navChip, active && styles.navChipActive]}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+            >
+              <Ionicons
+                name={l.icon}
+                size={12}
+                color={active ? colors.paper.cream : colors.olive[700]}
+              />
+              <Label style={[styles.navLink, active && styles.navLinkActive]}>
+                {l.label}
+              </Label>
+            </TouchableOpacity>
+          );
+        })}
       </View>
       <Body muted size="sm" style={styles.desc}>{description}</Body>
       {children}
-      <Body muted size="xs" style={styles.disclaimer}>AI suggestions, not endorsements.</Body>
+      <View style={styles.disclaimerRow}>
+        <Ionicons
+          name="information-circle-outline"
+          size={11}
+          color={colors.light.mutedForeground}
+        />
+        <Body muted size="xs" style={styles.disclaimer}>
+          AI suggestions, not endorsements.
+        </Body>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.light.background },
-  nav: { flexDirection: "row", gap: 16, paddingHorizontal: spacing[5], paddingTop: 8 },
-  navLink: { color: colors.olive[700], fontSize: 11, letterSpacing: 0.4 },
-  desc: { paddingHorizontal: spacing[5], paddingTop: 8, paddingBottom: 12 },
-  disclaimer: { paddingHorizontal: spacing[5], paddingVertical: 16, textAlign: "center" },
+  nav: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: spacing[5],
+    paddingTop: 10,
+  },
+  navChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.card,
+  },
+  navChipActive: {
+    backgroundColor: colors.olive[800],
+    borderColor: colors.olive[800],
+  },
+  navLink: {
+    color: colors.olive[700],
+    fontSize: 10,
+    letterSpacing: 0.4,
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  navLinkActive: { color: colors.paper.cream },
+  desc: { paddingHorizontal: spacing[5], paddingTop: 10, paddingBottom: 4 },
+  disclaimerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: spacing[5],
+    paddingVertical: 14,
+  },
+  disclaimer: { textAlign: "center" },
 });
