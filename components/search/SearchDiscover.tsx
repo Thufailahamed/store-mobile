@@ -23,6 +23,12 @@ const QUICK_CATEGORIES = [
 
 const AI_TOOLS = [
   {
+    label: "AI stylist",
+    description: "Chat your way to a look",
+    route: "/(main)/ai/stylist",
+    icon: "chatbubble-ellipses-outline" as const,
+  },
+  {
     label: "Smart search",
     description: "Describe your perfect find",
     route: "/(main)/ai/search",

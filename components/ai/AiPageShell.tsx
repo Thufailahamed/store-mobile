@@ -1,5 +1,5 @@
 import React from "react";
-import { View, TouchableOpacity, StyleSheet } from "react-native";
+import { View, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { ScreenHeader } from "@/components/layout";
 import { Body, Label } from "@/components/ui/Typography";
@@ -8,6 +8,11 @@ import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 const LINKS = [
+  {
+    label: "Stylist",
+    route: "/(main)/ai/stylist",
+    icon: "chatbubble-ellipses-outline" as const,
+  },
   {
     label: "Smart search",
     route: "/(main)/ai/search",
@@ -39,7 +44,11 @@ export function AiPageShell({
   return (
     <View style={styles.screen}>
       <ScreenHeader title={title} onBack={() => router.back()} />
-      <View style={styles.nav}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.nav}
+      >
         {LINKS.map((l) => {
           const active = pathname === l.route.replace(/^\(main\)/, "") ||
             pathname.endsWith(l.route.split("/").pop() ?? "");
@@ -63,7 +72,7 @@ export function AiPageShell({
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
       <Body muted size="sm" style={styles.desc}>{description}</Body>
       {children}
       <View style={styles.disclaimerRow}>

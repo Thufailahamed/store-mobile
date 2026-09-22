@@ -16,7 +16,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui";
-import { useAuth } from "@/lib/supabase/auth";
 import * as Linking from "expo-linking";
 import {
   getOrderById,
@@ -24,8 +23,9 @@ import {
   cancelOrderItems as cancelOrderItemsRpc,
 } from "@/lib/api";
 import { getOrderInvoiceBackend, resendOrderReceiptBackend } from "@/lib/api/backend";
-import { getPaymentsLkSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { getPaymentsLkSession, getStripeCheckoutSession, pollOrderPaymentStatus } from "@/lib/api/payments";
 import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
+import * as WebBrowser from "expo-web-browser";
 import { useCart } from "@/lib/stores/cart-store";
 import { canBuyerCancelInWindow, isTrackableStatus } from "@/lib/order-lifecycle";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
@@ -134,11 +134,10 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuth();
   const { toast } = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cancelling, setCancelling] = useState(false);
+  const [, setCancelling] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [retryingPay, setRetryingPay] = useState(false);
 
@@ -283,21 +282,39 @@ export default function OrderDetailScreen() {
         typeof (order as unknown as { metadata?: { group_id?: string } }).metadata?.group_id === "string"
           ? (order as unknown as { metadata: { group_id: string } }).metadata.group_id
           : undefined;
-      const res = await getPaymentsLkSession(order.id, groupId ? { groupId } : {});
-      if (!res.ok) {
-        toast(res.error, "error");
-        return;
-      }
-      const result = await runPaymentsLkCheckout(res.data.url);
-      if (result.status === "succeeded") {
-        const poll = await pollOrderPaymentStatus(order.id);
-        if (!poll.ok) {
-          toast(poll.error, "error");
-        } else {
-          toast("Payment complete", "success");
+
+      if (order.payment_method === "stripe") {
+        // Hosted Stripe Checkout has no app deep link — open the secure
+        // page and confirm via the webhook-backed status poll on return.
+        const res = await getStripeCheckoutSession(order.id, groupId ? { groupId } : {});
+        if (!res.ok) {
+          toast(res.error, "error");
+          return;
         }
-      } else if (result.status !== "dismissed") {
-        toast("Payment was not completed — you can retry any time", "info");
+        await WebBrowser.openBrowserAsync(res.data.url);
+        const poll = await pollOrderPaymentStatus(order.id, { maxAttempts: 15, intervalMs: 3000 });
+        if (poll.ok) {
+          toast("Payment complete", "success");
+        } else {
+          toast("Payment was not completed — you can retry any time", "info");
+        }
+      } else {
+        const res = await getPaymentsLkSession(order.id, groupId ? { groupId } : {});
+        if (!res.ok) {
+          toast(res.error, "error");
+          return;
+        }
+        const result = await runPaymentsLkCheckout(res.data.url);
+        if (result.status === "succeeded") {
+          const poll = await pollOrderPaymentStatus(order.id);
+          if (!poll.ok) {
+            toast(poll.error, "error");
+          } else {
+            toast("Payment complete", "success");
+          }
+        } else if (result.status !== "dismissed") {
+          toast("Payment was not completed — you can retry any time", "info");
+        }
       }
       loadOrder();
     } finally {
@@ -820,6 +837,30 @@ export default function OrderDetailScreen() {
               </Text>
             </View>
           </View>
+
+          {order.payment_status !== "paid" &&
+            (order.payment_method === "paymentslk" || order.payment_method === "stripe") &&
+            !["cancelled", "failed_attempt", "refunded", "returned", "delivered"].includes(
+              order.status ?? "",
+            ) && (
+              <TouchableOpacity
+                style={styles.completePayBtn}
+                onPress={handleRetryPay}
+                disabled={retryingPay}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Complete payment"
+              >
+                {retryingPay ? (
+                  <ActivityIndicator size="small" color={colors.paper.cream} />
+                ) : (
+                  <>
+                    <Ionicons name="lock-closed-outline" size={14} color={colors.paper.cream} />
+                    <Text style={styles.completePayBtnText}>Complete payment</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
         </View>
       </ScrollView>
 
@@ -1431,5 +1472,22 @@ const styles = StyleSheet.create({
   },
   textPending: {
     color: "#85651b",
+  },
+  completePayBtn: {
+    marginTop: spacing[4],
+    height: 44,
+    borderRadius: radii.full,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    backgroundColor: colors.olive[800],
+  },
+  completePayBtnText: {
+    color: colors.paper.cream,
+    fontSize: 13,
+    letterSpacing: 0.6,
+    fontFamily: fontFamilies.sans.bold,
+    textTransform: "uppercase",
   },
 });

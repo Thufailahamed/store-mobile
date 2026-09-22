@@ -774,10 +774,85 @@ export async function aiTrendsBackend(): Promise<ApiResult<{ trends?: Array<{ id
   return fetchJson("/api/ai/trends");
 }
 
-export async function getInfluencerApplicationBackend(): Promise<ApiResult<{
-  application: { id: string; status: string; created_at: string; full_name?: string; email?: string; niches?: string[]; audience_size?: number } | null;
+export type StylistChatPiece = {
+  id: string;
+  name: string;
+  slug: string;
+  price: number;
+  currency?: string;
+  image_url?: string | null;
+  slot?: string;
+};
+
+export type StylistChatMessage = { role: "user" | "assistant"; content: string };
+
+export async function aiStylistChatBackend(
+  prompt: string,
+  history?: StylistChatMessage[],
+): Promise<ApiResult<{
+  reply?: string;
+  occasion?: string | null;
+  vibe?: string | null;
+  outfit?: { pieces?: StylistChatPiece[]; total_price?: number; currency?: string } | null;
+  suggestions?: string[];
 }>> {
+  return fetchJson("/api/ai/stylist/chat", {
+    method: "POST",
+    body: { prompt, history: history?.slice(-10) },
+  });
+}
+
+export type InfluencerApplication = {
+  id: string;
+  status: string;
+  created_at: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  platform?: string | null;
+  handle?: string | null;
+  follower_count?: number | null;
+  audience_region?: string | null;
+  categories?: string[] | null;
+  bio?: string | null;
+  sample_url?: string | null;
+};
+
+export type InfluencerProfile = {
+  id: string;
+  user_id: string;
+  code: string;
+  commission_rate: number;
+  total_clicks: number;
+  total_referrals: number;
+  total_earnings: number;
+};
+
+export async function getInfluencerApplicationBackend(): Promise<
+  ApiResult<{ application: InfluencerApplication | null }>
+> {
   return fetchJson("/api/influencers/application");
+}
+
+export async function applyInfluencerBackend(body: {
+  full_name: string;
+  email: string;
+  phone?: string;
+  platform: "instagram" | "youtube" | "tiktok" | "twitter" | "other";
+  handle: string;
+  follower_count?: number;
+  audience_region?: string;
+  categories?: string[];
+  bio?: string;
+  sample_url?: string;
+}): Promise<ApiResult<{ application: { id: string; status: string; created_at: string } }>> {
+  return fetchJson("/api/influencers/apply", { method: "POST", body });
+}
+
+export async function getInfluencerProfileBackend(): Promise<
+  ApiResult<{ profile: InfluencerProfile | null }>
+> {
+  return fetchJson("/api/influencers/me");
 }
 
 export async function getCheckoutOptionsBackend(
@@ -958,7 +1033,7 @@ export async function addQuestionBackend(productId: string, question: string): P
 }
 
 export async function answerQuestionBackend(questionId: string, answer: string): Promise<ApiResult<{ question: Question }>> {
-  return fetchJson(`/api/questions/${questionId}/answer`, { method: "POST", body: { answer } });
+  return fetchJson(`/api/qa/${questionId}/answer`, { method: "POST", body: { answer } });
 }
 
 export type Coupon = {

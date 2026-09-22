@@ -97,12 +97,14 @@ export function SearchOrbitChrome({
         ) : null}
       </View>
 
-      {searched && !isTyping ? (
-        <Text style={styles.resultsMeta}>
-          {totalCount && totalCount > 0
-            ? `${totalCount} result${totalCount === 1 ? "" : "s"} for “${query}”`
-            : `No results for “${query}”`}
-        </Text>
+      {searched && !isTyping && typeof totalCount === "number" && totalCount > 0 ? (
+        <View style={styles.resultsMetaRow}>
+          <View style={styles.resultsMetaDot} />
+          <Text style={styles.resultsMeta}>
+            Showing <Text style={styles.resultsMetaBold}>{totalCount}</Text> {totalCount === 1 ? "result" : "results"} for{" "}
+            <Text style={styles.resultsMetaQuery}>“{query}”</Text>
+          </Text>
+        </View>
       ) : null}
 
       {!searched && !isTyping && onImageSearch ? (
@@ -179,11 +181,31 @@ const styles = StyleSheet.create({
     color: INK,
     paddingVertical: 0,
   },
+  resultsMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    paddingBottom: spacing[3],
+    paddingHorizontal: spacing[1],
+  },
+  resultsMetaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[600],
+  },
   resultsMeta: {
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     color: MUTED,
-    paddingBottom: spacing[3],
+  },
+  resultsMetaBold: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: INK,
+  },
+  resultsMetaQuery: {
+    fontFamily: fontFamilies.sans.medium,
+    color: INK,
   },
   quickActions: {
     flexDirection: "row",

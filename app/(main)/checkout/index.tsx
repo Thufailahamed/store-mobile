@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,11 +14,11 @@ import { FREE_SHIPPING_THRESHOLD } from "@/lib/utils";
 import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
-import { getPaymentsLkSession, getGuestPaymentsLkSession, pollOrderPaymentStatus } from "@/lib/api/payments";
+import { getPaymentsLkSession, getGuestPaymentsLkSession, getStripeCheckoutSession, pollOrderPaymentStatus } from "@/lib/api/payments";
 import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
+import * as WebBrowser from "expo-web-browser";
 import { placeOrderGroupBackend, placeGuestOrderBackend, abandonOrderGroupBackend, getCheckoutOptionsBackend } from "@/lib/api/backend";
-import { Button } from "@/components/ui";
-import { Display, Label, Body, Price } from "@/components/ui/Typography";
+import { Label, Body } from "@/components/ui/Typography";
 import { useToast } from "@/components/ui";
 import * as api from "@/lib/api";
 import { validateCartForCheckout, refreshCartFromCatalog, fetchCartProductSnapshots } from "@/lib/cart-validation";
@@ -54,6 +53,7 @@ const STEPS = [
 ];
 
 const PAYMENTS_LK_ENABLED = process.env.EXPO_PUBLIC_PAYMENTS_LK_ENABLED === "true";
+const STRIPE_ENABLED = process.env.EXPO_PUBLIC_STRIPE_ENABLED === "true";
 
 /** Parse the place_order_group RPC response into a flat list of sub-orders. */
 function parseGroupOrders(data: unknown): {
@@ -161,7 +161,7 @@ export default function CheckoutScreen() {
   const [country, setCountry] = useState("Sri Lanka");
   const [shippingKey, setShippingKey] = useState<ShippingKey>("standard");
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"cod" | "paymentslk">("cod");
+  const [paymentMethod, setPaymentMethod] = useState<"cod" | "paymentslk" | "stripe">("cod");
   const [addressSheetOpen, setAddressSheetOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
   const [guestEmail, setGuestEmail] = useState("");
@@ -263,10 +263,15 @@ export default function CheckoutScreen() {
   }, [user, storeIds]);
 
   useEffect(() => {
-    if (codAllowed === false && paymentMethod === "cod" && PAYMENTS_LK_ENABLED) {
-      setPaymentMethod("paymentslk");
+    if (codAllowed === false && paymentMethod === "cod") {
+      const fallback = PAYMENTS_LK_ENABLED
+        ? "paymentslk"
+        : STRIPE_ENABLED && !isGuest
+          ? "stripe"
+          : null;
+      if (fallback) setPaymentMethod(fallback);
     }
-  }, [codAllowed, paymentMethod]);
+  }, [codAllowed, paymentMethod, isGuest]);
 
   useFocusEffect(
     useCallback(() => {
@@ -771,6 +776,58 @@ export default function CheckoutScreen() {
       const firstOrderId = subOrders[0].id;
       const placed = subOrders;
 
+      // Shared tails for hosted card checkouts (Payments.lk + Stripe):
+      // on a confirmed payment redeem loyalty + clear + go to success;
+      // on cancel/failure abandon the unpaid order (siblings stay COD).
+      const finalizePaidCheckout = async () => {
+        const pts = pendingLoyaltyPointsRef.current;
+        pendingLoyaltyPointsRef.current = 0;
+        if (pts > 0) {
+          const redeemRes = await loyalty.redeem(pts, firstOrderId);
+          if (!redeemRes.ok) {
+            toast(redeemRes.error ?? "Points could not be applied", "error");
+          }
+        }
+        const allIds = pendingOrderIdsRef.current;
+        pendingOrderIdsRef.current = [];
+        pendingOrderIdsFirstRef.current = null;
+        await releaseCartReservations();
+        reservationsHeld = false;
+        clear();
+        await loyalty.reload();
+        toast("Payment complete", "success");
+        const orderIdsParam = allIds.length > 0 ? allIds.join(",") : firstOrderId;
+        router.replace(
+          `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIdsParam)}` as never,
+        );
+      };
+
+      const abandonCardCheckout = async (dismissed: boolean) => {
+        const siblingIds = pendingOrderIdsRef.current.filter((id) => id !== firstOrderId);
+        pendingOrderIdsRef.current = [];
+        pendingOrderIdsFirstRef.current = null;
+        pendingLoyaltyPointsRef.current = 0;
+        const res = await abandonUnpaidCardOrder(firstOrderId);
+        if (!res.ok) {
+          toast(res.error ?? "Could not cancel order", "error");
+        } else if (siblingIds.length > 0) {
+          clear();
+          toast(
+            `Payment cancelled — ${siblingIds.length} other order${siblingIds.length === 1 ? "" : "s"} kept for cash on delivery`,
+            "info",
+          );
+        } else {
+          clear();
+          toast(
+            dismissed
+              ? "Payment cancelled — stock restored"
+              : "Payment not completed — stock restored",
+            "info",
+          );
+        }
+        router.replace("/(main)/cart");
+      };
+
       if (paymentMethod === "paymentslk") {
         pendingLoyaltyPointsRef.current = freshPointsToUse;
         const session = await getPaymentsLkSession(firstOrderId, { groupId: placedGroupId });
@@ -793,53 +850,42 @@ export default function CheckoutScreen() {
             router.replace(`/(main)/account/orders/${firstOrderId}` as never);
             return;
           }
-          const pts = pendingLoyaltyPointsRef.current;
-          pendingLoyaltyPointsRef.current = 0;
-          if (pts > 0) {
-            const redeemRes = await loyalty.redeem(pts, firstOrderId);
-            if (!redeemRes.ok) {
-              toast(redeemRes.error ?? "Points could not be applied", "error");
-            }
-          }
-          const allIds = pendingOrderIdsRef.current;
-          pendingOrderIdsRef.current = [];
-          pendingOrderIdsFirstRef.current = null;
-          await releaseCartReservations();
-          reservationsHeld = false;
-          clear();
-          await loyalty.reload();
-          toast("Payment complete", "success");
-          const orderIdsParam = allIds.length > 0 ? allIds.join(",") : firstOrderId;
-          router.replace(
-            `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIdsParam)}` as never,
-          );
+          await finalizePaidCheckout();
           return;
         }
 
         // failed / canceled / expired / dismissed → abandon the unpaid order
-        const siblingIds = pendingOrderIdsRef.current.filter((id) => id !== firstOrderId);
-        pendingOrderIdsRef.current = [];
-        pendingOrderIdsFirstRef.current = null;
-        pendingLoyaltyPointsRef.current = 0;
-        const res = await abandonUnpaidCardOrder(firstOrderId);
-        if (!res.ok) {
-          toast(res.error ?? "Could not cancel order", "error");
-        } else if (siblingIds.length > 0) {
-          clear();
-          toast(
-            `Payment cancelled — ${siblingIds.length} other order${siblingIds.length === 1 ? "" : "s"} kept for cash on delivery`,
-            "info",
-          );
-        } else {
-          clear();
-          toast(
-            result.status === "dismissed"
-              ? "Payment cancelled — stock restored"
-              : "Payment not completed — stock restored",
-            "info",
-          );
+        await abandonCardCheckout(result.status === "dismissed");
+        return;
+      }
+
+      if (paymentMethod === "stripe") {
+        pendingLoyaltyPointsRef.current = freshPointsToUse;
+        const session = await getStripeCheckoutSession(firstOrderId, { groupId: placedGroupId });
+        if (!session.ok) {
+          await abandonOrderGroupBackend(placedGroupId);
+          orderPlaced = false;
+          throw new Error(session.error);
         }
-        router.replace("/(main)/cart");
+        pendingOrderIdsRef.current = placed.map((o) => o.id);
+        pendingOrderIdsFirstRef.current = firstOrderId;
+        await loyalty.reload();
+
+        // Stripe's hosted page can't deep-link back into the app, so it
+        // opens in a browser sheet; once the buyer returns, the
+        // webhook-backed status poll decides success vs. abandonment.
+        await WebBrowser.openBrowserAsync(session.data.url);
+        setConfirmingPayment(true);
+        const poll = await pollOrderPaymentStatus(firstOrderId, {
+          maxAttempts: 25,
+          intervalMs: 3000,
+        });
+        setConfirmingPayment(false);
+        if (poll.ok) {
+          await finalizePaidCheckout();
+          return;
+        }
+        await abandonCardCheckout(true);
         return;
       }
 
@@ -916,7 +962,11 @@ export default function CheckoutScreen() {
   };
 
   const paymentLabel =
-    paymentMethod === "cod" ? "Cash on delivery" : "Card via Payments.lk";
+    paymentMethod === "cod"
+      ? "Cash on delivery"
+      : paymentMethod === "stripe"
+        ? "Card via Stripe"
+        : "Card via Payments.lk";
   const addressSummary = [line1, city].filter(Boolean).join(", ");
 
   if (authLoading) {
@@ -1400,7 +1450,7 @@ export default function CheckoutScreen() {
                 <View style={styles.codNoticeCopy}>
                   <Text style={styles.codNoticeTitle}>Cash on delivery unavailable</Text>
                   <Text style={styles.codNoticeDesc}>
-                    One or more sellers in this bag do not accept COD. Please use Card via Payments.lk.
+                    One or more sellers in this bag do not accept COD. Please pay by card.
                   </Text>
                 </View>
               </View>
@@ -1426,6 +1476,21 @@ export default function CheckoutScreen() {
                       badgeType: "ochre" as const,
                       icon: "card-outline" as const,
                       brands: ["VISA", "MASTERCARD", "AMEX", "LANKAQR"],
+                    },
+                  ]
+                : []),
+              // Stripe is sign-in only — the hosted session is bound to
+              // the authenticated user's orders (no guest token flow).
+              ...(STRIPE_ENABLED && !isGuest
+                ? [
+                    {
+                      key: "stripe" as const,
+                      label: "Card via Stripe",
+                      desc: "Global cards & wallets, 3-D Secure protected",
+                      badge: "3D SECURE",
+                      badgeType: "olive" as const,
+                      icon: "lock-closed-outline" as const,
+                      brands: ["VISA", "MASTERCARD", "AMEX"],
                     },
                   ]
                 : []),
@@ -1504,7 +1569,9 @@ export default function CheckoutScreen() {
               <Text style={styles.paymentReassuranceText}>
                 {paymentMethod === "cod"
                   ? "Zero prepayment required. Inspect your items upon delivery before paying."
-                  : "Bank-grade 256-bit encryption. Payment processed through Payments.lk."}
+                  : paymentMethod === "stripe"
+                    ? "You'll complete payment on Stripe's secure hosted page after placing the order."
+                    : "Bank-grade 256-bit encryption. Payment processed through Payments.lk."}
               </Text>
             </View>
 

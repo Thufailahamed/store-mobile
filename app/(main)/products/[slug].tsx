@@ -12,6 +12,7 @@ import { SizeGuideModal } from "@/components/product/SizeGuideModal";
 import { TrustHighlights } from "@/components/product/TrustHighlights";
 import { ProductStoreCard } from "@/components/product/ProductStoreCard";
 import { ProductDetails } from "@/components/product/ProductDetails";
+import { ProductQA } from "@/components/product/ProductQA";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ReviewForm } from "@/components/product/ReviewForm";
 import { PriceAlertPill } from "@/components/product/PriceAlertPill";
@@ -510,6 +511,9 @@ export default function ProductDetailScreen() {
             onWriteReview={handleWriteReview}
           />
         </View>
+
+        {/* Questions & answers */}
+        <ProductQA productId={product.id} />
 
         {/* Related products — content-similar (always shown) */}
         {relatedProducts.length > 0 && (

@@ -155,6 +155,50 @@ export async function getPaymentsLkSession(
   }
 }
 
+/** Fetch a Stripe hosted Checkout URL for an authenticated order/group.
+ *  Stripe's hosted page can't deep-link back into the app reliably, so
+ *  the caller opens it in a browser sheet and polls order status after
+ *  the buyer returns — the webhook is the source of truth. */
+export async function getStripeCheckoutSession(
+  orderIdOrFirstSubOrder: string,
+  opts: { groupId?: string } = {},
+): Promise<{ ok: true; data: { url: string; sessionId?: string } } | { ok: false; error: string }> {
+  if (!STORE_API_URL) {
+    return { ok: false, error: "Card payments require EXPO_PUBLIC_STORE_API_URL" };
+  }
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      return { ok: false, error: "Payment requires an authenticated session" };
+    }
+    const body: Record<string, string> = opts.groupId
+      ? { group_id: opts.groupId, order_id: orderIdOrFirstSubOrder }
+      : { order_id: orderIdOrFirstSubOrder };
+    const res = await fetch(`${STORE_API_URL}/api/payments/stripe/checkout-session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: extractPaymentsLkError(json) };
+    }
+    const payload = (json && typeof json === "object" && "data" in json
+      ? (json as { data: { url?: string; sessionId?: string } }).data
+      : json) as { url?: string; sessionId?: string };
+    if (!payload?.url) {
+      return { ok: false, error: "Payment session was missing the checkout URL" };
+    }
+    return { ok: true, data: { url: payload.url, sessionId: payload.sessionId } };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Network error" };
+  }
+}
+
 export async function getGuestPaymentsLkSession(
   guestToken: string,
   guestEmail: string,

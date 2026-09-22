@@ -8,7 +8,9 @@ import {
   useWindowDimensions,
   KeyboardAvoidingView,
   Platform,
+  Text,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -529,19 +531,44 @@ export default function SearchScreen() {
         ) : totalCount === 0 ? (
           /* ─── No results ─── */
           <ScrollViewWrapper>
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <Ionicons name="search-outline" size={40} color={`${MUTED}99`} />
+            <View style={styles.emptyCard}>
+              {/* Concentric Gold Medallion */}
+              <View style={styles.emptyMedallionOuter}>
+                <View style={styles.emptyMedallionMiddle}>
+                  <LinearGradient
+                    colors={["#242621", "#151613"]}
+                    style={styles.emptyMedallionInner}
+                  >
+                    <Ionicons name="search" size={24} color="#D4AF37" />
+                  </LinearGradient>
+                </View>
+                <View style={styles.emptySparkleBadge}>
+                  <Ionicons name="sparkles" size={10} color="#85651B" />
+                </View>
               </View>
-              <Display size="xl">No matches in the Edit</Display>
-              <Body muted style={styles.emptyDesc}>
-                We couldn't find anything for "{query}". Try a different spelling, or browse the suggestions.
-              </Body>
+
+              {/* Atelier Kicker & Title */}
+              <View style={styles.emptyTextBlock}>
+                <View style={styles.emptyKickerRow}>
+                  <View style={styles.kickerDot} />
+                  <Label style={styles.emptyKickerText}>THE ARCHIVE EDIT</Label>
+                  <View style={styles.kickerDot} />
+                </View>
+                <Display size="xl" style={styles.emptyTitle}>
+                  No Direct Matches
+                </Display>
+                <Body muted style={styles.emptyDesc}>
+                  We couldn't locate any pieces matching{" "}
+                  <Text style={styles.emptyQueryHighlight}>“{query}”</Text>. Try a different keyword or explore tailored atelier selections below.
+                </Body>
+              </View>
+
+              {/* Did you mean suggestion banner */}
               {didYouMean.length > 0 && (
-                <View style={styles.didYouMeanRow}>
+                <View style={styles.didYouMeanContainer}>
                   <View style={styles.didYouMeanHeader}>
-                    <Ionicons name="compass-outline" size={14} color={INK} />
-                    <Label style={{ color: INK, fontSize: 12 }}>Did you mean</Label>
+                    <Ionicons name="compass-outline" size={13} color={colors.olive[700]} />
+                    <Label style={styles.didYouMeanTitle}>SUGGESTED ALTERNATIVE</Label>
                   </View>
                   <View style={styles.chipRow}>
                     {didYouMean.map((s) => (
@@ -549,51 +576,87 @@ export default function SearchScreen() {
                         key={`dym-${s}`}
                         style={styles.didYouMeanChip}
                         onPress={() => doSearch(s)}
+                        activeOpacity={0.8}
                       >
-                        <Ionicons name="sparkles-outline" size={14} color={INK} />
-                        <Body size="sm" style={{ marginLeft: 6, color: INK }}>{s}</Body>
+                        <Ionicons name="sparkles" size={13} color="#E8CF8F" />
+                        <Body size="sm" style={styles.didYouMeanText}>{s}</Body>
+                        <Ionicons name="arrow-forward" size={12} color="#E8CF8F" style={{ marginLeft: 4 }} />
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
               )}
-              <View style={styles.chipRow}>
-                {SUGGESTIONS.slice(0, 4).map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={styles.suggestionChip}
-                    onPress={() => doSearch(s)}
-                  >
-                    <Body size="sm">{s}</Body>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Button variant="outline" onPress={() => router.push("/(main)/products")}>
-                Browse the full edit →
-              </Button>
+
+              {/* Alternative Search Ideas */}
+              {(() => {
+                const filteredSuggestions = SUGGESTIONS.filter(
+                  (s) => s.toLowerCase().trim() !== query.toLowerCase().trim()
+                ).slice(0, 4);
+                if (filteredSuggestions.length === 0) return null;
+                return (
+                  <View style={styles.suggestionsContainer}>
+                    <Label style={styles.suggestionsHeader}>POPULAR DISCOVERIES</Label>
+                    <View style={styles.chipRow}>
+                      {filteredSuggestions.map((s) => (
+                        <TouchableOpacity
+                          key={s}
+                          style={styles.suggestionChip}
+                          onPress={() => doSearch(s)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="search-outline" size={12} color={colors.olive[700]} style={{ marginRight: 6 }} />
+                          <Body size="sm" style={styles.suggestionChipText}>{s}</Body>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {/* Primary Luxury CTA */}
+              <TouchableOpacity
+                style={styles.browseAllBtn}
+                onPress={() => router.push("/(main)/products")}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={["#242621", "#151613"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.browseAllGradient}
+                >
+                  <Ionicons name="compass-outline" size={16} color="#E8CF8F" />
+                  <Body size="sm" style={styles.browseAllText}>
+                    Explore All Collections
+                  </Body>
+                  <Ionicons name="arrow-forward" size={14} color="#E8CF8F" />
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
 
+            {/* Recommendations Rail */}
             {recsLoading ? (
               <View style={styles.recsLoading}>
                 <ActivityIndicator size="small" color={INK} />
               </View>
             ) : recs.length > 0 ? (
               <View style={styles.recsSection}>
-                <View style={styles.sectionHeader}>
-                  <Body style={styles.sectionNum}>★</Body>
-                  <View style={styles.sectionTitles}>
-                    <Display size="lg">Based on what you love</Display>
-                    <Body size="xs" muted>Pieces you might enjoy instead</Body>
+                <View style={styles.recsHeader}>
+                  <View style={styles.recsBadge}>
+                    <Ionicons name="star" size={13} color="#C8A44A" />
                   </View>
-                  <View style={styles.sectionLine} />
+                  <View style={styles.recsTitles}>
+                    <Display size="md" style={styles.recsTitle}>Curated For You</Display>
+                    <Body size="xs" muted style={styles.recsSubtitle}>Pieces from the atelier you might adore instead</Body>
+                  </View>
                 </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.recsScroll}
                 >
-                  {recs.map((p) => (
-                    <HomeProductCard key={p.id} product={p} showSaleBadge />
+                  {recs.map((p, idx) => (
+                    <HomeProductCard key={p.id} product={p} showSaleBadge index={idx} size="large" />
                   ))}
                 </ScrollView>
               </View>
@@ -1039,13 +1102,16 @@ const styles = StyleSheet.create({
     marginBottom: -spacing[2],
   },
   suggestionChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radii.full,
     marginRight: spacing[2],
     marginBottom: spacing[2],
-    maxWidth: "100%",
-    ...GLASS,
+    backgroundColor: colors.paper.warm,
+    borderWidth: 1,
+    borderColor: "rgba(27, 28, 28, 0.08)",
   },
   didYouMeanRow: {
     width: "100%",
@@ -1062,13 +1128,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: radii.full,
-    marginRight: spacing[2],
-    marginBottom: spacing[2],
-    backgroundColor: "rgba(27, 28, 28, 0.08)",
+    backgroundColor: INK,
     borderWidth: 1,
-    borderColor: "rgba(27, 28, 28, 0.25)",
+    borderColor: `${colors.olive[400]}40`,
+    gap: 6,
   },
   recentChip: {
     paddingHorizontal: 14,
@@ -1120,25 +1185,152 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[10],
     paddingHorizontal: spacing[5],
   },
-  emptyState: {
-    alignItems: "center",
-    gap: spacing[3],
-    paddingVertical: spacing[8],
+  emptyCard: {
+    marginHorizontal: spacing[4],
+    marginTop: spacing[4],
+    marginBottom: spacing[2],
+    backgroundColor: colors.light.card,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(27, 28, 28, 0.08)",
     paddingHorizontal: spacing[5],
+    paddingVertical: spacing[7],
+    alignItems: "center",
+    ...shadows.soft,
   },
-  emptyIcon: {
+  emptyMedallionOuter: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    ...GLASS,
+    backgroundColor: `${colors.olive[500]}10`,
+    borderWidth: 1,
+    borderColor: `${colors.olive[500]}25`,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing[2],
+    marginBottom: spacing[4],
+    position: "relative",
+  },
+  emptyMedallionMiddle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: `${colors.olive[500]}18`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyMedallionInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptySparkleBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FAF8F5",
+    borderWidth: 1.5,
+    borderColor: "#E5E0D5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTextBlock: {
+    alignItems: "center",
+    gap: spacing[2],
+    marginBottom: spacing[5],
+  },
+  emptyKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  kickerDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.olive[600],
+  },
+  emptyKickerText: {
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.medium,
+    color: colors.olive[700],
+    letterSpacing: 1.5,
+  },
+  emptyTitle: {
+    textAlign: "center",
+    color: INK,
   },
   emptyDesc: {
     textAlign: "center",
+    fontSize: 13,
     lineHeight: 20,
+    color: MUTED,
+    paddingHorizontal: spacing[2],
+  },
+  emptyQueryHighlight: {
+    color: INK,
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  didYouMeanContainer: {
+    width: "100%",
+    backgroundColor: `${colors.olive[500]}08`,
+    borderWidth: 1,
+    borderColor: `${colors.olive[500]}20`,
+    borderRadius: radii.xl,
+    padding: spacing[3],
+    marginBottom: spacing[4],
+    alignItems: "center",
+  },
+  didYouMeanTitle: {
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.medium,
+    color: colors.olive[800],
+    letterSpacing: 1,
+  },
+  didYouMeanText: {
+    color: "#FAF8F5",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+  },
+  suggestionsContainer: {
+    width: "100%",
+    marginBottom: spacing[5],
+    alignItems: "center",
+  },
+  suggestionsHeader: {
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.medium,
+    color: MUTED,
+    letterSpacing: 1,
+    marginBottom: spacing[2],
+  },
+  suggestionChipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: INK,
+  },
+  browseAllBtn: {
+    width: "100%",
+    borderRadius: radii.full,
+    overflow: "hidden",
+  },
+  browseAllGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    paddingVertical: 14,
     paddingHorizontal: spacing[4],
+  },
+  browseAllText: {
+    color: "#FAF8F5",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    letterSpacing: 0.3,
   },
 
   /* Results */
@@ -1451,12 +1643,38 @@ const styles = StyleSheet.create({
   /* Recs (no-results fallback) */
   recsSection: {
     marginTop: spacing[6],
-    paddingHorizontal: spacing[5],
+    marginBottom: spacing[8],
+  },
+  recsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
     gap: spacing[3],
+    marginBottom: spacing[3],
+  },
+  recsBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: `${colors.olive[500]}15`,
+    borderWidth: 1,
+    borderColor: `${colors.olive[500]}30`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recsTitles: {
+    flex: 1,
+    gap: 2,
+  },
+  recsTitle: {
+    color: INK,
+  },
+  recsSubtitle: {
+    color: MUTED,
   },
   recsScroll: {
+    paddingHorizontal: spacing[4],
     gap: spacing[3],
-    paddingRight: spacing[5],
   },
   recsLoading: {
     paddingVertical: spacing[6],
