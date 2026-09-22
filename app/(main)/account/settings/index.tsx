@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -20,13 +19,13 @@ import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
-import { ScreenHeader } from "@/components/layout";
-import { Avatar, Button, Chip, useToast } from "@/components/ui";
-import { Body, Display, Label } from "@/components/ui/Typography";
+import { Avatar, Button, useToast } from "@/components/ui";
+import { Body, Label } from "@/components/ui/Typography";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "expo-router";
 import {
+  getNotificationPrefs,
   saveNotificationPrefs,
   type NotificationPreferenceKey,
   type NotificationPrefs,
@@ -38,7 +37,6 @@ import {
   getLocalSettingsPrefs,
   setLocalSettingsPrefs,
   type LocalSettingsPrefs,
-  type TextSize,
 } from "@/lib/settings-prefs";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -49,7 +47,6 @@ import {
   checkUniqueBackend,
   deleteAccountBackend,
   deactivateAccountBackend,
-  reactivateAccountBackend,
   exportUserDataBackend,
   getSettingsBackend,
   updateSettingsBackend,
@@ -95,7 +92,8 @@ const CURRENCIES = [
   { value: "SGD", label: "SGD · Singapore Dollar" },
 ];
 
-const TEXT_SIZE_LABEL: Record<TextSize, string> = { sm: "Small", md: "Default", lg: "Large" };
+/** Where guest (signed-out) preferences are kept so they survive relaunch. */
+const GUEST_SETTINGS_KEY = "luxe:local:guest-settings";
 
 const PRIVACY_DESCRIPTIONS: Record<PrivacyKey, { title: string; detail: string }> = {
   public_profile: {
@@ -137,6 +135,8 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
 
   // Server-side
@@ -196,37 +196,61 @@ export default function SettingsScreen() {
         }
 
         if (!user?.id) {
+          // Guests keep their region/privacy choices on-device so the
+          // controls still mean something after relaunch.
+          let guest: ServerSnapshot = {
+            locale: "en-LK",
+            timezone: "Asia/Colombo",
+            currency: "LKR",
+            phone: "",
+            email: "",
+            privacy: DEFAULT_PRIVACY,
+            notifications: DEFAULT_NOTIFICATION_PREFS,
+          };
+          try {
+            const raw = await AsyncStorage.getItem(GUEST_SETTINGS_KEY);
+            if (raw) {
+              const stored = JSON.parse(raw) as Partial<ServerSnapshot>;
+              guest = {
+                ...guest,
+                ...stored,
+                privacy: { ...DEFAULT_PRIVACY, ...(stored.privacy ?? {}) },
+                notifications: {
+                  ...DEFAULT_NOTIFICATION_PREFS,
+                  ...(stored.notifications ?? {}),
+                },
+              };
+            }
+          } catch {
+            /* fall back to defaults */
+          }
           if (!cancelled) {
-            initialSnapshot.current = JSON.stringify({
-              locale: "en-LK",
-              timezone: "Asia/Colombo",
-              currency: "LKR",
-              phone: "",
-              email: user?.email ?? "",
-              privacy: DEFAULT_PRIVACY,
-              notifications: DEFAULT_NOTIFICATION_PREFS,
-            } satisfies ServerSnapshot);
+            setLocale(guest.locale);
+            setTimezone(guest.timezone);
+            setCurrency(guest.currency);
+            setPrivacy(guest.privacy);
+            setNotifications(guest.notifications);
+            initialSnapshot.current = JSON.stringify(guest);
+            setLoadError(null);
             setLoading(false);
           }
           return;
         }
 
-        const userId = user.id;
         const userEmail = user.email ?? "";
 
         const [settingsRes, prefsRes] = await Promise.all([
           getSettingsBackend(),
-          supabase
-            .from("notification_preferences")
-            .select("*")
-            .eq("user_id", userId)
-            .maybeSingle(),
+          getNotificationPrefs(user.id),
         ]);
 
         if (cancelled) return;
 
         if (!settingsRes.ok) {
           throw new Error(settingsRes.error ?? "Could not load settings");
+        }
+        if (!prefsRes.ok) {
+          throw new Error(prefsRes.error ?? "Could not load notification preferences");
         }
         const settings = settingsRes.data?.settings;
         const privacyFromServer = (settings?.privacy ?? {}) as Record<string, unknown>;
@@ -243,7 +267,7 @@ export default function SettingsScreen() {
           phone: settings?.phone ?? "",
           email: settings?.email ?? userEmail,
           privacy: filteredPrivacy,
-          notifications: { ...DEFAULT_NOTIFICATION_PREFS, ...(prefsRes.data ?? {}) },
+          notifications: { ...DEFAULT_NOTIFICATION_PREFS, ...prefsRes.data },
         };
 
         setLocale(next.locale);
@@ -255,18 +279,20 @@ export default function SettingsScreen() {
         setNotifications(next.notifications);
         initialSnapshot.current = JSON.stringify(next);
         setDirty(false);
+        setLoadError(null);
       } catch (error: any) {
-        if (!cancelled) toast(error?.message ?? "Could not load settings", "error");
+        if (!cancelled) setLoadError(error?.message ?? "Could not load settings");
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
+    setLoading(true);
     load();
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.email, toast]);
+  }, [user?.id, user?.email, loadAttempt]);
 
   /* ----------------------------- derived --------------------------- */
 
@@ -299,9 +325,14 @@ export default function SettingsScreen() {
 
   const save = async () => {
     if (!user?.id) {
-      initialSnapshot.current = JSON.stringify(snapshot);
-      setDirty(false);
-      toast("Local preferences saved", "success");
+      try {
+        await AsyncStorage.setItem(GUEST_SETTINGS_KEY, JSON.stringify(snapshot));
+        initialSnapshot.current = JSON.stringify(snapshot);
+        setDirty(false);
+        toast("Preferences saved on this device", "success");
+      } catch {
+        toast("Could not save preferences", "error");
+      }
       return;
     }
     setSaving(true);
@@ -310,15 +341,14 @@ export default function SettingsScreen() {
         locale,
         timezone,
         currency,
-        phone,
         email,
+        ...(phone ? { phone } : {}),
         privacy,
-        notifications,
       });
       if (!res.ok) throw new Error(res.error ?? "Could not save settings");
 
       const prefsRes = await saveNotificationPrefs(user.id, notifications);
-      if (!prefsRes.ok) throw new Error(prefsRes.error);
+      if (!prefsRes.ok) throw new Error(prefsRes.error ?? "Could not save notification preferences");
 
       initialSnapshot.current = JSON.stringify(snapshot);
       setDirty(false);
@@ -347,8 +377,14 @@ export default function SettingsScreen() {
 
   /* ----------------------------- actions --------------------------- */
 
+  const requireAuth = () => {
+    if (user?.id) return true;
+    toast("Sign in to manage your account", "info");
+    return false;
+  };
+
   const requestEmailChange = async () => {
-    if (!user?.id) return;
+    if (!requireAuth()) return;
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(newEmail)) {
       toast("Enter a valid email", "error");
       return;
@@ -360,14 +396,15 @@ export default function SettingsScreen() {
       toast(error.message, "error");
       return;
     }
-    toast("Confirmation sent to both addresses", "success");
-    setEmail(newEmail);
+    // The address only changes once the confirmation link is clicked —
+    // keep displaying the current one until then.
+    toast("Confirmation sent — click the link in your inbox to finish", "success");
     setNewEmail("");
     setChangeEmailOpen(false);
   };
 
   const requestPhoneChange = async () => {
-    if (!user?.id) return;
+    if (!requireAuth()) return;
     if (!/^\+?[0-9\s-]{7,}$/.test(newPhone)) {
       toast("Enter a valid phone", "error");
       return;
@@ -404,7 +441,7 @@ export default function SettingsScreen() {
   };
 
   const verifyPhoneChange = async () => {
-    if (!user?.id) return;
+    if (!requireAuth()) return;
     if (!phoneOtp.trim()) {
       toast("Enter verification code", "error");
       return;
@@ -439,7 +476,7 @@ export default function SettingsScreen() {
   };
 
   const changePassword = async () => {
-    if (!user?.id) return;
+    if (!requireAuth()) return;
     if (currentPwd.length < 8) {
       toast("Enter your current password", "error");
       return;
@@ -466,7 +503,7 @@ export default function SettingsScreen() {
   };
 
   const deleteAccount = async () => {
-    if (!user?.id) return;
+    if (!requireAuth()) return;
     if (deleteConfirm !== "DELETE") {
       toast("Type DELETE to confirm", "error");
       return;
@@ -557,11 +594,20 @@ export default function SettingsScreen() {
 
   /* ----------------------------- derived --------------------------- */
 
-  const name =
-    (user?.user_metadata?.full_name as string | undefined) ??
-    user?.email?.split("@")[0] ??
-    "Guest";
+  const rawName =
+    (user?.user_metadata?.full_name as string | undefined)?.trim() ||
+    user?.email?.split("@")[0] ||
+    "";
+  const name = rawName || "Patron";
   const avatarUri = user?.user_metadata?.avatar_url as string | undefined;
+
+  const initials = useMemo(() => {
+    if (!name || name === "Patron" || name === "Guest") return "";
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [name]);
 
   const appVersion = Constants.expoConfig?.version ?? "1.0.0";
   const buildNumber =
@@ -602,6 +648,42 @@ export default function SettingsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.topHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={20} color="#141311" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleCenter}>
+            <Text style={styles.headerEyebrow}>SYSTEM & PROFILE</Text>
+            <Text style={styles.headerTitle}>Settings</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.loading}>
+          <View style={styles.errorCard}>
+            <View style={styles.errorIcon}>
+              <Ionicons name="cloud-offline-outline" size={22} color="#85651B" />
+            </View>
+            <Text style={styles.errorTitle}>Couldn&apos;t load settings</Text>
+            <Text style={styles.errorCopy} numberOfLines={3}>
+              {loadError}
+            </Text>
+            <TouchableOpacity
+              style={styles.errorRetry}
+              onPress={() => setLoadAttempt((n) => n + 1)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="refresh" size={14} color="#FAF8F5" />
+              <Text style={styles.errorRetryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* 1. Atelier Top Navigation Header */}
@@ -636,7 +718,7 @@ export default function SettingsScreen() {
       >
         {/* 2. Velvet Obsidian Hero Card */}
         <LinearGradient
-          colors={["#141311", "#1E1C18", "#0F0E0D"]}
+          colors={["#191815", "#24221C", "#12110F"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.heroCard}
@@ -646,28 +728,59 @@ export default function SettingsScreen() {
               <Ionicons name="sparkles" size={10} color="#C8A44A" />
               <Text style={styles.heroTagText}>ATELIER PATRON PREFERENCES</Text>
             </View>
-            <View style={styles.gearMedallion}>
-              <View style={styles.gearMedallionInner}>
-                <Ionicons name="options-outline" size={18} color="#E8CF8F" />
-              </View>
+            <View style={styles.heroSyncBadge}>
+              <View style={[styles.heroSyncDot, dirty && styles.heroSyncDotDirty]} />
+              <Text style={[styles.heroSyncText, dirty && styles.heroSyncTextDirty]}>
+                {dirty ? "MODIFIED" : "SYNCHRONIZED"}
+              </Text>
             </View>
           </View>
 
           <View style={styles.heroProfileRow}>
             <View style={styles.avatarBezel}>
-              <Avatar name={name} uri={avatarUri} size={58} />
+              {avatarUri ? (
+                <Avatar name={name} uri={avatarUri} size={56} />
+              ) : initials ? (
+                <View style={styles.monogramFallback}>
+                  <Text style={styles.monogramText}>{initials}</Text>
+                </View>
+              ) : (
+                <View style={styles.monogramFallback}>
+                  <Ionicons name="person" size={22} color="#E8CF8F" />
+                </View>
+              )}
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.heroNameText} numberOfLines={1}>
                 {name}
               </Text>
               <Text style={styles.heroEmailText} numberOfLines={1}>
-                {email || "Not signed in"}
+                {email || "Private Client · Not signed in"}
               </Text>
               <View style={styles.rolePill}>
                 <View style={styles.roleDot} />
-                <Text style={styles.rolePillText}>{role.toUpperCase()}</Text>
+                <Text style={styles.rolePillText}>
+                  {role ? role.toUpperCase() : "PATRON"}
+                </Text>
               </View>
+            </View>
+          </View>
+
+          {/* Micro Atelier Status Strip */}
+          <View style={styles.heroStatusStrip}>
+            <View style={styles.heroStatusItem}>
+              <Text style={styles.heroStatusLabel}>MEMBERSHIP</Text>
+              <Text style={styles.heroStatusVal}>Atelier Select</Text>
+            </View>
+            <View style={styles.heroStatusDivider} />
+            <View style={styles.heroStatusItem}>
+              <Text style={styles.heroStatusLabel}>SECURITY</Text>
+              <Text style={styles.heroStatusVal}>End-to-End</Text>
+            </View>
+            <View style={styles.heroStatusDivider} />
+            <View style={styles.heroStatusItem}>
+              <Text style={styles.heroStatusLabel}>BUILD</Text>
+              <Text style={styles.heroStatusVal}>v{appVersion}</Text>
             </View>
           </View>
         </LinearGradient>
@@ -718,41 +831,14 @@ export default function SettingsScreen() {
           </ChipRow>
         </Section>
 
-        {/* APPEARANCE */}
-        <Section
-          kicker="02"
-          title="Appearance"
-          subtitle="Display preferences on this device."
-        >
-          <Text style={styles.subLabel}>TEXT SIZE</Text>
-          <ChipRow>
-            {(["sm", "md", "lg"] as TextSize[]).map((size) => (
-              <SettingChip
-                key={size}
-                selected={local.textSize === size}
-                onPress={() => updateLocal({ textSize: size })}
-              >
-                {TEXT_SIZE_LABEL[size]}
-              </SettingChip>
-            ))}
-          </ChipRow>
-
-          <ToggleRow
-            label="Reduce motion"
-            detail="Minimize transitions and parallax effects."
-            value={local.reduceMotion}
-            onValueChange={() => updateLocal({ reduceMotion: !local.reduceMotion })}
-            isLast
-          />
-        </Section>
-
         {/* EMAIL & PHONE */}
-        <Section kicker="03" title="Email & phone" subtitle="How we verify it's you.">
+        <Section kicker="02" title="Email & phone" subtitle="How we verify it's you.">
           <CommsRow
             icon="mail-outline"
             label="Email"
             value={email || "Add an email"}
             onPress={() => {
+              if (!requireAuth()) return;
               setNewEmail(email);
               setChangeEmailOpen(true);
             }}
@@ -762,6 +848,7 @@ export default function SettingsScreen() {
             label="Phone"
             value={phone || "Add a phone"}
             onPress={() => {
+              if (!requireAuth()) return;
               setNewPhone(phone);
               setPhoneOtp("");
               setPhoneStep(1);
@@ -773,7 +860,7 @@ export default function SettingsScreen() {
 
         {/* PRIVACY */}
         <Section
-          kicker="04"
+          kicker="03"
           title="Privacy"
           subtitle="Control what others — and our systems — can see."
         >
@@ -791,7 +878,7 @@ export default function SettingsScreen() {
 
         {/* SECURITY */}
         <Section
-          kicker="05"
+          kicker="04"
           title="Security"
           subtitle="Lock the app and keep an eye on sign-ins."
         >
@@ -805,7 +892,10 @@ export default function SettingsScreen() {
             icon="key-outline"
             label="Change password"
             value="••••••••"
-            onPress={() => setPasswordOpen(true)}
+            onPress={() => {
+              if (!requireAuth()) return;
+              setPasswordOpen(true);
+            }}
           />
           <CommsRow
             icon="shield-checkmark-outline"
@@ -818,7 +908,7 @@ export default function SettingsScreen() {
 
         {/* NOTIFICATIONS */}
         <Section
-          kicker="06"
+          kicker="05"
           title="Notifications"
           subtitle="Pick how each topic reaches you."
         >
@@ -861,7 +951,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* CONNECTED ACCOUNTS */}
-        <Section kicker="07" title="Connected accounts" subtitle="Single sign-on providers.">
+        <Section kicker="06" title="Connected accounts" subtitle="Single sign-on providers.">
           <ProviderRow icon="logo-google" label="Google" linked={linkedProviders.google} />
           <ProviderRow icon="logo-apple" label="Apple" linked={linkedProviders.apple} />
           <ProviderRow
@@ -874,7 +964,7 @@ export default function SettingsScreen() {
 
         {/* DATA & STORAGE */}
         <Section
-          kicker="08"
+          kicker="07"
           title="Data & storage"
           subtitle="Your data lives in Supabase. Download or wipe local cache here."
         >
@@ -923,7 +1013,7 @@ export default function SettingsScreen() {
         </Section>
 
         {/* LEGAL & ABOUT */}
-        <Section kicker="09" title="Legal & about" subtitle="Policies, licences, and build info.">
+        <Section kicker="08" title="Legal & about" subtitle="Policies, licences, and build info.">
           <CommsRow
             icon="document-text-outline"
             label="Terms of service"
@@ -951,46 +1041,56 @@ export default function SettingsScreen() {
         </Section>
 
         {/* DEACTIVATE (reversible) */}
-        <View style={styles.danger}>
-          <View style={styles.dangerHeader}>
-            <View style={styles.dangerIcon}>
-              <Ionicons name="pause-circle-outline" size={16} color={colors.light.destructive} />
+        <View style={styles.deactivateCard}>
+          <View style={styles.deactivateHeader}>
+            <View style={styles.deactivateIcon}>
+              <Ionicons name="pause-circle-outline" size={18} color="#85651B" />
             </View>
-            <View>
-              <Label style={styles.dangerKicker}>Take a break</Label>
-              <Display size="lg" style={styles.dangerTitle}>
-                Deactivate account
-              </Display>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.deactivateKicker}>TAKE A BREAK</Text>
+              <Text style={styles.deactivateTitle}>Deactivate account</Text>
             </View>
           </View>
-          <Body muted size="sm" style={styles.dangerCopy}>
+          <Text style={styles.deactivateCopy}>
             Hide your profile and pause new orders. Sign back in any time to reactivate.
-          </Body>
-          <Button variant="outline" onPress={() => setDeactivateOpen(true)}>
-            Deactivate
-          </Button>
+          </Text>
+          <TouchableOpacity
+            style={styles.deactivateButton}
+            onPress={() => {
+              if (!requireAuth()) return;
+              setDeactivateOpen(true);
+            }}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.deactivateButtonText}>Deactivate account</Text>
+          </TouchableOpacity>
         </View>
 
         {/* DANGER ZONE */}
         <View style={styles.danger}>
           <View style={styles.dangerHeader}>
             <View style={styles.dangerIcon}>
-              <Ionicons name="warning-outline" size={16} color={colors.light.destructive} />
+              <Ionicons name="warning-outline" size={18} color={colors.light.destructive} />
             </View>
-            <View>
-              <Label style={styles.dangerKicker}>Danger zone</Label>
-              <Display size="lg" style={styles.dangerTitle}>
-                Delete account
-              </Display>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dangerKicker}>DANGER ZONE</Text>
+              <Text style={styles.dangerTitle}>Delete account</Text>
             </View>
           </View>
-          <Body muted size="sm" style={styles.dangerCopy}>
-            Permanently remove your account, orders history, saved addresses, and wishlist.
+          <Text style={styles.dangerCopy}>
+            Permanently remove your account, order history, saved addresses, and wishlist.
             This cannot be undone.
-          </Body>
-          <Button variant="destructive" onPress={() => setDeleteOpen(true)}>
-            Request account deletion
-          </Button>
+          </Text>
+          <TouchableOpacity
+            style={styles.dangerButton}
+            onPress={() => {
+              if (!requireAuth()) return;
+              setDeleteOpen(true);
+            }}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.dangerButtonText}>Request account deletion</Text>
+          </TouchableOpacity>
         </View>
 
         <Body muted size="xs" style={styles.footerHint}>
@@ -998,7 +1098,7 @@ export default function SettingsScreen() {
         </Body>
       </ScrollView>
 
-      {/* Sticky save bar */}
+      {/* Sticky luxury save bar */}
       <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <View style={styles.saveBarInner}>
           <View style={styles.saveBarStatusRow}>
@@ -1017,42 +1117,44 @@ export default function SettingsScreen() {
                 <Text style={styles.discardButtonText}>Discard</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity
-              style={[
-                styles.saveChangesButton,
-                (!dirty || saving) && styles.saveChangesButtonDisabled,
-              ]}
-              onPress={save}
-              disabled={!dirty || saving}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={dirty ? ["#2A2723", "#141311"] : ["#E8E6E1", "#DCD9D1"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.saveChangesGradient}
+            {dirty ? (
+              <TouchableOpacity
+                style={[
+                  styles.saveChangesButton,
+                  saving && styles.saveChangesButtonDisabled,
+                ]}
+                onPress={save}
+                disabled={saving}
+                activeOpacity={0.85}
               >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#FAF8F5" />
-                ) : (
-                  <>
-                    <Ionicons
-                      name="checkmark"
-                      size={14}
-                      color={dirty ? "#C8A44A" : "#8E8B82"}
-                    />
-                    <Text
-                      style={[
-                        styles.saveChangesText,
-                        !dirty && styles.saveChangesTextDisabled,
-                      ]}
-                    >
-                      Save Changes
-                    </Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={["#262420", "#141311"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.saveChangesGradient}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FAF8F5" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="sparkles"
+                        size={13}
+                        color="#E8CF8F"
+                      />
+                      <Text style={styles.saveChangesText}>
+                        Save Preferences
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.syncedPill}>
+                <Ionicons name="shield-checkmark" size={13} color="#7D8B6F" />
+                <Text style={styles.syncedPillText}>Up to date</Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -1331,12 +1433,14 @@ function SettingChip({
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.75}
       style={[styles.settingChip, selected && styles.settingChipSelected]}
     >
-      {selected && (
-        <Ionicons name="checkmark-circle" size={13} color="#C8A44A" style={{ marginRight: 6 }} />
-      )}
+      {selected ? (
+        <View style={styles.settingChipCheck}>
+          <Ionicons name="checkmark" size={10} color="#181714" />
+        </View>
+      ) : null}
       <Text style={[styles.settingChipText, selected && styles.settingChipTextSelected]}>
         {children}
       </Text>
@@ -1361,15 +1465,13 @@ function CommsRow({
     return (
       <View style={[styles.commsRow, isLast && styles.commsRowLast]}>
         <View style={styles.commsIcon}>
-          <Ionicons name={icon} size={16} color={colors.light.primary} />
+          <Ionicons name={icon} size={16} color="#85651B" />
         </View>
         <View style={{ flex: 1 }}>
-          <Body size="sm" style={styles.commsLabel}>
-            {label}
-          </Body>
-          <Body muted size="xs" numberOfLines={1}>
+          <Text style={styles.commsLabel}>{label}</Text>
+          <Text style={styles.commsSub} numberOfLines={1}>
             {value || "—"}
-          </Body>
+          </Text>
         </View>
       </View>
     );
@@ -1381,17 +1483,15 @@ function CommsRow({
       activeOpacity={0.7}
     >
       <View style={styles.commsIcon}>
-        <Ionicons name={icon} size={16} color={colors.light.primary} />
+        <Ionicons name={icon} size={16} color="#85651B" />
       </View>
       <View style={{ flex: 1 }}>
-        <Body size="sm" style={styles.commsLabel}>
-          {label}
-        </Body>
-        <Body muted size="xs" numberOfLines={1}>
+        <Text style={styles.commsLabel}>{label}</Text>
+        <Text style={styles.commsSub} numberOfLines={1}>
           {value || "—"}
-        </Body>
+        </Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
+      <Ionicons name="chevron-forward" size={16} color="#B5B0A4" />
     </TouchableOpacity>
   );
 }
@@ -1449,16 +1549,14 @@ function ToggleRow({
   return (
     <View style={[styles.toggleRow, isLast && styles.toggleRowLast]}>
       <View style={styles.toggleInfo}>
-        <Body style={styles.toggleLabel}>{label}</Body>
-        <Body muted size="xs">
-          {detail}
-        </Body>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        <Text style={styles.toggleDetail}>{detail}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: colors.light.border, true: colors.light.primary }}
-        thumbColor={colors.paper.cream}
+        trackColor={{ false: "#E6E2D8", true: "#181714" }}
+        thumbColor={value ? "#C8A44A" : "#FAF8F5"}
       />
     </View>
   );
@@ -1478,33 +1576,39 @@ function NotificationRow({
   prefix: "orders" | "marketing" | "social" | "security";
   value: NotificationPrefs;
   onToggle: (key: NotificationPreferenceKey) => void;
-  channels?: Array<"email" | "sms" | "push">;
+  channels?: ("email" | "sms" | "push")[];
   isLast?: boolean;
 }) {
-  const activeChannels: Array<"email" | "sms" | "push"> = channels ?? ["email", "sms", "push"];
+  const activeChannels: ("email" | "sms" | "push")[] = channels ?? ["email", "sms", "push"];
   return (
     <View style={[styles.notificationRow, isLast && styles.notificationRowLast]}>
       <View style={styles.notificationInfo}>
-        <Body style={styles.toggleLabel}>{label}</Body>
-        <Body muted size="xs">
-          {detail}
-        </Body>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        <Text style={styles.toggleDetail}>{detail}</Text>
       </View>
       <View style={styles.notificationSwitches}>
         {activeChannels.map((channel) => {
           const key = `${prefix}_${channel}` as NotificationPreferenceKey;
+          const isChecked = !!value[key];
           return (
             <TouchableOpacity
               key={channel}
               onPress={() => onToggle(key)}
               activeOpacity={0.8}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isChecked }}
+              accessibilityLabel={`${label} ${channel} notifications`}
               style={styles.notificationSwitchWrap}
             >
-              <Switch
-                value={value[key]}
-                trackColor={{ false: colors.light.border, true: colors.light.primary }}
-                thumbColor={colors.paper.cream}
-              />
+              {/* Switch is display-only — the row handles the toggle so a
+                  tap can never fire both handlers and cancel itself out. */}
+              <View pointerEvents="none">
+                <Switch
+                  value={isChecked}
+                  trackColor={{ false: "#E6E2D8", true: "#181714" }}
+                  thumbColor={isChecked ? "#C8A44A" : "#FAF8F5"}
+                />
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -1527,24 +1631,21 @@ function ProviderRow({
   return (
     <View style={[styles.providerRow, isLast && styles.providerRowLast]}>
       <View style={styles.commsIcon}>
-        <Ionicons name={icon} size={16} color={colors.light.foreground} />
+        <Ionicons name={icon} size={16} color="#85651B" />
       </View>
       <View style={{ flex: 1 }}>
-        <Body size="sm" style={styles.commsLabel}>
-          {label}
-        </Body>
-        <Body muted size="xs">
-          {linked ? "Connected" : "Not connected"}
-        </Body>
+        <Text style={styles.commsLabel}>{label}</Text>
+        <Text style={styles.commsSub}>
+          {linked ? "Connected to LUXE Atelier" : "Not connected"}
+        </Text>
       </View>
       {linked ? (
-        <View style={styles.linkedDot}>
-          <Ionicons name="checkmark" size={12} color={colors.light.primaryForeground} />
+        <View style={styles.linkedBadge}>
+          <Ionicons name="checkmark-circle" size={13} color="#7D8B6F" />
+          <Text style={styles.linkedBadgeText}>Linked</Text>
         </View>
       ) : (
-        <Body size="xs" style={styles.linkAction}>
-          Link
-        </Body>
+        <Text style={styles.notLinkedText}>Not linked</Text>
       )}
     </View>
   );
@@ -1577,20 +1678,20 @@ function CenteredModal({
           <View style={styles.modalHeader}>
             <View>
               {kicker ? (
-                <Label style={[styles.modalKicker, kickerColor ? { color: kickerColor } : null]}>
+                <Text style={[styles.modalKicker, kickerColor ? { color: kickerColor } : null]}>
                   {kicker}
-                </Label>
+                </Text>
               ) : null}
-              <Display size="lg">{title}</Display>
+              <Text style={styles.modalTitle}>{title}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.modalClose} activeOpacity={0.7}>
               <Ionicons name="close" size={18} color={colors.light.foreground} />
             </TouchableOpacity>
           </View>
           {typeof copy === "string" ? (
-            <Body muted size="sm" style={styles.modalCopy}>
+            <Text style={styles.modalCopy}>
               {copy}
-            </Body>
+            </Text>
           ) : (
             copy
           )}
@@ -1643,7 +1744,7 @@ const styles = StyleSheet.create({
   },
   headerEyebrow: {
     fontSize: 10,
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     color: "#85651B",
     letterSpacing: 1.8,
     textTransform: "uppercase",
@@ -1670,17 +1771,17 @@ const styles = StyleSheet.create({
   /* Velvet Obsidian Hero Card */
   heroCard: {
     borderRadius: 24,
-    padding: 22,
+    padding: 20,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#2E2A24",
+    borderColor: "rgba(200, 164, 74, 0.25)",
     ...shadows.soft,
   },
   heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 18,
+    marginBottom: 16,
   },
   heroTagBadge: {
     flexDirection: "row",
@@ -1699,35 +1800,66 @@ const styles = StyleSheet.create({
     color: "#E8CF8F",
     letterSpacing: 1.4,
   },
-  gearMedallion: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  heroSyncBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
-  gearMedallionInner: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    alignItems: "center",
-    justifyContent: "center",
+  heroSyncDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#7D8B6F",
+  },
+  heroSyncDotDirty: {
+    backgroundColor: "#C8A44A",
+  },
+  heroSyncText: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#FAF8F5",
+    letterSpacing: 1,
+  },
+  heroSyncTextDirty: {
+    color: "#E8CF8F",
   },
   heroProfileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 15,
   },
   avatarBezel: {
-    padding: 3,
-    borderRadius: 36,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    padding: 2,
     borderWidth: 1.5,
     borderColor: "#C8A44A",
-    backgroundColor: "#1E1C18",
+    backgroundColor: "#1B1916",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monogramFallback: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "#22201C",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
+  },
+  monogramText: {
+    fontSize: 18,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#E8CF8F",
+    letterSpacing: 1,
   },
   heroNameText: {
     fontSize: 18,
@@ -1748,9 +1880,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radii.full,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    borderColor: "rgba(200, 164, 74, 0.3)",
   },
   roleDot: {
     width: 5,
@@ -1765,15 +1897,46 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono.semibold,
     letterSpacing: 1.2,
   },
+  heroStatusStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(200, 164, 74, 0.15)",
+  },
+  heroStatusItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  heroStatusLabel: {
+    fontSize: 9,
+    fontFamily: fontFamilies.mono.medium,
+    color: "rgba(232, 207, 143, 0.7)",
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  heroStatusVal: {
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#FAF8F5",
+    letterSpacing: 0.2,
+  },
+  heroStatusDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+  },
 
   /* Sections */
   section: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 22,
-    padding: 20,
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
     borderColor: "#EAE7DF",
-    marginBottom: 20,
+    marginBottom: 16,
     ...shadows.soft,
   },
   sectionHeader: {
@@ -1786,9 +1949,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    backgroundColor: "#F4F1EA",
+    backgroundColor: "rgba(200, 164, 74, 0.1)",
     borderWidth: 1,
-    borderColor: "#E5E0D5",
+    borderColor: "rgba(200, 164, 74, 0.25)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1799,7 +1962,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   sectionTitleText: {
-    fontSize: 16,
+    fontSize: 16.5,
     fontFamily: fontFamilies.display.semibold,
     color: "#141311",
     letterSpacing: -0.2,
@@ -1815,34 +1978,92 @@ const styles = StyleSheet.create({
 
   subLabel: {
     fontSize: 10,
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     color: "#85651B",
     letterSpacing: 1.4,
     textTransform: "uppercase",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   subLabelTop: { marginTop: 16 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+
+  /* Load error */
+  errorCard: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: "#EAE7DF",
+    ...shadows.soft,
+  },
+  errorIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#141311",
+    marginBottom: 6,
+  },
+  errorCopy: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.regular,
+    color: "#6B675E",
+    textAlign: "center",
+    lineHeight: 17,
+    marginBottom: 16,
+  },
+  errorRetry: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#181714",
+  },
+  errorRetryText: {
+    fontSize: 13,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#FAF8F5",
+  },
 
   /* Setting Chips */
   settingChip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FAF8F5",
     borderWidth: 1,
-    borderColor: "#EAE7DF",
+    borderColor: "#E7E3D8",
   },
   settingChipSelected: {
-    backgroundColor: "#141311",
-    borderColor: "#141311",
+    backgroundColor: "#181714",
+    borderColor: "#C8A44A",
+  },
+  settingChipCheck: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#C8A44A",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
   },
   settingChipText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontFamily: fontFamilies.sans.medium,
-    color: "#6B675E",
+    color: "#4A463E",
   },
   settingChipTextSelected: {
     color: "#FAF8F5",
@@ -1859,8 +2080,8 @@ const styles = StyleSheet.create({
   },
   commsRowLast: { borderBottomWidth: 0 },
   commsIcon: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: radii.lg,
     alignItems: "center",
     justifyContent: "center",
@@ -1869,8 +2090,15 @@ const styles = StyleSheet.create({
     borderColor: "#ECE8DD",
   },
   commsLabel: {
-    fontWeight: typography.fontWeights.semibold,
+    fontSize: 13.5,
+    fontFamily: fontFamilies.sans.semibold,
     color: colors.light.foreground,
+  },
+  commsSub: {
+    fontSize: 12,
+    fontFamily: fontFamilies.mono.regular,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
   },
 
   field: { gap: 8, marginBottom: spacing[4] },
@@ -1897,13 +2125,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 14,
-    paddingVertical: spacing[3],
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#F4F1EA",
   },
   toggleRowLast: { borderBottomWidth: 0 },
   toggleInfo: { flex: 1, paddingRight: spacing[2] },
-  toggleLabel: { fontWeight: typography.fontWeights.semibold },
+  toggleLabel: {
+    fontSize: 13.5,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#181714",
+    marginBottom: 2,
+  },
+  toggleDetail: {
+    fontSize: 12,
+    fontFamily: fontFamilies.sans.regular,
+    color: "#736F66",
+    lineHeight: 16,
+  },
 
   notifHeader: {
     flexDirection: "row",
@@ -1915,8 +2154,10 @@ const styles = StyleSheet.create({
   notifChannel: {
     width: 50,
     textAlign: "center",
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.mono.regular,
+    color: "#85651B",
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1,
   },
   notificationRow: {
     flexDirection: "row",
@@ -1941,17 +2182,25 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F4F1EA",
   },
   providerRowLast: { borderBottomWidth: 0 },
-  linkedDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#141311",
+  linkedBadge: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(125, 139, 111, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(125, 139, 111, 0.3)",
   },
-  linkAction: {
-    color: "#85651B",
-    fontWeight: typography.fontWeights.semibold,
+  linkedBadgeText: {
+    fontSize: 11,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#5C6A4F",
+  },
+  notLinkedText: {
+    color: "#A49E93",
+    fontSize: 11,
     fontFamily: fontFamilies.mono.medium,
   },
 
@@ -1967,13 +2216,69 @@ const styles = StyleSheet.create({
     color: colors.light.foreground,
   },
 
-  danger: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: radii["2xl"],
+  /* Deactivate card */
+  deactivateCard: {
+    backgroundColor: "#FAF9F5",
+    borderRadius: 20,
     padding: spacing[5],
     borderWidth: 1,
-    borderColor: "rgba(180, 50, 50, 0.2)",
-    marginBottom: spacing[5],
+    borderColor: "rgba(200, 164, 74, 0.3)",
+    marginBottom: spacing[4],
+    gap: spacing[3],
+    ...shadows.soft,
+  },
+  deactivateHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  deactivateIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.25)",
+  },
+  deactivateKicker: {
+    color: "#85651B",
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.2,
+  },
+  deactivateTitle: {
+    marginTop: 2,
+    fontSize: 16,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#181714",
+  },
+  deactivateCopy: {
+    fontSize: 12.5,
+    fontFamily: fontFamilies.sans.regular,
+    color: "#6B675E",
+    lineHeight: 18,
+  },
+  deactivateButton: {
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E1D5",
+  },
+  deactivateButtonText: {
+    fontSize: 13,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#85651B",
+  },
+
+  /* Danger card */
+  danger: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: spacing[5],
+    borderWidth: 1,
+    borderColor: "rgba(180, 50, 50, 0.22)",
+    marginBottom: spacing[4],
     gap: spacing[3],
     ...shadows.soft,
   },
@@ -1986,9 +2291,36 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(180, 50, 50, 0.08)",
   },
-  dangerKicker: { color: colors.light.destructive, fontSize: 10, fontFamily: fontFamilies.mono.medium },
-  dangerTitle: { marginTop: 2, fontFamily: fontFamilies.display.semibold },
-  dangerCopy: { color: colors.light.mutedForeground },
+  dangerKicker: {
+    color: colors.light.destructive,
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.2,
+  },
+  dangerTitle: {
+    marginTop: 2,
+    fontSize: 16,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#181714",
+  },
+  dangerCopy: {
+    fontSize: 12.5,
+    fontFamily: fontFamilies.sans.regular,
+    color: colors.light.mutedForeground,
+    lineHeight: 18,
+  },
+  dangerButton: {
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: colors.light.destructive,
+  },
+  dangerButtonText: {
+    fontSize: 13,
+    fontFamily: fontFamilies.sans.semibold,
+    color: "#FAF8F5",
+  },
   dangerInput: {
     backgroundColor: colors.paper.cream,
     borderWidth: 1,
@@ -2073,6 +2405,8 @@ const styles = StyleSheet.create({
   saveChangesButton: {
     borderRadius: 14,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.35)",
   },
   saveChangesButtonDisabled: {
     opacity: 0.6,
@@ -2085,13 +2419,29 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   saveChangesText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontFamily: fontFamilies.sans.semibold,
     color: "#FAF8F5",
     letterSpacing: 0.2,
   },
   saveChangesTextDisabled: {
     color: "#8E8B82",
+  },
+  syncedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: "#F2EFE8",
+    borderWidth: 1,
+    borderColor: "#E6E2D8",
+  },
+  syncedPillText: {
+    fontSize: 11,
+    fontFamily: fontFamilies.mono.semibold,
+    color: "#5C6A4F",
   },
 
   modalBackdrop: {
@@ -2119,10 +2469,23 @@ const styles = StyleSheet.create({
   modalKicker: {
     color: "#85651B",
     marginBottom: 2,
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 1,
+    fontSize: 10,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
-  modalCopy: { marginBottom: spacing[4] },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: fontFamilies.display.semibold,
+    color: "#181714",
+  },
+  modalCopy: {
+    fontSize: 12.5,
+    fontFamily: fontFamilies.sans.regular,
+    color: colors.light.mutedForeground,
+    marginBottom: spacing[4],
+    lineHeight: 18,
+  },
   modalClose: {
     width: 32,
     height: 32,

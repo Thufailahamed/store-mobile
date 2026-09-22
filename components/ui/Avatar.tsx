@@ -4,6 +4,8 @@ import { Image } from "expo-image";
 import { colors, typography } from "@/lib/theme/tokens";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 
+import { Ionicons } from "./Icon";
+
 interface AvatarProps {
   uri?: string | null;
   name?: string;
@@ -12,15 +14,15 @@ interface AvatarProps {
 }
 
 function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  if (!name || typeof name !== "string") return "";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function hashColor(name: string): string {
+  if (!name) return colors.olive[700];
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -72,14 +74,18 @@ export function Avatar({ uri, name = "", size = 40, style }: AvatarProps) {
         style,
       ]}
     >
-      <Text
-        style={[
-          styles.initials,
-          { fontSize: size * 0.38 },
-        ]}
-      >
-        {initials}
-      </Text>
+      {initials ? (
+        <Text
+          style={[
+            styles.initials,
+            { fontSize: size * 0.38 },
+          ]}
+        >
+          {initials}
+        </Text>
+      ) : (
+        <Ionicons name="person" size={size * 0.44} color="#FAF8F5" />
+      )}
     </View>
   );
 }

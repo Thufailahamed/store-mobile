@@ -556,9 +556,11 @@ function toBackendPrefs(prefs: NotificationPrefs): Record<string, boolean> {
     marketing_push: "push_marketing",
     social_email: "email_reviews",
     social_push: "push_reviews",
-    security_email: "email_marketing",
-    security_sms: "sms_marketing",
-    security_push: "push_marketing",
+    security_email: "email_security",
+    security_sms: "sms_security",
+    security_push: "push_security",
+    cart_reminders_email: "email_cart_reminders",
+    cart_reminders_push: "push_cart_reminders",
   };
   for (const [k, v] of Object.entries(prefs)) {
     const target = map[k] ?? k;
@@ -578,6 +580,11 @@ function fromBackendPrefs(prefs: Record<string, boolean>): NotificationPrefs {
     push_marketing: "marketing_push",
     email_reviews: "social_email",
     push_reviews: "social_push",
+    email_security: "security_email",
+    sms_security: "security_sms",
+    push_security: "security_push",
+    email_cart_reminders: "cart_reminders_email",
+    push_cart_reminders: "cart_reminders_push",
   };
   for (const [k, v] of Object.entries(prefs)) {
     const target = map[k] ?? k;
@@ -759,7 +766,7 @@ export async function aiSearchBackend(prompt: string): Promise<ApiResult<{ produ
 export async function aiOutfitBackend(input: {
   occasion?: string;
   vibe?: string;
-}): Promise<ApiResult<{ outfit?: { occasion?: string; vibe?: string; pieces?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }> } } & { pieces?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }>; occasion?: string; vibe?: string }>> {
+}): Promise<ApiResult<{ outfit?: { occasion?: string; vibe?: string; total_price?: number; currency?: string; pieces?: Array<{ id: string; name: string; slug: string; price: number; currency?: string; image_url?: string | null; slot?: string }> } } & { pieces?: Array<{ id: string; name: string; slug: string; price: number; image_url?: string }>; occasion?: string; vibe?: string }>> {
   return fetchJson("/api/ai/outfit", { method: "POST", body: input });
 }
 

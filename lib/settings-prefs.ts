@@ -5,17 +5,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  * Server-side prefs (locale, currency, notifications, privacy) live in Supabase.
  */
 
-export type TextSize = "sm" | "md" | "lg";
-
 export type LocalSettingsPrefs = {
-  textSize: TextSize;
-  reduceMotion: boolean;
   biometricLock: boolean;
 };
 
 export const DEFAULT_LOCAL_PREFS: LocalSettingsPrefs = {
-  textSize: "md",
-  reduceMotion: false,
   biometricLock: false,
 };
 
