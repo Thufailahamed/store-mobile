@@ -124,21 +124,49 @@ export default function ProfileScreen() {
         mimeType: asset?.mimeType,
         fileName: asset?.fileName,
       });
-      if (res.error) {
-        toast(res.error, "error");
-      } else {
-        if (res.url) {
-          setAvatarUrl(resolveImageUrl(res.url) || res.url);
-          setAvatarError(false);
-        }
-        toast("Profile photo updated", "success");
+      if (res.error || !res.url) {
+        toast(res.error || "Upload failed", "error");
+        return;
       }
+      const patch = await updateProfileBackend({ avatar_url: res.url });
+      if (!patch.ok) {
+        toast(patch.error || "Failed to save avatar", "error");
+        return;
+      }
+      await supabase.auth.updateUser({
+        data: { ...(user.user_metadata ?? {}), avatar_url: res.url },
+      });
+      setAvatarUrl(resolveImageUrl(res.url) || res.url);
+      setAvatarError(false);
+      toast("Profile photo updated", "success");
     } catch (err: any) {
       toast(err.message || "Upload failed", "error");
     } finally {
       setUpdatingPhoto(false);
     }
   };
+
+  const handleRemovePhoto = useCallback(async () => {
+    if (!user) return;
+    setUpdatingPhoto(true);
+    try {
+      const patch = await updateProfileBackend({ avatar_url: null });
+      if (!patch.ok) {
+        toast(patch.error || "Remove failed", "error");
+        return;
+      }
+      await supabase.auth.updateUser({
+        data: { ...(user.user_metadata ?? {}), avatar_url: null },
+      });
+      setAvatarUrl(null);
+      setAvatarError(false);
+      toast("Profile photo removed", "success");
+    } catch (err: any) {
+      toast(err.message || "Remove failed", "error");
+    } finally {
+      setUpdatingPhoto(false);
+    }
+  }, [user, toast]);
 
   const handlePickedAsset = async (
     result: Awaited<ReturnType<typeof pickImage>>
@@ -179,12 +207,17 @@ export default function ProfileScreen() {
           },
         },
         {
+          text: "Remove portrait",
+          style: "destructive",
+          onPress: handleRemovePhoto,
+        },
+        {
           text: "Cancel",
           style: "cancel",
         },
       ]
     );
-  }, [user, toast]);
+  }, [user, toast, handleRemovePhoto]);
 
   const handleSave = useCallback(async () => {
     if (!user) return;
