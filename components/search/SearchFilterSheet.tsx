@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -8,15 +8,25 @@ import {
   TextInput,
   useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { Display, Label, Body } from "@/components/ui/Typography";
+import { Display, Body } from "@/components/ui/Typography";
 import { Button } from "@/components/ui";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { COLORS, SIZES, DISCOUNTS, SORTS, PRICE_PRESETS, PRICE_BOUNDS, EMPTY_FILTERS, activeFilterCount } from "@/lib/api/facets";
+import {
+  COLORS,
+  SIZES,
+  DISCOUNTS,
+  SORTS,
+  PRICE_PRESETS,
+  PRICE_BOUNDS,
+  EMPTY_FILTERS,
+  activeFilterCount,
+} from "@/lib/api/facets";
 import type { ProductFilters } from "@/lib/api/facets";
-import * as api from "@/lib/api";
-import type { Brand, Category } from "@/lib/types";
+import { applySearchFilters } from "@/lib/search-filters";
+import type { Product } from "@/lib/types";
 
 const GENDERS = [
   { key: "", label: "All" },
@@ -26,6 +36,8 @@ const GENDERS = [
   { key: "kids", label: "Kids" },
 ];
 
+const RATINGS = [0, 3, 4, 4.5];
+
 interface SearchFilterSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -33,21 +45,40 @@ interface SearchFilterSheetProps {
   onApply: (filters: ProductFilters) => void;
   sort: string;
   onSortChange: (sort: string) => void;
-  resultCount: number;
+  /** Unfiltered search results — facets and the live count are derived from these. */
+  products: Product[];
 }
 
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity
-      style={[styles.sizeChip, active && styles.sizeChipActive]}
+      style={[styles.chip, active && styles.chipActive]}
       onPress={onPress}
       activeOpacity={0.8}
+      accessibilityState={{ selected: active }}
     >
-      <Body size="sm" style={[styles.sizeText, active && styles.sizeTextActive]}>
+      <Body size="sm" style={[styles.chipText, active && styles.chipTextActive]}>
         {label}
       </Body>
     </TouchableOpacity>
   );
+}
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHead}>
+        <Body style={styles.sectionTitle}>{title}</Body>
+        {hint ? <Body size="xs" muted>{hint}</Body> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function parsePrice(raw: string, fallback: number): number {
+  const n = Number(raw.replace(/[^0-9]/g, ""));
+  return raw.trim() === "" || !Number.isFinite(n) ? fallback : n;
 }
 
 export function SearchFilterSheet({
@@ -57,90 +88,78 @@ export function SearchFilterSheet({
   onApply,
   sort,
   onSortChange,
-  resultCount,
+  products,
 }: SearchFilterSheetProps) {
   const { height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<ProductFilters>({ ...filters });
   const [draftSort, setDraftSort] = useState(sort);
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [priceMinInput, setPriceMinInput] = useState(
-    String(filters.price?.[0] ?? PRICE_BOUNDS.min)
-  );
-  const [priceMaxInput, setPriceMaxInput] = useState(
-    String(filters.price?.[1] ?? PRICE_BOUNDS.max)
-  );
+  const [priceMinInput, setPriceMinInput] = useState("");
+  const [priceMaxInput, setPriceMaxInput] = useState("");
+
+  const priceToInputs = (price: ProductFilters["price"]) => {
+    const [min, max] = price ?? [PRICE_BOUNDS.min, PRICE_BOUNDS.max];
+    setPriceMinInput(min > PRICE_BOUNDS.min ? String(min) : "");
+    setPriceMaxInput(max < PRICE_BOUNDS.max ? String(max) : "");
+  };
 
   useEffect(() => {
     if (visible) {
       setDraft({ ...filters });
       setDraftSort(sort);
-      setPriceMinInput(String(filters.price?.[0] ?? PRICE_BOUNDS.min));
-      setPriceMaxInput(String(filters.price?.[1] ?? PRICE_BOUNDS.max));
+      priceToInputs(filters.price);
     }
-  }, [visible, filters, sort]);
-
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    Promise.all([api.getBrands({ limit: 200 }), api.getCategories(100)]).then(([br, cat]) => {
-      if (cancelled) return;
-      if (br.ok) setBrands(br.data);
-      if (cat.ok) setCategories(cat.data);
-    });
-    return () => {
-      cancelled = true;
-    };
+    // Reset the draft only when the sheet opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const activeCount = activeFilterCount({
-    ...draft,
-    price: [Number(priceMinInput) || PRICE_BOUNDS.min, Number(priceMaxInput) || PRICE_BOUNDS.max],
-  });
+  // Brand + category facets come from the current results, so every option
+  // shown can actually match something.
+  const { brandFacets, categoryFacets } = useMemo(() => {
+    const brands = new Map<string, { name: string; count: number }>();
+    const categories = new Map<string, { name: string; count: number }>();
+    for (const p of products) {
+      const bId = p.brand_id ?? p.brand?.id;
+      if (bId && p.brand?.name) {
+        const cur = brands.get(bId);
+        brands.set(bId, { name: p.brand.name, count: (cur?.count ?? 0) + 1 });
+      }
+      const cId = p.category_id ?? p.category?.id;
+      if (cId && p.category?.name) {
+        const cur = categories.get(cId);
+        categories.set(cId, { name: p.category.name, count: (cur?.count ?? 0) + 1 });
+      }
+    }
+    const sorted = (m: Map<string, { name: string; count: number }>) =>
+      [...m.entries()].map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count);
+    return { brandFacets: sorted(brands), categoryFacets: sorted(categories) };
+  }, [products]);
 
-  const toggleColor = (c: string) => {
-    const cur = draft.colors ?? [];
-    setDraft({
-      ...draft,
-      colors: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c],
-    });
-  };
+  let priceMin = parsePrice(priceMinInput, PRICE_BOUNDS.min);
+  let priceMax = parsePrice(priceMaxInput, PRICE_BOUNDS.max);
+  if (priceMin > priceMax) [priceMin, priceMax] = [priceMax, priceMin];
+  const effective: ProductFilters = { ...draft, price: [priceMin, priceMax] };
 
-  const toggleSize = (s: string) => {
-    const cur = draft.sizes ?? [];
-    setDraft({
-      ...draft,
-      sizes: cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s],
-    });
-  };
+  const activeCount = activeFilterCount(effective);
+  const previewCount = useMemo(
+    () => applySearchFilters(products, effective).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [products, JSON.stringify(effective)],
+  );
 
-  const toggleBrand = (b: string) => {
-    const cur = draft.brands ?? [];
-    setDraft({
-      ...draft,
-      brands: cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b],
-    });
-  };
-
-  const toggleCategory = (c: string) => {
-    const cur = draft.categories ?? [];
-    setDraft({
-      ...draft,
-      categories: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c],
-    });
+  const toggleIn = (key: "colors" | "sizes" | "brands" | "categories", value: string) => {
+    const cur = draft[key] ?? [];
+    setDraft({ ...draft, [key]: cur.includes(value) ? cur.filter((x) => x !== value) : [...cur, value] });
   };
 
   const handleClear = () => {
     setDraft({ ...EMPTY_FILTERS });
     setDraftSort("newest");
-    setPriceMinInput(String(PRICE_BOUNDS.min));
-    setPriceMaxInput(String(PRICE_BOUNDS.max));
+    priceToInputs(undefined);
   };
 
   const handleApply = () => {
-    const min = Number(priceMinInput) || PRICE_BOUNDS.min;
-    const max = Number(priceMaxInput) || PRICE_BOUNDS.max;
-    onApply({ ...draft, price: [min, max] });
+    onApply(effective);
     onSortChange(draftSort);
     onClose();
   };
@@ -149,8 +168,9 @@ export function SearchFilterSheet({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheet, { maxHeight: screenHeight * 0.82 }]}>
-          {/* Header */}
+        {/* Fixed height (not maxHeight): the ScrollView below uses flex:1 and
+            collapses to zero inside a parent with no definite height. */}
+        <View style={[styles.sheet, { height: screenHeight * 0.86 }]}>
           <View style={styles.sheetHeader}>
             <View style={styles.handle} />
             <View style={styles.headerRow}>
@@ -160,8 +180,14 @@ export function SearchFilterSheet({
                   <Body style={styles.activeBadgeText}>{activeCount}</Body>
                 </View>
               )}
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                <Ionicons name="close" size={20} color={colors.light.foreground} />
+              <View style={{ flex: 1 }} />
+              {activeCount > 0 || draftSort !== "newest" ? (
+                <TouchableOpacity onPress={handleClear} hitSlop={8} style={styles.resetBtn}>
+                  <Body size="sm" style={styles.resetText}>Reset</Body>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close filters">
+                <Ionicons name="close" size={18} color={colors.light.foreground} />
               </TouchableOpacity>
             </View>
           </View>
@@ -170,182 +196,156 @@ export function SearchFilterSheet({
             style={styles.sheetBody}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.sheetBodyContent}
+            keyboardShouldPersistTaps="handled"
           >
-            {/* Sort */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>SORT BY</Label>
-              <View style={styles.sizeGrid}>
+            <Section title="Sort by">
+              <View style={styles.chipWrap}>
                 {SORTS.map((s) => (
-                  <Chip
-                    key={s.value}
-                    label={s.label}
-                    active={draftSort === s.value}
-                    onPress={() => setDraftSort(s.value)}
-                  />
+                  <Chip key={s.value} label={s.label} active={draftSort === s.value} onPress={() => setDraftSort(s.value)} />
                 ))}
               </View>
-            </View>
+            </Section>
 
-            {/* Price Range */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>PRICE RANGE (LKR)</Label>
+            <Section title="Price" hint="LKR">
               <View style={styles.priceRow}>
-                <View style={styles.priceInputWrap}>
-                  <Label style={styles.priceInputLabel}>Min</Label>
+                <View style={styles.priceField}>
+                  <Body size="xs" muted style={styles.priceFieldLabel}>Min</Body>
                   <TextInput
                     value={priceMinInput}
                     onChangeText={setPriceMinInput}
-                    keyboardType="numeric"
+                    keyboardType="number-pad"
                     placeholder="0"
                     placeholderTextColor={colors.light.mutedForeground}
                     style={styles.priceInput}
                   />
                 </View>
                 <View style={styles.priceDash} />
-                <View style={styles.priceInputWrap}>
-                  <Label style={styles.priceInputLabel}>Max</Label>
+                <View style={styles.priceField}>
+                  <Body size="xs" muted style={styles.priceFieldLabel}>Max</Body>
                   <TextInput
                     value={priceMaxInput}
                     onChangeText={setPriceMaxInput}
-                    keyboardType="numeric"
-                    placeholder={String(PRICE_BOUNDS.max)}
+                    keyboardType="number-pad"
+                    placeholder="No limit"
                     placeholderTextColor={colors.light.mutedForeground}
                     style={styles.priceInput}
                   />
                 </View>
               </View>
-              <View style={styles.presetGrid}>
+              <View style={styles.chipWrap}>
                 {PRICE_PRESETS.map((preset) => {
-                  const isActive =
-                    Number(priceMinInput) === preset.range[0] && Number(priceMaxInput) === preset.range[1];
+                  const on = priceMin === preset.range[0] && priceMax === preset.range[1];
                   return (
-                    <TouchableOpacity
+                    <Chip
                       key={preset.label}
-                      style={[styles.presetChip, isActive && styles.presetChipActive]}
-                      onPress={() => {
-                        setPriceMinInput(String(preset.range[0]));
-                        setPriceMaxInput(String(preset.range[1]));
-                      }}
-                    >
-                      <Body size="sm" style={[styles.presetText, isActive && styles.presetTextActive]}>
-                        {preset.label}
-                      </Body>
-                    </TouchableOpacity>
+                      label={preset.label}
+                      active={on}
+                      onPress={() =>
+                        on
+                          ? priceToInputs(undefined)
+                          : priceToInputs([preset.range[0], preset.range[1]])
+                      }
+                    />
                   );
                 })}
               </View>
-            </View>
+            </Section>
 
-            {/* Category */}
-            {categories.length > 0 ? (
-              <View style={styles.filterSection}>
-                <Label style={styles.filterLabel}>CATEGORY</Label>
-                <View style={styles.sizeGrid}>
-                  {categories.map((c) => {
-                    const list = draft.categories ?? [];
-                    const on = list.includes(c.id);
-                    return (
-                      <Chip key={c.id} label={c.name} active={on} onPress={() => toggleCategory(c.id)} />
-                    );
-                  })}
+            {categoryFacets.length > 1 ? (
+              <Section title="Category">
+                <View style={styles.chipWrap}>
+                  {categoryFacets.map((c) => (
+                    <Chip
+                      key={c.id}
+                      label={`${c.name} · ${c.count}`}
+                      active={(draft.categories ?? []).includes(c.id)}
+                      onPress={() => toggleIn("categories", c.id)}
+                    />
+                  ))}
                 </View>
-              </View>
+              </Section>
             ) : null}
 
-            {/* Brand */}
-            {brands.length > 0 ? (
-              <View style={styles.filterSection}>
-                <Label style={styles.filterLabel}>BRAND</Label>
-                <View style={styles.sizeGrid}>
-                  {brands.map((b) => {
-                    const list = draft.brands ?? [];
-                    const on = list.includes(b.id);
-                    return (
-                      <Chip key={b.id} label={b.name} active={on} onPress={() => toggleBrand(b.id)} />
-                    );
-                  })}
+            {brandFacets.length > 1 ? (
+              <Section title="Brand">
+                <View style={styles.chipWrap}>
+                  {brandFacets.map((b) => (
+                    <Chip
+                      key={b.id}
+                      label={`${b.name} · ${b.count}`}
+                      active={(draft.brands ?? []).includes(b.id)}
+                      onPress={() => toggleIn("brands", b.id)}
+                    />
+                  ))}
                 </View>
-              </View>
+              </Section>
             ) : null}
 
-            {/* Colors */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>COLOR</Label>
+            <Section title="Colour" hint={draft.colors?.length ? `${draft.colors.length} selected` : undefined}>
               <View style={styles.colorGrid}>
                 {COLORS.map((c) => {
-                  const isActive = draft.colors?.includes(c.name);
+                  const on = !!draft.colors?.includes(c.name);
+                  const light = c.name === "White" || c.name === "Sand";
                   return (
                     <TouchableOpacity
                       key={c.name}
-                      style={[styles.colorItem, isActive && styles.colorItemActive]}
-                      onPress={() => toggleColor(c.name)}
+                      style={styles.colorItem}
+                      onPress={() => toggleIn("colors", c.name)}
+                      activeOpacity={0.8}
+                      accessibilityLabel={c.name}
+                      accessibilityState={{ selected: on }}
                     >
-                      <View style={[styles.colorSwatch, { backgroundColor: c.hex }]}>
-                        {isActive && (
-                          <Ionicons name="checkmark" size={12} color="#fff" />
-                        )}
+                      <View style={[styles.colorRing, on && styles.colorRingActive]}>
+                        <View style={[styles.colorSwatch, { backgroundColor: c.hex }, light && styles.colorSwatchLight]}>
+                          {on && <Ionicons name="checkmark" size={14} color={light ? colors.light.foreground : "#fff"} />}
+                        </View>
                       </View>
-                      <Body size="xs" style={styles.colorName}>{c.name}</Body>
+                      <Body size="xs" style={[styles.colorName, on && styles.colorNameActive]}>{c.name}</Body>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-            </View>
+            </Section>
 
-            {/* Sizes */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>SIZE</Label>
-              <View style={styles.sizeGrid}>
-                {SIZES.map((s) => {
-                  const isActive = draft.sizes?.includes(s);
-                  return (
-                    <Chip key={s} label={s} active={!!isActive} onPress={() => toggleSize(s)} />
-                  );
-                })}
+            <Section title="Size">
+              <View style={styles.chipWrap}>
+                {SIZES.map((s) => (
+                  <Chip key={s} label={s} active={!!draft.sizes?.includes(s)} onPress={() => toggleIn("sizes", s)} />
+                ))}
               </View>
-            </View>
+            </Section>
 
-            {/* Discount */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>DISCOUNT</Label>
-              <View style={styles.sizeGrid}>
+            <Section title="Discount">
+              <View style={styles.chipWrap}>
                 {DISCOUNTS.map((d) => {
-                  const isActive = draft.minDiscount === d.min;
+                  const on = draft.minDiscount === d.min;
                   return (
                     <Chip
                       key={d.min}
                       label={d.label}
-                      active={isActive}
-                      onPress={() => setDraft({ ...draft, minDiscount: isActive ? 0 : d.min })}
+                      active={on}
+                      onPress={() => setDraft({ ...draft, minDiscount: on ? 0 : d.min })}
                     />
                   );
                 })}
               </View>
-            </View>
+            </Section>
 
-            {/* Rating */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>MINIMUM RATING</Label>
-              <View style={styles.sizeGrid}>
-                {[0, 3, 4, 4.5].map((r) => {
-                  const isActive = draft.minRating === r;
-                  const label = r === 0 ? "Any" : `${r}★ & up`;
-                  return (
-                    <Chip
-                      key={String(r)}
-                      label={label}
-                      active={isActive}
-                      onPress={() => setDraft({ ...draft, minRating: r })}
-                    />
-                  );
-                })}
+            <Section title="Rating">
+              <View style={styles.chipWrap}>
+                {RATINGS.map((r) => (
+                  <Chip
+                    key={String(r)}
+                    label={r === 0 ? "Any" : `${r}★ & up`}
+                    active={(draft.minRating ?? 0) === r}
+                    onPress={() => setDraft({ ...draft, minRating: r })}
+                  />
+                ))}
               </View>
-            </View>
+            </Section>
 
-            {/* Gender */}
-            <View style={styles.filterSection}>
-              <Label style={styles.filterLabel}>GENDER</Label>
-              <View style={styles.sizeGrid}>
+            <Section title="Gender">
+              <View style={styles.chipWrap}>
                 {GENDERS.map((g) => (
                   <Chip
                     key={g.key || "all"}
@@ -355,22 +355,23 @@ export function SearchFilterSheet({
                   />
                 ))}
               </View>
-            </View>
+            </Section>
           </ScrollView>
 
-          {/* Footer */}
-          <View style={styles.sheetFooter}>
-            <Body muted size="sm" style={styles.resultLabel}>
-              {resultCount} {resultCount === 1 ? "piece" : "pieces"}
-            </Body>
-            <View style={styles.footerActions}>
-              <Button variant="ghost" onPress={handleClear}>
-                Clear all
-              </Button>
-              <Button variant="brand" onPress={handleApply} style={styles.applyBtn}>
-                Show results
-              </Button>
-            </View>
+          <View style={[styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, spacing[4]) }]}>
+            <Button variant="outline" onPress={handleClear} style={styles.clearBtn}>
+              Clear all
+            </Button>
+            <Button
+              variant="brand"
+              onPress={handleApply}
+              style={styles.applyBtn}
+              disabled={previewCount === 0}
+            >
+              {previewCount === 0
+                ? "No matches"
+                : `Show ${previewCount} result${previewCount === 1 ? "" : "s"}`}
+            </Button>
           </View>
         </View>
       </View>
@@ -392,14 +393,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    overflow: "hidden",
     ...shadows.editorial,
   },
   sheetHeader: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],
     paddingBottom: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: `${colors.light.primary}15`,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
   },
   handle: {
     width: 36,
@@ -415,23 +417,31 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   activeBadge: {
-    width: 22,
+    minWidth: 22,
     height: 22,
+    paddingHorizontal: 6,
     borderRadius: 11,
-    backgroundColor: colors.olive[600],
+    backgroundColor: colors.accent2.rust,
     alignItems: "center",
     justifyContent: "center",
   },
   activeBadgeText: {
     color: "#fff",
     fontSize: 11,
-    fontWeight: "700",
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  resetBtn: {
+    paddingHorizontal: spacing[2],
+  },
+  resetText: {
+    color: colors.olive[700],
+    fontFamily: fontFamilies.sans.semibold,
+    textDecorationLine: "underline",
   },
   closeBtn: {
-    marginLeft: "auto",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.light.muted,
@@ -440,36 +450,52 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetBodyContent: {
-    padding: spacing[5],
-    gap: spacing[6],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[6],
   },
-  filterSection: {
+  section: {
     gap: spacing[3],
+    paddingVertical: spacing[4],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
   },
-  filterLabel: {
-    color: colors.olive[600],
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
   },
-  presetGrid: {
+  sectionTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.foreground,
+  },
+  chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing[2],
   },
-  presetChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  chip: {
+    minWidth: 48,
+    height: 38,
     borderRadius: radii.full,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
     backgroundColor: colors.light.card,
   },
-  presetChipActive: {
+  chipActive: {
     backgroundColor: colors.light.foreground,
     borderColor: colors.light.foreground,
   },
-  presetText: {
+  chipText: {
     color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
   },
-  presetTextActive: {
+  chipTextActive: {
     color: colors.light.primaryForeground,
   },
   priceRow: {
@@ -477,98 +503,87 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: spacing[2],
   },
-  priceInputWrap: {
+  priceField: {
     flex: 1,
+    gap: 4,
   },
-  priceInputLabel: {
-    color: colors.light.mutedForeground,
-    fontSize: 9,
-    marginBottom: 4,
+  priceFieldLabel: {
+    fontSize: 11,
   },
   priceInput: {
-    height: 40,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.light.border,
     backgroundColor: colors.light.card,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     paddingHorizontal: spacing[3],
     color: colors.light.foreground,
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: fontFamilies.sans.medium,
   },
   priceDash: {
-    width: 12,
+    width: 10,
     height: 1,
-    backgroundColor: colors.light.border,
-    marginBottom: 20,
+    backgroundColor: colors.light.mutedForeground,
+    marginBottom: 22,
   },
   colorGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing[3],
+    rowGap: spacing[3],
+    columnGap: spacing[2],
   },
   colorItem: {
+    width: 58,
     alignItems: "center",
     gap: 4,
   },
-  colorItemActive: {},
-  colorSwatch: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
+  colorRing: {
+    padding: 3,
+    borderRadius: 24,
+    borderWidth: 1.5,
     borderColor: "transparent",
+  },
+  colorRingActive: {
+    borderColor: colors.light.foreground,
+  },
+  colorSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+  },
+  colorSwatchLight: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
   colorName: {
     color: colors.light.mutedForeground,
-    fontSize: 10,
+    fontSize: 11,
   },
-  sizeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing[2],
-  },
-  sizeChip: {
-    minWidth: 52,
-    height: 44,
-    borderRadius: radii.lg,
-    borderWidth: 1.5,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing[3],
-    backgroundColor: colors.light.card,
-  },
-  sizeChipActive: {
-    backgroundColor: colors.light.foreground,
-    borderColor: colors.light.foreground,
-  },
-  sizeText: {
+  colorNameActive: {
     color: colors.light.foreground,
-  },
-  sizeTextActive: {
-    color: colors.light.primaryForeground,
+    fontFamily: fontFamilies.sans.semibold,
   },
   sheetFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: spacing[3],
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[4],
-    borderTopWidth: 1,
-    borderTopColor: `${colors.light.primary}15`,
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+    backgroundColor: colors.light.background,
   },
-  resultLabel: {
-    flexShrink: 1,
-  },
-  footerActions: {
-    flexDirection: "row",
-    gap: spacing[2],
+  clearBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: radii.xl,
   },
   applyBtn: {
-    flex: 1,
+    flex: 2,
+    height: 50,
+    borderRadius: radii.xl,
   },
 });

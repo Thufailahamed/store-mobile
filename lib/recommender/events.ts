@@ -392,10 +392,22 @@ const GARMENT_TOKENS = new Set([
 /** Extract a single garment token from a product name + tags. */
 export function extractGarmentToken(product: Pick<Product, "name" | "tags">): string | null {
   const haystack = `${product.name ?? ""} ${(product.tags ?? []).join(" ")}`.toLowerCase();
-  for (const token of haystack.split(/[^a-z0-9-]+/)) {
-    if (GARMENT_TOKENS.has(token)) return token;
+  for (const raw of haystack.split(/[^a-z0-9-]+/)) {
+    if (!raw) continue;
+    if (GARMENT_TOKENS.has(raw)) return raw;
+    // Plural-tolerant lookup: "dresses" → "dress", "shirts" → "shirt".
+    const singular = singulariseGarment(raw);
+    if (singular !== raw && GARMENT_TOKENS.has(singular)) return singular;
   }
   return null;
+}
+
+function singulariseGarment(w: string): string {
+  if (w.length < 4) return w;
+  if (w.endsWith("ies")) return w.slice(0, -3) + "y";
+  if (w.endsWith("es") && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
+  return w;
 }
 
 /** Build a compact snapshot of a product for event tracking. */

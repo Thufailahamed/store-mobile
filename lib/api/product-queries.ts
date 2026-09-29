@@ -49,8 +49,10 @@ export async function getProductCards(opts: {
 
     if (featuredOnly) query = query.eq("is_featured", true);
 
-    if (categorySlug && GENDER_SLUGS.has(categorySlug)) {
-      query = query.eq("gender", categorySlug);
+    if (categorySlug && GENDER_SLUGS.has(categorySlug.toLowerCase())) {
+      const g = categorySlug.toLowerCase();
+      // Gender department pages include unisex pieces (except kids).
+      query = g === "kids" ? query.eq("gender", g) : query.in("gender", [g, "unisex"]);
     } else if (categorySlug) {
       const { data: cat, error: catError } = await supabase
         .from("categories")
@@ -86,7 +88,10 @@ export async function getProductCards(opts: {
       else return ok([]);
     }
 
-    if (gender) query = query.eq("gender", gender);
+    if (gender) {
+      const g = gender.toLowerCase();
+      query = g === "kids" || g === "unisex" ? query.eq("gender", g) : query.in("gender", [g, "unisex"]);
+    }
 
     const browsableStoreIds = await getBrowsableStoreIds();
     const visibleIds = [...browsableStoreIds];

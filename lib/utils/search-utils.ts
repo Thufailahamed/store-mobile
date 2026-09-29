@@ -293,6 +293,36 @@ export function scoreProduct(product: Product, words: string[], fullQuery: strin
   // ---- Scoring ----
   let score = 0;
 
+  // Demographic / gender intent: boost products whose gender (or gender
+  // tags) match the query ("womans dress" → women). Unisex always counts
+  // as a partial match for men/women. This is a soft boost + mismatch
+  // penalty (not a hard gate) so products with missing gender data can
+  // still surface.
+  const queryGender = inferGenderFromWords(words);
+  if (queryGender) {
+    const pGender = normalizeGender((product as { gender?: string }).gender);
+    const genderAliases = new Set<string>();
+    for (const w of words) {
+      for (const t of expandDemographicTerms(w)) genderAliases.add(t.toLowerCase());
+    }
+    const genderHaystack = [nameLower, descLower, shortLower, categoryNameLower, ...tagsLower].join(" | ");
+    const haystackHitsGender = [...genderAliases].some((g) => g.length >= 3 && genderHaystack.includes(g));
+    if (pGender === queryGender) {
+      score += 8;
+    } else if (pGender === "unisex" && queryGender !== "kids") {
+      score += 4;
+    } else if (!pGender && haystackHitsGender) {
+      score += 6;
+    } else if (pGender && pGender !== queryGender) {
+      // Opposite gender (e.g. men product for a women query) — demote
+      // heavily but don't hard-exclude; data is often incomplete.
+      // Unisex already handled above, kids never matches men/women.
+      score -= 5;
+    } else if (haystackHitsGender) {
+      score += 5;
+    }
+  }
+
   const name = nameLower;
   const desc = descLower;
   const short = shortLower;
@@ -320,6 +350,10 @@ export function scoreProduct(product: Product, words: string[], fullQuery: strin
   }
 
   for (const word of words) {
+    // Skip pure demographic words here — they are already scored via the
+    // gender-intent boost above. Scoring them again with substring matching
+    // would penalize "womans dress" (no product literally contains "womans").
+    if (isDemographicWord(word)) continue;
     // Use the generic expander so material / garment words get the same
     // broad matching colors already had.
     const wordVariants = expandTerms(word);
@@ -444,11 +478,13 @@ export const DEMOGRAPHIC_SYNONYMS: Record<string, string[]> = {
   men: ["men", "mens", "man", "gent", "gents"],
   mens: ["mens", "men", "man", "gent", "gents"],
   man: ["man", "men", "mens", "gent", "gents"],
+  mans: ["mans", "man", "men", "mens", "gent", "gents"],
   gents: ["gents", "gent", "men", "mens", "man"],
   gent: ["gent", "gents", "men", "mens", "man"],
   women: ["women", "womens", "woman", "lady", "ladies"],
   womens: ["womens", "women", "woman", "lady", "ladies"],
   woman: ["woman", "women", "womens", "lady", "ladies"],
+  womans: ["womans", "woman", "women", "womens", "lady", "ladies"],
   ladies: ["ladies", "lady", "women", "womens", "woman"],
   lady: ["lady", "ladies", "women", "womens", "woman"],
 };
@@ -524,10 +560,50 @@ function inferGender(word: string): "men" | "women" | "kids" | null {
   const sing = singularise(lower);
   for (const key of [lower, sing]) {
     if (DEMOGRAPHIC_SYNONYMS[key]) {
-      if (["men", "mens", "man", "gents", "gent"].includes(key)) return "men";
-      if (["women", "womens", "woman", "ladies", "lady"].includes(key)) return "women";
+      if (["men", "mens", "man", "mans", "gents", "gent"].includes(key)) return "men";
+      if (["women", "womens", "woman", "womans", "ladies", "lady"].includes(key)) return "women";
       if (["girl", "girls", "boy", "boys", "kid", "kids", "child", "children", "baby"].includes(key)) return "kids";
     }
+  }
+  return null;
+}
+
+/**
+ * Normalize any gender-like token ("Mens", "womans", "ladies", "gents",
+ * "unisex", ...) to the canonical `men | women | kids | unisex` value.
+ * Returns null when the token carries no gender intent.
+ */
+export function normalizeGender(raw: string | null | undefined): "men" | "women" | "kids" | "unisex" | null {
+  if (!raw) return null;
+  const lower = String(raw).trim().toLowerCase();
+  if (!lower) return null;
+  if (lower === "unisex") return "unisex";
+  const g = inferGender(lower);
+  if (g) return g;
+  if (lower === "unisex" || lower === "unisexual") return "unisex";
+  return null;
+}
+
+/** True when a word is a demographic/audience term (men, womans, girls, ...). */
+export function isDemographicWord(word: string): boolean {
+  const lower = word.toLowerCase();
+  if (lower === "unisex") return true;
+  return lookupDemographic(word) !== null;
+}
+
+/** Expand a demographic word to all of its aliases (women → womens, lady, ...). */
+export function expandDemographicTerms(word: string): string[] {
+  const found = lookupDemographic(word);
+  return found ? [...found] : [word.toLowerCase()];
+}
+
+/** Infer the query's gender intent from an already-tokenized word list. */
+export function inferGenderFromWords(words: string[]): "men" | "women" | "kids" | "unisex" | null {
+  for (const w of words) {
+    const lower = w.toLowerCase();
+    if (lower === "unisex") return "unisex";
+    const g = inferGender(w);
+    if (g) return g;
   }
   return null;
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import type { Product } from "@/lib/types";
 import { getPersonalizedSearch } from "@/lib/recommender";
+import { productMatchesGender } from "@/lib/search-filters";
 import { useAuth } from "@/lib/supabase/auth";
 import { EMPTY_FILTERS, type ProductFilters, type SortOption, type ViewMode } from "@/lib/api/facets";
 
@@ -40,6 +41,9 @@ export function useProductGrid(scope: ProductGridScope = {}) {
   // server stays simple and the response is fast.
   const refined = useMemo(() => {
     let list = products;
+    if (filters.gender) {
+      list = list.filter((p) => productMatchesGender(p, filters.gender!));
+    }
     if (filters.brands?.length) {
       list = list.filter((p) => p.brand_id && filters.brands!.includes(p.brand_id));
     }

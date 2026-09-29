@@ -77,24 +77,41 @@ export function SearchOrbitChrome({
             onFocus={onFocus}
             onBlur={onBlur}
             returnKeyType="search"
-            placeholder="Search products, brands, stores…"
+            placeholder="Search products & brands"
             placeholderTextColor={colors.light.mutedForeground}
             autoFocus
             autoCorrect={false}
             autoCapitalize="none"
           />
           {draft.length > 0 ? (
-            <TouchableOpacity onPress={onClear} hitSlop={8}>
+            <TouchableOpacity onPress={onClear} hitSlop={8} accessibilityLabel="Clear search">
               <Ionicons name="close-circle" size={18} color={MUTED} />
             </TouchableOpacity>
-          ) : null}
+          ) : (
+            <View style={styles.fieldActions}>
+              {onImageSearch ? (
+                <TouchableOpacity
+                  onPress={onImageSearch}
+                  hitSlop={6}
+                  style={styles.fieldActionBtn}
+                  accessibilityLabel="Search with a photo"
+                >
+                  <Ionicons name="image-outline" size={19} color={INK} />
+                </TouchableOpacity>
+              ) : null}
+              {onCameraSearch ? (
+                <TouchableOpacity
+                  onPress={onCameraSearch}
+                  hitSlop={6}
+                  style={styles.fieldActionBtn}
+                  accessibilityLabel="Scan an item with the camera"
+                >
+                  <Ionicons name="camera-outline" size={20} color={INK} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
         </View>
-
-        {onCameraSearch ? (
-          <TouchableOpacity style={styles.iconBtn} onPress={onCameraSearch} activeOpacity={0.7}>
-            <Ionicons name="camera-outline" size={20} color={INK} />
-          </TouchableOpacity>
-        ) : null}
       </View>
 
       {searched && !isTyping && typeof totalCount === "number" && totalCount > 0 ? (
@@ -107,32 +124,6 @@ export function SearchOrbitChrome({
         </View>
       ) : null}
 
-      {!searched && !isTyping && onImageSearch ? (
-        <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickBtn} onPress={onImageSearch} activeOpacity={0.8}>
-            <View style={styles.quickIcon}>
-              <Ionicons name="image-outline" size={17} color={colors.olive[800]} />
-            </View>
-            <View style={styles.quickTextWrap}>
-              <Text style={styles.quickBtnText}>Image search</Text>
-              <Text style={styles.quickBtnMeta}>Choose a photo</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
-          </TouchableOpacity>
-          {onCameraSearch ? (
-            <TouchableOpacity style={styles.quickBtn} onPress={onCameraSearch} activeOpacity={0.8}>
-              <View style={styles.quickIcon}>
-                <Ionicons name="camera-outline" size={17} color={colors.olive[800]} />
-              </View>
-              <View style={styles.quickTextWrap}>
-                <Text style={styles.quickBtnText}>Camera</Text>
-                <Text style={styles.quickBtnMeta}>Scan an item</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -174,6 +165,19 @@ const styles = StyleSheet.create({
     borderColor: colors.light.border,
     ...shadows.soft,
   },
+  fieldActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginRight: -spacing[1],
+  },
+  fieldActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   searchInput: {
     flex: 1,
     fontFamily: fontFamilies.sans.regular,
@@ -206,44 +210,5 @@ const styles = StyleSheet.create({
   resultsMetaQuery: {
     fontFamily: fontFamilies.sans.medium,
     color: INK,
-  },
-  quickActions: {
-    flexDirection: "row",
-    gap: spacing[2],
-    paddingBottom: spacing[3],
-  },
-  quickBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    minHeight: 54,
-    paddingHorizontal: spacing[2],
-    borderRadius: radii.xl,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-  },
-  quickIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: `${colors.olive[500]}12`,
-  },
-  quickTextWrap: {
-    flex: 1,
-  },
-  quickBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: INK,
-  },
-  quickBtnMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    marginTop: 1,
   },
 });

@@ -174,8 +174,9 @@ export function productAffinity(product: Product, profile: UserProfile): { score
     }
   }
 
-  if (product.gender && genN[product.gender] !== undefined && Math.abs(genN[product.gender]) > 0.5) {
-    total += genN[product.gender] * FIELD_WEIGHTS.gender;
+  if (product.gender && genN[product.gender.toLowerCase()] !== undefined && Math.abs(genN[product.gender.toLowerCase()]) > 0.5) {
+    const gKey = product.gender.toLowerCase();
+    total += genN[gKey] * FIELD_WEIGHTS.gender;
     weightSum += FIELD_WEIGHTS.gender;
   }
 
@@ -444,7 +445,7 @@ export function rankSimilarTo(
         reasons.push("tag");
         details.push({ axis: "tag", weight: tagOverlap });
       }
-      if (product.gender && product.gender === anchor.gender) {
+      if (product.gender && anchor.gender && product.gender.toLowerCase() === anchor.gender.toLowerCase()) {
         overlap += 0.4;
       }
 

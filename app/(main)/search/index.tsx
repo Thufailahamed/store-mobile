@@ -30,7 +30,8 @@ import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, discountPct } from "@/lib/utils";
-import { SORTS, PRICE_BOUNDS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
+import { SORTS, PRICE_BOUNDS, EMPTY_FILTERS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
+import { applySearchFilters } from "@/lib/search-filters";
 import type { ProductFilters } from "@/lib/api/facets";
 import * as api from "@/lib/api";
 import type { V2Suggestion, WishlistPriceDrop } from "@/lib/api";
@@ -377,42 +378,7 @@ export default function SearchScreen() {
   }, [query]);
 
   const filtered = useMemo(() => {
-    let list = [...results];
-
-
-    // Price filter
-    if (filters.price && (filters.price[0] > PRICE_BOUNDS.min || filters.price[1] < PRICE_BOUNDS.max)) {
-      list = list.filter((p) => p.price >= filters.price![0] && p.price <= filters.price![1]);
-    }
-
-    // Color filter
-    if (filters.colors && filters.colors.length > 0) {
-      list = list.filter((p) => {
-        const pColors = (p.variants ?? []).map((v) => (v.color ?? "").toLowerCase());
-        return filters.colors!.some((c) => {
-          const cl = c.toLowerCase();
-          return pColors.some((pc) => pc.includes(cl) || cl.includes(pc));
-        });
-      });
-    }
-
-    // Size filter
-    if (filters.sizes && filters.sizes.length > 0) {
-      list = list.filter((p) => {
-        const pSizes = (p.variants ?? []).map((v) => (v.size ?? "").toUpperCase());
-        return filters.sizes!.some((s) => pSizes.includes(s.toUpperCase()));
-      });
-    }
-
-    // Rating filter
-    if (filters.minRating && filters.minRating > 0) {
-      list = list.filter((p) => p.rating >= filters.minRating!);
-    }
-
-    // Discount filter
-    if (filters.minDiscount && filters.minDiscount > 0) {
-      list = list.filter((p) => discountPct(p.mrp, p.price) >= filters.minDiscount!);
-    }
+    const list = [...applySearchFilters(results, filters)];
 
     // Sort
     switch (sort) {
@@ -521,6 +487,7 @@ export default function SearchScreen() {
               recentSearches={recentSearches}
               onSearch={doSearch}
               onClearRecent={clearRecent}
+              onVisualSearch={() => runScan("library")}
             />
           ) : loading ? (
           /* ─── Loading ─── */
@@ -775,10 +742,53 @@ export default function SearchScreen() {
                       <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
                     </TouchableOpacity>
                   ) : null}
-                  <TouchableOpacity onPress={() => setFilters({
-                    price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max],
-                    colors: [], sizes: [], brands: [], categories: [], minRating: 0, minDiscount: 0,
-                  })}>
+                  {filters.price && (filters.price[0] > PRICE_BOUNDS.min || filters.price[1] < PRICE_BOUNDS.max) ? (
+                    <TouchableOpacity
+                      style={styles.activeChip}
+                      onPress={() => setFilters({ ...filters, price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max] })}
+                    >
+                      <Body size="xs">
+                        {formatPrice(filters.price[0])} – {filters.price[1] >= PRICE_BOUNDS.max ? "any" : formatPrice(filters.price[1])}
+                      </Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                  {filters.gender ? (
+                    <TouchableOpacity
+                      style={styles.activeChip}
+                      onPress={() => setFilters({ ...filters, gender: undefined })}
+                    >
+                      <Body size="xs" style={{ textTransform: "capitalize" }}>{filters.gender}</Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                  {filters.brands?.length ? (
+                    <TouchableOpacity
+                      style={styles.activeChip}
+                      onPress={() => setFilters({ ...filters, brands: [] })}
+                    >
+                      <Body size="xs">
+                        {filters.brands.length === 1
+                          ? results.find((p) => (p.brand_id ?? p.brand?.id) === filters.brands![0])?.brand?.name ?? "1 brand"
+                          : `${filters.brands.length} brands`}
+                      </Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                  {filters.categories?.length ? (
+                    <TouchableOpacity
+                      style={styles.activeChip}
+                      onPress={() => setFilters({ ...filters, categories: [] })}
+                    >
+                      <Body size="xs">
+                        {filters.categories.length === 1
+                          ? results.find((p) => (p.category_id ?? p.category?.id) === filters.categories![0])?.category?.name ?? "1 category"
+                          : `${filters.categories.length} categories`}
+                      </Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity onPress={() => setFilters({ ...EMPTY_FILTERS })}>
                     <Label style={styles.clearChipLabel}>Clear all</Label>
                   </TouchableOpacity>
                 </View>
@@ -945,7 +955,7 @@ export default function SearchScreen() {
         onApply={handleSearchFilterChange}
         sort={sort}
         onSortChange={handleSearchSortChange}
-        resultCount={productCount}
+        products={results}
       />
     </KeyboardAvoidingView>
   );
@@ -1337,11 +1347,13 @@ const styles = StyleSheet.create({
   activeChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radii.full,
-    backgroundColor: INK,
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
   clearChipLabel: {
     color: INK,

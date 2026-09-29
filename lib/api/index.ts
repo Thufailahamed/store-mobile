@@ -26,6 +26,8 @@ import {
   fuzzyMatch,
   scoreProduct,
   isColorWord,
+  expandQueryTerms,
+  inferGenderFromWords,
 } from "@/lib/utils/search-utils";
 import type {
   Product, ProductVariant, ProductImage, Brand, Store, Category,
@@ -428,6 +430,12 @@ export async function searchProducts(
   const words = tokenizeQuery(term);
   if (words.length === 0) return ok([]);
 
+  // Infer gender intent from the query itself ("womans dress" → women) so
+  // gender-tagged products rank correctly even when the caller didn't pass
+  // an explicit gender filter. An explicit opts.gender always wins.
+  const inferredGender = inferGenderFromWords(words) ?? expandQueryTerms(term).gender ?? null;
+  const effectiveGender = opts?.gender ?? inferredGender ?? undefined;
+
   // Use backend's /api/catalog/search RPC. The backend runs
   // expand_search_query server-side and forwards synonyms to
   // search_products so "girls dress" → kids+dresses matches.
@@ -435,7 +443,7 @@ export async function searchProducts(
     q: term,
     sort: "relevance",
     limit: Math.max(limit * 2, 40),
-    gender: opts?.gender,
+    gender: effectiveGender as "men" | "women" | "kids" | "unisex" | undefined,
   });
 
   let rawProducts: Array<{ id: string }> = [];
@@ -446,9 +454,16 @@ export async function searchProducts(
   // Per-word OR fallback: when the full query returns nothing and
   // contains multiple words (e.g. "girls dress"), retry each word
   // individually and merge the results so partial matches surface.
+  // Skip pure demographic words ("womans") — they rarely match alone and
+  // just add noise; the garment word ("dress") carries the recall.
   if (rawProducts.length === 0 && words.length >= 2) {
     const seen = new Set<string>();
+    const expanded = expandQueryTerms(term);
+    const hasNonDemographic = words.some((w) => !inferGenderFromWords([w]));
     for (const word of words) {
+      // Demographic-only token ("womans") rarely matches alone — skip its
+      // solo lookup when a garment word ("dress") can carry the recall.
+      if (hasNonDemographic && inferGenderFromWords([word]) && expanded.garment) continue;
       const wordRes = await B.searchProductsBackend({
         q: word,
         sort: "relevance",
