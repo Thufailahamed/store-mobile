@@ -10,6 +10,7 @@
 
 import { fetchJson, type ApiResult } from "./_fetch";
 import { isPayoutId } from "../payouts/ledger";
+import type { EligibleReviewOrder } from "../types";
 export type { ApiResult } from "./_fetch";
 export { fetchJson, getAccessToken, hasStoreApi, getStoreApiUrl } from "./_fetch";
 
@@ -963,8 +964,8 @@ export type Review = {
   product?: { id: string; name: string; slug: string; images?: Array<{ url: string; is_primary?: boolean }> };
 };
 
-export async function listReviewsBackend(productId: string, limit = 20): Promise<ApiResult<{ reviews: Review[]; avg_rating?: number; total?: number }>> {
-  return fetchJson(`/api/products/${productId}/reviews`, { query: { limit } });
+export async function listReviewsBackend(productId: string, limit = 20): Promise<ApiResult<{ reviews: Review[]; summary?: { average: number; count: number }; total?: number }>> {
+  return fetchJson(`/api/reviews/product/${productId}`, { query: { page_size: limit } });
 }
 
 export async function listMyReviewsBackend(): Promise<ApiResult<{ reviews: Review[] }>> {
@@ -996,8 +997,8 @@ export async function deleteReviewBackend(id: string): Promise<ApiResult<{ delet
   return fetchJson(`/api/users/reviews/${id}`, { method: "DELETE" });
 }
 
-export async function voteReviewHelpfulBackend(id: string): Promise<ApiResult<{ helpful_count: number }>> {
-  return fetchJson(`/api/reviews/${id}/vote`, { method: "POST", body: { helpful: true } });
+export async function voteReviewHelpfulBackend(id: string): Promise<ApiResult<{ voted: boolean; helpful_count: number; verified_weighted_helpful?: number }>> {
+  return fetchJson(`/api/reviews/${id}/helpful`, { method: "POST", body: {} });
 }
 
 export async function replyToReviewBackend(
@@ -1010,7 +1011,7 @@ export async function replyToReviewBackend(
   });
 }
 
-export async function getEligibleReviewOrdersBackend(productId: string): Promise<ApiResult<{ orders: Array<{ id: string; order_number?: string; delivered_at?: string }> }>> {
+export async function getEligibleReviewOrdersBackend(productId: string): Promise<ApiResult<{ eligible: EligibleReviewOrder[]; orders?: EligibleReviewOrder[] }>> {
   return fetchJson(`/api/reviews/eligible`, { query: { productId } });
 }
 

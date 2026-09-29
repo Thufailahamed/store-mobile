@@ -228,7 +228,8 @@ export async function getReviews(productId: string, limit = 20): Promise<Result<
 export async function getEligibleReviewOrders(productId: string): Promise<Result<EligibleReviewOrder[]>> {
   const res = await B.getEligibleReviewOrdersBackend(productId);
   if (!res.ok) return fail(res.error);
-  return ok(loose<EligibleReviewOrder[]>(res.data.orders ?? []));
+  const rows = (res.data.eligible ?? res.data.orders ?? []) as EligibleReviewOrder[];
+  return ok(loose<EligibleReviewOrder[]>(rows.filter((r) => Boolean((r as EligibleReviewOrder).order_item_id))));
 }
 
 // ============================================================================
@@ -3454,8 +3455,9 @@ export async function getStoreReviews(storeId: string, opts: {
   offset?: number;
 } = {}): Promise<Result<{ reviews: Review[]; total: number; avgRating: number; ratingBreakdown: Record<number, number> }>> {
   const res = await B.getStoreReviewsBackend(storeId, {
-    limit: opts.limit ?? 100,
+    limit: opts.limit ?? 30,
     offset: opts.offset,
+    rating: opts.rating,
   });
   if (!res.ok) return fail(res.error);
   const all = loose<Review[]>(res.data.reviews ?? []);
@@ -3465,8 +3467,9 @@ export async function getStoreReviews(storeId: string, opts: {
   const avgRating = firstFiniteNumber(res.data.avg_rating, computedAvg) ?? 0;
   const breakdown: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
   for (const r of allRatings) breakdown[r] = (breakdown[r] ?? 0) + 1;
+  // NOTE: rating is filtered server-side; search is client-side only on the
+  // current page. Callers needing full search should use dedicated search API.
   let reviews = all;
-  if (opts.rating) reviews = reviews.filter((r) => r.rating === opts.rating);
   if (opts.search?.trim()) {
     const needle = opts.search.trim().toLowerCase();
     reviews = reviews.filter((r) =>

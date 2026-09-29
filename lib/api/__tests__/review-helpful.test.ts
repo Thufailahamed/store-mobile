@@ -1,6 +1,6 @@
 /**
  * voteReviewHelpfulBackend — facade wrapper around the existing backend fn
- * (POST /api/reviews/:id/vote). The backend fn already exists; this test
+ * (POST /api/reviews/:id/helpful toggle). The backend fn already exists; this test
  * pins the facade exposure so consumers can `import { voteReviewHelpfulBackend }`.
  */
 
@@ -28,7 +28,7 @@ describe("voteReviewHelpfulBackend facade", () => {
     fetchJsonMock.mockResolvedValue({ ok: true, data: { voted: true, helpful_count: 4 } });
     const res = await voteReviewHelpfulBackend("r-99");
     expect(fetchJsonMock).toHaveBeenCalledWith(
-      "/api/reviews/r-99/vote",
+      "/api/reviews/r-99/helpful",
       expect.objectContaining({ method: "POST" }),
     );
     expect(res.ok).toBe(true);

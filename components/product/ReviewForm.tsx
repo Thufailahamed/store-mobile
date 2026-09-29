@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
-import { supabase } from "@/lib/supabase/client";
 import { pickImage, uploadReviewPhoto } from "@/lib/upload";
 import { useToast } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
@@ -23,7 +22,6 @@ import { getEligibleReviewOrders } from "@/lib/api";
 import type { EligibleReviewOrder } from "@/lib/types";
 import { friendlyReviewError, formatReviewDate } from "@/lib/review-error";
 import { addReviewBackend } from "@/lib/api/backend";
-import { uuidv4 } from "@/lib/utils";
 
 interface ReviewFormProps {
   visible: boolean;
@@ -49,9 +47,6 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
   const [eligible, setEligible] = useState<EligibleReviewOrder[]>([]);
   const [eligibleLoading, setEligibleLoading] = useState(false);
   const [selectedOrderItemId, setSelectedOrderItemId] = useState<string | null>(null);
-  // Stable tmp id for upload path; the real review row id may differ
-  // after insert, but the file still lands in the user's prefix.
-  const tmpReviewIdRef = useRef<string>(uuidv4());
 
   // Tracks whether the component is still mounted. setState after unmount
   // warns in dev and is wasted work in prod. Set false in the cleanup.
@@ -121,33 +116,58 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
 
     setSubmitting(true);
 
-    let uploadedUrls: string[] = [];
-    if (photos.length > 0) {
-      const uploads = await Promise.all(
-        photos.map((uri, i) => uploadReviewPhoto(user.id, tmpReviewIdRef.current, uri, { index: i })),
-      );
-      uploadedUrls = uploads.filter((u) => u.url).map((u) => u.url);
-    }
-
-    // Server is the source of truth for `is_verified_purchase` and
-    // `status` — never send them. Server computes verified-purchase from
-    // `order_item_id` + delivered status + ownership. Status always
-    // enters as "pending" for moderation.
+    // Step 1: create review first so photo uploads use the real review id
+    // (avoids orphan files under a temp id).
     const res = await addReviewBackend({
       product_id: productId,
       order_item_id: selectedOrderItemId,
       rating,
       title: title.trim() || undefined,
       content: content.trim(),
-      photos: uploadedUrls,
+      photos: [],
     });
 
-    if (!mountedRef.current) return; // unmounted mid-submit — bail
-    setSubmitting(false);
-
+    if (!mountedRef.current) return;
     if (!res.ok) {
+      setSubmitting(false);
       toast(friendlyReviewError(res.error || "Failed to submit review"), "error");
-    } else {
+      return;
+    }
+
+    const reviewId = (res.data as { review?: { id?: string }; id?: string })?.review?.id
+      ?? (res.data as { id?: string })?.id
+      ?? null;
+
+    // Step 2: upload photos against the real review id, then PATCH.
+    if (reviewId && photos.length > 0) {
+      const uploads = await Promise.all(
+        photos.map((uri, i) => uploadReviewPhoto(user.id, reviewId, uri, { index: i })),
+      );
+      const uploadedUrls = uploads.filter((u) => u.url).map((u) => u.url);
+      const failed = photos.length - uploadedUrls.length;
+      if (uploadedUrls.length > 0) {
+        const { supabase: sb } = await import("@/lib/supabase/client").catch(() => ({ supabase: null as never }));
+        if (sb) {
+          await sb.from("reviews").update({ photos: uploadedUrls }).eq("id", reviewId);
+        }
+      }
+      if (failed > 0) {
+        toast(`${failed} photo(s) failed to upload — review posted without them`, "error");
+      } else {
+        toast(
+          selectedOrderItemId
+            ? "Your verified review has been submitted for approval"
+            : "Your review has been submitted for approval",
+          "success"
+        );
+        resetForm();
+        onClose();
+        onSubmitted?.();
+        return;
+      }
+    }
+    setSubmitting(false);
+    {
       toast(
         selectedOrderItemId
           ? "Your verified review has been submitted for approval"
@@ -226,7 +246,7 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
                         <TouchableOpacity
                           key={o.order_item_id}
                           style={[s.orderRow, selected && s.orderRowSelected]}
-                          onPress={() => setSelectedOrderItemId(o.order_item_id)}
+                          onPress={() => setSelectedOrderItemId(selected ? null : o.order_item_id)}
                           activeOpacity={0.7}
                         >
                           <View style={[s.radio, selected && s.radioSelected]}>

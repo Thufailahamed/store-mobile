@@ -104,7 +104,8 @@ export type MobileReview = {
   date: string;
   helpful: number;
   photos: number;
-  status: "published" | "pending";
+  photoUrls?: string[];
+  status: "published" | "pending" | "rejected";
   isVerifiedPurchase?: boolean;
 };
 
@@ -199,7 +200,8 @@ export function mapReview(row: Review & { product?: { name?: string | null; slug
     date: row.created_at,
     helpful: row.helpful_count ?? 0,
     photos: row.photos?.length ?? 0,
-    status: row.status === "approved" ? "published" : "pending",
+    photoUrls: row.photos ?? [],
+    status: row.status === "approved" ? "published" : row.status === "rejected" ? "rejected" : "pending",
     isVerifiedPurchase: row.is_verified_purchase,
   };
 }

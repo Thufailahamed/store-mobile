@@ -220,9 +220,9 @@ function ReviewsTab({
         <Label style={styles.writeBtnText}>Write a review</Label>
       </Button>
 
-      {/* Review cards */}
+      {/* Review cards — show all fetched (backend pages at 20) */}
       <View style={styles.reviewList}>
-        {reviews.slice(0, 8).map((r) => (
+        {reviews.map((r) => (
           <View key={r.id} style={styles.reviewCard}>
             <View style={styles.reviewHeader}>
               <Avatar

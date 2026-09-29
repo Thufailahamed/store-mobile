@@ -63,7 +63,7 @@ export function HelpfulButton({ reviewId, initialVoted, initialCount }: HelpfulB
         />
       )}
       <Text style={[styles.label, voted && styles.labelActive]}>
-        {voted ? "Helpful" : "Helpful"} · {count}
+        {voted ? "Helpful ✓" : "Helpful"} · {count}
       </Text>
     </TouchableOpacity>
   );

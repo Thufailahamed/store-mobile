@@ -29,7 +29,6 @@ import {
   CategoryViewTracker,
 } from "@/lib/recommender";
 
-const GRID_GAP = 12;
 const GRID_PADDING = 16;
 const GRID_COL_GAP = 12;
 
@@ -121,7 +120,7 @@ export default function ProductsScreen() {
 
   const renderGridItem = ({ item }: { item: Product }) => (
     <View style={[styles.gridItem, { width: cardWidth }]}>
-      <ProductCard product={item} surface />
+      <ProductCard product={item} />
     </View>
   );
 
@@ -285,35 +284,9 @@ function ProductsListHeader({
             </Label>
           </TouchableOpacity>
         ) : null}
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="bag-handle-outline" size={16} color={colors.olive[800]} />
-            </View>
-            <Label style={styles.heroKicker}>{hasActiveContext ? "Filtered edit" : "Shop"}</Label>
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Label style={styles.liveText}>Live catalogue</Label>
-            </View>
-          </View>
-          <Display size="3xl" style={styles.heroTitle} numberOfLines={2}>
-            {pageTitle}
-          </Display>
-          <View style={styles.heroMetaRow}>
-            <Body muted size="sm" style={styles.heroSub}>
-              {loading
-                ? "Curating the room…"
-                : filterCount > 0
-                  ? `${refinedCount} matching ${total} piece${total === 1 ? "" : "s"}`
-                  : `${total} piece${total === 1 ? "" : "s"} available`}
-            </Body>
-            {filterCount > 0 ? (
-              <View style={styles.filterPill}>
-                <Label style={styles.filterPillText}>{filterCount} active</Label>
-              </View>
-            ) : null}
-          </View>
-        </View>
+        <Display size="3xl" style={styles.heroTitle} numberOfLines={2}>
+          {pageTitle}
+        </Display>
       </View>
 
       <ProductGridControls
@@ -326,6 +299,13 @@ function ProductsListHeader({
         openFilter={openFilter}
         filters={filters}
         setFilters={setFilters}
+        summary={
+          loading
+            ? "Loading…"
+            : filterCount > 0
+              ? `${refinedCount} of ${total} piece${total === 1 ? "" : "s"}`
+              : `${total} piece${total === 1 ? "" : "s"}`
+        }
       />
 
       {heroProduct ? (
@@ -342,37 +322,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[24],
   },
   heroBlock: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
     paddingBottom: spacing[3],
-  },
-  heroCard: {
-    padding: spacing[4],
-    borderRadius: radii.xl,
-    backgroundColor: colors.paper.cream,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    marginBottom: spacing[2],
-  },
-  heroIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: colors.olive[100],
-    alignItems: "center",
-    justifyContent: "center",
   },
   breadcrumb: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginBottom: spacing[3],
+    marginBottom: spacing[2],
   },
   breadcrumbText: {
     color: colors.light.mutedForeground,
@@ -382,50 +340,8 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     fontSize: 10,
   },
-  heroKicker: {
-    color: colors.light.primary,
-    flex: 1,
-  },
-  livePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(83,94,44,0.10)",
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[700],
-  },
-  liveText: {
-    color: colors.olive[700],
-    fontSize: 8.5,
-  },
   heroTitle: {
-    marginBottom: spacing[2],
-  },
-  heroMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing[2],
-  },
-  heroSub: {
-    flex: 1,
-  },
-  filterPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(200,164,74,0.18)",
-  },
-  filterPillText: {
-    color: colors.olive[800],
-    fontSize: 9,
+    letterSpacing: -0.5,
   },
   heroCardWrap: {
     paddingHorizontal: GRID_PADDING,
@@ -436,7 +352,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: GRID_PADDING,
   },
   gridItem: {
-    marginBottom: GRID_GAP,
+    marginBottom: 0,
   },
   listItemWrap: {
     paddingHorizontal: GRID_PADDING,

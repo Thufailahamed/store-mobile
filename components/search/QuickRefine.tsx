@@ -12,6 +12,9 @@ interface QuickRefineProps {
   onChange: (next: ProductFilters) => void;
   onOpenSheet: () => void;
   activeCount: number;
+  /** Chips only — no kicker/"All filters" row and no tinted band. For hosts
+   *  that already render their own Filters button (ProductGridControls). */
+  compact?: boolean;
 }
 
 function ChipLabel({
@@ -38,7 +41,7 @@ function ChipLabel({
  * chips + a "Refine" button that opens the full FilterSheet. Mirrors
  * web `components/search/quick-refine.tsx` (mobile-collapsed layout).
  */
-export function QuickRefine({ filters, onChange, onOpenSheet, activeCount }: QuickRefineProps) {
+export function QuickRefine({ filters, onChange, onOpenSheet, activeCount, compact = false }: QuickRefineProps) {
   const colors_ = filters.colors ?? [];
   const sizes_ = filters.sizes ?? [];
   const price = filters.price ?? [PRICE_BOUNDS.min, PRICE_BOUNDS.max];
@@ -48,7 +51,8 @@ export function QuickRefine({ filters, onChange, onOpenSheet, activeCount }: Qui
     : "Any price";
 
   return (
-    <View style={styles.root}>
+    <View style={compact ? styles.rootCompact : styles.root}>
+      {!compact && (
       <View style={styles.kickerRow}>
         <Label style={styles.kicker}>
           Quick filters · {colors_.length + sizes_.length + (priceActive ? 1 : 0)} active
@@ -59,11 +63,12 @@ export function QuickRefine({ filters, onChange, onOpenSheet, activeCount }: Qui
           {activeCount > 0 ? <View style={styles.dot} /> : null}
         </TouchableOpacity>
       </View>
+      )}
 
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
+        contentContainerStyle={[styles.row, compact && styles.rowCompact]}
       >
         {COLORS.map((c) => {
           const on = colors_.includes(c.name);
@@ -139,6 +144,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
     backgroundColor: colors.paper.warm,
+  },
+  rootCompact: {
+    paddingVertical: spacing[1],
+  },
+  rowCompact: {
+    paddingHorizontal: spacing[4],
   },
   kickerRow: {
     flexDirection: "row",

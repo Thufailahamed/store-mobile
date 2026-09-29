@@ -21,7 +21,7 @@ import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
 import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
 import { SearchDiscover } from "@/components/search/SearchDiscover";
 import { SearchSuggestions } from "@/components/search/SearchSuggestions";
-import { QuickRefine } from "@/components/search/QuickRefine";
+import { ProductGridControls } from "@/components/products/ProductGridControls";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
@@ -679,6 +679,8 @@ export default function SearchScreen() {
                   t.key === "brands" ? brandCount :
                   storeCount;
                 const isActive = tab === t.key;
+                // Empty facets are noise — keep only "All", the active tab, and tabs with hits.
+                if (count === 0 && t.key !== "all" && !isActive) return null;
                 return (
                   <TouchableOpacity
                     key={t.key}
@@ -709,71 +711,21 @@ export default function SearchScreen() {
 
             {showingProducts ? (
               <View style={styles.quickRefineBleed}>
-                <QuickRefine
+                <ProductGridControls
+                  sort={sort}
+                  setSort={handleSearchSortChange}
+                  sorts={SORTS}
+                  view={view}
+                  setView={(v) => setView(v === "list" ? "list" : "grid")}
+                  viewModes={["grid", "list"]}
+                  filterCount={activeFilterCount}
+                  openFilter={() => setFilterVisible(true)}
                   filters={filters}
-                  onChange={setFilters}
-                  onOpenSheet={() => setFilterVisible(true)}
-                  activeCount={activeFilterCount}
+                  setFilters={setFilters}
+                  summary={`${productCount} product${productCount === 1 ? "" : "s"}`}
                 />
               </View>
             ) : null}
-
-            {/* Controls bar */}
-            <View style={styles.controlsBar}>
-              <View>
-                <Body size="xs" muted style={styles.resultLabel}>
-                  {displayedCount} result{displayedCount === 1 ? "" : "s"}
-                </Body>
-                <Body size="xs" muted style={styles.resultContext} numberOfLines={1}>
-                  {tab === "all" ? `Across products, brands and stores` : `Showing ${TABS.find((t) => t.key === tab)?.label.toLowerCase()}`}
-                </Body>
-              </View>
-              {showingProducts ? (
-                <View style={styles.controlsRight}>
-                  {/* Sort */}
-                  <TouchableOpacity
-                    style={styles.sortBtn}
-                    onPress={() => {
-                      const keys = SORTS.map((s) => s.value);
-                      const idx = keys.indexOf(sort);
-                      handleSearchSortChange(keys[(idx + 1) % keys.length]);
-                    }}
-                  >
-                    <Ionicons name="swap-vertical" size={14} color={colors.light.mutedForeground} />
-                    <Body size="xs">{SORTS.find((s) => s.value === sort)?.label || "Sort"}</Body>
-                  </TouchableOpacity>
-
-                  {/* Filter */}
-                  <TouchableOpacity
-                    style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
-                    onPress={() => setFilterVisible(true)}
-                  >
-                    <Ionicons name="options-outline" size={14} color={activeFilterCount > 0 ? colors.light.primaryForeground : colors.light.mutedForeground} />
-                    {activeFilterCount > 0 && (
-                      <View style={styles.filterBadge}>
-                        <Body style={styles.filterBadgeText}>{activeFilterCount}</Body>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* View toggle */}
-                  <View style={styles.viewToggle}>
-                    <TouchableOpacity
-                      style={[styles.viewBtn, view === "grid" && styles.viewBtnActive]}
-                      onPress={() => setView("grid")}
-                    >
-                      <Ionicons name="grid" size={14} color={view === "grid" ? colors.light.primaryForeground : colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.viewBtn, view === "list" && styles.viewBtnActive]}
-                      onPress={() => setView("list")}
-                    >
-                      <Ionicons name="list" size={14} color={view === "list" ? colors.light.primaryForeground : colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-            </View>
 
             {/* Scrollable results list */}
             <AnimatedScrollView
@@ -835,14 +787,10 @@ export default function SearchScreen() {
               {/* Products */}
               {(tab === "all" || tab === "products") && productCount > 0 && (
                 <View style={styles.productSection}>
-                  {tab === "all" && (
-                    <View style={styles.sectionHeader}>
-                      <Body style={styles.sectionNum}>01</Body>
-                      <View style={styles.sectionTitles}>
-                        <Display size="lg">Products</Display>
-                        <Body size="xs" muted>{productCount} results</Body>
-                      </View>
-                      <View style={styles.sectionLine} />
+                  {tab === "all" && brandCount + storeCount > 0 && (
+                    <View style={styles.resultSectionHeader}>
+                      <Display size="lg">Products</Display>
+                      <Body size="sm" muted>{productCount}</Body>
                     </View>
                   )}
                   {view === "list" ? (
@@ -894,7 +842,7 @@ export default function SearchScreen() {
                     <View style={styles.grid}>
                       {filtered.map((p) => (
                         <View key={p.id} style={[styles.gridItem, { width: cardWidth }]}>
-                          <ProductCard product={p} surface />
+                          <ProductCard product={p} />
                         </View>
                       ))}
                     </View>
@@ -906,13 +854,9 @@ export default function SearchScreen() {
               {(tab === "all" || tab === "brands") && brandCount > 0 && (
                 <View style={styles.productSection}>
                   {tab === "all" && (
-                    <View style={styles.sectionHeader}>
-                      <Body style={styles.sectionNum}>02</Body>
-                      <View style={styles.sectionTitles}>
-                        <Display size="lg">Brands</Display>
-                        <Body size="xs" muted>{brandCount} results</Body>
-                      </View>
-                      <View style={styles.sectionLine} />
+                    <View style={styles.resultSectionHeader}>
+                      <Display size="lg">Brands</Display>
+                      <Body size="sm" muted>{brandCount}</Body>
                     </View>
                   )}
                   <View style={styles.brandGrid}>
@@ -941,13 +885,9 @@ export default function SearchScreen() {
               {(tab === "all" || tab === "stores") && storeCount > 0 && (
                 <View style={styles.productSection}>
                   {tab === "all" && (
-                    <View style={styles.sectionHeader}>
-                      <Body style={styles.sectionNum}>03</Body>
-                      <View style={styles.sectionTitles}>
-                        <Display size="lg">Stores</Display>
-                        <Body size="xs" muted>{storeCount} results</Body>
-                      </View>
-                      <View style={styles.sectionLine} />
+                    <View style={styles.resultSectionHeader}>
+                      <Display size="lg">Stores</Display>
+                      <Body size="sm" muted>{storeCount}</Body>
                     </View>
                   )}
                   {matchedStores.map((s) => (
@@ -1345,6 +1285,8 @@ const styles = StyleSheet.create({
   /* Tabs */
   tabBarBleed: {
     marginHorizontal: -spacing[5],
+    flexGrow: 0,
+    flexShrink: 0,
   },
   tabBar: {
     flexDirection: "row",
@@ -1355,9 +1297,9 @@ const styles = StyleSheet.create({
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 14,
     borderRadius: radii.full,
     backgroundColor: colors.light.card,
     borderWidth: 1,
@@ -1369,97 +1311,21 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
+    lineHeight: 18,
   },
   tabTextActive: {
     color: colors.light.primaryForeground,
   },
   tabCount: {
-    color: `${colors.light.mutedForeground}80`,
-    fontSize: 10,
+    color: `${colors.light.mutedForeground}99`,
+    fontSize: 11,
+    lineHeight: 18,
   },
   tabCountActive: {
     color: `${colors.light.primaryForeground}80`,
   },
 
-  /* Controls */
-  controlsBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  resultLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: typography.letterSpacing.wide,
-    textTransform: "uppercase",
-    fontSize: 10,
-    color: colors.olive[700],
-  },
-  resultContext: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-    maxWidth: 165,
-  },
-  controlsRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  sortBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    ...GLASS,
-  },
-  filterBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    ...GLASS,
-    position: "relative",
-  },
-  filterBtnActive: {
-    backgroundColor: INK,
-    borderColor: INK,
-  },
-  filterBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.light.destructive,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterBadgeText: {
-    color: "#fff",
-    fontSize: 9,
-    fontWeight: "700",
-  },
-  viewToggle: {
-    flexDirection: "row",
-    borderRadius: radii.full,
-    ...GLASS,
-    padding: 2,
-  },
-  viewBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  viewBtnActive: {
-    backgroundColor: INK,
-  },
 
   /* Active chips */
   activeChipsRow: {
@@ -1487,34 +1353,21 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     marginTop: spacing[2],
   },
-  sectionNum: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.olive[100],
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-    textAlign: "center",
-    lineHeight: 30,
-    fontSize: 10,
-    fontFamily: fontFamilies.mono.semibold,
-    color: colors.olive[700],
-  },
-  sectionTitles: {
-    flex: 1,
-    gap: 2,
-  },
-  sectionLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(27, 28, 28, 0.12)",
+  resultSectionHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingBottom: spacing[2],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
   },
 
   /* Grid */
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: GRID_GAP,
+    // ProductCard carries its own bottom margin, so only space the columns.
+    columnGap: GRID_GAP,
   },
   gridItem: {},
 
