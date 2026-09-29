@@ -3,7 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from "rea
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 
 interface Props {
   onSync: () => void;
@@ -11,246 +11,217 @@ interface Props {
   onExplore?: () => void;
 }
 
+const GOLD_DEEP = "#85651b";
+
+const FEATURES: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }[] = [
+  {
+    icon: "cube-outline",
+    title: "Automatic order intake",
+    desc: "Purchases are instantly archived with garment tags, fabrics, and studio imagery upon arrival.",
+  },
+  {
+    icon: "analytics-outline",
+    title: "Cost-per-wear analytics",
+    desc: "Log wears effortlessly to track closet utility, staple pieces, and wardrobe ROI over time.",
+  },
+  {
+    icon: "albums-outline",
+    title: "Outfit curation",
+    desc: "Assemble capsule lookbooks and plan outfits ahead with smart weather recommendations.",
+  },
+];
+
 export function WardrobeEmptyState({ onSync, syncing, onExplore }: Props) {
   const router = useRouter();
 
   return (
     <View style={styles.wrap}>
-      {/* Luxury Medallion */}
-      <View style={styles.medallionWrap}>
-        <View style={styles.medallionGlow} />
-        <View style={styles.medallionOuter}>
-          <View style={styles.medallionInner}>
-            <Ionicons name="shirt-outline" size={32} color="#C8A44A" />
-          </View>
+      <View style={styles.card}>
+        <View style={styles.iconWrap}>
+          <Ionicons name="shirt-outline" size={26} color={colors.olive[700]} />
         </View>
-      </View>
 
-      <Text style={styles.title}>Your Closet is Empty</Text>
-      <Text style={styles.sub}>
-        Items from delivered orders populate automatically. You can also sync newly completed deliveries with a single tap.
-      </Text>
+        <Text style={styles.title}>Your closet is empty</Text>
+        <Text style={styles.sub}>
+          Pieces from delivered orders appear here automatically. Sync to pull in any recent
+          deliveries.
+        </Text>
 
-      {/* Action Buttons */}
-      <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.ctaPrimary}
+          style={[styles.ctaPrimary, syncing && styles.ctaDisabled]}
           onPress={onSync}
           activeOpacity={0.88}
           disabled={syncing}
+          accessibilityRole="button"
         >
-          {syncing ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <>
-              <Ionicons name="sync-outline" size={15} color="#ffffff" />
-              <Text style={styles.ctaPrimaryText}>SYNC DELIVERED ORDERS</Text>
-            </>
-          )}
+          <Text style={styles.ctaPrimaryText}>
+            {syncing ? "Syncing…" : "Sync delivered orders"}
+          </Text>
+          <View style={styles.ctaIcon}>
+            {syncing ? (
+              <ActivityIndicator size="small" color={colors.olive[900]} />
+            ) : (
+              <Ionicons name="sync" size={15} color={colors.olive[900]} />
+            )}
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.ctaSecondary}
           onPress={onExplore ?? (() => router.push("/(main)/account/orders" as any))}
-          activeOpacity={0.8}
+          activeOpacity={0.7}
+          hitSlop={6}
         >
-          <Text style={styles.ctaSecondaryText}>View Order History</Text>
-          <Ionicons name="arrow-forward" size={13} color="#85651b" />
+          <Text style={styles.ctaSecondaryText}>View order history</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 3 Value Intelligence Cards */}
-      <View style={styles.featuresCard}>
-        <View style={styles.featuresHeader}>
-          <Ionicons name="sparkles" size={12} color="#85651b" />
-          <Text style={styles.featuresEyebrow}>WARDROBE INTELLIGENCE</Text>
-        </View>
-
-        <View style={styles.featureItem}>
-          <View style={styles.featureIconBox}>
-            <Ionicons name="cube-outline" size={15} color="#85651b" />
+      <View style={styles.features}>
+        <Text style={styles.eyebrow}>What you get</Text>
+        {FEATURES.map((f, i) => (
+          <View key={f.title} style={[styles.featureRow, i > 0 && styles.featureDivider]}>
+            <View style={styles.featureIcon}>
+              <Ionicons name={f.icon} size={16} color={GOLD_DEEP} />
+            </View>
+            <View style={styles.featureBody}>
+              <Text style={styles.featureTitle}>{f.title}</Text>
+              <Text style={styles.featureDesc}>{f.desc}</Text>
+            </View>
           </View>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureHeading}>Automatic Order Intake</Text>
-            <Text style={styles.featureDesc}>
-              Purchases are instantly archived with garment tags, fabrics, and studio imagery upon arrival.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.featureItem}>
-          <View style={styles.featureIconBox}>
-            <Ionicons name="analytics-outline" size={15} color="#85651b" />
-          </View>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureHeading}>Cost-Per-Wear Analytics</Text>
-            <Text style={styles.featureDesc}>
-              Log wears effortlessly to track closet utility, staple pieces, and wardrobe ROI over time.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.featureItem}>
-          <View style={styles.featureIconBox}>
-            <Ionicons name="albums-outline" size={15} color="#85651b" />
-          </View>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureHeading}>Runway Outfit Curation</Text>
-            <Text style={styles.featureDesc}>
-              Assemble capsule lookbooks and plan outfits ahead with smart weather recommendations.
-            </Text>
-          </View>
-        </View>
+        ))}
       </View>
     </View>
   );
 }
 
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: spacing[5],
-    paddingVertical: 24,
+    paddingHorizontal: 16,
+    paddingTop: spacing[2],
+    gap: spacing[4],
+  },
+  card: {
     alignItems: "center",
-    gap: 16,
-  },
-  medallionWrap: {
-    width: 80,
-    height: 80,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    marginBottom: 4,
-  },
-  medallionGlow: {
-    position: "absolute",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-  },
-  medallionOuter: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[6],
   },
-  medallionInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
+  iconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: spacing[4],
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 22,
-    color: "#181b12",
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
     textAlign: "center",
-    letterSpacing: -0.2,
   },
   sub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    color: "#6b6b6b",
-    textAlign: "center",
     lineHeight: 19,
-    maxWidth: 300,
-    marginTop: -8,
-  },
-  actions: {
-    width: "100%",
-    maxWidth: 320,
-    gap: 10,
-    marginTop: 4,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
+    marginTop: 6,
+    maxWidth: 280,
   },
   ctaPrimary: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#181b12",
-    paddingVertical: 13,
+    gap: 12,
+    height: 50,
+    paddingLeft: 22,
+    paddingRight: 6,
     borderRadius: radii.full,
-    ...shadows.soft,
+    backgroundColor: colors.olive[900],
+    marginTop: spacing[5],
+  },
+  ctaDisabled: {
+    opacity: 0.85,
   },
   ctaPrimaryText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  ctaIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
   },
   ctaSecondary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingVertical: 8,
+    marginTop: spacing[3],
+    paddingVertical: 4,
   },
   ctaSecondaryText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11.5,
-    color: "#85651b",
-    letterSpacing: 0.5,
-  },
-
-  /* Features Box */
-  featuresCard: {
-    width: "100%",
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-    gap: 14,
-    marginTop: 8,
-  },
-  featuresHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: -4,
-  },
-  featuresEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  featureItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  featureIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-  },
-  featureContent: {
-    flex: 1,
-    gap: 2,
-  },
-  featureHeading: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
-    color: "#181b12",
+    color: colors.light.foreground,
+    textDecorationLine: "underline",
+  },
+
+  features: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: spacing[1],
+  },
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    paddingVertical: spacing[3.5],
+  },
+  featureDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  featureIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  featureBody: {
+    flex: 1,
+    gap: 3,
+  },
+  featureTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
   featureDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: "#6b6b6b",
-    lineHeight: 16,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.light.mutedForeground,
   },
 });

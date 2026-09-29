@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -31,6 +31,11 @@ interface LoyaltyTxn {
   order_id?: string | null;
 }
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
 const TIER_DETAILS: Record<
   LoyaltyTier,
   {
@@ -40,96 +45,96 @@ const TIER_DETAILS: Record<
   }
 > = {
   Bronze: {
-    copy: "Welcome to the Atelier Patron Program. Earn points with every purchase to unlock complimentary delivery and private sales.",
-    tag: "BRONZE PATRON",
+    copy: "Earn points with every purchase to unlock complimentary delivery and private sales.",
+    tag: "Bronze Patron",
     perks: [
       {
         icon: "sparkles",
-        title: "1 Point per LKR 100",
-        desc: "Accrue redeemable points automatically on all confirmed orders.",
+        title: "1 point per LKR 100",
+        desc: "Points are credited automatically on all confirmed orders.",
       },
       {
         icon: "gift-outline",
-        title: "Annual Birthday Surprise",
-        desc: "A bespoke celebratory reward credited to your account during your birth month.",
+        title: "Birthday surprise",
+        desc: "A celebratory reward credited during your birth month.",
       },
       {
         icon: "notifications-outline",
-        title: "Seasonal Lookbook Previews",
-        desc: "Early digital access to upcoming designer runway releases.",
+        title: "Lookbook previews",
+        desc: "Early access to upcoming seasonal releases.",
       },
     ],
   },
   Silver: {
     copy: "Silver tier unlocked. Enjoy accelerated point multipliers and complimentary returns on all eligible pieces.",
-    tag: "SILVER PATRON",
+    tag: "Silver Patron",
     perks: [
       {
         icon: "sparkles",
-        title: "1.25 Points per LKR 100",
+        title: "1.25 points per LKR 100",
         desc: "Accelerated earning rate across all designer collections.",
       },
       {
         icon: "refresh-outline",
-        title: "Complimentary Return Shipping",
+        title: "Complimentary return shipping",
         desc: "Zero collection fees on returns within the 14-day window.",
       },
       {
         icon: "gift-outline",
-        title: "Annual Birthday Surprise",
+        title: "Birthday surprise",
         desc: "Curated gift voucher credited during your birth month.",
       },
     ],
   },
   Gold: {
     copy: "Gold patron status. Complimentary express delivery on every order, no minimum spend required.",
-    tag: "GOLD CONNOISSEUR",
+    tag: "Gold Connoisseur",
     perks: [
       {
         icon: "sparkles",
-        title: "1.5 Points per LKR 100",
+        title: "1.5 points per LKR 100",
         desc: "High-yield earning rate on all luxury pieces and accessories.",
       },
       {
         icon: "airplane-outline",
-        title: "Free Express Shipping Always",
-        desc: "Complimentary priority courier delivery with zero minimum order requirement.",
+        title: "Free express shipping",
+        desc: "Priority courier delivery with zero minimum order requirement.",
       },
       {
         icon: "refresh-outline",
-        title: "Complimentary Returns",
-        desc: "White-glove doorstep return collection on all purchases.",
+        title: "Complimentary returns",
+        desc: "Doorstep return collection on all purchases.",
       },
       {
         icon: "headset-outline",
-        title: "Priority Concierge Support",
-        desc: "Dedicated support channel with sub-1-hour inquiry resolution.",
+        title: "Priority concierge support",
+        desc: "Dedicated support channel with faster response times.",
       },
     ],
   },
   Platinum: {
-    copy: "The highest pinnacle of Atelier privilege. 1:1 private concierge, runway pre-allocations, and annual couture gifts.",
-    tag: "PLATINUM ATELIER ELITE",
+    copy: "The highest tier of patronage — private concierge, runway pre-allocations, and annual couture gifts.",
+    tag: "Platinum Patron",
     perks: [
       {
         icon: "sparkles",
-        title: "2 Points per LKR 100",
-        desc: "Double points earning on every acquisition across the atelier.",
+        title: "2 points per LKR 100",
+        desc: "Double points earning on every acquisition.",
       },
       {
         icon: "flash-outline",
-        title: "Guaranteed Drop Pre-Access",
-        desc: "Private 24-hour window to acquire limited-run and runway pieces before public release.",
+        title: "Drop pre-access",
+        desc: "A private 24-hour window on limited-run and runway pieces.",
       },
       {
         icon: "person-outline",
-        title: "1:1 Personal Atelier Concierge",
-        desc: "Direct WhatsApp / in-app line with your dedicated fashion consultant.",
+        title: "Personal concierge",
+        desc: "A direct line to your dedicated fashion consultant.",
       },
       {
         icon: "trophy-outline",
-        title: "Bespoke Annual Couture Gift",
-        desc: "Handcrafted anniversary collector piece delivered to your residence.",
+        title: "Annual couture gift",
+        desc: "A handcrafted anniversary piece delivered to your residence.",
       },
     ],
   },
@@ -137,6 +142,7 @@ const TIER_DETAILS: Record<
 
 export default function LoyaltyScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const loyalty = useLoyalty();
   const [transactions, setTransactions] = useState<LoyaltyTxn[]>([]);
@@ -183,255 +189,237 @@ export default function LoyaltyScreen() {
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Atelier Top Navigation */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>PRIVILEGE & REWARDS</Text>
-            <Text style={styles.navSubtitle}>ATELIER PATRON PROGRAM</Text>
-          </View>
+          <Text style={styles.navTitle}>Rewards</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
             onPress={onRefresh}
+            disabled={refreshing}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
           >
-            <Ionicons
-              name="refresh-outline"
-              size={18}
-              color={refreshing ? "#C8A44A" : colors.light.foreground}
-            />
+            {refreshing ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+            )}
           </TouchableOpacity>
         </View>
 
         {loyalty.loading && !refreshing ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color="#C8A44A" size="small" />
-            <Text style={styles.loadingText}>Retrieving patron ledger…</Text>
+            <ActivityIndicator color={GOLD} size="small" />
+            <Text style={styles.loadingText}>Loading your rewards…</Text>
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={onRefresh}
-                tintColor="#C8A44A"
+                tintColor={GOLD}
               />
             }
           >
-            {/* 1. Haute Couture Obsidian & Champagne Gold Patron Card */}
+            {/* Heading */}
+            <View style={styles.pageHead}>
+              <Text style={styles.eyebrow}>Patron program</Text>
+              <Text style={styles.pageTitle}>
+                Privilege &amp; <Text style={styles.pageTitleAccent}>rewards.</Text>
+              </Text>
+            </View>
+
+            {/* Points hero */}
             <LinearGradient
-              colors={["#1c2016", "#14170e", "#0e110a"]}
+              colors={["#1f2418", "#14170e"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
+              style={styles.hero}
             >
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroTagBadge}>
-                  <Ionicons name="sparkles" size={11} color="#C8A44A" />
-                  <Text style={styles.heroTagText}>{details.tag}</Text>
-                </View>
-
-                {/* Seal Medallion */}
-                <View style={styles.trophyMedallion}>
-                  <View style={styles.trophyInner}>
-                    <Ionicons name="trophy" size={20} color="#E8CF8F" />
-                  </View>
+              <View style={styles.heroTop}>
+                <Text style={styles.heroTier}>{details.tag}</Text>
+                <View style={styles.heroIcon}>
+                  <Ionicons name="trophy-outline" size={16} color={GOLD_SOFT} />
                 </View>
               </View>
 
-              {/* Points Number Display */}
-              <View style={styles.pointsDisplayBlock}>
-                <Text style={styles.pointsNumber}>
-                  {loyalty.state.points.toLocaleString()}
-                </Text>
-                <Text style={styles.pointsLabel}>POINTS AVAILABLE TO REDEEM</Text>
-              </View>
+              <Text style={styles.heroPoints}>
+                {loyalty.state.points.toLocaleString()}
+              </Text>
+              <Text style={styles.heroSub}>Points available to redeem</Text>
 
-              {/* Tier Progress Gauge */}
-              <View style={styles.progressSection}>
+              <View style={styles.heroProgress}>
                 <View style={styles.progressTrack}>
-                  <LinearGradient
-                    colors={["#E8CF8F", "#C8A44A", "#937324"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.progressFill, { width: `${tier.pct}%` }]}
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.max(tier.pct, 3)}%` },
+                    ]}
                   />
                 </View>
-
-                <View style={styles.progressMetaRow}>
-                  <Text style={styles.progressMetaLeft}>
-                    {loyalty.state.lifetime_points.toLocaleString()} lifetime pts
+                <View style={styles.progressMeta}>
+                  <Text style={styles.progressMetaText}>
+                    {loyalty.state.lifetime_points.toLocaleString()} lifetime
                   </Text>
-                  <Text style={styles.progressMetaRight}>
+                  <Text style={styles.progressMetaText}>
                     {nextTierName
                       ? `${pointsToNext.toLocaleString()} pts to ${nextTierName}`
-                      : "Top Atelier Tier Unlocked"}
+                      : "Highest tier reached"}
                   </Text>
                 </View>
               </View>
             </LinearGradient>
 
-            {/* 2. Redesigned 3-Metric Stat Ribbon */}
-            <View style={styles.statsRow}>
-              {/* Spendable */}
-              <View style={styles.statCard}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="wallet-outline" size={15} color="#85651b" />
-                </View>
-                <Text style={styles.statNumber}>
+            {/* Stat strip */}
+            <View style={styles.statsStrip}>
+              <View style={styles.statCell}>
+                <Text style={[
+                  styles.statNum,
+                  loyalty.state.points === 0 && styles.statNumMuted,
+                ]}>
                   {loyalty.state.points.toLocaleString()}
                 </Text>
-                <Text style={styles.statLabel}>AVAILABLE</Text>
-                <Text style={styles.statSub}>Ready at checkout</Text>
+                <Text style={styles.statLabel}>Available</Text>
               </View>
-
-              {/* Lifetime */}
-              <View style={styles.statCard}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="infinite-outline" size={15} color="#85651b" />
-                </View>
-                <Text style={styles.statNumber}>
+              <View style={styles.statDivider} />
+              <View style={styles.statCell}>
+                <Text style={[
+                  styles.statNum,
+                  loyalty.state.lifetime_points === 0 && styles.statNumMuted,
+                ]}>
                   {loyalty.state.lifetime_points.toLocaleString()}
                 </Text>
-                <Text style={styles.statLabel}>LIFETIME</Text>
-                <Text style={styles.statSub}>Total points earned</Text>
+                <Text style={styles.statLabel}>Lifetime</Text>
               </View>
-
-              {/* Rank */}
-              <View style={styles.statCard}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="ribbon-outline" size={15} color="#85651b" />
-                </View>
-                <Text style={styles.statNumber}>{tier.name}</Text>
-                <Text style={styles.statLabel}>TIER RANK</Text>
-                <Text style={styles.statSub}>Current standing</Text>
+              <View style={styles.statDivider} />
+              <View style={styles.statCell}>
+                <Text style={styles.statNum} numberOfLines={1}>
+                  {tier.name}
+                </Text>
+                <Text style={styles.statLabel}>Tier</Text>
               </View>
             </View>
 
-            {/* 3. Active Tier Privileges Card */}
-            <View style={styles.contentCard}>
+            {/* Tier perks */}
+            <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <View>
-                  <Text style={styles.cardEyebrow}>CURRENT BENEFITS</Text>
-                  <Text style={styles.cardTitle}>{tier.name} Privileges</Text>
-                </View>
-                <View style={styles.activeTierPill}>
-                  <Ionicons name="checkmark-circle" size={11} color="#85651b" />
-                  <Text style={styles.activeTierPillText}>ACTIVE</Text>
+                <Text style={styles.eyebrow}>Your benefits</Text>
+                <View style={styles.activePill}>
+                  <View style={styles.activeDot} />
+                  <Text style={styles.activePillText}>Active</Text>
                 </View>
               </View>
+              <Text style={styles.cardTitle}>{tier.name} privileges</Text>
+              <Text style={styles.cardCopy}>{details.copy}</Text>
 
-              <Text style={styles.tierCopyText}>{details.copy}</Text>
-
-              <View style={styles.perksList}>
-                {details.perks.map((p, i) => (
-                  <View key={i} style={styles.perkRow}>
-                    <View style={styles.perkIconWrap}>
-                      <Ionicons name={p.icon} size={15} color="#85651b" />
-                    </View>
-                    <View style={styles.perkContent}>
-                      <Text style={styles.perkTitle}>{p.title}</Text>
-                      <Text style={styles.perkDesc}>{p.desc}</Text>
-                    </View>
+              {details.perks.map((p, i) => (
+                <View key={i} style={[styles.perkRow, i > 0 && styles.rowDivider]}>
+                  <View style={styles.perkIcon}>
+                    <Ionicons name={p.icon} size={15} color={GOLD_DEEP} />
                   </View>
-                ))}
-              </View>
+                  <View style={styles.perkBody}>
+                    <Text style={styles.perkTitle}>{p.title}</Text>
+                    <Text style={styles.perkDesc}>{p.desc}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
 
-            {/* 4. Patron Progression Ladder */}
-            <View style={styles.contentCard}>
-              <View style={styles.cardHeader}>
-                <View>
-                  <Text style={styles.cardEyebrow}>ROADMAP</Text>
-                  <Text style={styles.cardTitle}>Patron Progression</Text>
-                </View>
-              </View>
-              <Text style={styles.tierCopyText}>
-                Lifetime points determine your status. Tiers never downgrade once unlocked.
+            {/* Progression */}
+            <View style={styles.card}>
+              <Text style={styles.eyebrow}>Tiers</Text>
+              <Text style={styles.cardTitle}>Patron progression</Text>
+              <Text style={styles.cardCopy}>
+                Lifetime points determine your status. Tiers never downgrade once
+                unlocked.
               </Text>
-
               <TierLadder
                 currentTier={tier.name as LoyaltyTier}
                 currentLifetime={loyalty.state.lifetime_points}
               />
             </View>
 
-            {/* 5. Points History Ledger */}
-            <View style={styles.contentCard}>
+            {/* History */}
+            <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <View>
-                  <Text style={styles.cardEyebrow}>ACTIVITY LEDGER</Text>
-                  <Text style={styles.cardTitle}>Points History</Text>
-                </View>
-                <Text style={styles.historyCountBadge}>
-                  {transactions.length} entries
+                <Text style={styles.eyebrow}>Ledger</Text>
+                <Text style={styles.cardCount}>
+                  {transactions.length} {transactions.length === 1 ? "entry" : "entries"}
                 </Text>
               </View>
+              <Text style={styles.cardTitle}>Points history</Text>
 
               {transactions.length === 0 ? (
-                <View style={styles.emptyHistoryBox}>
-                  <View style={styles.emptyHistoryMedallion}>
-                    <Ionicons
-                      name="receipt-outline"
-                      size={26}
-                      color="#85651b"
-                    />
+                <View style={styles.emptyHistory}>
+                  <View style={styles.emptyHistoryIcon}>
+                    <Ionicons name="receipt-outline" size={22} color={colors.olive[700]} />
                   </View>
-                  <Text style={styles.emptyHistoryTitle}>No Activity Logged</Text>
+                  <Text style={styles.emptyHistoryTitle}>No activity yet</Text>
                   <Text style={styles.emptyHistorySub}>
-                    Confirmed orders and atelier reviews automatically credit points to your patron account.
+                    Confirmed orders and reviews credit points automatically.
                   </Text>
                 </View>
               ) : (
-                <View style={styles.historyList}>
+                <View>
                   {transactions.map((t, i) => {
                     const isEarn = t.points > 0;
                     return (
-                      <View key={t.id ?? i} style={styles.historyRow}>
+                      <View
+                        key={t.id ?? i}
+                        style={[styles.histRow, i > 0 && styles.rowDivider]}
+                      >
                         <View
                           style={[
-                            styles.historyIconCircle,
-                            isEarn
-                              ? styles.historyIconEarn
-                              : styles.historyIconSpend,
+                            styles.histIcon,
+                            isEarn ? styles.histIconEarn : styles.histIconSpend,
                           ]}
                         >
                           <Ionicons
                             name={isEarn ? "add" : "remove"}
-                            size={12}
-                            color={isEarn ? "#15803d" : "#dc2626"}
+                            size={13}
+                            color={isEarn ? GOLD_DEEP : colors.accent2.rust}
                           />
                         </View>
-                        <View style={styles.historyMetaCol}>
-                          <Text style={styles.historyReason} numberOfLines={1}>
-                            {t.reason || (isEarn ? "Points Credited" : "Points Redeemed")}
+                        <View style={styles.histBody}>
+                          <Text style={styles.histReason} numberOfLines={1}>
+                            {t.reason || (isEarn ? "Points credited" : "Points redeemed")}
                           </Text>
-                          <Text style={styles.historyDate}>
-                            {new Date(t.created_at).toLocaleDateString()}
+                          <Text style={styles.histDate}>
+                            {new Date(t.created_at).toLocaleDateString(undefined, {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
                           </Text>
                         </View>
                         <Text
                           style={[
-                            styles.historyPointsText,
-                            isEarn
-                              ? styles.historyPointsEarn
-                              : styles.historyPointsSpend,
+                            styles.histPts,
+                            isEarn ? styles.histPtsEarn : styles.histPtsSpend,
                           ]}
                         >
-                          {isEarn ? "+" : ""}
-                          {t.points.toLocaleString()} pts
+                          {isEarn ? "+" : "−"}
+                          {Math.abs(t.points).toLocaleString()}
                         </Text>
                       </View>
                     );
@@ -440,15 +428,17 @@ export default function LoyaltyScreen() {
               )}
             </View>
 
-            {/* 6. Shop Atelier Primary CTA */}
+            {/* CTA */}
             <TouchableOpacity
-              style={styles.shopCtaBtn}
+              style={styles.primaryBtn}
               onPress={() => router.push("/(main)/products" as any)}
               activeOpacity={0.88}
+              accessibilityRole="button"
             >
-              <Ionicons name="bag-handle-outline" size={15} color="#ffffff" />
-              <Text style={styles.shopCtaBtnText}>EXPLORE ATELIER TO EARN</Text>
-              <Ionicons name="arrow-forward" size={14} color="#ffffff" />
+              <Text style={styles.primaryBtnText}>Shop to earn points</Text>
+              <View style={styles.primaryBtnArrow}>
+                <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+              </View>
             </TouchableOpacity>
           </ScrollView>
         )}
@@ -457,9 +447,9 @@ export default function LoyaltyScreen() {
   );
 }
 
-/* =========================================================================
-   Tier Ladder Component
-   ========================================================================= */
+/* ------------------------------------------------------------------ */
+/*  Tier ladder                                                        */
+/* ------------------------------------------------------------------ */
 function TierLadder({
   currentTier,
   currentLifetime,
@@ -477,64 +467,70 @@ function TierLadder({
   const currentIndex = order.indexOf(currentTier);
 
   return (
-    <View style={styles.ladderWrap}>
+    <View style={styles.ladder}>
       {tiers.map((t, i) => {
         const isUnlocked = i <= currentIndex;
         const isCurrent = i === currentIndex;
+        const isLast = i === tiers.length - 1;
 
         return (
-          <View key={t.name} style={styles.ladderItemRow}>
-            {/* Step Node */}
-            <View
-              style={[
-                styles.ladderNode,
-                isUnlocked && styles.ladderNodeUnlocked,
-                isCurrent && styles.ladderNodeCurrent,
-              ]}
-            >
-              <Ionicons
-                name={isUnlocked ? "checkmark" : "lock-closed"}
-                size={11}
-                color={isUnlocked ? "#ffffff" : "#6b6b6b"}
-              />
+          <View key={t.name} style={styles.ladderRow}>
+            {/* Node + connector */}
+            <View style={styles.ladderNodeCol}>
+              <View
+                style={[
+                  styles.ladderNode,
+                  isUnlocked && styles.ladderNodeUnlocked,
+                  isCurrent && styles.ladderNodeCurrent,
+                ]}
+              >
+                {isUnlocked && (
+                  <Ionicons
+                    name="checkmark"
+                    size={10}
+                    color={isCurrent ? colors.olive[900] : colors.paper.cream}
+                  />
+                )}
+              </View>
+              {!isLast && (
+                <View
+                  style={[
+                    styles.ladderLine,
+                    i < currentIndex && styles.ladderLineDone,
+                  ]}
+                />
+              )}
             </View>
 
             {/* Info */}
-            <View style={styles.ladderInfoCol}>
+            <View style={[styles.ladderInfo, !isLast && { paddingBottom: spacing[4] }]}>
               <View style={styles.ladderNameRow}>
                 <Text
                   style={[
-                    styles.ladderTierName,
-                    isUnlocked && styles.ladderTierNameUnlocked,
+                    styles.ladderName,
+                    isUnlocked && styles.ladderNameUnlocked,
                   ]}
                 >
                   {t.name}
                 </Text>
                 {isCurrent && (
                   <View style={styles.youBadge}>
-                    <Text style={styles.youBadgeText}>YOU</Text>
+                    <Text style={styles.youBadgeText}>You</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.ladderRangeText}>
+              <Text style={styles.ladderRange}>
                 {t.min.toLocaleString()} lifetime pts
-                {t.cap ? ` — ${t.cap.toLocaleString()}` : "+"}
+                {t.cap ? `–${t.cap.toLocaleString()}` : "+"}
               </Text>
             </View>
 
-            {/* Status label */}
-            <View style={styles.ladderStatusCol}>
-              {isUnlocked ? (
-                <View style={styles.unlockedTag}>
-                  <Ionicons name="checkmark-circle" size={10} color="#15803d" />
-                  <Text style={styles.unlockedTagText}>UNLOCKED</Text>
-                </View>
-              ) : (
-                <Text style={styles.pointsToGoText}>
-                  {(t.min - currentLifetime).toLocaleString()} TO GO
-                </Text>
-              )}
-            </View>
+            {/* Status */}
+            {!isUnlocked && (
+              <Text style={styles.ladderToGo}>
+                {(t.min - currentLifetime).toLocaleString()} to go
+              </Text>
+            )}
           </View>
         );
       })}
@@ -542,9 +538,6 @@ function TierLadder({
   );
 }
 
-/* =========================================================================
-   Styles
-   ========================================================================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -556,469 +549,436 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.display.italic,
     fontSize: 14,
     color: colors.light.mutedForeground,
-    fontStyle: "italic",
   },
 
-  /* Navigation Bar */
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navTitleWrap: {
-    alignItems: "center",
+    borderColor: HAIRLINE,
   },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
-    letterSpacing: 2,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
   },
 
   scrollContent: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: 40,
+    paddingTop: spacing[2],
+    gap: 14,
   },
 
-  /* 1. Hero Card */
-  heroCard: {
-    borderRadius: 20,
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
+  },
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+
+  /* Hero */
+  hero: {
+    borderRadius: 24,
     padding: spacing[5],
-    marginBottom: spacing[4],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
     ...shadows.editorial,
   },
-  heroTopRow: {
+  heroTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 10,
   },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  trophyMedallion: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(200, 164, 74, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  trophyInner: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0, 0, 0, 0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  /* Points Display */
-  pointsDisplayBlock: {
-    marginVertical: 14,
-  },
-  pointsNumber: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 40,
-    color: "#E8CF8F",
-    lineHeight: 46,
-    letterSpacing: -0.5,
-  },
-  pointsLabel: {
+  heroTier: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    color: "rgba(255, 255, 255, 0.7)",
-    letterSpacing: 0.8,
-    marginTop: 2,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
   },
-
-  /* Progress Section */
-  progressSection: {
-    gap: 6,
-    marginTop: 4,
+  heroIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroPoints: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 44,
+    letterSpacing: -1.2,
+    color: colors.paper.cream,
+  },
+  heroSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: "rgba(250, 248, 241, 0.6)",
+  },
+  heroProgress: {
+    marginTop: spacing[4],
+    gap: 8,
   },
   progressTrack: {
-    height: 6,
+    height: 5,
     borderRadius: 3,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(250, 248, 241, 0.14)",
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
     borderRadius: 3,
+    backgroundColor: GOLD_SOFT,
   },
-  progressMetaRow: {
+  progressMeta: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
   },
-  progressMetaLeft: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: "rgba(255, 255, 255, 0.6)",
-  },
-  progressMetaRight: {
+  progressMetaText: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    color: "#E8CF8F",
+    letterSpacing: 0.4,
+    color: "rgba(250, 248, 241, 0.55)",
   },
 
-  /* 2. Stat Ribbon */
-  statsRow: {
+  /* Stat strip */
+  statsStrip: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: spacing[4],
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#ffffff",
+    alignItems: "center",
+    backgroundColor: colors.paper.cream,
     borderRadius: 18,
-    padding: 12,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 3,
+    borderColor: HAIRLINE,
+    paddingVertical: 14,
     ...shadows.soft,
   },
-  statIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
+  statCell: {
+    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
+    gap: 2,
   },
-  statNumber: {
+  statNum: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 16.5,
+    fontSize: 20,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
-    lineHeight: 20,
+  },
+  statNumMuted: {
+    color: "rgba(22, 23, 15, 0.35)",
   },
   statLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: "#85651b",
-    letterSpacing: 0.8,
-  },
-  statSub: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
     color: colors.light.mutedForeground,
   },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
+    backgroundColor: colors.light.border,
+  },
 
-  /* Content Cards */
-  contentCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
+  /* Cards */
+  card: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    marginBottom: spacing[4],
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[3],
     ...shadows.soft,
-    gap: 12,
   },
   cardHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-  },
-  cardEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
   },
   cardTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
+    fontSize: 20,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
     marginTop: 2,
   },
-  activeTierPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  activeTierPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: "#85651b",
-    letterSpacing: 0.5,
-  },
-  tierCopyText: {
+  cardCopy: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12.5,
-    color: colors.light.mutedForeground,
     lineHeight: 18,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+  },
+  cardCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+  activePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+  },
+  activeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: GOLD_DEEP,
+  },
+  activePillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: GOLD_DEEP,
   },
 
-  /* Perks List */
-  perksList: {
-    gap: 12,
-    marginTop: 4,
-  },
+  /* Perks */
   perkRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    gap: spacing[3],
+    paddingVertical: spacing[3.5],
   },
-  perkIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  perkIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
   },
-  perkContent: {
+  perkBody: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   perkTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    fontSize: 13.5,
     color: colors.light.foreground,
   },
   perkDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.light.mutedForeground,
-    lineHeight: 16,
   },
 
   /* Ladder */
-  ladderWrap: {
-    gap: 2,
+  ladder: {
+    marginTop: spacing[4],
   },
-  ladderItemRow: {
+  ladderRow: {
     flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  ladderNodeCol: {
     alignItems: "center",
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.05)",
-    gap: 12,
+    width: 20,
+    marginRight: spacing[3],
   },
   ladderNode: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(22, 23, 15, 0.06)",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "rgba(22, 23, 15, 0.15)",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
   ladderNodeUnlocked: {
-    backgroundColor: "#181b12",
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   ladderNodeCurrent: {
-    backgroundColor: "#85651b",
+    backgroundColor: GOLD_SOFT,
+    borderColor: GOLD,
   },
-  ladderInfoCol: {
+  ladderLine: {
+    flex: 1,
+    width: 1.5,
+    backgroundColor: "rgba(22, 23, 15, 0.1)",
+    marginTop: 2,
+  },
+  ladderLineDone: {
+    backgroundColor: colors.olive[900],
+  },
+  ladderInfo: {
     flex: 1,
     gap: 2,
   },
   ladderNameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
-  ladderTierName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 14.5,
+  ladderName: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
     color: colors.light.mutedForeground,
   },
-  ladderTierNameUnlocked: {
+  ladderNameUnlocked: {
     color: colors.light.foreground,
   },
   youBadge: {
-    backgroundColor: "rgba(200, 164, 74, 0.15)",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.18)",
   },
   youBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    color: "#85651b",
-    letterSpacing: 0.5,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10.5,
+    color: GOLD_DEEP,
   },
-  ladderRangeText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
+  ladderRange: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
   },
-  ladderStatusCol: {
-    alignItems: "flex-end",
-  },
-  unlockedTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  unlockedTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#15803d",
-    letterSpacing: 0.5,
-  },
-  pointsToGoText: {
+  ladderToGo: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
+    fontSize: 10,
+    letterSpacing: 0.4,
     color: colors.light.mutedForeground,
-    letterSpacing: 0.5,
+    marginTop: 3,
   },
 
   /* History */
-  historyCountBadge: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-  emptyHistoryBox: {
+  emptyHistory: {
     alignItems: "center",
-    paddingVertical: spacing[5],
-    gap: 6,
+    paddingVertical: spacing[6],
+    gap: 4,
   },
-  emptyHistoryMedallion: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
+  emptyHistoryIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   emptyHistoryTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
+    fontSize: 17,
     color: colors.light.foreground,
   },
   emptyHistorySub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
+    lineHeight: 17,
     color: colors.light.mutedForeground,
     textAlign: "center",
-    lineHeight: 17,
-    maxWidth: 260,
+    maxWidth: 240,
   },
-  historyList: {
-    gap: 4,
-  },
-  historyRow: {
+  histRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.05)",
+    gap: spacing[3],
+    paddingVertical: spacing[3],
   },
-  historyIconCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  histIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
-  historyIconEarn: {
-    backgroundColor: "rgba(22, 101, 52, 0.12)",
+  histIconEarn: {
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
   },
-  historyIconSpend: {
-    backgroundColor: "rgba(220, 38, 38, 0.1)",
+  histIconSpend: {
+    backgroundColor: "rgba(184, 92, 58, 0.1)",
   },
-  historyMetaCol: {
+  histBody: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
-  historyReason: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12.5,
+  histReason: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: colors.light.foreground,
   },
-  historyDate: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
+  histDate: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
     color: colors.light.mutedForeground,
   },
-  historyPointsText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
+  histPts: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15,
   },
-  historyPointsEarn: {
-    color: "#15803d",
+  histPtsEarn: {
+    color: GOLD_DEEP,
   },
-  historyPointsSpend: {
-    color: "#dc2626",
+  histPtsSpend: {
+    color: colors.accent2.rust,
   },
 
-  /* Shop CTA */
-  shopCtaBtn: {
+  /* CTA */
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#181b12",
+    gap: 10,
+    height: 52,
     borderRadius: radii.full,
-    paddingVertical: 13,
+    backgroundColor: colors.olive[900],
+    paddingRight: 7,
     ...shadows.soft,
-    marginBottom: 20,
   },
-  shopCtaBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

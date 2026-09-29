@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -23,63 +24,110 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+
 const STATUS_CONFIG: Record<
   ReturnStatus,
   {
     label: string;
     bg: string;
     fg: string;
-    border: string;
     icon: keyof typeof Ionicons.glyphMap;
     description: string;
   }
 > = {
   requested: {
-    label: "REQUESTED",
-    bg: "rgba(200, 164, 74, 0.12)",
-    fg: "#85651b",
-    border: "rgba(200, 164, 74, 0.3)",
+    label: "Requested",
+    bg: "rgba(200, 164, 74, 0.14)",
+    fg: GOLD_DEEP,
     icon: "hourglass-outline",
     description: "Under atelier review",
   },
   approved: {
-    label: "APPROVED",
+    label: "Approved",
     bg: "rgba(83, 94, 44, 0.12)",
-    fg: "#414b22",
-    border: "rgba(83, 94, 44, 0.25)",
+    fg: colors.olive[700],
     icon: "checkmark-circle-outline",
     description: "Ready for courier collection",
   },
   received: {
-    label: "INSPECTION",
-    bg: "rgba(30, 58, 138, 0.1)",
+    label: "Inspecting",
+    bg: "rgba(30, 64, 175, 0.09)",
     fg: "#1e40af",
-    border: "rgba(30, 58, 138, 0.25)",
-    icon: "archive-outline",
+    icon: "search-outline",
     description: "Atelier intake verification",
   },
   refunded: {
-    label: "SETTLED",
-    bg: "rgba(22, 101, 52, 0.12)",
+    label: "Refunded",
+    bg: "rgba(21, 128, 61, 0.11)",
     fg: "#15803d",
-    border: "rgba(22, 101, 52, 0.25)",
-    icon: "card-outline",
+    icon: "wallet-outline",
     description: "Funds credited to account",
   },
   rejected: {
-    label: "DECLINED",
-    bg: "rgba(220, 38, 38, 0.1)",
-    fg: "#dc2626",
-    border: "rgba(220, 38, 38, 0.25)",
+    label: "Declined",
+    bg: "rgba(184, 92, 58, 0.12)",
+    fg: colors.accent2.rust,
     icon: "close-circle-outline",
     description: "Policy criteria not met",
   },
 };
 
+const PROGRESS_STEPS: ReturnStatus[] = ["requested", "approved", "received", "refunded"];
+
+const HOW_IT_WORKS: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }[] = [
+  { icon: "document-text-outline", title: "Request", sub: "From a delivered order" },
+  { icon: "car-outline", title: "Pickup", sub: "Collected at your door" },
+  { icon: "wallet-outline", title: "Refund", sub: "To original payment" },
+];
+
+const PROMISES: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }[] = [
+  {
+    icon: "car-outline",
+    title: "Complimentary doorstep pickup",
+    desc: "Our insured couriers collect the package directly from your address at no extra cost.",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    title: "24-hour atelier verification",
+    desc: "Specialists review condition and authenticity within 24 hours of warehouse arrival.",
+  },
+  {
+    icon: "wallet-outline",
+    title: "Direct settlement guarantee",
+    desc: "Funds are promptly credited back to your original payment card or digital wallet.",
+  },
+];
+
+const POLICY: { title: string; desc: string }[] = [
+  {
+    title: "14-day complimentary window",
+    desc: "You may initiate a return within 14 calendar days from the moment your order is marked as delivered.",
+  },
+  {
+    title: "Pristine atelier condition",
+    desc: "Garments and accessories must remain unworn, unwashed, with all designer tags and authenticity seals attached.",
+  },
+  {
+    title: "Original luxury packaging",
+    desc: "Please pack the items in their original garment bags, dustbags, and protective outer boxes.",
+  },
+  {
+    title: "Immediate reimbursement",
+    desc: "Upon verification at our inspection center, refunds are initiated immediately to your original payment method within 3–5 business days.",
+  },
+];
+
 type Tab = "all" | ReturnStatus;
+const TABS: Tab[] = ["all", "requested", "approved", "received", "refunded", "rejected"];
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
 export default function ReturnsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
   const [returns, setReturns] = useState<MobileReturnRequest[]>([]);
@@ -148,462 +196,338 @@ export default function ReturnsScreen() {
     return list;
   }, [returns, tab, query]);
 
+  const stats: { label: string; value: number; tab: Tab }[] = [
+    { label: "Active", value: activeCount, tab: "all" },
+    { label: "Refunded", value: counts.refunded, tab: "refunded" },
+    { label: "Declined", value: counts.rejected, tab: "rejected" },
+    { label: "Lifetime", value: counts.all, tab: "all" },
+  ];
+
+  const hasReturns = returns.length > 0;
+
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Atelier Navigation Header */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>RETURNS & REFUNDS</Text>
-            <Text style={styles.navSubtitle}>REVERSE LOGISTICS</Text>
-          </View>
+          <Text style={styles.navTitle}>Returns</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
-            onPress={() => onRefresh()}
+            onPress={onRefresh}
+            disabled={refreshing}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh returns"
           >
-            <Ionicons
-              name="refresh-outline"
-              size={18}
-              color={refreshing ? "#C8A44A" : colors.light.foreground}
-            />
+            {refreshing ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+            )}
           </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color="#C8A44A" size="small" />
-            <Text style={styles.loadingText}>Loading return dossiers…</Text>
+            <ActivityIndicator color={GOLD} size="small" />
+            <Text style={styles.loadingText}>Loading your returns…</Text>
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#C8A44A"
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} />
             }
           >
-            {/* 1. Haute Couture Obsidian Hero Banner */}
+            {/* Page heading */}
+            <View style={styles.pageHead}>
+              <Text style={styles.eyebrow}>Concierge care</Text>
+              <Text style={styles.pageTitle}>Returns & refunds</Text>
+              <Text style={styles.pageSub}>
+                Free doorstep pickup and refunds straight to your original payment method.
+              </Text>
+            </View>
+
+            {/* How it works */}
             <LinearGradient
-              colors={["#1c2016", "#14170e", "#0e110a"]}
+              colors={["#1f2418", "#14170e"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
+              style={styles.hero}
             >
-              <View style={styles.heroEyebrowRow}>
-                <View style={styles.heroTagBadge}>
-                  <Ionicons name="shield-checkmark" size={11} color="#C8A44A" />
-                  <Text style={styles.heroTagText}>CONCIERGE CARE</Text>
+              <View style={styles.heroTop}>
+                <View style={styles.heroBadge}>
+                  <Ionicons name="shield-checkmark" size={11} color={GOLD} />
+                  <Text style={styles.heroBadgeText}>14-day guarantee</Text>
                 </View>
-
                 <TouchableOpacity
-                  style={styles.policyPill}
-                  activeOpacity={0.8}
                   onPress={() => setShowPolicyModal(true)}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  style={styles.heroPolicyLink}
+                  accessibilityRole="button"
                 >
-                  <Ionicons name="information-circle-outline" size={13} color="#E8CF8F" />
-                  <Text style={styles.policyPillText}>Return Policy</Text>
+                  <Text style={styles.heroPolicyText}>Return policy</Text>
+                  <Ionicons name="chevron-forward" size={12} color="#E8CF8F" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.heroTitle}>Returns & Concierge Refunds</Text>
-              <Text style={styles.heroSubtitle}>
-                Complimentary doorstep pickup, thorough atelier inspection, and direct settlements to your original payment method.
-              </Text>
-
-              {/* Guarantee Value Pills */}
-              <View style={styles.guaranteeRow}>
-                <View style={styles.guaranteePill}>
-                  <Ionicons name="calendar-outline" size={12} color="#C8A44A" />
-                  <Text style={styles.guaranteePillText}>14-Day Guarantee</Text>
-                </View>
-                <View style={styles.guaranteePill}>
-                  <Ionicons name="bicycle-outline" size={12} color="#C8A44A" />
-                  <Text style={styles.guaranteePillText}>Doorstep Pickup</Text>
-                </View>
-                <View style={styles.guaranteePill}>
-                  <Ionicons name="card-outline" size={12} color="#C8A44A" />
-                  <Text style={styles.guaranteePillText}>Fast Settlement</Text>
-                </View>
+              <View style={styles.steps}>
+                {HOW_IT_WORKS.map((s, i) => (
+                  <React.Fragment key={s.title}>
+                    <View style={styles.step}>
+                      <View style={styles.stepIcon}>
+                        <Ionicons name={s.icon} size={17} color={GOLD} />
+                        <View style={styles.stepNum}>
+                          <Text style={styles.stepNumText}>{i + 1}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.stepTitle}>{s.title}</Text>
+                      <Text style={styles.stepSub}>{s.sub}</Text>
+                    </View>
+                    {i < HOW_IT_WORKS.length - 1 && <View style={styles.stepConnector} />}
+                  </React.Fragment>
+                ))}
               </View>
             </LinearGradient>
 
-            {/* 2. Redesigned 4-Metric Grid */}
-            <View style={styles.statsGrid}>
-              {/* Active */}
-              <View style={styles.statCard}>
-                <View style={styles.statTopRow}>
-                  <View
-                    style={[
-                      styles.statIconWrap,
-                      { backgroundColor: "rgba(200, 164, 74, 0.12)" },
-                    ]}
-                  >
-                    <Ionicons name="hourglass-outline" size={16} color="#85651b" />
-                  </View>
-                  <Text style={styles.statBadgeText}>IN LOGISTICS</Text>
-                </View>
-                <Text style={styles.statNumber}>{activeCount}</Text>
-                <Text style={styles.statLabel}>Active Returns</Text>
-                <Text style={styles.statSub}>Awaiting intake</Text>
-              </View>
-
-              {/* Refunded */}
-              <View style={styles.statCard}>
-                <View style={styles.statTopRow}>
-                  <View
-                    style={[
-                      styles.statIconWrap,
-                      { backgroundColor: "rgba(22, 101, 52, 0.12)" },
-                    ]}
-                  >
-                    <Ionicons name="card-outline" size={16} color="#15803d" />
-                  </View>
-                  <Text style={[styles.statBadgeText, { color: "#15803d" }]}>
-                    SETTLED
-                  </Text>
-                </View>
-                <Text style={styles.statNumber}>{counts.refunded}</Text>
-                <Text style={styles.statLabel}>Refunded</Text>
-                <Text style={styles.statSub}>Credited to account</Text>
-              </View>
-
-              {/* Rejected */}
-              <View style={styles.statCard}>
-                <View style={styles.statTopRow}>
-                  <View
-                    style={[
-                      styles.statIconWrap,
-                      { backgroundColor: "rgba(220, 38, 38, 0.1)" },
-                    ]}
-                  >
-                    <Ionicons name="close-circle-outline" size={16} color="#dc2626" />
-                  </View>
-                  <Text style={[styles.statBadgeText, { color: "#dc2626" }]}>
-                    DECLINED
-                  </Text>
-                </View>
-                <Text style={styles.statNumber}>{counts.rejected}</Text>
-                <Text style={styles.statLabel}>Rejected</Text>
-                <Text style={styles.statSub}>Policy exceptions</Text>
-              </View>
-
-              {/* Lifetime */}
-              <View style={styles.statCard}>
-                <View style={styles.statTopRow}>
-                  <View
-                    style={[
-                      styles.statIconWrap,
-                      { backgroundColor: "rgba(83, 94, 44, 0.12)" },
-                    ]}
-                  >
-                    <Ionicons name="archive-outline" size={16} color="#414b22" />
-                  </View>
-                  <Text style={[styles.statBadgeText, { color: "#414b22" }]}>
-                    ARCHIVE
-                  </Text>
-                </View>
-                <Text style={styles.statNumber}>{counts.all}</Text>
-                <Text style={styles.statLabel}>Lifetime</Text>
-                <Text style={styles.statSub}>Total logged cases</Text>
-              </View>
-            </View>
-
-            {/* 3. Luxury Search Bar */}
-            <View style={styles.searchBarWrap}>
-              <Ionicons name="search" size={16} color={colors.light.mutedForeground} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by return #, order #, or item…"
-                placeholderTextColor={colors.light.mutedForeground}
-                value={query}
-                onChangeText={setQuery}
-                returnKeyType="search"
-                clearButtonMode="never"
-              />
-              {query.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => setQuery("")}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            {/* Stats strip */}
+            <View style={styles.statsStrip}>
+              {stats.map((s, i) => (
+                <Pressable
+                  key={s.label}
+                  style={[styles.statCell, i > 0 && styles.statCellDivider]}
+                  onPress={() => hasReturns && setTab(s.tab)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${s.value} ${s.label}`}
                 >
-                  <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
-                </TouchableOpacity>
-              )}
+                  <Text style={[styles.statValue, s.value === 0 && styles.statValueMuted]}>
+                    {s.value}
+                  </Text>
+                  <Text style={styles.statLabel}>{s.label}</Text>
+                </Pressable>
+              ))}
             </View>
 
-            {/* 4. Filter Tabs Ribbon */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tabsRow}
-            >
-              {(
-                [
-                  "all",
-                  "requested",
-                  "approved",
-                  "received",
-                  "refunded",
-                  "rejected",
-                ] as Tab[]
-              ).map((t) => {
-                const isActive = tab === t;
-                const label = t === "all" ? "All" : STATUS_CONFIG[t].label;
-                const count = counts[t];
+            {hasReturns && (
+              <>
+                {/* Search */}
+                <View style={styles.searchBar}>
+                  <Ionicons name="search" size={16} color={colors.light.mutedForeground} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search return #, order # or item"
+                    placeholderTextColor={colors.light.mutedForeground}
+                    value={query}
+                    onChangeText={setQuery}
+                    returnKeyType="search"
+                    clearButtonMode="never"
+                  />
+                  {query.length > 0 && (
+                    <TouchableOpacity onPress={() => setQuery("")} hitSlop={8}>
+                      <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-                return (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.tabPill, isActive && styles.tabPillActive]}
-                    onPress={() => setTab(t)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.tabPillText,
-                        isActive && styles.tabPillTextActive,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                    <View
-                      style={[
-                        styles.tabCountBadge,
-                        isActive && styles.tabCountBadgeActive,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.tabCountBadgeText,
-                          isActive && styles.tabCountBadgeTextActive,
-                        ]}
+                {/* Filters */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tabsRow}
+                  style={styles.tabsScroll}
+                >
+                  {TABS.map((t) => {
+                    const isActive = tab === t;
+                    const count = counts[t];
+                    return (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.tab, isActive && styles.tabActive]}
+                        onPress={() => setTab(t)}
+                        activeOpacity={0.75}
                       >
-                        {count}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                        <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
+                          {t === "all" ? "All" : STATUS_CONFIG[t].label}
+                        </Text>
+                        {count > 0 && (
+                          <Text style={[styles.tabCount, isActive && styles.tabCountActive]}>
+                            {count}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
 
-            {/* 5. Returns List or Luxury Empty State */}
+            {/* List / empty states */}
             {filteredReturns.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                {query.trim().length > 0 ? (
-                  /* Search Miss Empty */
+              <View style={styles.emptyWrap}>
+                {hasReturns ? (
                   <View style={styles.emptyCard}>
-                    <Ionicons
-                      name="search-outline"
-                      size={36}
-                      color={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.emptyTitle}>No Matching Returns</Text>
-                    <Text style={styles.emptySubtitle}>
-                      No return cases match &quot;{query}&quot;. Check the return or order number and try again.
+                    <View style={styles.emptyIcon}>
+                      <Ionicons name="search-outline" size={24} color={colors.olive[700]} />
+                    </View>
+                    <Text style={styles.emptyTitle}>No matching returns</Text>
+                    <Text style={styles.emptySub}>
+                      {query.trim()
+                        ? `Nothing matches "${query.trim()}". Check the return or order number.`
+                        : "No returns with this status yet."}
                     </Text>
                     <TouchableOpacity
-                      style={styles.emptyResetBtn}
+                      style={styles.secondaryBtn}
                       onPress={() => {
                         setQuery("");
                         setTab("all");
                       }}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.emptyResetBtnText}>Reset Filter</Text>
+                      <Text style={styles.secondaryBtnText}>Clear filters</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  /* Zero Returns Empty State */
                   <View style={styles.emptyCard}>
-                    <View style={styles.emptyMedallion}>
-                      <Ionicons name="refresh" size={30} color="#C8A44A" />
+                    <View style={styles.emptyIcon}>
+                      <Ionicons name="return-down-back-outline" size={24} color={colors.olive[700]} />
                     </View>
-                    <Text style={styles.emptyTitle}>No Active Returns</Text>
-                    <Text style={styles.emptySubtitle}>
-                      All your curated acquisitions are resting in your collection. If a piece doesn&apos;t meet your standards, initiate a return from your delivered orders within 14 days.
+                    <Text style={styles.emptyTitle}>No returns yet</Text>
+                    <Text style={styles.emptySub}>
+                      If a piece isn&apos;t quite right, start a return from any delivered order
+                      within 14 days.
                     </Text>
-
-                    <View style={styles.emptyActionsRow}>
-                      <TouchableOpacity
-                        style={styles.browseOrdersBtn}
-                        activeOpacity={0.88}
-                        onPress={() => router.push("/(main)/account/orders" as any)}
-                      >
-                        <Text style={styles.browseOrdersBtnText}>
-                          VIEW DELIVERED ORDERS
-                        </Text>
-                        <Ionicons name="arrow-forward" size={13} color="#ffffff" />
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.primaryBtn}
+                      activeOpacity={0.88}
+                      onPress={() => router.push("/(main)/account/orders" as any)}
+                    >
+                      <Text style={styles.primaryBtnText}>View my orders</Text>
+                      <View style={styles.primaryBtnArrow}>
+                        <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                      </View>
+                    </TouchableOpacity>
                   </View>
                 )}
 
-                {/* 6. Concierge Return Promises Card */}
-                <View style={styles.promisesCard}>
-                  <View style={styles.promisesHeader}>
-                    <Ionicons name="sparkles" size={13} color="#85651b" />
-                    <Text style={styles.promisesEyebrow}>
-                      ATELIER CONCIERGE PROMISES
-                    </Text>
+                {!hasReturns && (
+                  <View style={styles.promises}>
+                    <Text style={styles.sectionEyebrow}>Our promise</Text>
+                    {PROMISES.map((p, i) => (
+                      <View key={p.title} style={[styles.promiseRow, i > 0 && styles.promiseDivider]}>
+                        <View style={styles.promiseIcon}>
+                          <Ionicons name={p.icon} size={16} color={GOLD_DEEP} />
+                        </View>
+                        <View style={styles.promiseBody}>
+                          <Text style={styles.promiseTitle}>{p.title}</Text>
+                          <Text style={styles.promiseDesc}>{p.desc}</Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
-                  <Text style={styles.promisesTitle}>Effortless Reverse Logistics</Text>
-
-                  <View style={styles.promiseItem}>
-                    <View style={styles.promiseIconBox}>
-                      <Ionicons name="car-outline" size={16} color="#85651b" />
-                    </View>
-                    <View style={styles.promiseContent}>
-                      <Text style={styles.promiseHeading}>
-                        Complimentary Doorstep Pickup
-                      </Text>
-                      <Text style={styles.promiseDesc}>
-                        Our insured couriers collect the package directly from your address at no extra cost.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.promiseItem}>
-                    <View style={styles.promiseIconBox}>
-                      <Ionicons name="shield-checkmark-outline" size={16} color="#85651b" />
-                    </View>
-                    <View style={styles.promiseContent}>
-                      <Text style={styles.promiseHeading}>
-                        24-Hour Atelier Verification
-                      </Text>
-                      <Text style={styles.promiseDesc}>
-                        Specialists review condition and authenticity within 24 hours of warehouse arrival.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.promiseItem}>
-                    <View style={styles.promiseIconBox}>
-                      <Ionicons name="wallet-outline" size={16} color="#85651b" />
-                    </View>
-                    <View style={styles.promiseContent}>
-                      <Text style={styles.promiseHeading}>
-                        Direct Settlement Guarantee
-                      </Text>
-                      <Text style={styles.promiseDesc}>
-                        Funds are promptly credited back to your original payment card or digital wallet.
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                )}
               </View>
             ) : (
-              /* Populated Returns List */
-              <View style={styles.listWrap}>
+              <View style={styles.list}>
                 {filteredReturns.map((item) => {
                   const cfg = STATUS_CONFIG[item.status];
+                  const stepIndex = PROGRESS_STEPS.indexOf(item.status);
                   return (
                     <TouchableOpacity
                       key={item.return_group_id}
-                      style={styles.returnCard}
+                      style={styles.card}
                       onPress={() =>
-                        router.push(
-                          `/(main)/account/returns/${item.return_group_id}` as any
-                        )
+                        router.push(`/(main)/account/returns/${item.return_group_id}` as any)
                       }
                       activeOpacity={0.9}
                     >
-                      {/* Return Card Header */}
-                      <View style={styles.returnCardHeader}>
-                        <View style={styles.returnCardHeaderLeft}>
-                          <View style={styles.returnTagBadge}>
-                            <Text style={styles.returnTagText}>
-                              RET · #{item.return_number}
-                            </Text>
-                          </View>
-                          <Text style={styles.returnOrderRef}>
-                            Order #{item.order_number}
+                      <View style={styles.cardHead}>
+                        <View style={styles.cardHeadLeft}>
+                          <Text style={styles.cardNumber}>#{item.return_number}</Text>
+                          <Text style={styles.cardMeta}>
+                            Order #{item.order_number} · {formatDate(item.created_at)}
                           </Text>
                         </View>
-
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            {
-                              backgroundColor: cfg.bg,
-                              borderColor: cfg.border,
-                            },
-                          ]}
-                        >
+                        <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
                           <Ionicons name={cfg.icon} size={11} color={cfg.fg} />
-                          <Text style={[styles.statusBadgeText, { color: cfg.fg }]}>
-                            {cfg.label}
-                          </Text>
+                          <Text style={[styles.statusText, { color: cfg.fg }]}>{cfg.label}</Text>
                         </View>
                       </View>
 
-                      {/* Item Details */}
-                      <View style={styles.returnItemsSection}>
+                      {/* Progress */}
+                      {item.status === "rejected" ? (
+                        <View style={styles.declinedNote}>
+                          <Ionicons name="information-circle-outline" size={13} color={cfg.fg} />
+                          <Text style={[styles.declinedText, { color: cfg.fg }]} numberOfLines={2}>
+                            {item.seller_note || cfg.description}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={styles.progressWrap}>
+                          <View style={styles.progressBar}>
+                            {PROGRESS_STEPS.map((s, i) => (
+                              <View
+                                key={s}
+                                style={[
+                                  styles.progressSeg,
+                                  i <= stepIndex && { backgroundColor: cfg.fg },
+                                ]}
+                              />
+                            ))}
+                          </View>
+                          <Text style={styles.progressCaption}>{cfg.description}</Text>
+                        </View>
+                      )}
+
+                      <View style={styles.items}>
                         {item.items.slice(0, 2).map((prod, idx) => (
-                          <View key={idx} style={styles.returnItemRow}>
-                            <View style={styles.returnItemDot} />
-                            <Text style={styles.returnItemName} numberOfLines={1}>
+                          <View key={idx} style={styles.itemRow}>
+                            <Text style={styles.itemName} numberOfLines={1}>
                               {prod.product_name}
-                              {prod.variant_label
-                                ? ` · ${prod.variant_label}`
-                                : ""}
+                              {prod.variant_label ? (
+                                <Text style={styles.itemVariant}>  {prod.variant_label}</Text>
+                              ) : null}
                             </Text>
-                            <Text style={styles.returnItemQty}>
-                              ×{prod.quantity}
-                            </Text>
+                            <Text style={styles.itemQty}>×{prod.quantity}</Text>
                           </View>
                         ))}
                         {item.items.length > 2 && (
-                          <Text style={styles.moreItemsText}>
-                            +{item.items.length - 2} additional pieces
+                          <Text style={styles.moreItems}>
+                            +{item.items.length - 2} more {item.items.length - 2 === 1 ? "item" : "items"}
                           </Text>
                         )}
-                      </View>
-
-                      {/* Reason Tag */}
-                      {item.reason ? (
-                        <View style={styles.reasonTagRow}>
-                          <Text style={styles.reasonLabel}>Reason:</Text>
-                          <Text style={styles.reasonValue} numberOfLines={1}>
+                        {item.reason ? (
+                          <Text style={styles.reason} numberOfLines={1}>
+                            <Text style={styles.reasonLabel}>Reason  </Text>
                             {item.reason}
                           </Text>
-                        </View>
-                      ) : null}
+                        ) : null}
+                      </View>
 
-                      {/* Footer Settlement & Action */}
-                      <View style={styles.returnCardFooter}>
-                        <View style={styles.settlementCol}>
-                          <Text style={styles.settlementLabel}>REFUND VALUE</Text>
-                          <Text style={styles.settlementAmount}>
+                      <View style={styles.cardFoot}>
+                        <View>
+                          <Text style={styles.refundLabel}>Refund value</Text>
+                          <Text style={styles.refundAmount}>
                             {formatPrice(item.refund_amount, item.currency)}
                           </Text>
                         </View>
-
-                        <View style={styles.returnCardActionCol}>
-                          <Text style={styles.returnDateText}>
-                            {new Date(item.created_at).toLocaleDateString()}
-                          </Text>
-                          <View style={styles.returnActionArrowBtn}>
-                            <Ionicons
-                              name="arrow-forward"
-                              size={12}
-                              color="#181b12"
-                            />
-                          </View>
+                        <View style={styles.cardArrow}>
+                          <Ionicons name="arrow-forward" size={14} color={colors.light.foreground} />
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -614,99 +538,64 @@ export default function ReturnsScreen() {
           </ScrollView>
         )}
 
-        {/* 7. Return Policy Detail Modal */}
+        {/* Return policy sheet */}
         <Modal
           visible={showPolicyModal}
           transparent
-          animationType="fade"
+          animationType="slide"
           onRequestClose={() => setShowPolicyModal(false)}
         >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowPolicyModal(false)}>
+            <Pressable
+              style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 8, 20) }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeader}>
                 <View>
-                  <Text style={styles.modalEyebrow}>ATELIER STANDARDS</Text>
-                  <Text style={styles.modalTitle}>Return & Refund Policy</Text>
+                  <Text style={styles.eyebrow}>Atelier standards</Text>
+                  <Text style={styles.sheetTitle}>Return policy</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setShowPolicyModal(false)}
-                  style={styles.modalCloseBtn}
+                  style={styles.sheetClose}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close policy"
                 >
                   <Ionicons name="close" size={18} color={colors.light.foreground} />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
-                style={styles.modalScroll}
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.policyBullet}>
-                  <Ionicons name="checkmark-circle" size={16} color="#85651b" />
-                  <View style={styles.policyBulletContent}>
-                    <Text style={styles.policyBulletTitle}>
-                      14-Day Complimentary Window
-                    </Text>
-                    <Text style={styles.policyBulletDesc}>
-                      You may initiate a return within 14 calendar days from the moment your order is marked as delivered.
-                    </Text>
+              <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
+                {POLICY.map((p, i) => (
+                  <View key={p.title} style={[styles.policyRow, i > 0 && styles.promiseDivider]}>
+                    <Text style={styles.policyNum}>{String(i + 1).padStart(2, "0")}</Text>
+                    <View style={styles.promiseBody}>
+                      <Text style={styles.promiseTitle}>{p.title}</Text>
+                      <Text style={styles.promiseDesc}>{p.desc}</Text>
+                    </View>
                   </View>
-                </View>
-
-                <View style={styles.policyBullet}>
-                  <Ionicons name="checkmark-circle" size={16} color="#85651b" />
-                  <View style={styles.policyBulletContent}>
-                    <Text style={styles.policyBulletTitle}>
-                      Pristine Atelier Condition
-                    </Text>
-                    <Text style={styles.policyBulletDesc}>
-                      Garments and accessories must remain unworn, unwashed, with all designer tags and authenticity seals attached.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.policyBullet}>
-                  <Ionicons name="checkmark-circle" size={16} color="#85651b" />
-                  <View style={styles.policyBulletContent}>
-                    <Text style={styles.policyBulletTitle}>
-                      Original Luxury Packaging
-                    </Text>
-                    <Text style={styles.policyBulletDesc}>
-                      Please pack the items in their original garment bags, dustbags, and protective outer boxes.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.policyBullet}>
-                  <Ionicons name="checkmark-circle" size={16} color="#85651b" />
-                  <View style={styles.policyBulletContent}>
-                    <Text style={styles.policyBulletTitle}>
-                      Immediate Reimbursement
-                    </Text>
-                    <Text style={styles.policyBulletDesc}>
-                      Upon verification at our inspection center, refunds are initiated immediately to your original payment method within 3–5 business days.
-                    </Text>
-                  </View>
-                </View>
+                ))}
               </ScrollView>
 
               <TouchableOpacity
-                style={styles.modalCtaBtn}
+                style={styles.sheetCta}
                 onPress={() => setShowPolicyModal(false)}
                 activeOpacity={0.88}
               >
-                <Text style={styles.modalCtaBtnText}>UNDERSTOOD</Text>
+                <Text style={styles.sheetCtaText}>Got it</Text>
               </TouchableOpacity>
-            </View>
-          </View>
+            </Pressable>
+          </Pressable>
         </Modal>
       </SafeAreaView>
     </PaperBackground>
   );
 }
 
-/* =========================================================================
-   Styles
-   ========================================================================= */
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -718,620 +607,610 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.display.italic,
     fontSize: 14,
     color: colors.light.mutedForeground,
-    fontStyle: "italic",
   },
 
-  /* Navigation Bar */
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navTitleWrap: {
-    alignItems: "center",
+    borderColor: HAIRLINE,
   },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
-    letterSpacing: 2,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
   },
 
   scrollContent: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: 40,
+    paddingTop: spacing[2],
   },
 
-  /* 1. Hero Card */
-  heroCard: {
-    borderRadius: 20,
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[5],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
+  },
+  pageSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 320,
+  },
+
+  /* Hero / how it works */
+  hero: {
+    borderRadius: 24,
     padding: spacing[5],
-    marginBottom: spacing[4],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    marginBottom: spacing[3],
     ...shadows.editorial,
   },
-  heroEyebrowRow: {
+  heroTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: spacing[5],
+  },
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
+  },
+  heroBadgeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "#E8CF8F",
+  },
+  heroPolicyLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  heroPolicyText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: "#E8CF8F",
+  },
+  steps: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  step: {
+    flex: 1,
+    alignItems: "center",
+  },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.35)",
     marginBottom: 10,
   },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  policyPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
-  },
-  policyPillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#E8CF8F",
-    letterSpacing: 0.5,
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#ffffff",
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(255, 255, 255, 0.72)",
-    lineHeight: 18,
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  guaranteeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  guaranteePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.09)",
-  },
-  guaranteePillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#ffffff",
-    letterSpacing: 0.5,
-  },
-
-  /* 2. Metrics Grid */
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: spacing[4],
-  },
-  statCard: {
-    width: "48.5%",
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  statTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  statIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  stepNum: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: GOLD,
     alignItems: "center",
     justifyContent: "center",
   },
-  statBadgeText: {
+  stepNumText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    color: "#85651b",
-    letterSpacing: 0.6,
+    fontSize: 9,
+    color: colors.olive[950],
   },
-  statNumber: {
+  stepTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: colors.paper.cream,
+  },
+  stepSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    lineHeight: 14,
+    color: "rgba(250, 248, 241, 0.6)",
+    textAlign: "center",
+    marginTop: 2,
+    paddingHorizontal: 2,
+  },
+  stepConnector: {
+    width: 18,
+    height: 1,
+    marginTop: 22,
+    backgroundColor: "rgba(200, 164, 74, 0.35)",
+  },
+
+  /* Stats strip */
+  statsStrip: {
+    flexDirection: "row",
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[3.5],
+    marginBottom: spacing[5],
+  },
+  statCell: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  statCellDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.light.border,
+  },
+  statValue: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 22,
     color: colors.light.foreground,
-    lineHeight: 26,
+  },
+  statValueMuted: {
+    color: colors.olive[300],
   },
   statLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
-    marginTop: 2,
-  },
-  statSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
     color: colors.light.mutedForeground,
-    marginTop: 1,
   },
 
-  /* 3. Search Bar */
-  searchBarWrap: {
+  /* Search */
+  searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: radii.xl,
-    paddingHorizontal: spacing[4],
-    paddingVertical: Platform.OS === "ios" ? 11 : 7,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.09)",
     gap: 10,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[4],
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
     marginBottom: spacing[3],
-    ...shadows.soft,
   },
   searchInput: {
     flex: 1,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
+    fontSize: 13.5,
     color: colors.light.foreground,
+    padding: 0,
   },
 
-  /* 4. Filter Tabs Ribbon */
-  tabsRow: {
-    gap: 8,
-    paddingBottom: spacing[4],
+  /* Tabs */
+  tabsScroll: {
+    marginHorizontal: -spacing[5],
+    marginBottom: spacing[4],
   },
-  tabPill: {
+  tabsRow: {
+    gap: 6,
+    paddingHorizontal: spacing[5],
+  },
+  tab: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    height: 34,
+    paddingHorizontal: 14,
     borderRadius: radii.full,
-    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
+    borderColor: HAIRLINE,
+    backgroundColor: colors.paper.cream,
   },
-  tabPillActive: {
-    backgroundColor: "#181b12",
-    borderColor: "#181b12",
+  tabActive: {
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
-  tabPillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
+  tabText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: colors.ink.mute,
+  },
+  tabTextActive: {
+    color: colors.paper.cream,
+  },
+  tabCount: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10.5,
     color: colors.light.mutedForeground,
   },
-  tabPillTextActive: {
-    color: "#ffffff",
-    fontFamily: fontFamilies.mono.semibold,
-  },
-  tabCountBadge: {
-    backgroundColor: "rgba(22, 23, 15, 0.06)",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 8,
-  },
-  tabCountBadgeActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-  },
-  tabCountBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: colors.light.mutedForeground,
-  },
-  tabCountBadgeTextActive: {
-    color: "#ffffff",
+  tabCountActive: {
+    color: "#E8CF8F",
   },
 
-  /* 5. Empty State */
-  emptyContainer: {
-    gap: 16,
+  /* Empty */
+  emptyWrap: {
+    gap: spacing[4],
   },
   emptyCard: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[7],
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[6],
   },
-  emptyMedallion: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    marginBottom: 14,
+    marginBottom: spacing[4],
   },
   emptyTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 19,
+    fontSize: 21,
     color: colors.light.foreground,
     textAlign: "center",
   },
-  emptySubtitle: {
+  emptySub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
+    fontSize: 13,
+    lineHeight: 19,
     color: colors.light.mutedForeground,
     textAlign: "center",
-    lineHeight: 18,
     marginTop: 6,
-    maxWidth: 300,
+    maxWidth: 280,
   },
-  emptyActionsRow: {
-    marginTop: 18,
-  },
-  browseOrdersBtn: {
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#181b12",
-    paddingHorizontal: 20,
-    paddingVertical: 11,
-    borderRadius: radii.full,
-    ...shadows.soft,
-  },
-  browseOrdersBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#ffffff",
-    letterSpacing: 1,
-  },
-  emptyResetBtn: {
-    marginTop: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: "#181b12",
-  },
-  emptyResetBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-  },
-
-  /* 6. Concierge Promises */
-  promisesCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-    gap: 14,
-  },
-  promisesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  promisesEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  promisesTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16.5,
-    color: colors.light.foreground,
-    marginTop: -4,
-  },
-  promiseItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
     gap: 12,
+    height: 48,
+    paddingLeft: 20,
+    paddingRight: 5,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    marginTop: spacing[5],
   },
-  promiseIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
+  },
+  secondaryBtn: {
+    marginTop: spacing[4],
+    paddingHorizontal: 18,
+    height: 38,
+    justifyContent: "center",
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    borderColor: colors.light.border,
   },
-  promiseContent: {
-    flex: 1,
-    gap: 2,
-  },
-  promiseHeading: {
+  secondaryBtnText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
+    color: colors.light.foreground,
+  },
+
+  /* Promises */
+  promises: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[2],
+  },
+  sectionEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: spacing[1],
+  },
+  promiseRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    paddingVertical: spacing[3.5],
+  },
+  promiseDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  promiseIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promiseBody: {
+    flex: 1,
+    gap: 3,
+  },
+  promiseTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
     color: colors.light.foreground,
   },
   promiseDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.light.mutedForeground,
-    lineHeight: 16,
   },
 
-  /* Populated Returns List */
-  listWrap: {
-    gap: 12,
+  /* Return cards */
+  list: {
+    gap: spacing[3],
   },
-  returnCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 16,
+  card: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
+    borderColor: HAIRLINE,
+    padding: spacing[4],
+    gap: spacing[3.5],
     ...shadows.soft,
-    gap: 12,
   },
-  returnCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  returnCardHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  returnTagBadge: {
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  returnTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 0.5,
-  },
-  returnOrderRef: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-  },
-  statusBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.5,
-  },
-  returnItemsSection: {
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.06)",
-    gap: 6,
-  },
-  returnItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  returnItemDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#C8A44A",
-  },
-  returnItemName: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12.5,
-    color: colors.light.foreground,
-  },
-  returnItemQty: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  moreItemsText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    fontStyle: "italic",
-    marginLeft: 10,
-  },
-  reasonTagRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  reasonLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-  reasonValue: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.foreground,
-  },
-  returnCardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 4,
-  },
-  settlementCol: {
-    gap: 1,
-  },
-  settlementLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.8,
-  },
-  settlementAmount: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    color: "#85651b",
-  },
-  returnCardActionCol: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  returnDateText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-  returnActionArrowBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(22, 23, 15, 0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  /* 7. Modal */
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.65)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing[5],
-  },
-  modalContainer: {
-    width: "100%",
-    maxHeight: "80%",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: spacing[6],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.editorial,
-  },
-  modalHeader: {
+  cardHead: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: spacing[4],
+    gap: spacing[2],
   },
-  modalEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  modalTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 19,
-    color: colors.light.foreground,
-    marginTop: 2,
-  },
-  modalCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(22, 23, 15, 0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalScroll: {
-    marginBottom: spacing[5],
-  },
-  policyBullet: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    marginBottom: 14,
-  },
-  policyBulletContent: {
+  cardHeadLeft: {
     flex: 1,
     gap: 2,
   },
-  policyBulletTitle: {
+  cardNumber: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: colors.light.foreground,
+  },
+  cardMeta: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10.5,
+    color: colors.light.mutedForeground,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  statusText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+  },
+  progressWrap: {
+    gap: 6,
+  },
+  progressBar: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  progressSeg: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(22, 23, 15, 0.08)",
+  },
+  progressCaption: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
+  },
+  declinedNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    padding: spacing[2.5],
+    borderRadius: radii.lg,
+    backgroundColor: "rgba(184, 92, 58, 0.07)",
+  },
+  declinedText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  items: {
+    gap: 6,
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  itemName: {
+    flex: 1,
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
     color: colors.light.foreground,
   },
-  policyBulletDesc: {
+  itemVariant: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: colors.ink.mute,
+  },
+  itemQty: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+  },
+  moreItems: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
+  },
+  reason: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
-    color: colors.light.mutedForeground,
-    lineHeight: 17,
+    color: colors.light.foreground,
+    marginTop: 2,
   },
-  modalCtaBtn: {
-    backgroundColor: "#181b12",
-    borderRadius: radii.full,
-    paddingVertical: 12,
+  reasonLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+  cardFoot: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  refundLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+  refundAmount: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    color: colors.light.foreground,
+    marginTop: 1,
+  },
+  cardArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
   },
-  modalCtaBtnText: {
+
+  /* Policy sheet */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(22, 23, 15, 0.55)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    maxHeight: "85%",
+    backgroundColor: colors.paper.cream,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2.5],
+    ...shadows.editorial,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.olive[200],
+    alignSelf: "center",
+    marginBottom: spacing[4],
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginBottom: spacing[2],
+  },
+  sheetTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 26,
+    letterSpacing: -0.4,
+    color: colors.light.foreground,
+  },
+  sheetClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.paper.warm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetScroll: {
+    marginBottom: spacing[4],
+  },
+  policyRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    paddingVertical: spacing[3.5],
+  },
+  policyNum: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+    color: GOLD_DEEP,
+    marginTop: 2,
+    width: 20,
+  },
+  sheetCta: {
+    height: 52,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetCtaText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14.5,
+    color: colors.paper.cream,
   },
 });

@@ -389,51 +389,18 @@ export default function AccountScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.memberCardGradient}
           >
-            {/* Guilloche SVG Wave Accent Lines */}
-            <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
-              <Path
-                d="M-40 20 C 60 90, 180 10, 260 70 S 360 20, 440 60"
-                fill="none"
-                stroke="rgba(200, 164, 74, 0.08)"
-                strokeWidth={1.2}
-              />
-              <Path
-                d="M-40 35 C 60 105, 180 25, 260 85 S 360 35, 440 75"
-                fill="none"
-                stroke="rgba(200, 164, 74, 0.08)"
-                strokeWidth={1.2}
-              />
-              <Path
-                d="M-40 50 C 60 120, 180 40, 260 100 S 360 50, 440 90"
-                fill="none"
-                stroke="rgba(200, 164, 74, 0.08)"
-                strokeWidth={1.2}
-              />
-            </Svg>
-
-            {/* Top Badges Row */}
-            <View style={styles.memberBadgeRow}>
-              <View style={styles.privilegePill}>
-                <Ionicons
-                  name={role === "admin" ? "shield-checkmark" : "diamond-outline"}
-                  size={12}
-                  color="#E8CF8F"
-                />
-                <Text style={styles.privilegePillText}>
-                  {role === "admin" ? "Platform admin" : "Private client"}
-                </Text>
-              </View>
-
-              <View style={styles.memberIdBadge}>
-                <Text style={styles.memberIdText}>
-                  {user ? (memberSince ? `Member since ${memberSince}` : "Member") : "Guest"}
-                </Text>
-              </View>
-            </View>
+            {/* Soft champagne glow accents */}
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(232, 207, 143, 0.14)", "rgba(232, 207, 143, 0.03)", "rgba(232, 207, 143, 0)"]}
+              locations={[0, 0.35, 0.7]}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0.2, y: 0.9 }}
+              style={StyleSheet.absoluteFillObject}
+            />
 
             {/* Main Profile Info */}
             <View style={styles.profileRow}>
-              {/* Luxury Avatar with Double Ring */}
               <View style={styles.avatarWrapper}>
                 <View style={styles.avatarOuterBezel}>
                   <View style={styles.avatarInnerBezel}>
@@ -452,7 +419,6 @@ export default function AccountScreen() {
                         end={{ x: 1, y: 1 }}
                         style={styles.avatarFallback}
                       >
-                        <Ionicons name="sparkles" size={10} color="#E8CF8F" style={styles.crownIcon} />
                         <Text style={styles.avatarInitials}>{initials}</Text>
                       </LinearGradient>
                     )}
@@ -466,26 +432,56 @@ export default function AccountScreen() {
               </View>
 
               <View style={styles.profileCopy}>
-                <Text style={styles.profileName} numberOfLines={1}>
+                <Text style={styles.profileName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                   {name}
                 </Text>
-                <View style={styles.emailRow}>
-                  <Text style={styles.profileEmail} numberOfLines={1}>
-                    {email}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.actionPill}
-                  onPress={() => (user ? router.push("/(main)/account/profile") : handleSignIn())}
-                  activeOpacity={0.75}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name={user ? "create-outline" : "log-in-outline"} size={13} color="#E6E2D3" />
-                  <Text style={styles.actionPillText}>{user ? "Edit profile" : "Sign in"}</Text>
-                </TouchableOpacity>
+                <Text style={styles.profileEmail} numberOfLines={1}>
+                  {email}
+                </Text>
               </View>
+
+              {user ? (
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={() => router.push("/(main)/account/profile")}
+                  activeOpacity={0.75}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit profile"
+                >
+                  <Ionicons name="pencil" size={15} color="#E8CF8F" />
+                </TouchableOpacity>
+              ) : null}
             </View>
+
+            {/* Membership meta */}
+            <View style={styles.memberBadgeRow}>
+              <View style={styles.privilegePill}>
+                <Ionicons
+                  name={role === "admin" ? "shield-checkmark" : "diamond-outline"}
+                  size={11}
+                  color="#E8CF8F"
+                />
+                <Text style={styles.privilegePillText}>
+                  {role === "admin" ? "Platform admin" : "Private client"}
+                </Text>
+              </View>
+              <Text style={styles.memberIdText}>
+                {user ? (memberSince ? `Member since ${memberSince}` : "Member") : "Guest"}
+              </Text>
+            </View>
+
+            {!user ? (
+              <TouchableOpacity
+                style={styles.actionPill}
+                onPress={handleSignIn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+              >
+                <Ionicons name="log-in-outline" size={15} color="#14170d" />
+                <Text style={styles.actionPillText}>Sign in</Text>
+              </TouchableOpacity>
+            ) : null}
 
             {/* Haute Horlogerie / Private Client Stats Ribbon */}
             <View style={styles.statsRibbon}>
@@ -521,11 +517,11 @@ export default function AccountScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${st.value} ${st.label}`}
                   >
-                    <Text style={styles.statValue}>{st.value}</Text>
                     <View style={styles.statLabelRow}>
-                      <Ionicons name={st.icon} size={11} color="#C8A44A" />
-                      <Text style={styles.statLabel}>{st.label}</Text>
+                      <Ionicons name={st.icon} size={13} color="#C8A44A" />
+                      <Text style={styles.statValue}>{st.value}</Text>
                     </View>
+                    <Text style={styles.statLabel}>{st.label}</Text>
                   </TouchableOpacity>
                 </React.Fragment>
               ))}
@@ -951,79 +947,44 @@ const styles = StyleSheet.create({
   memberCard: {
     borderRadius: 24,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(200, 164, 74, 0.45)",
     marginBottom: spacing[5],
     backgroundColor: "#16190e",
     shadowColor: "#16190e",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
     elevation: 10,
   },
   memberCardGradient: {
-    padding: spacing[5],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[2],
     position: "relative",
-  },
-  memberBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing[4],
-  },
-  privilegePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(200, 164, 74, 0.15)",
-    borderRadius: radii.full,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-  },
-  privilegePillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#E8CF8F",
-  },
-  memberIdBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  memberIdText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#C5BEA8",
   },
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[4],
-    marginBottom: spacing[5],
   },
   avatarWrapper: {
     position: "relative",
   },
   avatarOuterBezel: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     borderWidth: 1.5,
     borderColor: "#C8A44A",
     padding: 3,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarInnerBezel: {
     width: "100%",
     height: "100%",
-    borderRadius: 33,
+    borderRadius: 31,
     overflow: "hidden",
     backgroundColor: "#1c2012",
   },
@@ -1036,23 +997,17 @@ const styles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
-  },
-  crownIcon: {
-    position: "absolute",
-    top: 6,
   },
   avatarInitials: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 22,
     color: "#F4E2B2",
-    marginTop: 6,
     letterSpacing: 0.5,
   },
   avatarVerifiedBadge: {
     position: "absolute",
-    bottom: -1,
-    right: -1,
+    bottom: 0,
+    right: 0,
     width: 20,
     height: 20,
     borderRadius: 10,
@@ -1064,62 +1019,85 @@ const styles = StyleSheet.create({
   },
   profileCopy: {
     flex: 1,
-    gap: 4,
+    minWidth: 0,
+    gap: 3,
   },
   profileName: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 23,
+    fontSize: 24,
     color: "#FFFFFF",
     letterSpacing: -0.4,
-  },
-  emailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
   },
   profileEmail: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    color: "#BFBBAA",
+    color: "rgba(250, 248, 241, 0.6)",
   },
-  pillRow: {
-    flexDirection: "row",
-    gap: spacing[2],
-    marginTop: spacing[2],
-  },
-  actionPill: {
+  editBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(200, 164, 74, 0.3)",
     alignSelf: "flex-start",
-    marginTop: spacing[2],
+  },
+  memberBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    marginTop: spacing[4],
+  },
+  privilegePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
     borderRadius: radii.full,
-    paddingHorizontal: 13,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  privilegePillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    letterSpacing: 0.3,
+    color: "#E8CF8F",
+  },
+  memberIdText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: "rgba(250, 248, 241, 0.5)",
+  },
+  actionPill: {
+    marginTop: spacing[4],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 44,
+    borderRadius: radii.full,
+    backgroundColor: "#E8CF8F",
   },
   actionPillText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#FAF8F1",
-    letterSpacing: 0.2,
+    fontSize: 14,
+    color: "#14170d",
   },
   statsRibbon: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
-    backgroundColor: "rgba(0, 0, 0, 0.38)",
-    borderRadius: radii.xl,
-    paddingVertical: spacing[3] + 2,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.2)",
+    marginTop: spacing[5],
+    paddingVertical: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(200, 164, 74, 0.3)",
   },
   statItem: {
     alignItems: "center",
     flex: 1,
     gap: 2,
+    paddingVertical: spacing[1],
   },
   statValue: {
     fontFamily: fontFamilies.display.semibold,
@@ -1127,16 +1105,16 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: -0.2,
   },
-  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   statLabel: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
-    color: "rgba(250,248,241,0.7)",
+    color: "rgba(250, 248, 241, 0.6)",
   },
   statDivider: {
-    width: 1,
-    height: 26,
-    backgroundColor: "rgba(200, 164, 74, 0.2)",
+    width: StyleSheet.hairlineWidth,
+    height: 30,
+    backgroundColor: "rgba(200, 164, 74, 0.3)",
   },
 
   /* Recent orders strip */

@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -25,9 +25,31 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 const REWARD_POINTS = 100;
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
+const STEPS: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }[] = [
+  {
+    icon: "share-social-outline",
+    title: "Share your invite",
+    desc: "Send your code or link to friends via WhatsApp, Messages, or socials.",
+  },
+  {
+    icon: "bag-check-outline",
+    title: "They place an order",
+    desc: "Your friend makes their first purchase using your invitation.",
+  },
+  {
+    icon: "trophy-outline",
+    title: "You earn points",
+    desc: `You receive ${REWARD_POINTS} loyalty points towards your tier standing.`,
+  },
+];
 
 export default function ReferralsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -61,7 +83,7 @@ export default function ReferralsScreen() {
       await Clipboard.setStringAsync(shareUrl || code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      toast("Invitation link copied to clipboard", "success");
+      toast("Invitation link copied", "success");
     } catch {
       toast("Could not copy link", "error");
     }
@@ -109,199 +131,185 @@ export default function ReferralsScreen() {
     }
   };
 
+  const stats = [
+    { label: "Invited", value: invitesSent },
+    { label: "Pending", value: pending },
+    { label: "Ordered", value: invitesCompleted },
+    { label: "Points", value: pointsEarned },
+  ];
+
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Atelier Screen Header */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>REFER A FRIEND</Text>
-            <Text style={styles.navSubtitle}>PATRON CIRCLE INVITATION</Text>
-          </View>
+          <Text style={styles.navTitle}>Refer a friend</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => q.refetch()}
+            disabled={q.isFetching}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
           >
-            <Ionicons
-              name="refresh-outline"
-              size={18}
-              color={q.isFetching ? "#C8A44A" : colors.light.foreground}
-            />
+            {q.isFetching && !q.isLoading ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+            )}
           </TouchableOpacity>
         </View>
 
         {q.isLoading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color="#C8A44A" size="small" />
-            <Text style={styles.loadingText}>Retrieving invitation ledger…</Text>
+            <ActivityIndicator color={GOLD} size="small" />
+            <Text style={styles.loadingText}>Loading your invite…</Text>
           </View>
         ) : q.isError || !q.data ? (
           <View style={styles.centerError}>
-            <Ionicons name="alert-circle-outline" size={36} color={colors.light.mutedForeground} />
-            <Text style={styles.errorTitle}>Could Not Load Referral Ledger</Text>
-            <Text style={styles.errorSub}>Please verify your connection and try again.</Text>
+            <View style={styles.errorIcon}>
+              <Ionicons name="alert-circle-outline" size={26} color={colors.olive[700]} />
+            </View>
+            <Text style={styles.errorTitle}>Could not load referrals</Text>
+            <Text style={styles.errorSub}>
+              Check your connection and try again.
+            </Text>
             <TouchableOpacity
-              style={styles.retryBtn}
+              style={styles.secondaryBtn}
               onPress={() => q.refetch()}
               activeOpacity={0.85}
             >
-              <Text style={styles.retryBtnText}>RETRY</Text>
+              <Text style={styles.secondaryBtnText}>Retry</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             refreshControl={
               <RefreshControl
-                refreshing={q.isFetching}
+                refreshing={q.isFetching && !q.isLoading}
                 onRefresh={() => q.refetch()}
-                tintColor="#C8A44A"
+                tintColor={GOLD}
               />
             }
           >
-            {/* 1. Haute Couture Obsidian Invitation Hero Card */}
+            {/* Heading */}
+            <View style={styles.pageHead}>
+              <Text style={styles.eyebrow}>Patron circle</Text>
+              <Text style={styles.pageTitle}>
+                Invite a friend, <Text style={styles.pageTitleAccent}>earn {REWARD_POINTS} points.</Text>
+              </Text>
+              <Text style={styles.pageSub}>
+                When someone you invite places their first order, {REWARD_POINTS} loyalty points
+                are credited to you.
+              </Text>
+            </View>
+
+            {/* Invite code card */}
             <LinearGradient
-              colors={["#1c2016", "#14170e", "#0e110a"]}
+              colors={["#1f2418", "#14170e"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
+              style={styles.hero}
             >
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroTagBadge}>
-                  <Ionicons name="sparkles" size={11} color="#C8A44A" />
-                  <Text style={styles.heroTagText}>PATRON CIRCLE</Text>
+              <Text style={styles.heroEyebrow}>Your invitation code</Text>
+
+              <TouchableOpacity
+                style={styles.codeBox}
+                activeOpacity={0.8}
+                onPress={handleCopy}
+                disabled={!code}
+                accessibilityRole="button"
+                accessibilityLabel="Copy invitation code"
+              >
+                <Text style={styles.codeText}>{code || "—"}</Text>
+                <View style={styles.codeCopyIcon}>
+                  <Ionicons
+                    name={copied ? "checkmark" : "copy-outline"}
+                    size={15}
+                    color={colors.olive[900]}
+                  />
                 </View>
+              </TouchableOpacity>
 
-                <View style={styles.rewardPill}>
-                  <Text style={styles.rewardPillText}>+{REWARD_POINTS} PTS / PATRON</Text>
-                </View>
-              </View>
-
-              {/* Code Showcase Block */}
-              <View style={styles.codeShowcase}>
-                <Text style={styles.codeLabel}>YOUR PERSONAL INVITATION CODE</Text>
-                <TouchableOpacity
-                  style={styles.codeDisplayBox}
-                  activeOpacity={0.8}
-                  onPress={handleCopy}
-                >
-                  <Text style={styles.codeText}>{code || "—"}</Text>
-                  <View style={styles.copyMiniBtn}>
-                    <Ionicons
-                      name={copied ? "checkmark" : "copy-outline"}
-                      size={14}
-                      color="#181b12"
-                    />
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.heroSubtitle}>
-                Invite fellow connoisseurs to the atelier. When a patron you invite completes their first acquisition, you earn {REWARD_POINTS} loyalty points credited directly to your standing.
+              <Text style={styles.heroSub}>
+                Tap the code to copy your link, or send it straight from here.
               </Text>
 
-              {/* Action Buttons */}
-              <View style={styles.heroActionsRow}>
+              <View style={styles.heroActions}>
                 <TouchableOpacity
-                  style={styles.heroShareBtn}
+                  style={styles.shareBtn}
                   activeOpacity={0.88}
                   onPress={handleShare}
                   disabled={!code}
+                  accessibilityRole="button"
                 >
-                  <Ionicons name="paper-plane" size={14} color="#181b12" />
-                  <Text style={styles.heroShareBtnText}>SHARE CODE</Text>
+                  <Ionicons name="paper-plane-outline" size={14} color={colors.olive[900]} />
+                  <Text style={styles.shareBtnText}>Share code</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.heroCopyBtn}
+                  style={styles.copyBtn}
                   activeOpacity={0.8}
                   onPress={handleCopy}
                   disabled={!code}
+                  accessibilityRole="button"
                 >
                   <Ionicons
                     name={copied ? "checkmark" : "link-outline"}
                     size={14}
                     color="#E8CF8F"
                   />
-                  <Text style={styles.heroCopyBtnText}>
-                    {copied ? "COPIED" : "COPY LINK"}
-                  </Text>
+                  <Text style={styles.copyBtnText}>{copied ? "Copied" : "Copy link"}</Text>
                 </TouchableOpacity>
               </View>
             </LinearGradient>
 
-            {/* 2. Redesigned 4-Metric Performance Grid */}
-            <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="people-outline" size={15} color="#85651b" />
+            {/* Stats strip */}
+            <View style={styles.statsStrip}>
+              {stats.map((s, i) => (
+                <View key={s.label} style={[styles.statCell, i > 0 && styles.statDivider]}>
+                  <Text style={[styles.statValue, s.value === 0 && styles.statValueMuted]}>
+                    {s.value}
+                  </Text>
+                  <Text style={styles.statLabel}>{s.label}</Text>
                 </View>
-                <Text style={styles.statNumber}>{invitesSent}</Text>
-                <Text style={styles.statLabel}>INVITED</Text>
-                <Text style={styles.statSub}>Total patrons reached</Text>
-              </View>
-
-              <View style={styles.statCard}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="hourglass-outline" size={15} color="#85651b" />
-                </View>
-                <Text style={styles.statNumber}>{pending}</Text>
-                <Text style={styles.statLabel}>AWAITING ORDER</Text>
-                <Text style={styles.statSub}>Cart in progress</Text>
-              </View>
-
-              <View style={styles.statCard}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="checkmark-circle-outline" size={15} color="#15803d" />
-                </View>
-                <Text style={styles.statNumber}>{invitesCompleted}</Text>
-                <Text style={styles.statLabel}>COMPLETED</Text>
-                <Text style={styles.statSub}>Orders fulfilled</Text>
-              </View>
-
-              <View style={styles.statCard}>
-                <View style={[styles.statIconWrap, { backgroundColor: "rgba(200, 164, 74, 0.15)" }]}>
-                  <Ionicons name="sparkles" size={15} color="#85651b" />
-                </View>
-                <Text style={[styles.statNumber, { color: "#85651b" }]}>
-                  {pointsEarned}
-                </Text>
-                <Text style={styles.statLabel}>PTS EARNED</Text>
-                <Text style={styles.statSub}>Loyalty accrued</Text>
-              </View>
+              ))}
             </View>
 
-            {/* 3. Enter a Friend's Code Card */}
-            <View style={styles.applyCard}>
-              <View style={styles.applyHeader}>
-                <View>
-                  <Text style={styles.applyEyebrow}>HAVE AN INVITATION?</Text>
-                  <Text style={styles.applyTitle}>Link Referrer Code</Text>
+            {/* Apply a friend's code */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardEyebrow}>Have an invitation?</Text>
+                  <Text style={styles.cardTitle}>Link a friend&apos;s code</Text>
                 </View>
                 <View style={styles.oneTimeTag}>
-                  <Text style={styles.oneTimeTagText}>ONE-TIME</Text>
+                  <Text style={styles.oneTimeTagText}>One-time</Text>
                 </View>
               </View>
 
-              <Text style={styles.applySub}>
-                Enter an invitation code once to connect your profile with your referrer and credit their account upon your first order.
+              <Text style={styles.cardSub}>
+                Enter their code once — their account is credited when you place your first order.
               </Text>
 
               <View style={styles.applyInputRow}>
-                <Ionicons name="ticket-outline" size={18} color="#85651b" />
+                <Ionicons name="ticket-outline" size={17} color={colors.light.mutedForeground} />
                 <TextInput
                   value={applyCode}
                   onChangeText={(v) => setApplyCode(v.toUpperCase())}
@@ -320,108 +328,93 @@ export default function ReferralsScreen() {
               </View>
 
               <TouchableOpacity
-                style={[
-                  styles.applyBtn,
-                  (!applyCode.trim() || applying) && styles.applyBtnDisabled,
-                ]}
+                style={[styles.applyBtn, (!applyCode.trim() || applying) && styles.applyBtnDisabled]}
                 onPress={handleApply}
                 disabled={!applyCode.trim() || applying}
                 activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Apply invitation code"
               >
-                {applying ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle-outline" size={14} color="#ffffff" />
-                    <Text style={styles.applyBtnText}>APPLY INVITATION CODE</Text>
-                  </>
-                )}
+                <Text style={styles.applyBtnText}>
+                  {applying ? "Applying…" : "Apply code"}
+                </Text>
+                <View style={styles.applyBtnArrow}>
+                  {applying ? (
+                    <ActivityIndicator size="small" color={colors.olive[900]} />
+                  ) : (
+                    <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                  )}
+                </View>
               </TouchableOpacity>
             </View>
 
-            {/* 4. Patron Circle Privileges (3 Value Cards) */}
-            <View style={styles.privilegesCard}>
-              <View style={styles.privilegesHeader}>
-                <Ionicons name="sparkles" size={13} color="#85651b" />
-                <Text style={styles.privilegesEyebrow}>
-                  HOW THE PATRON CIRCLE WORKS
-                </Text>
-              </View>
-              <Text style={styles.privilegesTitle}>The Atelier Referral Journey</Text>
-
-              <View style={styles.privilegeItem}>
-                <View style={styles.privilegeIconBox}>
-                  <Ionicons name="share-social-outline" size={15} color="#85651b" />
+            {/* How it works */}
+            <View style={styles.card}>
+              <Text style={styles.cardEyebrow}>How it works</Text>
+              {STEPS.map((s, i) => (
+                <View key={s.title} style={[styles.stepRow, i > 0 && styles.rowDivider]}>
+                  <View style={styles.stepIcon}>
+                    <Ionicons name={s.icon} size={16} color={GOLD_DEEP} />
+                    <View style={styles.stepNum}>
+                      <Text style={styles.stepNumText}>{i + 1}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.stepBody}>
+                    <Text style={styles.stepTitle}>{s.title}</Text>
+                    <Text style={styles.stepDesc}>{s.desc}</Text>
+                  </View>
                 </View>
-                <View style={styles.privilegeContent}>
-                  <Text style={styles.privilegeHeading}>1. Share Your Bespoke Link</Text>
-                  <Text style={styles.privilegeDesc}>
-                    Send your personalized invite code to friends via WhatsApp, Messages, or social channels.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.privilegeItem}>
-                <View style={styles.privilegeIconBox}>
-                  <Ionicons name="bag-check-outline" size={15} color="#85651b" />
-                </View>
-                <View style={styles.privilegeContent}>
-                  <Text style={styles.privilegeHeading}>2. Friend Completes Order</Text>
-                  <Text style={styles.privilegeDesc}>
-                    Your friend acquires their first luxury piece and verifies delivery.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.privilegeItem}>
-                <View style={styles.privilegeIconBox}>
-                  <Ionicons name="trophy-outline" size={15} color="#85651b" />
-                </View>
-                <View style={styles.privilegeContent}>
-                  <Text style={styles.privilegeHeading}>3. Points Accrued Instantly</Text>
-                  <Text style={styles.privilegeDesc}>
-                    You immediately receive {REWARD_POINTS} patron loyalty points, elevating your VIP tier standing.
-                  </Text>
-                </View>
-              </View>
+              ))}
             </View>
 
-            {/* 5. Recent Invites Activity Ledger */}
+            {/* Activity */}
             {referrals.length > 0 && (
-              <View style={styles.activityCard}>
-                <View style={styles.activityHeader}>
-                  <Text style={styles.activityEyebrow}>INVITATION LOG</Text>
-                  <Text style={styles.activityTitle}>Recent Circle Activity</Text>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View>
+                    <Text style={styles.cardEyebrow}>Invitation log</Text>
+                    <Text style={styles.cardTitle}>Recent activity</Text>
+                  </View>
                 </View>
 
-                <View style={styles.activityList}>
-                  {referrals.slice(0, 8).map((r) => (
-                    <View key={r.id} style={styles.inviteItemRow}>
-                      <View style={styles.inviteIconCircle}>
-                        <Ionicons
-                          name={r.status === "completed" ? "checkmark-circle" : "time-outline"}
-                          size={14}
-                          color={r.status === "completed" ? "#15803d" : "#85651b"}
-                        />
-                      </View>
-                      <View style={styles.inviteInfoCol}>
-                        <Text style={styles.inviteStatusText}>
-                          {r.status === "completed" ? "Order Completed" : "Invited · Awaiting Order"}
-                        </Text>
-                        <Text style={styles.inviteDateText}>
-                          {new Date(r.created_at).toLocaleDateString()}
-                        </Text>
-                      </View>
-                      <Text style={styles.invitePointsValue}>
-                        +{r.reward_points ?? REWARD_POINTS} pts
+                {referrals.slice(0, 8).map((r, i) => (
+                  <View key={r.id} style={[styles.activityRow, i > 0 && styles.rowDivider]}>
+                    <View
+                      style={[
+                        styles.activityIcon,
+                        r.status === "completed" && styles.activityIconDone,
+                      ]}
+                    >
+                      <Ionicons
+                        name={r.status === "completed" ? "checkmark" : "time-outline"}
+                        size={14}
+                        color={r.status === "completed" ? colors.paper.cream : GOLD_DEEP}
+                      />
+                    </View>
+                    <View style={styles.activityBody}>
+                      <Text style={styles.activityStatus}>
+                        {r.status === "completed" ? "Order completed" : "Awaiting first order"}
+                      </Text>
+                      <Text style={styles.activityDate}>
+                        {new Date(r.created_at).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </Text>
                     </View>
-                  ))}
-                </View>
+                    <Text
+                      style={[
+                        styles.activityPoints,
+                        r.status !== "completed" && styles.activityPointsPending,
+                      ]}
+                    >
+                      +{r.reward_points ?? REWARD_POINTS} pts
+                    </Text>
+                  </View>
+                ))}
               </View>
             )}
-
-            <View style={{ height: 20 }} />
           </ScrollView>
         )}
       </SafeAreaView>
@@ -429,9 +422,6 @@ export default function ReferralsScreen() {
   );
 }
 
-/* =========================================================================
-   Styles
-   ========================================================================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -443,10 +433,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.display.italic,
     fontSize: 14,
     color: colors.light.mutedForeground,
-    fontStyle: "italic",
   },
   centerError: {
     flex: 1,
@@ -455,455 +444,407 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[8],
     gap: 8,
   },
+  errorIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.paper.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
   errorTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
+    fontSize: 20,
     color: colors.light.foreground,
     textAlign: "center",
   },
   errorSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
+    fontSize: 13,
     color: colors.light.mutedForeground,
     textAlign: "center",
   },
-  retryBtn: {
-    backgroundColor: "#181b12",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: radii.full,
+  secondaryBtn: {
     marginTop: 8,
+    paddingHorizontal: 20,
+    height: 40,
+    justifyContent: "center",
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
-  retryBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1,
+  secondaryBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.light.foreground,
   },
 
-  /* Navigation Bar */
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navTitleWrap: {
-    alignItems: "center",
+    borderColor: HAIRLINE,
   },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
-    letterSpacing: 2,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
   },
 
   scrollContent: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: 40,
+    paddingTop: spacing[2],
     gap: 14,
   },
 
-  /* 1. Hero Card */
-  heroCard: {
-    borderRadius: 20,
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
+  },
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+  pageSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 320,
+  },
+
+  /* Invite code card */
+  hero: {
+    borderRadius: 24,
     padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
+    gap: spacing[3],
     ...shadows.editorial,
   },
-  heroTopRow: {
+  heroEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
+  },
+  codeBox: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
+    backgroundColor: "rgba(250, 248, 241, 0.07)",
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  rewardPill: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
-  },
-  rewardPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 0.5,
-  },
-
-  /* Code Showcase */
-  codeShowcase: {
-    alignItems: "center",
-    marginVertical: 4,
-    gap: 8,
-  },
-  codeLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "rgba(255, 255, 255, 0.65)",
-    letterSpacing: 1,
-  },
-  codeDisplayBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
+    borderColor: "rgba(200, 164, 74, 0.4)",
+    borderRadius: 18,
+    paddingLeft: spacing[4],
+    paddingRight: 6,
+    paddingVertical: 6,
   },
   codeText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 26,
-    color: "#E8CF8F",
+    fontSize: 22,
     letterSpacing: 3,
+    color: "#E8CF8F",
   },
-  copyMiniBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  codeCopyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     backgroundColor: "#E8CF8F",
     alignItems: "center",
     justifyContent: "center",
   },
-  heroSubtitle: {
+  heroSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(255, 255, 255, 0.72)",
-    lineHeight: 18,
-    marginTop: 10,
-    marginBottom: 16,
-    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 17,
+    color: "rgba(250, 248, 241, 0.6)",
   },
-  heroActionsRow: {
+  heroActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    gap: 10,
+    marginTop: 2,
   },
-  heroShareBtn: {
-    flex: 1.3,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#E8CF8F",
-    paddingVertical: 11,
-    borderRadius: radii.full,
-  },
-  heroShareBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#181b12",
-    letterSpacing: 0.8,
-  },
-  heroCopyBtn: {
+  shareBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingVertical: 11,
+    gap: 7,
+    height: 48,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: "#E8CF8F",
   },
-  heroCopyBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#E8CF8F",
-    letterSpacing: 0.8,
+  shareBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.olive[900],
   },
-
-  /* 2. Metrics Grid */
-  statsGrid: {
+  copyBtn: {
+    flex: 1,
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  statCard: {
-    width: "48.5%",
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 3,
-    ...shadows.soft,
-  },
-  statIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    gap: 7,
+    height: 48,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(250, 248, 241, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(250, 248, 241, 0.15)",
   },
-  statNumber: {
+  copyBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: "#E8CF8F",
+  },
+
+  /* Stats strip */
+  statsStrip: {
+    flexDirection: "row",
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[3.5],
+  },
+  statCell: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  statDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.light.border,
+  },
+  statValue: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
+    fontSize: 22,
     color: colors.light.foreground,
-    lineHeight: 24,
+  },
+  statValueMuted: {
+    color: colors.olive[300],
   },
   statLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: "#85651b",
-    letterSpacing: 0.8,
-  },
-  statSub: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 9.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
     color: colors.light.mutedForeground,
   },
 
-  /* 3. Apply Code Card */
-  applyCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
+  /* Cards */
+  card: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     padding: spacing[5],
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 12,
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    gap: spacing[2],
   },
-  applyHeader: {
+  cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
   },
-  applyEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
+  cardEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 3,
   },
-  applyTitle: {
+  cardTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontSize: 20,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
-    marginTop: 2,
+  },
+  cardSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.light.mutedForeground,
   },
   oneTimeTag: {
-    backgroundColor: "rgba(22, 23, 15, 0.05)",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
   },
   oneTimeTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.5,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
   },
-  applySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    lineHeight: 17,
-  },
+
   applyInputRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
+    gap: 10,
+    backgroundColor: colors.paper.warm,
     borderRadius: radii.xl,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 11 : 7,
+    paddingVertical: Platform.OS === "ios" ? 13 : 9,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    gap: 8,
+    borderColor: HAIRLINE,
+    marginTop: 4,
   },
   applyInputText: {
     flex: 1,
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 14,
+    fontSize: 15,
+    letterSpacing: 1.5,
     color: colors.light.foreground,
-    letterSpacing: 2,
+    padding: 0,
   },
   applyBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#181b12",
+    justifyContent: "space-between",
+    height: 52,
+    paddingLeft: 20,
+    paddingRight: 6,
     borderRadius: radii.full,
-    paddingVertical: 12,
-    ...shadows.soft,
+    backgroundColor: colors.olive[900],
+    marginTop: 6,
   },
   applyBtnDisabled: {
-    opacity: 0.45,
+    opacity: 0.55,
   },
   applyBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14.5,
+    color: colors.paper.cream,
   },
-
-  /* 4. Privileges Card */
-  privilegesCard: {
-    backgroundColor: "#ffffff",
+  applyBtnArrow: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-    gap: 14,
-  },
-  privilegesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  privilegesEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  privilegesTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16.5,
-    color: colors.light.foreground,
-    marginTop: -4,
-  },
-  privilegeItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  privilegeIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    backgroundColor: colors.paper.cream,
   },
-  privilegeContent: {
+
+  /* Steps */
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    paddingVertical: spacing[3.5],
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  stepIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNum: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    width: 15,
+    height: 15,
+    borderRadius: 7.5,
+    backgroundColor: GOLD,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNumText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8.5,
+    color: colors.olive[950],
+  },
+  stepBody: {
     flex: 1,
     gap: 2,
   },
-  privilegeHeading: {
+  stepTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: colors.light.foreground,
+  },
+  stepDesc: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.light.mutedForeground,
+  },
+
+  /* Activity */
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingVertical: 10,
+  },
+  activityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityIconDone: {
+    backgroundColor: colors.olive[700],
+  },
+  activityBody: {
+    flex: 1,
+    gap: 1,
+  },
+  activityStatus: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
     color: colors.light.foreground,
   },
-  privilegeDesc: {
+  activityDate: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11.5,
     color: colors.light.mutedForeground,
-    lineHeight: 16,
   },
-
-  /* 5. Activity Card */
-  activityCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-    gap: 10,
+  activityPoints: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: colors.olive[700],
   },
-  activityHeader: {
-    marginBottom: 2,
-  },
-  activityEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  activityTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16.5,
-    color: colors.light.foreground,
-    marginTop: 2,
-  },
-  activityList: {
-    gap: 4,
-  },
-  inviteItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.05)",
-  },
-  inviteIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(22, 23, 15, 0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inviteInfoCol: {
-    flex: 1,
-    gap: 1,
-  },
-  inviteStatusText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: colors.light.foreground,
-  },
-  inviteDateText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
+  activityPointsPending: {
     color: colors.light.mutedForeground,
-  },
-  invitePointsValue: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
-    color: "#85651b",
   },
 });

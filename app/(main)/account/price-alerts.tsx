@@ -1,20 +1,22 @@
 import React, { useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  RefreshControl,
-  TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
   TextInput,
-  ScrollView,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
+import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listPriceAlerts, updatePriceAlert, unsubscribePriceAlert } from "@/lib/api";
@@ -43,8 +45,39 @@ export type PriceAlert = {
 
 type FilterTab = "all" | "drops" | "active";
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const GREEN = "#15803d";
+
+const TABS: { key: FilterTab; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "drops", label: "Drops" },
+  { key: "active", label: "Watching" },
+];
+
+const HOW_IT_WORKS = [
+  {
+    n: "01",
+    title: "Continuous monitoring",
+    desc: "We scan boutique prices for revisions around the clock.",
+  },
+  {
+    n: "02",
+    title: "Your target price",
+    desc: "Set a maximum price, or get alerted on any reduction.",
+  },
+  {
+    n: "03",
+    title: "Instant alerts",
+    desc: "Push and email notifications the moment a price drops.",
+  },
+];
+
 export default function PriceAlertsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -133,10 +166,10 @@ export default function PriceAlertsScreen() {
 
   const onCancelAlert = (id: string, productName?: string) => {
     Alert.alert(
-      "Remove Price Watch",
-      `Stop monitoring price adjustments for "${productName ?? "this piece"}"?`,
+      "Remove price watch",
+      `Stop monitoring price changes for "${productName ?? "this piece"}"?`,
       [
-        { text: "Keep Monitoring", style: "cancel" },
+        { text: "Keep watching", style: "cancel" },
         {
           text: "Remove",
           style: "destructive",
@@ -168,181 +201,168 @@ export default function PriceAlertsScreen() {
 
     return (
       <View style={styles.alertCard}>
-        {/* Card Header Status Pill */}
+        {/* Status row */}
         <View style={styles.cardStatusRow}>
           {isDropped ? (
             <View style={styles.dropBadge}>
-              <Ionicons name="trending-down" size={13} color="#2b6e3f" />
+              <Ionicons name="trending-down" size={12} color={GREEN} />
               <Text style={styles.dropBadgeText}>
-                PRICE DROPPED · SAVE {formatPrice(priceDiff, item.currency)} (-{percentDrop}%)
+                Down {percentDrop}% · save {formatPrice(priceDiff, item.currency)}
               </Text>
             </View>
           ) : (
-            <View style={styles.monitoringBadge}>
-              <View style={styles.pulseDot} />
-              <Text style={styles.monitoringBadgeText}>ACTIVE RADAR</Text>
+            <View style={styles.watchBadge}>
+              <View style={styles.watchDot} />
+              <Text style={styles.watchBadgeText}>Watching</Text>
             </View>
           )}
 
           <TouchableOpacity
-            style={styles.trashIconButton}
+            style={styles.trashBtn}
             onPress={() => onCancelAlert(item.id, item.product?.name)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Remove price alert"
           >
-            <Ionicons name="trash-outline" size={16} color="#8F8B82" />
+            <Ionicons name="trash-outline" size={16} color={colors.light.mutedForeground} />
           </TouchableOpacity>
         </View>
 
-        {/* Product Details Row */}
+        {/* Product row */}
         <View style={styles.productRow}>
-          {/* 3:4 Thumbnail Image */}
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => item.product?.slug && router.push(`/(main)/products/${item.product.slug}`)}
-            style={styles.thumbnailContainer}
+            style={styles.thumb}
           >
             {imageUrl ? (
               <Image
                 source={{ uri: imageUrl }}
-                style={styles.thumbnailImage}
+                style={StyleSheet.absoluteFill}
                 contentFit="cover"
                 transition={200}
               />
             ) : (
-              <View style={styles.thumbnailFallback}>
-                <Ionicons name="shirt-outline" size={24} color="#C8A44A" />
+              <View style={styles.thumbFallback}>
+                <Ionicons name="shirt-outline" size={22} color={colors.olive[700]} />
               </View>
             )}
           </TouchableOpacity>
 
-          {/* Info Details */}
           <View style={styles.productInfo}>
-            <Text style={styles.brandTag}>ATELIER ARCHIVE</Text>
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => item.product?.slug && router.push(`/(main)/products/${item.product.slug}`)}
             >
               <Text style={styles.productName} numberOfLines={2}>
-                {item.product?.name ?? "Archival Garment"}
+                {item.product?.name ?? "Product"}
               </Text>
             </TouchableOpacity>
 
-            {/* Price Matrix */}
-            <View style={styles.priceMatrix}>
-              <View style={styles.priceCurrentRow}>
-                <Text style={styles.priceCurrent}>
-                  {formatPrice(currentPrice, item.currency)}
+            <View style={styles.priceRow}>
+              <Text style={styles.priceCurrent}>
+                {formatPrice(currentPrice, item.currency)}
+              </Text>
+              {isDropped && (
+                <Text style={styles.priceWas}>
+                  {formatPrice(initialPrice, item.currency)}
                 </Text>
-                {isDropped && (
-                  <Text style={styles.priceStrikethrough}>
-                    {formatPrice(initialPrice, item.currency)}
-                  </Text>
-                )}
-              </View>
+              )}
+            </View>
 
-              <View style={styles.thresholdMetaRow}>
-                <Ionicons name="shield-checkmark-outline" size={13} color="#85651B" />
-                <Text style={styles.thresholdMetaText}>
-                  {item.threshold_price != null
-                    ? `Target: ≤ ${formatPrice(item.threshold_price, item.currency)}`
-                    : "Alert on any price reduction"}
-                </Text>
-              </View>
+            <View style={styles.targetRow}>
+              <Ionicons name="locate-outline" size={12} color={GOLD_DEEP} />
+              <Text style={styles.targetText}>
+                {item.threshold_price != null
+                  ? `Target ${formatPrice(item.threshold_price, item.currency)}`
+                  : "Alert on any drop"}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* Expandable Threshold Editor */}
+        {/* Editor / actions */}
         {isEditing ? (
-          <View style={styles.editorContainer}>
-            <View style={styles.editorHeaderRow}>
-              <Text style={styles.editorTitle}>SET BESPOKE TARGET PRICE</Text>
-              <TouchableOpacity onPress={() => setEditingId(null)}>
-                <Ionicons name="close" size={18} color="#8F8B82" />
+          <View style={styles.editor}>
+            <View style={styles.editorHeader}>
+              <Text style={styles.editorTitle}>Set target price</Text>
+              <TouchableOpacity onPress={() => setEditingId(null)} hitSlop={8}>
+                <Ionicons name="close" size={18} color={colors.light.mutedForeground} />
               </TouchableOpacity>
             </View>
 
-            {/* Quick Percentage Presets */}
-            <Text style={styles.presetLabel}>Quick Targets Below Current Price:</Text>
             <View style={styles.presetRow}>
+              {[10, 15, 20].map((pct) => (
+                <TouchableOpacity
+                  key={pct}
+                  style={styles.presetChip}
+                  onPress={() => handleApplyPreset(pct, currentPrice)}
+                >
+                  <Text style={styles.presetChipText}>−{pct}%</Text>
+                </TouchableOpacity>
+              ))}
               <TouchableOpacity
                 style={styles.presetChip}
-                onPress={() => handleApplyPreset(10, currentPrice)}
-              >
-                <Text style={styles.presetChipText}>-10%</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => handleApplyPreset(15, currentPrice)}
-              >
-                <Text style={styles.presetChipText}>-15%</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChip}
-                onPress={() => handleApplyPreset(20, currentPrice)}
-              >
-                <Text style={styles.presetChipText}>-20%</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetChipSecondary}
                 onPress={() => {
                   setEditValue("");
                   setEditError(null);
                 }}
               >
-                <Text style={styles.presetChipSecondaryText}>Any Drop</Text>
+                <Text style={styles.presetChipText}>Any drop</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Input & Save Action */}
-            <View style={styles.inputActionRow}>
-              <View style={styles.inputWrapper}>
+            <View style={styles.editorInputRow}>
+              <View style={styles.editorInputWrap}>
                 <Text style={styles.currencyPrefix}>{item.currency}</Text>
                 <TextInput
-                  style={styles.thresholdInput}
+                  style={styles.editorInput}
                   value={editValue}
                   onChangeText={(v) => {
                     setEditValue(v);
                     setEditError(null);
                   }}
-                  placeholder="e.g. 240 (Leave empty for any drop)"
+                  placeholder="Empty = any drop"
                   keyboardType="numeric"
-                  placeholderTextColor="#9C988F"
+                  placeholderTextColor={colors.light.mutedForeground}
                 />
               </View>
-
               <TouchableOpacity
-                style={[styles.saveThresholdButton, isSaving && { opacity: 0.7 }]}
+                style={[styles.editorSave, isSaving && { opacity: 0.6 }]}
                 disabled={isSaving}
                 onPress={() => onSaveThreshold(item.id)}
+                activeOpacity={0.85}
               >
-                <Text style={styles.saveThresholdButtonText}>
-                  {isSaving ? "Saving..." : "Save"}
-                </Text>
+                {isSaving ? (
+                  <ActivityIndicator size="small" color={colors.paper.cream} />
+                ) : (
+                  <Text style={styles.editorSaveText}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
 
-            {editError && (
-              <Text style={styles.editErrorText}>{editError}</Text>
-            )}
+            {editError ? (
+              <Text style={styles.editError}>{editError}</Text>
+            ) : null}
           </View>
         ) : (
-          /* Bottom Action Bar */
-          <View style={styles.cardActionsRow}>
+          <View style={styles.cardFooter}>
             <TouchableOpacity
-              style={styles.editThresholdTrigger}
+              style={styles.footerAction}
               onPress={() => handleStartEditing(item)}
+              hitSlop={6}
             >
-              <Ionicons name="options-outline" size={14} color="#85651B" />
-              <Text style={styles.editThresholdTriggerText}>Adjust Target</Text>
+              <Ionicons name="options-outline" size={13} color={GOLD_DEEP} />
+              <Text style={styles.footerActionText}>Adjust target</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.viewPieceButton}
+              style={styles.footerAction}
               onPress={() => item.product?.slug && router.push(`/(main)/products/${item.product.slug}`)}
+              hitSlop={6}
             >
-              <Text style={styles.viewPieceButtonText}>View Piece</Text>
-              <Ionicons name="arrow-forward" size={13} color="#141311" />
+              <Text style={styles.footerActionTextDark}>View piece</Text>
+              <Ionicons name="arrow-forward" size={12} color={colors.light.foreground} />
             </TouchableOpacity>
           </View>
         )}
@@ -351,897 +371,676 @@ export default function PriceAlertsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      {/* 1. Custom Atelier Top Navigation Header */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="chevron-back" size={20} color="#141311" />
-        </TouchableOpacity>
+    <PaperBackground>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        {/* Navigation */}
+        <View style={styles.navBar}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.navBtn}
+            activeOpacity={0.7}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
+          </TouchableOpacity>
 
-        <View style={styles.headerTitleCenter}>
-          <Text style={styles.headerEyebrow}>ACQUISITION RADAR</Text>
-          <Text style={styles.headerTitle}>Price Alerts</Text>
+          <Text style={styles.navTitle}>Price alerts</Text>
+
+          <TouchableOpacity
+            onPress={() => q.refetch()}
+            disabled={q.isFetching}
+            style={styles.navBtn}
+            activeOpacity={0.7}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
+          >
+            {q.isFetching && !q.isLoading ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+            )}
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          onPress={() => q.refetch()}
-          style={styles.refreshButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="refresh-outline"
-            size={18}
-            color={q.isFetching ? "#C8A44A" : "#141311"}
-          />
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={filteredAlerts}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={q.isFetching}
-            onRefresh={() => q.refetch()}
-            tintColor="#C8A44A"
-            colors={["#C8A44A"]}
-          />
-        }
-        ListHeaderComponent={
-          <View style={styles.headerSectionContainer}>
-            {/* 2. Velvet Obsidian Hero Card */}
-            <LinearGradient
-              colors={["#141311", "#1E1C18", "#0F0E0D"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
-            >
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroTagBadge}>
-                  <Ionicons name="sparkles" size={10} color="#C8A44A" />
-                  <Text style={styles.heroTagText}>ATELIER ACQUISITIONS</Text>
-                </View>
-
-                {/* Radar Pulse Seal Medallion */}
-                <View style={styles.radarMedallion}>
-                  <View style={styles.radarMedallionInner}>
-                    <Ionicons name="radio-outline" size={18} color="#E8CF8F" />
-                  </View>
-                </View>
+        <FlatList
+          data={filteredAlerts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={q.isFetching && !q.isLoading}
+              onRefresh={() => q.refetch()}
+              tintColor={GOLD}
+              colors={[GOLD]}
+            />
+          }
+          ListHeaderComponent={
+            <View style={styles.headerSection}>
+              {/* Heading */}
+              <View style={styles.pageHead}>
+                <Text style={styles.eyebrow}>Price watch</Text>
+                <Text style={styles.pageTitle}>
+                  Price <Text style={styles.pageTitleAccent}>alerts.</Text>
+                </Text>
+                <Text style={styles.pageSub}>
+                  We watch the pieces you care about and tell you the moment the
+                  price drops.
+                </Text>
               </View>
 
-              <Text style={styles.heroTitle}>Archival Price Radar</Text>
-              <Text style={styles.heroSubtitle}>
-                Autonomous surveillance of archival garments. Set bespoke reserve prices or receive
-                real-time alerts when private sales and boutique markdowns are triggered.
-              </Text>
-
-              {/* 3-Metric Intelligence Strip */}
-              <View style={styles.heroMetricsStrip}>
-                <View style={styles.metricItem}>
-                  <Text style={styles.metricValue}>{metrics.total}</Text>
-                  <Text style={styles.metricLabel}>WATCHES</Text>
+              {/* Stat strip */}
+              <View style={styles.statsStrip}>
+                <View style={styles.statCell}>
+                  <Text style={[styles.statNum, metrics.total === 0 && styles.statNumMuted]}>
+                    {metrics.total}
+                  </Text>
+                  <Text style={styles.statLabel}>Watching</Text>
                 </View>
-                <View style={styles.metricDivider} />
-                <View style={styles.metricItem}>
-                  <Text style={[styles.metricValue, metrics.drops > 0 && { color: "#54B870" }]}>
+                <View style={styles.statDivider} />
+                <View style={styles.statCell}>
+                  <Text
+                    style={[
+                      styles.statNum,
+                      metrics.drops === 0 && styles.statNumMuted,
+                      metrics.drops > 0 && { color: GREEN },
+                    ]}
+                  >
                     {metrics.drops}
                   </Text>
-                  <Text style={styles.metricLabel}>PRICE DROPS</Text>
+                  <Text style={styles.statLabel}>Price drops</Text>
                 </View>
-                <View style={styles.metricDivider} />
-                <View style={styles.metricItem}>
-                  <Text style={styles.metricValue}>24/7</Text>
-                  <Text style={styles.metricLabel}>RADAR STATUS</Text>
+                <View style={styles.statDivider} />
+                <View style={styles.statCell}>
+                  <Text style={[styles.statNum, metrics.active === 0 && styles.statNumMuted]}>
+                    {metrics.active}
+                  </Text>
+                  <Text style={styles.statLabel}>Active</Text>
                 </View>
               </View>
-            </LinearGradient>
 
-            {/* 3. Segmented Filter Tabs (When alerts exist) */}
-            {alerts.length > 0 && (
-              <View style={styles.filterTabsRow}>
-                <TouchableOpacity
-                  style={[styles.filterTab, activeTab === "all" && styles.filterTabActive]}
-                  onPress={() => setActiveTab("all")}
-                >
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      activeTab === "all" && styles.filterTabTextActive,
-                    ]}
-                  >
-                    All Watches ({alerts.length})
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.filterTab, activeTab === "drops" && styles.filterTabActive]}
-                  onPress={() => setActiveTab("drops")}
-                >
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      activeTab === "drops" && styles.filterTabTextActive,
-                    ]}
-                  >
-                    Price Drops ({metrics.drops})
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.filterTab, activeTab === "active" && styles.filterTabActive]}
-                  onPress={() => setActiveTab("active")}
-                >
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      activeTab === "active" && styles.filterTabTextActive,
-                    ]}
-                  >
-                    Active Radar ({metrics.active})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        }
-        ListEmptyComponent={
-          q.isLoading ? (
-            <View style={styles.loadingContainer}>
-              <Ionicons name="pulse-outline" size={32} color="#C8A44A" />
-              <Text style={styles.loadingText}>Calibrating price radar...</Text>
+              {/* Filter tabs */}
+              {alerts.length > 0 && (
+                <View style={styles.segmented}>
+                  {TABS.map((tab) => {
+                    const count =
+                      tab.key === "all"
+                        ? metrics.total
+                        : tab.key === "drops"
+                          ? metrics.drops
+                          : metrics.active;
+                    const isActive = activeTab === tab.key;
+                    return (
+                      <TouchableOpacity
+                        key={tab.key}
+                        style={[styles.segment, isActive && styles.segmentActive]}
+                        onPress={() => setActiveTab(tab.key)}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[styles.segmentText, isActive && styles.segmentTextActive]}
+                        >
+                          {tab.label}
+                          {count > 0 ? ` ${count}` : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </View>
-          ) : (
-            /* 4. Editorial Empty State (Replaces the bare card) */
-            <View style={styles.emptyStateWrapper}>
-              <View style={styles.emptyCard}>
-                {/* Double-Ring Gold Medallion */}
-                <View style={styles.emptyMedallionOuter}>
-                  <View style={styles.emptyMedallionInner}>
-                    <Ionicons name="notifications-outline" size={28} color="#C8A44A" />
-                    <View style={styles.emptyMedallionSparkle}>
-                      <Ionicons name="sparkles" size={10} color="#E8CF8F" />
-                    </View>
-                  </View>
-                </View>
-
-                <Text style={styles.emptyTitle}>Radar Currently Clear</Text>
-                <Text style={styles.emptyBody}>
-                  You have no active price alerts. While exploring archival collections and runway
-                  pieces, tap "Notify on price drop" to establish autonomous price tracking.
-                </Text>
-
-                {/* Primary Action Button */}
-                <TouchableOpacity
-                  style={styles.emptyPrimaryButton}
-                  activeOpacity={0.85}
-                  onPress={() => router.push("/(main)")}
-                >
-                  <LinearGradient
-                    colors={["#1C1A17", "#141311"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.emptyPrimaryButtonGradient}
-                  >
-                    <Text style={styles.emptyPrimaryButtonText}>Explore The Collections</Text>
-                    <Ionicons name="arrow-forward" size={15} color="#E8CF8F" />
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                {/* Secondary Wishlist Button */}
-                <TouchableOpacity
-                  style={styles.emptySecondaryButton}
-                  activeOpacity={0.7}
-                  onPress={() => router.push("/(main)/wishlist")}
-                >
-                  <Ionicons name="heart-outline" size={14} color="#85651B" />
-                  <Text style={styles.emptySecondaryButtonText}>Review Saved Wishlist</Text>
-                </TouchableOpacity>
+          }
+          ListEmptyComponent={
+            q.isLoading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator color={GOLD} size="small" />
+                <Text style={styles.loadingText}>Loading price alerts…</Text>
               </View>
-
-              {/* 5. How Price Radar Operates (3-Step Luxury Feature Cards) */}
-              <View style={styles.protocolsSection}>
-                <View style={styles.protocolsHeaderRow}>
-                  <Ionicons name="shield-outline" size={14} color="#85651B" />
-                  <Text style={styles.protocolsEyebrow}>ACQUISITION PROTOCOLS</Text>
-                </View>
-                <Text style={styles.protocolsTitle}>How Price Watch Operates</Text>
-
-                <View style={styles.protocolCardsList}>
-                  {/* Step 1 */}
-                  <View style={styles.protocolCard}>
-                    <View style={styles.protocolNumberBadge}>
-                      <Text style={styles.protocolNumberText}>01</Text>
-                    </View>
-                    <View style={styles.protocolCardContent}>
-                      <Text style={styles.protocolCardTitle}>Continuous Archival Surveillance</Text>
-                      <Text style={styles.protocolCardDesc}>
-                        Automated monitoring across boutique and private collections scans for price
-                        revisions every 15 minutes.
-                      </Text>
-                    </View>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <View style={styles.emptyCard}>
+                  <View style={styles.emptyIcon}>
+                    <Ionicons name="notifications-outline" size={26} color={colors.olive[700]} />
                   </View>
-
-                  {/* Step 2 */}
-                  <View style={styles.protocolCard}>
-                    <View style={styles.protocolNumberBadge}>
-                      <Text style={styles.protocolNumberText}>02</Text>
-                    </View>
-                    <View style={styles.protocolCardContent}>
-                      <Text style={styles.protocolCardTitle}>Bespoke Reserve Targets</Text>
-                      <Text style={styles.protocolCardDesc}>
-                        Calibrate notifications for any price revision or lock in a strict maximum
-                        strike price tailored to your acquisitions budget.
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Step 3 */}
-                  <View style={styles.protocolCard}>
-                    <View style={styles.protocolNumberBadge}>
-                      <Text style={styles.protocolNumberText}>03</Text>
-                    </View>
-                    <View style={styles.protocolCardContent}>
-                      <Text style={styles.protocolCardTitle}>First-Access Priority Dispatch</Text>
-                      <Text style={styles.protocolCardDesc}>
-                        Receive instantaneous push and email dispatches to your device before pieces
-                        are indexed for the general public.
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Concierge Guarantee Callout */}
-                <View style={styles.guaranteeBanner}>
-                  <Ionicons name="ribbon-outline" size={16} color="#C8A44A" />
-                  <Text style={styles.guaranteeText}>
-                    Atelier Concierge Promise: Instantaneous notification transmissions with zero
-                    promotional spam.
+                  <Text style={styles.emptyTitle}>
+                    {alerts.length > 0 ? "No matching alerts" : "No price alerts yet"}
                   </Text>
+                  <Text style={styles.emptySub}>
+                    {alerts.length > 0
+                      ? "No alerts match this filter."
+                      : "Tap “Notify on price drop” on any product and we’ll watch it for you."}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.primaryBtn}
+                    activeOpacity={0.88}
+                    onPress={() => router.push("/(main)")}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.primaryBtnText}>Browse collections</Text>
+                    <View style={styles.primaryBtnArrow}>
+                      <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.textLink}
+                    activeOpacity={0.7}
+                    onPress={() => router.push("/(main)/wishlist")}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.textLinkText}>View saved wishlist</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* How it works */}
+                <View style={styles.howCard}>
+                  <Text style={styles.eyebrow}>How it works</Text>
+                  {HOW_IT_WORKS.map((s, i) => (
+                    <View key={s.n} style={[styles.howRow, i > 0 && styles.rowDivider]}>
+                      <Text style={styles.howNum}>{s.n}</Text>
+                      <View style={styles.howBody}>
+                        <Text style={styles.howTitle}>{s.title}</Text>
+                        <Text style={styles.howDesc}>{s.desc}</Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
               </View>
-            </View>
-          )
-        }
-      />
-    </SafeAreaView>
+            )
+          }
+        />
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#F5F4EF",
-  },
-  topHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
-    backgroundColor: "#F5F4EF",
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  headerTitleCenter: {
-    alignItems: "center",
-  },
-  headerEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: "#85651B",
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: "#141311",
-    letterSpacing: -0.3,
-  },
-  refreshButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  headerSectionContainer: {
-    marginBottom: 16,
   },
 
-  /* Velvet Obsidian Hero Card */
-  heroCard: {
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-    ...shadows.glow,
-  },
-  heroTopRow: {
+  /* Nav */
+  navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[2.5],
   },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: "#E8CF8F",
-  },
-  radarMedallion: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    padding: 3,
-  },
-  radarMedallionInner: {
-    flex: 1,
-    borderRadius: 16,
-    backgroundColor: "#201E1A",
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: HAIRLINE,
   },
-  heroTitle: {
+  navTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.foreground,
+  },
+
+  listContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2],
+  },
+  headerSection: {
+    gap: 14,
+    marginBottom: 14,
+  },
+
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 23,
-    color: "#FAF8F5",
-    letterSpacing: -0.4,
-    marginBottom: 6,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
   },
-  heroSubtitle: {
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+  pageSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: "#B3AFA5",
-    marginBottom: 18,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 300,
   },
-  heroMetricsStrip: {
+
+  /* Stat strip */
+  statsStrip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 12,
-    paddingVertical: 12,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: HAIRLINE,
+    paddingVertical: 14,
+    ...shadows.soft,
   },
-  metricItem: {
+  statCell: {
     flex: 1,
     alignItems: "center",
+    gap: 2,
   },
-  metricValue: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 16,
-    color: "#FAF8F5",
-    marginBottom: 2,
+  statNum: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
   },
-  metricLabel: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: "#8F8B82",
+  statNumMuted: {
+    color: "rgba(22, 23, 15, 0.35)",
   },
-  metricDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  statLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
+    backgroundColor: colors.light.border,
   },
 
-  /* Segmented Filter Tabs */
-  filterTabsRow: {
+  /* Segmented tabs */
+  segmented: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
-  },
-  filterTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: "#EBE8DF",
+    gap: 4,
+    backgroundColor: colors.paper.warm,
+    borderRadius: radii.full,
+    padding: 4,
     borderWidth: 1,
-    borderColor: "#DFDBCF",
+    borderColor: HAIRLINE,
   },
-  filterTabActive: {
-    backgroundColor: "#141311",
-    borderColor: "#141311",
+  segment: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    borderRadius: radii.full,
   },
-  filterTabText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: "#6B675E",
+  segmentActive: {
+    backgroundColor: colors.paper.cream,
+    ...shadows.soft,
   },
-  filterTabTextActive: {
-    color: "#FAF8F5",
+  segmentText: {
     fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+  },
+  segmentTextActive: {
+    color: colors.light.foreground,
   },
 
-  /* Price Alert Cards */
+  /* Alert card */
   alertCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 16,
-    marginBottom: 14,
+    borderColor: HAIRLINE,
+    padding: spacing[4],
+    marginBottom: 12,
+    gap: spacing[3],
     ...shadows.soft,
   },
   cardStatusRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
   },
   dropBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#EBF7EE",
+    backgroundColor: "rgba(21, 128, 61, 0.1)",
     paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#C5E6CC",
+    borderRadius: radii.full,
   },
   dropBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#2B6E3F",
-    letterSpacing: 0.5,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: GREEN,
   },
-  monitoringBadge: {
+  watchBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#F7F5EE",
-    paddingHorizontal: 8,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E6E2D4",
+    borderRadius: radii.full,
   },
-  pulseDot: {
+  watchDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#C8A44A",
+    backgroundColor: GOLD_DEEP,
   },
-  monitoringBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#85651B",
-    letterSpacing: 0.8,
+  watchBadgeText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: GOLD_DEEP,
   },
-  trashIconButton: {
+  trashBtn: {
     padding: 4,
   },
 
   productRow: {
     flexDirection: "row",
-    gap: 14,
-    alignItems: "center",
+    gap: spacing[3],
   },
-  thumbnailContainer: {
-    width: 64,
-    height: 80,
-    borderRadius: 10,
-    backgroundColor: "#F9F8F5",
-    borderWidth: 1,
-    borderColor: "#EBE7DE",
+  thumb: {
+    width: 76,
+    height: 96,
+    borderRadius: 14,
+    backgroundColor: colors.paper.warm,
     overflow: "hidden",
   },
-  thumbnailImage: {
-    width: "100%",
-    height: "100%",
-  },
-  thumbnailFallback: {
+  thumbFallback: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   productInfo: {
     flex: 1,
-  },
-  brandTag: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: "#8F8B82",
-    marginBottom: 3,
+    gap: 4,
+    justifyContent: "center",
   },
   productName: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: "#141311",
-    lineHeight: 20,
-    marginBottom: 6,
+    fontSize: 16.5,
+    lineHeight: 21,
+    letterSpacing: -0.2,
+    color: colors.light.foreground,
   },
-  priceMatrix: {
-    gap: 3,
-  },
-  priceCurrentRow: {
+  priceRow: {
     flexDirection: "row",
     alignItems: "baseline",
     gap: 8,
   },
   priceCurrent: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 16,
-    color: "#141311",
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: colors.light.foreground,
   },
-  priceStrikethrough: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 13,
-    color: "#9C988F",
+  priceWas: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: colors.light.mutedForeground,
     textDecorationLine: "line-through",
   },
-  thresholdMetaRow: {
+  targetRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
-  thresholdMetaText: {
+  targetText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
-    color: "#736F65",
+    color: GOLD_DEEP,
   },
 
-  /* Expandable Threshold Editor */
-  editorContainer: {
-    backgroundColor: "#FAF9F5",
-    borderRadius: 12,
+  /* Editor */
+  editor: {
+    backgroundColor: colors.paper.warm,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E5E1D5",
-    padding: 14,
-    marginTop: 14,
+    borderColor: HAIRLINE,
+    padding: spacing[3.5],
+    gap: 10,
   },
-  editorHeaderRow: {
+  editorHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
   },
   editorTitle: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: "#85651B",
-  },
-  presetLabel: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#736F65",
-    marginBottom: 6,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
   presetRow: {
     flexDirection: "row",
-    gap: 6,
-    marginBottom: 12,
+    gap: 8,
   },
   presetChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: "#ECE8DD",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: colors.paper.cream,
     borderWidth: 1,
-    borderColor: "#DCD7CA",
+    borderColor: HAIRLINE,
   },
   presetChipText: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: "#414A23",
+    fontSize: 11.5,
+    color: colors.light.foreground,
   },
-  presetChipSecondary: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: "#E4DFD3",
-  },
-  presetChipSecondaryText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: "#575349",
-  },
-  inputActionRow: {
+  editorInputRow: {
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
   },
-  inputWrapper: {
+  editorInputWrap: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
+    backgroundColor: colors.paper.cream,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "#DCD7CA",
-    paddingHorizontal: 10,
+    borderColor: HAIRLINE,
+    paddingHorizontal: 14,
   },
   currencyPrefix: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 13,
-    color: "#8F8B82",
+    fontSize: 12.5,
+    color: colors.light.mutedForeground,
     marginRight: 6,
   },
-  thresholdInput: {
+  editorInput: {
     flex: 1,
-    height: 38,
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 13,
-    color: "#141311",
+    height: 42,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 14,
+    color: colors.light.foreground,
   },
-  saveThresholdButton: {
-    backgroundColor: "#141311",
-    paddingHorizontal: 14,
-    height: 38,
-    borderRadius: 8,
+  editorSave: {
+    height: 42,
+    paddingHorizontal: 18,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
   },
-  saveThresholdButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#E8CF8F",
+  editorSaveText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: colors.paper.cream,
   },
-  editErrorText: {
+  editError: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#C0392B",
-    marginTop: 6,
+    fontSize: 11.5,
+    color: colors.accent2.rust,
   },
 
-  /* Bottom Action Bar */
-  cardActionsRow: {
+  /* Card footer */
+  cardFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F0EEE8",
+    paddingTop: spacing[2.5],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
-  editThresholdTrigger: {
+  footerAction: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
+    paddingVertical: 2,
   },
-  editThresholdTriggerText: {
+  footerActionText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#85651B",
+    fontSize: 12.5,
+    color: GOLD_DEEP,
   },
-  viewPieceButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  viewPieceButtonText: {
+  footerActionTextDark: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#141311",
+    fontSize: 12.5,
+    color: colors.light.foreground,
   },
 
-  /* Loading State */
-  loadingContainer: {
+  /* Loading */
+  loadingWrap: {
     paddingVertical: 50,
     alignItems: "center",
-    gap: 12,
+    gap: 10,
   },
   loadingText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: "#8F8B82",
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13.5,
+    color: colors.light.mutedForeground,
   },
 
-  /* Editorial Empty State */
-  emptyStateWrapper: {
-    gap: 20,
-    marginTop: 4,
+  /* Empty */
+  emptyWrap: {
+    gap: 14,
   },
   emptyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 26,
     alignItems: "center",
-    ...shadows.soft,
-  },
-  emptyMedallionOuter: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    padding: 4,
-    marginBottom: 16,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[6],
   },
-  emptyMedallionInner: {
-    flex: 1,
+  emptyIcon: {
+    width: 60,
+    height: 60,
     borderRadius: 30,
-    backgroundColor: "#141311",
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
-  },
-  emptyMedallionSparkle: {
-    position: "absolute",
-    top: 6,
-    right: 8,
+    marginBottom: spacing[4],
   },
   emptyTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    color: "#141311",
+    fontSize: 22,
     letterSpacing: -0.3,
-    marginBottom: 8,
+    color: colors.light.foreground,
     textAlign: "center",
   },
-  emptyBody: {
+  emptySub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    lineHeight: 20,
-    color: "#787469",
+    lineHeight: 19,
+    color: colors.light.mutedForeground,
     textAlign: "center",
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    marginTop: 6,
+    maxWidth: 280,
   },
-  emptyPrimaryButton: {
-    width: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 10,
-    ...shadows.soft,
-  },
-  emptyPrimaryButtonGradient: {
+  primaryBtn: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    height: 50,
+    paddingLeft: 22,
+    paddingRight: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    marginTop: spacing[5],
+  },
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    gap: 8,
   },
-  emptyPrimaryButtonText: {
+  textLink: {
+    marginTop: spacing[3],
+    paddingVertical: 4,
+  },
+  textLinkText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: "#FAF8F5",
-  },
-  emptySecondaryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  emptySecondaryButtonText: {
-    fontFamily: fontFamilies.sans.medium,
     fontSize: 13,
-    color: "#85651B",
+    color: colors.light.foreground,
+    textDecorationLine: "underline",
   },
 
-  /* Acquisition Protocols Section */
-  protocolsSection: {
-    backgroundColor: "#FAF9F5",
-    borderRadius: 18,
+  /* How it works */
+  howCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#EBE7DD",
-    padding: 20,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[2],
   },
-  protocolsHeaderRow: {
+  howRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
+    alignItems: "flex-start",
+    gap: spacing[4],
+    paddingVertical: spacing[3.5],
   },
-  protocolsEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: "#85651B",
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
-  protocolsTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: "#141311",
-    marginBottom: 16,
+  howNum: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 16,
+    color: GOLD_DEEP,
+    width: 24,
   },
-  protocolCardsList: {
-    gap: 12,
-    marginBottom: 18,
-  },
-  protocolCard: {
-    flexDirection: "row",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#EAE6DB",
-    padding: 14,
-  },
-  protocolNumberBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#F2EFE6",
-    borderWidth: 1,
-    borderColor: "#E0DCcf",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  protocolNumberText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#85651B",
-  },
-  protocolCardContent: {
+  howBody: {
     flex: 1,
+    gap: 3,
   },
-  protocolCardTitle: {
+  howTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#141311",
-    marginBottom: 3,
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
-  protocolCardDesc: {
+  howDesc: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: "#787469",
-  },
-  guaranteeBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(200, 164, 74, 0.08)",
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.2)",
-  },
-  guaranteeText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "#6B5219",
+    color: colors.light.mutedForeground,
   },
 });

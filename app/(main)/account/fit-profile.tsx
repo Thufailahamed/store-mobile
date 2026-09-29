@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -19,7 +19,21 @@ import { fetchJson } from "@/lib/api/backend";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const MEASUREMENT_KEYS = [
+  "height_cm",
+  "weight_kg",
+  "chest_cm",
+  "waist_cm",
+  "hips_cm",
+  "inseam_cm",
+  "shoulder_cm",
+];
+
 type FitPreference = "slim" | "tailored" | "relaxed" | "oversized";
+type UnitSystem = "metric" | "imperial";
 
 const FIT_PREFERENCES: {
   id: FitPreference;
@@ -29,7 +43,7 @@ const FIT_PREFERENCES: {
 }[] = [
   {
     id: "slim",
-    label: "Slim Fit",
+    label: "Slim fit",
     desc: "Contoured cut close to the body",
     icon: "body-outline",
   },
@@ -53,12 +67,47 @@ const FIT_PREFERENCES: {
   },
 ];
 
+function Field({
+  label,
+  unit,
+  value,
+  onChange,
+  placeholder,
+  hint,
+}: {
+  label: string;
+  unit: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  hint?: string;
+}) {
+  return (
+    <View style={styles.fieldCol}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.fieldInputWrap}>
+        <TextInput
+          style={styles.fieldInput}
+          keyboardType="numeric"
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={colors.light.mutedForeground}
+        />
+        <Text style={styles.unitSuffix}>{unit}</Text>
+      </View>
+      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
 export default function FitProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
 
   const [vals, setVals] = useState<Record<string, string>>({});
-  const [unitSystem, setUnitSystem] = useState<"metric" | "imperial">("metric");
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>("metric");
   const [fitPref, setFitPref] = useState<FitPreference>("tailored");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,16 +118,7 @@ export default function FitProfileScreen() {
         const data = res.ok ? res.data.data ?? res.data : null;
         if (!data || typeof data !== "object") return;
         const next: Record<string, string> = {};
-        const keys = [
-          "height_cm",
-          "weight_kg",
-          "chest_cm",
-          "waist_cm",
-          "hips_cm",
-          "inseam_cm",
-          "shoulder_cm",
-        ];
-        for (const k of keys) {
+        for (const k of MEASUREMENT_KEYS) {
           const n = (data as Record<string, unknown>)[k];
           if (typeof n === "number") next[k] = String(n);
         }
@@ -87,19 +127,12 @@ export default function FitProfileScreen() {
       .finally(() => setLoading(false));
   }, []);
 
+  const set = (key: string) => (v: string) => setVals((s) => ({ ...s, [key]: v }));
+  const unit = unitSystem === "metric" ? "cm" : "in";
+
   const save = async () => {
     const body: Record<string, number> = {};
-    const keys = [
-      "height_cm",
-      "weight_kg",
-      "chest_cm",
-      "waist_cm",
-      "hips_cm",
-      "inseam_cm",
-      "shoulder_cm",
-    ];
-
-    for (const k of keys) {
+    for (const k of MEASUREMENT_KEYS) {
       const n = Number(vals[k]);
       if (Number.isFinite(n) && n > 0) body[k] = n;
     }
@@ -141,185 +174,156 @@ export default function FitProfileScreen() {
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Atelier Screen Header */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>FIT & TAILORING</Text>
-            <Text style={styles.navSubtitle}>BESPOKE MEASUREMENTS</Text>
-          </View>
+          <Text style={styles.navTitle}>Fit & tailoring</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
             onPress={save}
-            disabled={saving}
+            disabled={saving || loading}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Save measurements"
           >
             {saving ? (
-              <ActivityIndicator size="small" color="#C8A44A" />
+              <ActivityIndicator size="small" color={GOLD} />
             ) : (
-              <Ionicons name="checkmark" size={19} color="#85651b" />
+              <Ionicons name="checkmark" size={19} color={colors.light.foreground} />
             )}
           </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color="#C8A44A" size="small" />
-            <Text style={styles.loadingText}>Loading bespoke fit dossier…</Text>
+            <ActivityIndicator color={GOLD} size="small" />
+            <Text style={styles.loadingText}>Loading your fit profile…</Text>
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            {/* 1. Haute Couture Tailoring Hero Card */}
+            {/* Heading */}
+            <View style={styles.pageHead}>
+              <Text style={styles.eyebrow}>Bespoke measurements</Text>
+              <Text style={styles.pageTitle}>
+                Your <Text style={styles.pageTitleAccent}>fit profile</Text>
+              </Text>
+              <Text style={styles.pageSub}>
+                Save your measurements once — we suggest your size on every collection.
+              </Text>
+            </View>
+
+            {/* Suggested size */}
             <LinearGradient
-              colors={["#1c2016", "#14170e", "#0e110a"]}
+              colors={["#1f2418", "#14170e"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
+              style={styles.hero}
             >
-              <View style={styles.heroEyebrowRow}>
-                <View style={styles.heroTagBadge}>
-                  <Ionicons name="sparkles" size={11} color="#C8A44A" />
-                  <Text style={styles.heroTagText}>BESPOKE TAILORING</Text>
+              <Text style={styles.heroEyebrow}>Suggested size</Text>
+              {predictedSize ? (
+                <View style={styles.heroStats}>
+                  <View style={styles.heroStatCell}>
+                    <Text style={styles.heroStatValue}>{predictedSize.top}</Text>
+                    <Text style={styles.heroStatLabel}>Tops & jackets</Text>
+                  </View>
+                  <View style={styles.heroDivider} />
+                  <View style={styles.heroStatCell}>
+                    <Text style={styles.heroStatValue}>{predictedSize.bottom}</Text>
+                    <Text style={styles.heroStatLabel}>Trousers & pants</Text>
+                  </View>
                 </View>
+              ) : (
+                <Text style={styles.heroEmpty}>
+                  Enter your chest and waist below to see your suggested size.
+                </Text>
+              )}
 
-                <View style={styles.heroStatusBadge}>
-                  <View style={styles.heroStatusDot} />
-                  <Text style={styles.heroStatusText}>AI FIT ACTIVE</Text>
-                </View>
-              </View>
-
-              <Text style={styles.heroTitle}>Your Fit Profile</Text>
-              <Text style={styles.heroSubtitle}>
-                Save your bodily measurements once. Our sizing intelligence matches your silhouette against designer specifications to suggest your flawless size on every collection.
-              </Text>
-
-              {/* Unit System Switcher */}
-              <View style={styles.unitSwitcherRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.unitPill,
-                    unitSystem === "metric" && styles.unitPillActive,
-                  ]}
-                  onPress={() => setUnitSystem("metric")}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.unitPillText,
-                      unitSystem === "metric" && styles.unitPillTextActive,
-                    ]}
-                  >
-                    METRIC (CM / KG)
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.unitPill,
-                    unitSystem === "imperial" && styles.unitPillActive,
-                  ]}
-                  onPress={() => setUnitSystem("imperial")}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.unitPillText,
-                      unitSystem === "imperial" && styles.unitPillTextActive,
-                    ]}
-                  >
-                    IMPERIAL (IN / LBS)
-                  </Text>
-                </TouchableOpacity>
+              {/* Unit switcher */}
+              <View style={styles.unitSwitch}>
+                {(["metric", "imperial"] as UnitSystem[]).map((u) => {
+                  const active = unitSystem === u;
+                  return (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.unitPill, active && styles.unitPillActive]}
+                      onPress={() => setUnitSystem(u)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={[styles.unitPillText, active && styles.unitPillTextActive]}>
+                        {u === "metric" ? "cm · kg" : "in · lbs"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </LinearGradient>
 
-            {/* 2. Predicted Sizing Card (when values entered) */}
-            {predictedSize && (
-              <View style={styles.predictionCard}>
-                <View style={styles.predictionHeader}>
-                  <Ionicons name="sparkles" size={13} color="#85651b" />
-                  <Text style={styles.predictionEyebrow}>
-                    PREDICTED ATELIER SIZING
-                  </Text>
+            {/* Silhouette */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.cardEyebrow}>Drape preference</Text>
+                  <Text style={styles.cardTitle}>Preferred silhouette</Text>
                 </View>
-
-                <View style={styles.predictionValuesRow}>
-                  <View style={styles.predictionCell}>
-                    <Text style={styles.predictionLabel}>TOPS & JACKETS</Text>
-                    <Text style={styles.predictionValue}>{predictedSize.top}</Text>
-                  </View>
-                  <View style={styles.predictionDivider} />
-                  <View style={styles.predictionCell}>
-                    <Text style={styles.predictionLabel}>TROUSERS & PANTS</Text>
-                    <Text style={styles.predictionValue}>
-                      {predictedSize.bottom}
-                    </Text>
-                  </View>
+                <View style={styles.cardIcon}>
+                  <Ionicons name="shirt-outline" size={16} color={GOLD_DEEP} />
                 </View>
               </View>
-            )}
 
-            {/* 3. Fit Silhouette Preference */}
-            <View style={styles.formCard}>
-              <View style={styles.cardHeaderRow}>
-                <View>
-                  <Text style={styles.cardEyebrow}>DRAPE PREFERENCE</Text>
-                  <Text style={styles.cardTitle}>Preferred Silhouette</Text>
-                </View>
-                <Ionicons name="shirt-outline" size={18} color="#85651b" />
-              </View>
-
-              <View style={styles.fitPrefGrid}>
+              <View style={styles.fitGrid}>
                 {FIT_PREFERENCES.map((p) => {
                   const isSelected = fitPref === p.id;
                   return (
                     <TouchableOpacity
                       key={p.id}
-                      style={[
-                        styles.fitPrefTile,
-                        isSelected && styles.fitPrefTileActive,
-                      ]}
+                      style={[styles.fitTile, isSelected && styles.fitTileActive]}
                       onPress={() => setFitPref(p.id)}
                       activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                     >
-                      <View
-                        style={[
-                          styles.fitPrefIconBox,
-                          isSelected && styles.fitPrefIconBoxActive,
-                        ]}
-                      >
-                        <Ionicons
-                          name={p.icon}
-                          size={16}
-                          color={isSelected ? "#E8CF8F" : "#181b12"}
-                        />
+                      <View style={styles.fitTileTop}>
+                        <View
+                          style={[styles.fitIcon, isSelected && styles.fitIconActive]}
+                        >
+                          <Ionicons
+                            name={p.icon}
+                            size={15}
+                            color={isSelected ? "#E8CF8F" : colors.light.foreground}
+                          />
+                        </View>
+                        {isSelected && (
+                          <Ionicons name="checkmark-circle" size={16} color={GOLD} />
+                        )}
                       </View>
                       <Text
-                        style={[
-                          styles.fitPrefLabel,
-                          isSelected && styles.fitPrefLabelActive,
-                        ]}
+                        style={[styles.fitLabel, isSelected && styles.fitLabelActive]}
                       >
                         {p.label}
                       </Text>
                       <Text
-                        style={[
-                          styles.fitPrefDesc,
-                          isSelected && styles.fitPrefDescActive,
-                        ]}
+                        style={[styles.fitDesc, isSelected && styles.fitDescActive]}
                       >
                         {p.desc}
                       </Text>
@@ -329,232 +333,132 @@ export default function FitProfileScreen() {
               </View>
             </View>
 
-            {/* 4. Body Dimensions (Height & Weight) */}
-            <View style={styles.formCard}>
-              <View style={styles.cardHeaderRow}>
-                <View>
-                  <Text style={styles.cardEyebrow}>STATURE & STATS</Text>
-                  <Text style={styles.cardTitle}>General Proportions</Text>
+            {/* Proportions */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.cardEyebrow}>Stature</Text>
+                  <Text style={styles.cardTitle}>General proportions</Text>
                 </View>
-                <Ionicons name="body-outline" size={18} color="#85651b" />
+                <View style={styles.cardIcon}>
+                  <Ionicons name="body-outline" size={16} color={GOLD_DEEP} />
+                </View>
               </View>
 
               <View style={styles.fieldsRow}>
-                {/* Height */}
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>
-                    HEIGHT ({unitSystem === "metric" ? "CM" : "IN"})
-                  </Text>
-                  <View style={styles.fieldInputWrap}>
-                    <Ionicons
-                      name="resize-outline"
-                      size={15}
-                      color={colors.light.mutedForeground}
-                    />
-                    <TextInput
-                      style={styles.fieldInput}
-                      keyboardType="numeric"
-                      value={vals.height_cm ?? ""}
-                      onChangeText={(v) =>
-                        setVals((s) => ({ ...s, height_cm: v }))
-                      }
-                      placeholder="e.g. 178"
-                      placeholderTextColor={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.unitSuffix}>
-                      {unitSystem === "metric" ? "cm" : "in"}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Weight */}
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>
-                    WEIGHT ({unitSystem === "metric" ? "KG" : "LBS"})
-                  </Text>
-                  <View style={styles.fieldInputWrap}>
-                    <Ionicons
-                      name="speedometer-outline"
-                      size={15}
-                      color={colors.light.mutedForeground}
-                    />
-                    <TextInput
-                      style={styles.fieldInput}
-                      keyboardType="numeric"
-                      value={vals.weight_kg ?? ""}
-                      onChangeText={(v) =>
-                        setVals((s) => ({ ...s, weight_kg: v }))
-                      }
-                      placeholder="e.g. 72"
-                      placeholderTextColor={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.unitSuffix}>
-                      {unitSystem === "metric" ? "kg" : "lbs"}
-                    </Text>
-                  </View>
-                </View>
+                <Field
+                  label={`Height (${unit})`}
+                  unit={unit}
+                  value={vals.height_cm ?? ""}
+                  onChange={set("height_cm")}
+                  placeholder={unitSystem === "metric" ? "e.g. 178" : "e.g. 70"}
+                />
+                <Field
+                  label={`Weight (${unitSystem === "metric" ? "kg" : "lbs"})`}
+                  unit={unitSystem === "metric" ? "kg" : "lbs"}
+                  value={vals.weight_kg ?? ""}
+                  onChange={set("weight_kg")}
+                  placeholder={unitSystem === "metric" ? "e.g. 72" : "e.g. 158"}
+                />
               </View>
             </View>
 
-            {/* 5. Upper Garment Measurements (Chest & Shoulder) */}
-            <View style={styles.formCard}>
-              <View style={styles.cardHeaderRow}>
-                <View>
-                  <Text style={styles.cardEyebrow}>UPPER BODY</Text>
-                  <Text style={styles.cardTitle}>Tops, Shirts & Jackets</Text>
+            {/* Upper body */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.cardEyebrow}>Upper body</Text>
+                  <Text style={styles.cardTitle}>Tops, shirts & jackets</Text>
                 </View>
-                <Ionicons name="cut-outline" size={18} color="#85651b" />
+                <View style={styles.cardIcon}>
+                  <Ionicons name="cut-outline" size={16} color={GOLD_DEEP} />
+                </View>
               </View>
 
               <View style={styles.fieldsRow}>
-                {/* Chest */}
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>
-                    CHEST / BUST ({unitSystem === "metric" ? "CM" : "IN"})
-                  </Text>
-                  <View style={styles.fieldInputWrap}>
-                    <TextInput
-                      style={styles.fieldInput}
-                      keyboardType="numeric"
-                      value={vals.chest_cm ?? ""}
-                      onChangeText={(v) =>
-                        setVals((s) => ({ ...s, chest_cm: v }))
-                      }
-                      placeholder="e.g. 98"
-                      placeholderTextColor={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.unitSuffix}>
-                      {unitSystem === "metric" ? "cm" : "in"}
-                    </Text>
-                  </View>
-                  <Text style={styles.fieldHint}>Fullest point of chest</Text>
-                </View>
-
-                {/* Shoulder */}
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>
-                    SHOULDER ({unitSystem === "metric" ? "CM" : "IN"})
-                  </Text>
-                  <View style={styles.fieldInputWrap}>
-                    <TextInput
-                      style={styles.fieldInput}
-                      keyboardType="numeric"
-                      value={vals.shoulder_cm ?? ""}
-                      onChangeText={(v) =>
-                        setVals((s) => ({ ...s, shoulder_cm: v }))
-                      }
-                      placeholder="e.g. 45"
-                      placeholderTextColor={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.unitSuffix}>
-                      {unitSystem === "metric" ? "cm" : "in"}
-                    </Text>
-                  </View>
-                  <Text style={styles.fieldHint}>Shoulder bone to bone</Text>
-                </View>
+                <Field
+                  label={`Chest / bust (${unit})`}
+                  unit={unit}
+                  value={vals.chest_cm ?? ""}
+                  onChange={set("chest_cm")}
+                  placeholder={unitSystem === "metric" ? "e.g. 98" : "e.g. 39"}
+                  hint="Fullest point of chest"
+                />
+                <Field
+                  label={`Shoulder (${unit})`}
+                  unit={unit}
+                  value={vals.shoulder_cm ?? ""}
+                  onChange={set("shoulder_cm")}
+                  placeholder={unitSystem === "metric" ? "e.g. 45" : "e.g. 18"}
+                  hint="Shoulder bone to bone"
+                />
               </View>
             </View>
 
-            {/* 6. Lower Garment Measurements (Waist, Hips & Inseam) */}
-            <View style={styles.formCard}>
-              <View style={styles.cardHeaderRow}>
-                <View>
-                  <Text style={styles.cardEyebrow}>LOWER BODY</Text>
-                  <Text style={styles.cardTitle}>Trousers & Skirts</Text>
+            {/* Lower body */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.cardEyebrow}>Lower body</Text>
+                  <Text style={styles.cardTitle}>Trousers & skirts</Text>
                 </View>
-                <Ionicons name="layers-outline" size={18} color="#85651b" />
+                <View style={styles.cardIcon}>
+                  <Ionicons name="layers-outline" size={16} color={GOLD_DEEP} />
+                </View>
               </View>
 
-              {/* Waist & Hips Row */}
               <View style={styles.fieldsRow}>
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>
-                    WAIST ({unitSystem === "metric" ? "CM" : "IN"})
-                  </Text>
-                  <View style={styles.fieldInputWrap}>
-                    <TextInput
-                      style={styles.fieldInput}
-                      keyboardType="numeric"
-                      value={vals.waist_cm ?? ""}
-                      onChangeText={(v) =>
-                        setVals((s) => ({ ...s, waist_cm: v }))
-                      }
-                      placeholder="e.g. 82"
-                      placeholderTextColor={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.unitSuffix}>
-                      {unitSystem === "metric" ? "cm" : "in"}
-                    </Text>
-                  </View>
-                  <Text style={styles.fieldHint}>At natural waistline</Text>
-                </View>
-
-                <View style={styles.fieldCol}>
-                  <Text style={styles.fieldLabel}>
-                    HIPS ({unitSystem === "metric" ? "CM" : "IN"})
-                  </Text>
-                  <View style={styles.fieldInputWrap}>
-                    <TextInput
-                      style={styles.fieldInput}
-                      keyboardType="numeric"
-                      value={vals.hips_cm ?? ""}
-                      onChangeText={(v) =>
-                        setVals((s) => ({ ...s, hips_cm: v }))
-                      }
-                      placeholder="e.g. 96"
-                      placeholderTextColor={colors.light.mutedForeground}
-                    />
-                    <Text style={styles.unitSuffix}>
-                      {unitSystem === "metric" ? "cm" : "in"}
-                    </Text>
-                  </View>
-                  <Text style={styles.fieldHint}>Fullest point of hips</Text>
-                </View>
+                <Field
+                  label={`Waist (${unit})`}
+                  unit={unit}
+                  value={vals.waist_cm ?? ""}
+                  onChange={set("waist_cm")}
+                  placeholder={unitSystem === "metric" ? "e.g. 82" : "e.g. 32"}
+                  hint="At natural waistline"
+                />
+                <Field
+                  label={`Hips (${unit})`}
+                  unit={unit}
+                  value={vals.hips_cm ?? ""}
+                  onChange={set("hips_cm")}
+                  placeholder={unitSystem === "metric" ? "e.g. 96" : "e.g. 38"}
+                  hint="Fullest point of hips"
+                />
               </View>
 
-              {/* Inseam Row */}
-              <View style={[styles.fieldCol, { marginTop: 4 }]}>
-                <Text style={styles.fieldLabel}>
-                  INSEAM / LEG LENGTH ({unitSystem === "metric" ? "CM" : "IN"})
-                </Text>
-                <View style={styles.fieldInputWrap}>
-                  <TextInput
-                    style={styles.fieldInput}
-                    keyboardType="numeric"
-                    value={vals.inseam_cm ?? ""}
-                    onChangeText={(v) =>
-                      setVals((s) => ({ ...s, inseam_cm: v }))
-                    }
-                    placeholder="e.g. 79"
-                    placeholderTextColor={colors.light.mutedForeground}
-                  />
-                  <Text style={styles.unitSuffix}>
-                    {unitSystem === "metric" ? "cm" : "in"}
-                  </Text>
-                </View>
-                <Text style={styles.fieldHint}>Inner crotch seam down to ankle bone</Text>
+              <View style={styles.fieldsRow}>
+                <Field
+                  label={`Inseam / leg length (${unit})`}
+                  unit={unit}
+                  value={vals.inseam_cm ?? ""}
+                  onChange={set("inseam_cm")}
+                  placeholder={unitSystem === "metric" ? "e.g. 79" : "e.g. 31"}
+                  hint="Inner crotch seam to ankle bone"
+                />
+                <View style={styles.fieldCol} />
               </View>
             </View>
 
-            {/* 7. Save Action Button */}
+            {/* Save */}
             <TouchableOpacity
-              style={styles.saveBtn}
+              style={[styles.saveBtn, saving && { opacity: 0.85 }]}
               onPress={save}
               disabled={saving}
               activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel="Save fit profile"
             >
-              {saving ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={15} color="#ffffff" />
-                  <Text style={styles.saveBtnText}>SAVE BESPOKE FIT PROFILE</Text>
-                  <Ionicons name="arrow-forward" size={13} color="#ffffff" />
-                </>
-              )}
+              <Text style={styles.saveBtnText}>
+                {saving ? "Saving…" : "Save fit profile"}
+              </Text>
+              <View style={styles.saveBtnArrow}>
+                {saving ? (
+                  <ActivityIndicator size="small" color={colors.olive[900]} />
+                ) : (
+                  <Ionicons name="checkmark" size={15} color={colors.olive[900]} />
+                )}
+              </View>
             </TouchableOpacity>
-
-            <View style={{ height: 30 }} />
           </ScrollView>
         )}
       </SafeAreaView>
@@ -562,9 +466,6 @@ export default function FitProfileScreen() {
   );
 }
 
-/* =========================================================================
-   Styles
-   ========================================================================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -576,333 +477,313 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.display.italic,
     fontSize: 14,
     color: colors.light.mutedForeground,
-    fontStyle: "italic",
   },
 
-  /* Navigation Bar */
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navTitleWrap: {
-    alignItems: "center",
+    borderColor: HAIRLINE,
   },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
-    letterSpacing: 2,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
   },
 
   scrollContent: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: 40,
+    paddingTop: spacing[2],
     gap: 14,
   },
 
-  /* 1. Hero Card */
-  heroCard: {
-    borderRadius: 20,
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
+  },
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+  pageSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 300,
+  },
+
+  /* Suggested size hero */
+  hero: {
+    borderRadius: 24,
     padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
+    gap: spacing[4],
     ...shadows.editorial,
   },
-  heroEyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  heroStatusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  heroStatusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: "#4ade80",
-  },
-  heroStatusText: {
+  heroEyebrow: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: "rgba(255, 255, 255, 0.7)",
-    letterSpacing: 0.6,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
   },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#ffffff",
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(255, 255, 255, 0.72)",
-    lineHeight: 18,
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  unitSwitcherRow: {
+  heroStats: {
     flexDirection: "row",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+  },
+  heroStatCell: {
+    flex: 1,
+    gap: 3,
+  },
+  heroStatValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 19,
+    letterSpacing: -0.3,
+    color: colors.paper.cream,
+  },
+  heroStatLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "rgba(250, 248, 241, 0.55)",
+  },
+  heroDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: "rgba(250, 248, 241, 0.12)",
+    marginHorizontal: spacing[4],
+  },
+  heroEmpty: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "rgba(250, 248, 241, 0.7)",
+  },
+  unitSwitch: {
+    flexDirection: "row",
+    backgroundColor: "rgba(250, 248, 241, 0.08)",
     borderRadius: radii.full,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    padding: 4,
   },
   unitPill: {
     flex: 1,
-    paddingVertical: 7,
+    height: 36,
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: radii.full,
   },
   unitPillActive: {
     backgroundColor: "#E8CF8F",
   },
   unitPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "rgba(255, 255, 255, 0.7)",
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11.5,
     letterSpacing: 0.8,
+    color: "rgba(250, 248, 241, 0.65)",
   },
   unitPillTextActive: {
-    color: "#181b12",
-  },
-
-  /* 2. Predicted Sizing Card */
-  predictionCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    gap: 8,
-    ...shadows.soft,
-  },
-  predictionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  predictionEyebrow: {
+    color: colors.olive[900],
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  predictionValuesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  predictionCell: {
-    flex: 1,
-    gap: 2,
-  },
-  predictionLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.5,
-  },
-  predictionValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 14.5,
-    color: colors.light.foreground,
-  },
-  predictionDivider: {
-    width: 1,
-    height: 26,
-    backgroundColor: "rgba(22, 23, 15, 0.08)",
-    marginHorizontal: 12,
   },
 
-  /* Form Cards */
-  formCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
+  /* Cards */
+  card: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     padding: spacing[5],
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 12,
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    gap: spacing[4],
   },
-  cardHeaderRow: {
+  cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
   },
+  cardHeaderText: {
+    gap: 3,
+  },
   cardEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
   },
   cardTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontSize: 20,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
-    marginTop: 2,
   },
-
-  /* Fit Preferences Grid */
-  fitPrefGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 2,
-  },
-  fitPrefTile: {
-    width: "48.5%",
-    backgroundColor: "rgba(22, 23, 15, 0.02)",
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 4,
-  },
-  fitPrefTileActive: {
-    backgroundColor: "#181b12",
-    borderColor: "#181b12",
-  },
-  fitPrefIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  cardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "rgba(200, 164, 74, 0.12)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
-  },
-  fitPrefIconBoxActive: {
-    backgroundColor: "rgba(200, 164, 74, 0.2)",
-  },
-  fitPrefLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  fitPrefLabelActive: {
-    color: "#ffffff",
-  },
-  fitPrefDesc: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    lineHeight: 14,
-  },
-  fitPrefDescActive: {
-    color: "rgba(255, 255, 255, 0.7)",
   },
 
-  /* Input Fields */
+  /* Silhouette grid */
+  fitGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  fitTile: {
+    width: "47.8%",
+    backgroundColor: colors.paper.warm,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    gap: 5,
+  },
+  fitTileActive: {
+    backgroundColor: colors.olive[900],
+  },
+  fitTileTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  fitIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fitIconActive: {
+    backgroundColor: "rgba(200, 164, 74, 0.18)",
+  },
+  fitLabel: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13.5,
+    color: colors.light.foreground,
+  },
+  fitLabelActive: {
+    color: colors.paper.cream,
+  },
+  fitDesc: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    lineHeight: 14,
+    color: colors.light.mutedForeground,
+  },
+  fitDescActive: {
+    color: "rgba(250, 248, 241, 0.65)",
+  },
+
+  /* Inputs */
   fieldsRow: {
     flexDirection: "row",
     gap: 12,
   },
   fieldCol: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
   fieldLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#85651b",
-    letterSpacing: 0.8,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
   },
   fieldInputWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
+    backgroundColor: colors.paper.warm,
     borderRadius: radii.xl,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "ios" ? 11 : 7,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    gap: 6,
+    borderColor: HAIRLINE,
+    gap: 8,
   },
   fieldInput: {
     flex: 1,
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.light.foreground,
     padding: 0,
   },
   unitSuffix: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 11,
-    color: colors.light.mutedForeground,
+    color: colors.olive[600],
   },
   fieldHint: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
+    fontSize: 10.5,
     color: colors.light.mutedForeground,
-    marginTop: 1,
   },
 
-  /* Save Button */
+  /* Save */
   saveBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#181b12",
+    justifyContent: "space-between",
+    height: 56,
+    paddingLeft: 22,
+    paddingRight: 6,
     borderRadius: radii.full,
-    paddingVertical: 14,
-    marginTop: 6,
-    ...shadows.soft,
+    backgroundColor: colors.olive[900],
+    marginTop: 4,
+    shadowColor: colors.olive[950],
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 5,
   },
   saveBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: colors.paper.cream,
+    letterSpacing: 0.2,
+  },
+  saveBtnArrow: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.paper.cream,
   },
 });

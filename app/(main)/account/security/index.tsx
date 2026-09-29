@@ -13,11 +13,11 @@ import {
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@/components/ui/Icon";
+import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
@@ -85,8 +85,15 @@ const DEVICE_ICON: Record<"laptop" | "phone" | "tablet", keyof typeof Ionicons.g
   tablet: "tablet-portrait-outline",
 };
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const GREEN = "#15803d";
+
 export default function SecurityScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -306,6 +313,7 @@ export default function SecurityScreen() {
 
   const score = mfaEnabled ? 95 : 60;
   const pwdStrength = strengthOf(newPassword);
+  const healthy = score >= 90;
 
   const sessionRows = useMemo(() => {
     if (sessions.length === 0) {
@@ -313,7 +321,7 @@ export default function SecurityScreen() {
         {
           id: "this",
           label: `${device.os} · LUXE Mobile`,
-          meta: `${device.osVersion} · Primary Device · Active now`,
+          meta: `${device.osVersion} · Primary device`,
           current: true,
           icon: "phone-portrait-outline" as const,
           active: "Active now",
@@ -323,609 +331,558 @@ export default function SecurityScreen() {
     return sessions.map((s) => ({
       id: s.id,
       label: `${s.os} · ${s.browser}`,
-      meta: `${s.location ?? "Private Location"}${s.ip ? ` · ${s.ip}` : ""}`,
+      meta: `${s.location ?? "Private location"}${s.ip ? ` · ${s.ip}` : ""}`,
       current: s.current,
       icon: DEVICE_ICON[s.device] ?? ("phone-portrait-outline" as const),
       active: timeAgo(s.last_active),
     }));
   }, [sessions, device]);
 
+  const header = (
+    <View style={styles.navBar}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={styles.navBtn}
+        activeOpacity={0.7}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+      >
+        <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
+      </TouchableOpacity>
+
+      <Text style={styles.navTitle}>Security</Text>
+
+      <View style={styles.navBtn}>
+        <Ionicons
+          name={healthy ? "shield-checkmark" : "shield-outline"}
+          size={17}
+          color={healthy ? GREEN : GOLD_DEEP}
+        />
+      </View>
+    </View>
+  );
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-        <View style={styles.topHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={20} color="#141311" />
-          </TouchableOpacity>
-          <View style={styles.headerTitleCenter}>
-            <Text style={styles.headerEyebrow}>VAULT DEFENSE</Text>
-            <Text style={styles.headerTitle}>Security & Privacy</Text>
+      <PaperBackground>
+        <SafeAreaView style={styles.container} edges={["top"]}>
+          {header}
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={GOLD} size="small" />
+            <Text style={styles.loadingText}>Loading security settings…</Text>
           </View>
-          <View style={{ width: 40 }} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator color="#C8A44A" size="large" />
-          <Text style={styles.loadingText}>Verifying cryptographic vault...</Text>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      {/* 1. Atelier Top Navigation Header */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    <PaperBackground>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        {header}
+
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Ionicons name="chevron-back" size={20} color="#141311" />
-        </TouchableOpacity>
-
-        <View style={styles.headerTitleCenter}>
-          <Text style={styles.headerEyebrow}>VAULT DEFENSE</Text>
-          <Text style={styles.headerTitle}>Security & Privacy</Text>
-        </View>
-
-        <View style={styles.shieldMedallionSmall}>
-          <Ionicons
-            name={score >= 90 ? "shield-checkmark" : "shield-outline"}
-            size={18}
-            color={score >= 90 ? "#54B870" : "#C8A44A"}
-          />
-        </View>
-      </View>
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* 2. Velvet Obsidian Hero Card ("Fort Knox Protocol") */}
-          <LinearGradient
-            colors={["#141311", "#1E1C18", "#0F0E0D"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.heroTopRow}>
-              <View style={styles.heroTagBadge}>
-                <Ionicons name="shield-checkmark" size={10} color="#C8A44A" />
-                <Text style={styles.heroTagText}>ENCRYPTED ATELIER VAULT</Text>
-              </View>
-
-              {/* Gold Vault Shield Medallion */}
-              <View style={styles.vaultMedallion}>
-                <View style={styles.vaultMedallionInner}>
-                  <Ionicons name="lock-closed-outline" size={18} color="#E8CF8F" />
-                </View>
-              </View>
+            {/* Heading */}
+            <View style={styles.pageHead}>
+              <Text style={styles.eyebrow}>Account protection</Text>
+              <Text style={styles.pageTitle}>
+                Security &amp; <Text style={styles.pageTitleAccent}>privacy.</Text>
+              </Text>
             </View>
 
-            <View style={styles.heroBodyRow}>
-              <View style={styles.heroTextCol}>
-                <Text style={styles.heroTitle}>Fort Knox Protocol</Text>
-                <Text style={styles.heroSubtitle}>
-                  End-to-end cryptographic defense of your private measurements, payment
-                  credentials, and bespoke acquisition ledger.
-                </Text>
-              </View>
-
-              {/* Health Badge */}
-              <View
-                style={[
-                  styles.healthPill,
-                  {
-                    backgroundColor:
-                      score >= 90 ? "rgba(84, 184, 112, 0.15)" : "rgba(200, 164, 74, 0.15)",
-                    borderColor:
-                      score >= 90 ? "rgba(84, 184, 112, 0.3)" : "rgba(200, 164, 74, 0.3)",
-                  },
-                ]}
-              >
+            {/* Score hero */}
+            <View style={styles.scoreCard}>
+              <View style={styles.scoreTop}>
+                <View>
+                  <Text style={styles.eyebrow}>Security score</Text>
+                  <View style={styles.scoreRow}>
+                    <Text style={styles.scoreNum}>{score}</Text>
+                    <Text style={styles.scoreMax}>/100</Text>
+                  </View>
+                </View>
                 <View
                   style={[
-                    styles.liveDot,
-                    { backgroundColor: score >= 90 ? "#54B870" : "#C8A44A" },
+                    styles.scorePill,
+                    healthy ? styles.scorePillGood : styles.scorePillWarn,
                   ]}
-                />
-                <Text
+                >
+                  <View
+                    style={[
+                      styles.scoreDot,
+                      { backgroundColor: healthy ? GREEN : GOLD_DEEP },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.scorePillText,
+                      { color: healthy ? GREEN : GOLD_DEEP },
+                    ]}
+                  >
+                    {healthy ? "Excellent" : "Can improve"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.track}>
+                <View
                   style={[
-                    styles.healthPillText,
-                    { color: score >= 90 ? "#54B870" : "#E8CF8F" },
+                    styles.fill,
+                    {
+                      width: `${score}%`,
+                      backgroundColor: healthy ? GREEN : GOLD,
+                    },
                   ]}
-                >
-                  {score >= 90 ? "OPTIMAL" : "RECOMMENDED"}
-                </Text>
-              </View>
-            </View>
-          </LinearGradient>
-
-          {/* 3. Luxury Security Health Score Card */}
-          <View style={styles.scoreCard}>
-            <View style={styles.scoreHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>DEFENSE EVALUATION</Text>
-                <Text style={styles.sectionTitle}>Security Score</Text>
-              </View>
-              <View style={styles.scoreDeltaBadge}>
-                <Text style={styles.scoreDeltaText}>
-                  {score >= 90 ? "+5 PTS THIS WEEK" : "+0 THIS WEEK"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.scoreValueRow}>
-              <Text style={styles.scoreNumber}>{score}</Text>
-              <Text style={styles.scoreMax}>/100</Text>
-            </View>
-
-            {/* Gauge Progress Bar */}
-            <View style={styles.track}>
-              <LinearGradient
-                colors={score >= 90 ? ["#54B870", "#2B6E3F"] : ["#E8CF8F", "#C8A44A"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[styles.fill, { width: `${score}%` }]}
-              />
-            </View>
-
-            {/* 4-Point Defense Checklist */}
-            <View style={styles.checklist}>
-              <CheckRow
-                done
-                label="Cryptographic sign-in password active"
-                sub="Salted & hashed with modern cipher standards"
-              />
-              <CheckRow
-                done={mfaEnabled}
-                label="Two-factor authentication (TOTP)"
-                sub={mfaEnabled ? "Enabled via authenticator app" : "Recommended: enable authenticator codes"}
-              />
-              <CheckRow
-                done={!!recoveryEmailSaved}
-                label="Verified secondary recovery channel"
-                sub={recoveryEmailSaved ? recoveryEmailSaved : "No recovery email designated"}
-              />
-              <CheckRow
-                done
-                label="Session integrity & access logs reviewed"
-                sub="Zero unrecognized device authorizations"
-              />
-            </View>
-          </View>
-
-          {/* 4. Bespoke Password Card */}
-          <View style={styles.contentCard}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>AUTHENTICATION CREDENTIALS</Text>
-                <Text style={styles.sectionTitle}>Password</Text>
-                <Text style={styles.cardSubtitle}>Rotate your master account password.</Text>
-              </View>
-              <View
-                style={[
-                  styles.strengthBadge,
-                  { backgroundColor: pwdStrength.color + "20", borderColor: pwdStrength.color + "40" },
-                ]}
-              >
-                <Text style={[styles.strengthBadgeText, { color: pwdStrength.color }]}>
-                  {pwdStrength.label.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            {/* Current Password Field */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>CURRENT PASSWORD</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="key-outline" size={16} color="#85651B" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={currentPassword}
-                  onChangeText={setCurrentPassword}
-                  secureTextEntry={!showCurrentPassword}
-                  placeholder="Enter current password"
-                  placeholderTextColor="#9C988F"
                 />
-                <TouchableOpacity
-                  onPress={() => setShowCurrentPassword(!showCurrentPassword)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons
-                    name={showCurrentPassword ? "eye-off-outline" : "eye-outline"}
-                    size={18}
-                    color="#8F8B82"
-                  />
-                </TouchableOpacity>
               </View>
-            </View>
 
-            {/* New Password Field */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>NEW PASSWORD</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={16} color="#85651B" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  secureTextEntry={!showNewPassword}
-                  placeholder="Minimum 8 characters with mix of cases & symbols"
-                  placeholderTextColor="#9C988F"
+              <View style={styles.checklist}>
+                <CheckRow
+                  done
+                  label="Password sign-in"
+                  sub="Active and up to date"
                 />
-                <TouchableOpacity
-                  onPress={() => setShowNewPassword(!showNewPassword)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons
-                    name={showNewPassword ? "eye-off-outline" : "eye-outline"}
-                    size={18}
-                    color="#8F8B82"
-                  />
-                </TouchableOpacity>
+                <CheckRow
+                  done={mfaEnabled}
+                  label="Two-factor authentication"
+                  sub={mfaEnabled ? "Enabled via authenticator app" : "Enable authenticator codes"}
+                />
+                <CheckRow
+                  done={!!recoveryEmailSaved}
+                  label="Recovery email"
+                  sub={recoveryEmailSaved ? recoveryEmailSaved : "None set"}
+                />
+                <CheckRow
+                  done
+                  label="Sessions reviewed"
+                  sub="No unrecognized devices"
+                />
               </View>
             </View>
 
-            {/* Password Strength Meter */}
-            {newPassword.length > 0 && (
-              <View style={styles.pwdStrength}>
-                <View style={styles.pwdStrengthTrack}>
+            {/* Password */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.eyebrow}>Credentials</Text>
+                  <Text style={styles.cardTitle}>Password</Text>
+                </View>
+                {newPassword.length > 0 && (
+                  <View
+                    style={[
+                      styles.strengthPill,
+                      {
+                        backgroundColor: pwdStrength.color + "18",
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.strengthPillText, { color: pwdStrength.color }]}>
+                      {pwdStrength.label}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.cardCopy}>Change your account password.</Text>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Current password</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.input}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    secureTextEntry={!showCurrentPassword}
+                    placeholder="Enter current password"
+                    placeholderTextColor={colors.light.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowCurrentPassword(!showCurrentPassword)}
+                    hitSlop={10}
+                  >
+                    <Ionicons
+                      name={showCurrentPassword ? "eye-off-outline" : "eye-outline"}
+                      size={17}
+                      color={colors.light.mutedForeground}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>New password</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.input}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    secureTextEntry={!showNewPassword}
+                    placeholder="Minimum 8 characters"
+                    placeholderTextColor={colors.light.mutedForeground}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowNewPassword(!showNewPassword)}
+                    hitSlop={10}
+                  >
+                    <Ionicons
+                      name={showNewPassword ? "eye-off-outline" : "eye-outline"}
+                      size={17}
+                      color={colors.light.mutedForeground}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {newPassword.length > 0 && (
+                <View style={styles.strengthRow}>
                   {[1, 2, 3, 4].map((i) => (
                     <View
                       key={i}
                       style={[
-                        styles.pwdStrengthSegment,
+                        styles.strengthSeg,
                         {
                           backgroundColor:
-                            i <= pwdStrength.score ? pwdStrength.color : "#E5E1D4",
+                            i <= pwdStrength.score ? pwdStrength.color : "rgba(22,23,15,0.1)",
                         },
                       ]}
                     />
                   ))}
                 </View>
-                <Text style={styles.pwdStrengthHint}>
-                  Security recommendation: Use 12+ characters, uppercase, lowercase, numbers, and symbols.
-                </Text>
-              </View>
-            )}
+              )}
 
-            <TouchableOpacity
-              style={[
-                styles.primaryActionButton,
-                (saving || newPassword.length < 8) && { opacity: 0.6 },
-              ]}
-              disabled={saving || newPassword.length < 8}
-              onPress={changePassword}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#1C1A17", "#141311"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.primaryActionGradient}
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  (saving || newPassword.length < 8) && { opacity: 0.5 },
+                ]}
+                disabled={saving || newPassword.length < 8}
+                onPress={changePassword}
+                activeOpacity={0.88}
+                accessibilityRole="button"
               >
                 {saving ? (
-                  <ActivityIndicator color="#E8CF8F" size="small" />
+                  <ActivityIndicator color={colors.paper.cream} size="small" />
                 ) : (
                   <>
-                    <Text style={styles.primaryActionText}>Update Vault Password</Text>
-                    <Ionicons name="arrow-forward" size={14} color="#E8CF8F" />
+                    <Text style={styles.primaryBtnText}>Update password</Text>
+                    <View style={styles.primaryBtnArrow}>
+                      <Ionicons name="checkmark" size={14} color={colors.olive[900]} />
+                    </View>
                   </>
                 )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-
-          {/* 5. Two-Factor Authentication Card */}
-          <View style={styles.contentCard}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>MULTI-FACTOR DEFENSE</Text>
-                <Text style={styles.sectionTitle}>Two-Factor Authentication</Text>
-                <Text style={styles.cardSubtitle}>
-                  Time-based one-time passcodes generated by your authenticator app.
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.statusBadge,
-                  {
-                    backgroundColor: mfaEnabled ? "#EBF7EE" : "#F7F5EE",
-                    borderColor: mfaEnabled ? "#C5E6CC" : "#E6E2D4",
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={mfaEnabled ? "shield-checkmark" : "shield-outline"}
-                  size={11}
-                  color={mfaEnabled ? "#2B6E3F" : "#85651B"}
-                />
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    { color: mfaEnabled ? "#2B6E3F" : "#85651B" },
-                  ]}
-                >
-                  {mfaEnabled ? "ACTIVE 2FA" : "DISABLED"}
-                </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleInfo}>
-                <Ionicons name="phone-portrait-outline" size={18} color="#85651B" />
-                <View>
-                  <Text style={styles.toggleLabel}>Authenticator App</Text>
-                  <Text style={styles.toggleSub}>Google Authenticator, 1Password, or Authy</Text>
+            {/* 2FA */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.eyebrow}>Two-factor</Text>
+                  <Text style={styles.cardTitle}>Authenticator app</Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusPill,
+                    mfaEnabled ? styles.statusPillOn : styles.statusPillOff,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusPillText,
+                      { color: mfaEnabled ? GREEN : GOLD_DEEP },
+                    ]}
+                  >
+                    {mfaEnabled ? "On" : "Off"}
+                  </Text>
                 </View>
               </View>
+              <Text style={styles.cardCopy}>
+                One-time codes from Google Authenticator, 1Password, or Authy add a
+                second layer to sign-in.
+              </Text>
 
               {mfaEnabled ? (
                 <TouchableOpacity
-                  style={styles.secondaryOutlineButton}
+                  style={styles.outlineBtn}
                   onPress={disableMfa}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.secondaryOutlineButtonText}>Disable</Text>
+                  <Text style={styles.outlineBtnText}>Disable two-factor</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  style={styles.enableMfaButton}
+                  style={styles.primaryBtn}
                   onPress={startEnroll}
                   disabled={enrollBusy}
+                  activeOpacity={0.88}
+                  accessibilityRole="button"
                 >
                   {enrollBusy ? (
-                    <ActivityIndicator size="small" color="#141311" />
+                    <ActivityIndicator size="small" color={colors.paper.cream} />
                   ) : (
                     <>
-                      <Text style={styles.enableMfaButtonText}>Configure</Text>
-                      <Ionicons name="arrow-forward" size={12} color="#141311" />
+                      <Text style={styles.primaryBtnText}>Set up two-factor</Text>
+                      <View style={styles.primaryBtnArrow}>
+                        <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                      </View>
                     </>
                   )}
                 </TouchableOpacity>
               )}
             </View>
-          </View>
 
-          {/* 6. Recovery Channel Card */}
-          <View style={styles.contentCard}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>OUT-OF-BAND RECOVERY</Text>
-                <Text style={styles.sectionTitle}>Secondary Recovery Email</Text>
-                <Text style={styles.cardSubtitle}>
-                  A secondary encrypted address for emergency credentials restoration.
-                </Text>
-              </View>
-              {recoveryEmailSaved ? (
-                <View style={styles.savedBadge}>
-                  <Ionicons name="checkmark-circle" size={11} color="#2B6E3F" />
-                  <Text style={styles.savedBadgeText}>SAVED</Text>
+            {/* Recovery email */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.eyebrow}>Recovery</Text>
+                  <Text style={styles.cardTitle}>Recovery email</Text>
                 </View>
-              ) : null}
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>RECOVERY INBOX ADDRESS</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={16} color="#85651B" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={recoveryEmail}
-                  onChangeText={setRecoveryEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  placeholder="secondary.inbox@domain.com"
-                  placeholderTextColor="#9C988F"
-                />
+                {recoveryEmailSaved ? (
+                  <View style={[styles.statusPill, styles.statusPillOn]}>
+                    <Text style={[styles.statusPillText, { color: GREEN }]}>Saved</Text>
+                  </View>
+                ) : null}
               </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.saveRecoveryButton, saving && { opacity: 0.7 }]}
-              onPress={saveRecoveryEmail}
-              disabled={saving}
-            >
-              <Text style={styles.saveRecoveryButtonText}>
-                {saving ? "Saving..." : "Save Recovery Email"}
+              <Text style={styles.cardCopy}>
+                A second address for restoring access if you're ever locked out.
               </Text>
-            </TouchableOpacity>
-          </View>
 
-          {/* 7. Active Sessions & Authorized Devices */}
-          <View style={styles.contentCard}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>DEVICE LOG & SESSIONS</Text>
-                <Text style={styles.sectionTitle}>Active Authorized Sessions</Text>
-                <Text style={styles.cardSubtitle}>
-                  Hardware terminals currently authenticated to your account.
-                </Text>
-              </View>
-              <View style={styles.sessionCountBadge}>
-                <Text style={styles.sessionCountText}>
-                  {sessionRows.length} {sessionRows.length === 1 ? "DEVICE" : "DEVICES"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.sessionsList}>
-              {sessionRows.map((s) => (
-                <View key={s.id} style={styles.sessionRow}>
-                  <View style={styles.deviceIcon}>
-                    <Ionicons name={s.icon} size={18} color="#85651B" />
-                  </View>
-                  <View style={styles.sessionInfo}>
-                    <Text style={styles.sessionTitle}>{s.label}</Text>
-                    <Text style={styles.sessionMeta}>{s.meta}</Text>
-                  </View>
-                  <View style={styles.sessionStatusCol}>
-                    {s.current ? (
-                      <View style={styles.currentDeviceBadge}>
-                        <View style={styles.currentDot} />
-                        <Text style={styles.currentDeviceBadgeText}>THIS TERMINAL</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.sessionActiveTime}>{s.active}</Text>
-                    )}
-                  </View>
+              <View style={styles.fieldGroup}>
+                <View style={styles.inputWrap}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={16}
+                    color={colors.light.mutedForeground}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    value={recoveryEmail}
+                    onChangeText={setRecoveryEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="backup@example.com"
+                    placeholderTextColor={colors.light.mutedForeground}
+                  />
                 </View>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={styles.signOutAllButton}
-              onPress={signOutAll}
-              disabled={saving}
-            >
-              <Ionicons name="log-out-outline" size={15} color="#C0392B" />
-              <Text style={styles.signOutAllButtonText}>Sign Out of All Sessions</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 8. Atelier Cryptographic Guarantee Banner */}
-          <View style={styles.guaranteeCard}>
-            <View style={styles.guaranteeHeader}>
-              <Ionicons name="lock-closed" size={16} color="#E8CF8F" />
-              <Text style={styles.guaranteeTitle}>Atelier Cryptographic Guarantee</Text>
-            </View>
-            <Text style={styles.guaranteeText}>
-              All tailoring measurements, biometric preferences, and credentials are protected with
-              Argon2id hashing and AES-256 encryption. We never sell, disclose, or expose your
-              private wardrobe records.
-            </Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      {/* 9. Upgraded 2FA Enrollment Modal */}
-      <Modal
-        visible={enrollOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setEnrollOpen(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalBackdrop}
-        >
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalEyebrow}>AUTHENTICATOR PAIRING</Text>
-                <Text style={styles.modalTitle}>Set Up Two-Factor (TOTP)</Text>
               </View>
+
               <TouchableOpacity
-                onPress={() => setEnrollOpen(false)}
-                style={styles.modalCloseButton}
+                style={[styles.outlineBtn, saving && { opacity: 0.6 }]}
+                onPress={saveRecoveryEmail}
+                disabled={saving}
+                activeOpacity={0.8}
               >
-                <Ionicons name="close" size={20} color="#141311" />
+                <Text style={styles.outlineBtnText}>
+                  {saving ? "Saving…" : "Save recovery email"}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalBody}>
-              Scan the QR code with your authenticator app (Google Authenticator, 1Password, or
-              Apple Keychain), then enter the 6-digit confirmation code.
-            </Text>
+            {/* Sessions */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.eyebrow}>Sessions</Text>
+                  <Text style={styles.cardTitle}>Signed-in devices</Text>
+                </View>
+                <Text style={styles.cardCount}>
+                  {sessionRows.length} {sessionRows.length === 1 ? "device" : "devices"}
+                </Text>
+              </View>
+              <Text style={styles.cardCopy}>
+                Devices currently signed in to your account.
+              </Text>
 
-            {/* QR Code Container */}
-            <View style={styles.qrWrap}>
-              {enrollQrSvg ? (
-                <View style={styles.qrFrame}>
+              <View>
+                {sessionRows.map((s, i) => (
+                  <View key={s.id} style={[styles.sessionRow, i > 0 && styles.rowDivider]}>
+                    <View style={styles.sessionIcon}>
+                      <Ionicons name={s.icon} size={16} color={colors.olive[700]} />
+                    </View>
+                    <View style={styles.sessionBody}>
+                      <Text style={styles.sessionTitle}>{s.label}</Text>
+                      <Text style={styles.sessionMeta} numberOfLines={1}>
+                        {s.meta}
+                      </Text>
+                    </View>
+                    {s.current ? (
+                      <View style={styles.thisDevice}>
+                        <Text style={styles.thisDeviceText}>This device</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.sessionActive}>{s.active}</Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={styles.dangerBtn}
+                onPress={signOutAll}
+                disabled={saving}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="log-out-outline" size={15} color={colors.accent2.rust} />
+                <Text style={styles.dangerBtnText}>Sign out of all devices</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Footnote */}
+            <View style={styles.footnote}>
+              <Ionicons name="lock-closed-outline" size={13} color={GOLD_DEEP} />
+              <Text style={styles.footnoteText}>
+                Your data is encrypted at rest and in transit. We never sell or share
+                your private information.
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+
+        {/* 2FA enrollment sheet */}
+        <Modal
+          visible={enrollOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setEnrollOpen(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.modalBackdrop}
+          >
+            <TouchableOpacity
+              style={styles.modalDismiss}
+              activeOpacity={1}
+              onPress={() => setEnrollOpen(false)}
+            />
+            <View style={[styles.modalCard, { paddingBottom: insets.bottom + spacing[5] }]}>
+              <View style={styles.modalGrabber} />
+
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Set up two-factor</Text>
+                <TouchableOpacity
+                  onPress={() => setEnrollOpen(false)}
+                  style={styles.modalClose}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Ionicons name="close" size={18} color={colors.light.foreground} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalBody}>
+                Scan this code with your authenticator app, then enter the 6-digit
+                code it generates.
+              </Text>
+
+              {/* QR */}
+              <View style={styles.qrWrap}>
+                {enrollQrSvg ? (
                   <WebView
                     originWhitelist={["*"]}
                     source={{ html: enrollQrSvg }}
                     style={styles.qrBox}
                     scrollEnabled={false}
                   />
-                </View>
-              ) : (
-                <ActivityIndicator color="#C8A44A" />
-              )}
-            </View>
+                ) : (
+                  <ActivityIndicator color={GOLD} />
+                )}
+              </View>
 
-            {/* Tap to Copy Secret Key */}
-            {enrollSecret ? (
-              <TouchableOpacity
-                style={styles.secretBox}
-                activeOpacity={0.8}
-                onPress={copySecretToClipboard}
-              >
-                <View style={styles.secretTextCol}>
-                  <Text style={styles.secretLabel}>MANUAL SETUP SECRET KEY</Text>
-                  <Text style={styles.secretText} numberOfLines={1}>
-                    {enrollSecret}
-                  </Text>
-                </View>
-                <View style={styles.copyBadge}>
-                  <Ionicons name="copy-outline" size={14} color="#85651B" />
-                  <Text style={styles.copyBadgeText}>Copy</Text>
-                </View>
-              </TouchableOpacity>
-            ) : null}
+              {/* Manual secret */}
+              {enrollSecret ? (
+                <TouchableOpacity
+                  style={styles.secretBox}
+                  activeOpacity={0.8}
+                  onPress={copySecretToClipboard}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.secretCol}>
+                    <Text style={styles.secretLabel}>Or enter this key manually</Text>
+                    <Text style={styles.secretText} numberOfLines={1}>
+                      {enrollSecret}
+                    </Text>
+                  </View>
+                  <Ionicons name="copy-outline" size={16} color={GOLD_DEEP} />
+                </TouchableOpacity>
+              ) : null}
 
-            {/* 6-Digit Code Input */}
-            <View style={styles.codeField}>
-              <Text style={styles.fieldLabel}>6-DIGIT VERIFICATION CODE</Text>
-              <TextInput
-                style={styles.codeInput}
-                keyboardType="number-pad"
-                maxLength={6}
-                value={enrollCode}
-                onChangeText={(v) => setEnrollCode(v.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000 000"
-                placeholderTextColor="#9C988F"
-              />
-            </View>
-
-            {/* Modal Actions */}
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setEnrollOpen(false)}
-              >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
+              {/* Code input */}
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.codeInput}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={enrollCode}
+                  onChangeText={(v) => setEnrollCode(v.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.light.mutedForeground}
+                />
+              </View>
 
               <TouchableOpacity
                 style={[
-                  styles.modalVerifyButton,
+                  styles.primaryBtn,
                   (enrollCode.length !== 6 || verifying) && { opacity: 0.5 },
                 ]}
                 disabled={enrollCode.length !== 6 || verifying}
                 onPress={verifyEnrollment}
+                activeOpacity={0.88}
+                accessibilityRole="button"
               >
                 {verifying ? (
-                  <ActivityIndicator size="small" color="#141311" />
+                  <ActivityIndicator size="small" color={colors.paper.cream} />
                 ) : (
-                  <Text style={styles.modalVerifyButtonText}>Verify & Activate</Text>
+                  <>
+                    <Text style={styles.primaryBtnText}>Verify &amp; enable</Text>
+                    <View style={styles.primaryBtnArrow}>
+                      <Ionicons name="checkmark" size={14} color={colors.olive[900]} />
+                    </View>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </SafeAreaView>
+          </KeyboardAvoidingView>
+        </Modal>
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
-function CheckRow({ done, label, sub }: { done?: boolean; label: string; sub: string }) {
+function CheckRow({
+  done,
+  label,
+  sub,
+}: {
+  done?: boolean;
+  label: string;
+  sub: string;
+}) {
   return (
     <View style={styles.checkRow}>
-      <View style={[styles.checkIcon, done && styles.checkIconDone]}>
+      <View style={[styles.checkIcon, done ? styles.checkIconDone : styles.checkIconMiss]}>
         <Ionicons
-          name={done ? "checkmark" : "close"}
-          size={12}
-          color={done ? "#FAF8F5" : "#8F8B82"}
+          name={done ? "checkmark" : "add"}
+          size={11}
+          color={done ? colors.paper.cream : colors.light.mutedForeground}
         />
       </View>
       <View style={styles.checkTextCol}>
-        <Text style={[styles.checkLabel, done && styles.checkLabelDone]}>{label}</Text>
+        <Text style={[styles.checkLabel, !done && styles.checkLabelMuted]}>{label}</Text>
         <Text style={styles.checkSub}>{sub}</Text>
       </View>
     </View>
@@ -933,243 +890,150 @@ function CheckRow({ done, label, sub }: { done?: boolean; label: string; sub: st
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#F5F4EF",
   },
   flex: {
     flex: 1,
   },
-  topHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
-    backgroundColor: "#F5F4EF",
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  headerTitleCenter: {
-    alignItems: "center",
-  },
-  headerEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: "#85651B",
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: "#141311",
-    letterSpacing: -0.3,
-  },
-  shieldMedallionSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
+  loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 10,
   },
   loadingText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: "#8F8B82",
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13.5,
+    color: colors.light.mutedForeground,
   },
 
-  /* Velvet Obsidian Hero Card */
-  heroCard: {
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-    marginBottom: 16,
-    ...shadows.glow,
-  },
-  heroTopRow: {
+  /* Nav */
+  navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[2.5],
   },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: "#E8CF8F",
-  },
-  vaultMedallion: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    padding: 3,
-  },
-  vaultMedallionInner: {
-    flex: 1,
-    borderRadius: 16,
-    backgroundColor: "#201E1A",
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: HAIRLINE,
   },
-  heroBodyRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: 16,
+  navTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.foreground,
   },
-  heroTextCol: {
-    flex: 1,
+
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2],
+    gap: 14,
   },
-  heroTitle: {
+
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#FAF8F5",
-    letterSpacing: -0.4,
-    marginBottom: 6,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
   },
-  heroSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#B3AFA5",
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
   },
-  healthPill: {
+
+  /* Score card */
+  scoreCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    padding: spacing[5],
+    ...shadows.soft,
+  },
+  scoreTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  scoreNum: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 44,
+    letterSpacing: -1.2,
+    color: colors.light.foreground,
+  },
+  scoreMax: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 18,
+    color: colors.light.mutedForeground,
+  },
+  scorePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingVertical: 5,
+    borderRadius: radii.full,
   },
-  liveDot: {
+  scorePillGood: {
+    backgroundColor: "rgba(21, 128, 61, 0.1)",
+  },
+  scorePillWarn: {
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
+  },
+  scoreDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
-  healthPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.2,
-  },
-
-  /* Score Card */
-  scoreCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#EAE7DF",
-    marginBottom: 16,
-    ...shadows.soft,
-  },
-  scoreHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  sectionEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: "#85651B",
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: "#141311",
-  },
-  scoreDeltaBadge: {
-    backgroundColor: "#F4F1E8",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E1D4",
-  },
-  scoreDeltaText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1,
-    color: "#85651B",
-  },
-  scoreValueRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginBottom: 12,
-  },
-  scoreNumber: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
-    color: "#141311",
-    letterSpacing: -1,
-  },
-  scoreMax: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 14,
-    color: "#8F8B82",
-    marginLeft: 4,
+  scorePillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
   },
   track: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#EBE8DF",
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(22, 23, 15, 0.08)",
     overflow: "hidden",
-    marginBottom: 20,
+    marginTop: spacing[3],
+    marginBottom: spacing[2],
   },
   fill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 3,
   },
   checklist: {
-    gap: 12,
+    marginTop: spacing[2],
   },
   checkRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+    alignItems: "center",
+    gap: spacing[3],
+    paddingVertical: spacing[2.5],
   },
   checkIcon: {
     width: 22,
@@ -1177,493 +1041,357 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ECE8DD",
-    marginTop: 1,
   },
   checkIconDone: {
-    backgroundColor: "#2B6E3F",
+    backgroundColor: colors.olive[900],
+  },
+  checkIconMiss: {
+    backgroundColor: "rgba(22, 23, 15, 0.08)",
   },
   checkTextCol: {
     flex: 1,
+    gap: 1,
   },
   checkLabel: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#4A463D",
-    marginBottom: 1,
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
-  checkLabelDone: {
-    color: "#141311",
+  checkLabelMuted: {
+    color: colors.light.mutedForeground,
   },
   checkSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#8F8B82",
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
 
-  /* Standard Content Cards */
-  contentCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 20,
+  /* Generic card */
+  card: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
-    marginBottom: 16,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[5],
+    gap: spacing[3],
     ...shadows.soft,
   },
   cardHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 16,
+    justifyContent: "space-between",
   },
-  cardSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: "#787469",
+  cardHeaderText: {
+    flexShrink: 1,
+  },
+  cardTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
     marginTop: 2,
   },
-  strengthBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
+  cardCopy: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.light.mutedForeground,
+    marginTop: -4,
   },
-  strengthBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1,
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  statusBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
+  cardCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
     letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+    marginTop: 4,
   },
-  savedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#EBF7EE",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#C5E6CC",
-  },
-  savedBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: "#2B6E3F",
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
 
-  /* Form Fields */
-  field: {
-    marginBottom: 14,
+  /* Fields */
+  fieldGroup: {
+    gap: 6,
   },
   fieldLabel: {
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
     letterSpacing: 1.2,
-    color: "#85651B",
-    marginBottom: 6,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+    paddingHorizontal: 4,
   },
-  inputWrapper: {
+  inputWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FAF9F5",
+    gap: 10,
+    backgroundColor: colors.paper.warm,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "#E5E1D4",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 46,
+    borderColor: HAIRLINE,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
   },
-  inputIcon: {
-    marginRight: 8,
-  },
-  textInput: {
+  input: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: "#141311",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    color: colors.light.foreground,
+    padding: 0,
   },
-  pwdStrength: {
-    marginBottom: 16,
-  },
-  pwdStrengthTrack: {
+  strengthRow: {
     flexDirection: "row",
-    gap: 4,
-    marginBottom: 6,
+    gap: 6,
   },
-  pwdStrengthSegment: {
+  strengthSeg: {
     flex: 1,
     height: 4,
     borderRadius: 2,
   },
-  pwdStrengthHint: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    lineHeight: 15,
-    color: "#787469",
+  strengthPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
   },
-  primaryActionButton: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginTop: 4,
+  strengthPillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
   },
-  primaryActionGradient: {
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  statusPillOn: {
+    backgroundColor: "rgba(21, 128, 61, 0.1)",
+  },
+  statusPillOff: {
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
+  },
+  statusPillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+  },
+
+  /* Buttons */
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-  },
-  primaryActionText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#FAF8F5",
-  },
-
-  /* 2FA Toggle Row */
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FAF9F5",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#EBE7DD",
-    padding: 14,
-    marginTop: 6,
-  },
-  toggleInfo: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
-    flex: 1,
+    height: 50,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    paddingRight: 6,
   },
-  toggleLabel: {
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  outlineBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    height: 46,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    backgroundColor: colors.paper.warm,
+  },
+  outlineBtnText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#141311",
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
-  toggleSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#787469",
-  },
-  enableMfaButton: {
+  dangerBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    backgroundColor: "#C8A44A",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  enableMfaButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#141311",
-  },
-  secondaryOutlineButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
+    justifyContent: "center",
+    gap: 7,
+    height: 46,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "#C0392B",
+    borderColor: "rgba(184, 92, 58, 0.35)",
   },
-  secondaryOutlineButtonText: {
+  dangerBtnText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#C0392B",
-  },
-
-  /* Recovery Email Button */
-  saveRecoveryButton: {
-    backgroundColor: "#F4F1E8",
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E5E1D4",
-  },
-  saveRecoveryButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#414A23",
+    fontSize: 13.5,
+    color: colors.accent2.rust,
   },
 
   /* Sessions */
-  sessionCountBadge: {
-    backgroundColor: "#F4F1E8",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  sessionCountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1,
-    color: "#85651B",
-  },
-  sessionsList: {
-    gap: 10,
-    marginBottom: 16,
-  },
   sessionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F1EC",
+    gap: spacing[3],
+    paddingVertical: spacing[3],
   },
-  deviceIcon: {
+  sessionIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#F6F4EB",
-    borderWidth: 1,
-    borderColor: "#E5E1D4",
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
   },
-  sessionInfo: {
+  sessionBody: {
     flex: 1,
+    gap: 2,
   },
   sessionTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#141311",
-    marginBottom: 2,
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
   sessionMeta: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: "#8F8B82",
-  },
-  sessionStatusCol: {
-    alignItems: "flex-end",
-  },
-  currentDeviceBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#EBF7EE",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  currentDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: "#2B6E3F",
-  },
-  currentDeviceBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: "#2B6E3F",
-  },
-  sessionActiveTime: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: "#8F8B82",
-  },
-  signOutAllButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#FDF2F1",
-    borderRadius: 10,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "#F7D6D4",
-  },
-  signOutAllButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#C0392B",
-  },
-
-  /* Guarantee Card */
-  guaranteeCard: {
-    backgroundColor: "#141311",
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-  },
-  guaranteeHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-  },
-  guaranteeTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: "#FAF8F5",
-  },
-  guaranteeText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: "#B3AFA5",
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
+  },
+  thisDevice: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
+  },
+  thisDeviceText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: GOLD_DEEP,
+  },
+  sessionActive: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
   },
 
-  /* 2FA Modal */
+  /* Footnote */
+  footnote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingHorizontal: spacing[2],
+    paddingTop: spacing[1],
+  },
+  footnoteText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: colors.light.mutedForeground,
+  },
+
+  /* Modal */
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "flex-end",
+    backgroundColor: "rgba(20, 22, 13, 0.45)",
+  },
+  modalDismiss: {
+    flex: 1,
   },
   modalCard: {
-    backgroundColor: "#FAF9F5",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 36,
-    gap: 14,
+    backgroundColor: colors.paper.cream,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    gap: spacing[4],
+  },
+  modalGrabber: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(22, 23, 15, 0.12)",
   },
   modalHeader: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  modalEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: "#85651B",
-    marginBottom: 2,
   },
   modalTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 19,
-    color: "#141311",
+    fontSize: 22,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
   },
-  modalCloseButton: {
-    padding: 4,
+  modalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.paper.warm,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalBody: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: "#6B675E",
+    color: colors.light.mutedForeground,
   },
   qrWrap: {
+    height: 180,
     alignItems: "center",
-    paddingVertical: 10,
-  },
-  qrFrame: {
-    padding: 8,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E5E1D4",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    overflow: "hidden",
   },
   qrBox: {
-    width: 170,
-    height: 170,
-    backgroundColor: "#FFFFFF",
+    width: 160,
+    height: 160,
+    backgroundColor: "transparent",
   },
   secretBox: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    padding: 12,
+    gap: 10,
+    backgroundColor: colors.paper.warm,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E1D4",
+    borderColor: HAIRLINE,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  secretTextCol: {
+  secretCol: {
     flex: 1,
-    marginRight: 10,
+    gap: 2,
   },
   secretLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: "#85651B",
-    marginBottom: 2,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
   },
   secretText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: "#141311",
-  },
-  copyBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#F4F1E8",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  copyBadgeText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: "#85651B",
-  },
-  codeField: {
-    marginTop: 4,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 13,
+    letterSpacing: 0.8,
+    color: colors.light.foreground,
   },
   codeInput: {
-    height: 48,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#DCD7CA",
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    flex: 1,
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 18,
-    letterSpacing: 8,
+    letterSpacing: 4,
     textAlign: "center",
-    color: "#141311",
-  },
-  modalFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 10,
-  },
-  modalCancelButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  modalCancelButtonText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: "#8F8B82",
-  },
-  modalVerifyButton: {
-    backgroundColor: "#C8A44A",
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    minWidth: 130,
-    alignItems: "center",
-  },
-  modalVerifyButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#141311",
+    color: colors.light.foreground,
+    padding: 0,
   },
 });

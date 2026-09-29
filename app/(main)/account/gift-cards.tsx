@@ -4,13 +4,14 @@ import {
   FlatList,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
@@ -42,8 +43,35 @@ type GiftCard = {
 
 const PRESET_AMOUNTS = [5000, 10000, 20000, 50000];
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
+const STANDARDS: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }[] = [
+  {
+    icon: "mail-outline",
+    title: "Instant & scheduled delivery",
+    desc: "Sent to the recipient's email with your message and chosen delivery date.",
+  },
+  {
+    icon: "storefront-outline",
+    title: "Accepted everywhere",
+    desc: "Redeemable across all boutiques and verified sellers on the platform.",
+  },
+  {
+    icon: "shield-checkmark-outline",
+    title: "Balance never expires",
+    desc: "Credits can be spent across multiple orders until they run out.",
+  },
+];
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
 export default function AccountGiftCards() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
 
   const [redeemCode, setRedeemCode] = useState("");
@@ -72,7 +100,7 @@ export default function AccountGiftCards() {
   const copyCode = async (code: string) => {
     try {
       await Clipboard.setStringAsync(code);
-      toast("Voucher code copied to clipboard", "success");
+      toast("Voucher code copied", "success");
     } catch {
       toast("Could not copy code", "error");
     }
@@ -107,114 +135,122 @@ export default function AccountGiftCards() {
     }
   };
 
+  const goBuy = () => router.push("/(main)/gift-cards" as any);
+
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Atelier Top Navigation Bar */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>GIFT VOUCHERS</Text>
-            <Text style={styles.navSubtitle}>BESPOKE DIGITAL CARDS</Text>
-          </View>
+          <Text style={styles.navTitle}>Gift vouchers</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => q.refetch()}
+            disabled={q.isFetching}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
           >
-            <Ionicons
-              name="refresh-outline"
-              size={18}
-              color={q.isFetching ? "#C8A44A" : colors.light.foreground}
-            />
+            {q.isFetching && !q.isLoading ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+            )}
           </TouchableOpacity>
         </View>
 
         <FlatList
           data={cards}
           keyExtractor={(c) => c.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
-              refreshing={q.isFetching}
+              refreshing={q.isFetching && !q.isLoading}
               onRefresh={() => q.refetch()}
-              tintColor="#C8A44A"
+              tintColor={GOLD}
             />
           }
           ListHeaderComponent={
             <View style={styles.headerSection}>
-              {/* 1. Haute Couture Obsidian Hero Card */}
+              {/* Heading */}
+              <View style={styles.pageHead}>
+                <Text style={styles.eyebrow}>Digital gifting</Text>
+                <Text style={styles.pageTitle}>
+                  Gift <Text style={styles.pageTitleAccent}>vouchers.</Text>
+                </Text>
+              </View>
+
+              {/* Balance card */}
               <LinearGradient
-                colors={["#1c2016", "#14170e", "#0e110a"]}
+                colors={["#1f2418", "#14170e"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.heroCard}
+                style={styles.hero}
               >
-                <View style={styles.heroTopRow}>
-                  <View style={styles.heroTagBadge}>
-                    <Ionicons name="sparkles" size={11} color="#C8A44A" />
-                    <Text style={styles.heroTagText}>HAUTE COUTURE GIFTING</Text>
-                  </View>
-
-                  <View style={styles.giftMedallion}>
-                    <Ionicons name="gift" size={20} color="#E8CF8F" />
+                <View style={styles.heroTop}>
+                  <Text style={styles.heroEyebrow}>Available balance</Text>
+                  <View style={styles.heroGiftIcon}>
+                    <Ionicons name="gift-outline" size={16} color={GOLD_SOFT} />
                   </View>
                 </View>
 
-                {/* Total Balance */}
-                <View style={styles.balanceBlock}>
-                  <Text style={styles.balanceNumber}>
-                    {formatPrice(totalBalance, currency)}
-                  </Text>
-                  <Text style={styles.balanceLabel}>
-                    ACTIVE GIFT VOUCHER BALANCE
-                  </Text>
-                </View>
+                <Text style={styles.heroBalance}>
+                  {formatPrice(totalBalance, currency)}
+                </Text>
+                <Text style={styles.heroSub}>
+                  {cards.length === 0
+                    ? "No vouchers yet — send one below."
+                    : "Across all active vouchers"}
+                </Text>
 
-                {/* Quick Action Buttons */}
-                <View style={styles.heroActionsRow}>
+                <View style={styles.heroActions}>
                   <TouchableOpacity
                     style={styles.heroBuyBtn}
                     activeOpacity={0.88}
-                    onPress={() => router.push("/(main)/gift-cards" as any)}
+                    onPress={goBuy}
+                    accessibilityRole="button"
                   >
-                    <Ionicons name="add-circle-outline" size={15} color="#181b12" />
-                    <Text style={styles.heroBuyBtnText}>SEND A GIFT VOUCHER</Text>
+                    <Ionicons name="add" size={16} color={colors.olive[900]} />
+                    <Text style={styles.heroBuyBtnText}>Send a voucher</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.heroRedeemBtn}
                     activeOpacity={0.8}
                     onPress={() => setShowRedeemInput((prev) => !prev)}
+                    accessibilityRole="button"
                   >
-                    <Ionicons name="ticket-outline" size={14} color="#E8CF8F" />
-                    <Text style={styles.heroRedeemBtnText}>REDEEM CODE</Text>
+                    <Ionicons name="ticket-outline" size={14} color={GOLD_SOFT} />
+                    <Text style={styles.heroRedeemBtnText}>Redeem</Text>
                   </TouchableOpacity>
                 </View>
               </LinearGradient>
 
-              {/* 2. Collapsible Quick Redeem Card */}
+              {/* Quick redeem */}
               {showRedeemInput && (
                 <View style={styles.redeemCard}>
-                  <View style={styles.redeemHeader}>
-                    <Ionicons name="gift-outline" size={15} color="#85651b" />
-                    <Text style={styles.redeemTitle}>Redeem a Gift Voucher</Text>
-                  </View>
+                  <Text style={styles.redeemTitle}>Redeem a voucher</Text>
                   <Text style={styles.redeemSub}>
-                    Enter your 16-character alphanumeric voucher code to add it to your collection.
+                    Enter the code on your gift voucher to check and apply it.
                   </Text>
-
                   <View style={styles.redeemInputRow}>
                     <TextInput
                       value={redeemCode}
@@ -223,6 +259,7 @@ export default function AccountGiftCards() {
                       placeholderTextColor={colors.light.mutedForeground}
                       style={styles.redeemInput}
                       autoCapitalize="characters"
+                      autoCorrect={false}
                       returnKeyType="done"
                     />
                     <TouchableOpacity
@@ -230,54 +267,59 @@ export default function AccountGiftCards() {
                       onPress={handleQuickCheck}
                       disabled={redeemLoading}
                       activeOpacity={0.85}
+                      accessibilityRole="button"
                     >
                       {redeemLoading ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
+                        <ActivityIndicator size="small" color={colors.paper.cream} />
                       ) : (
-                        <Text style={styles.redeemSubmitBtnText}>APPLY</Text>
+                        <Text style={styles.redeemSubmitBtnText}>Apply</Text>
                       )}
                     </TouchableOpacity>
                   </View>
                 </View>
               )}
 
-              {/* 3. Preset Gifting Rail */}
-              <View style={styles.presetsSection}>
+              {/* Presets */}
+              <View style={styles.presets}>
                 <View style={styles.presetsHeader}>
                   <View>
-                    <Text style={styles.presetsEyebrow}>CURATED DENOMINATIONS</Text>
-                    <Text style={styles.presetsTitle}>Send a Bespoke Voucher</Text>
+                    <Text style={styles.eyebrow}>Popular amounts</Text>
+                    <Text style={styles.presetsTitle}>Send a voucher</Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => router.push("/(main)/gift-cards" as any)}
-                  >
-                    <Text style={styles.presetsViewAll}>Custom Amount →</Text>
+                  <TouchableOpacity onPress={goBuy} hitSlop={8}>
+                    <Text style={styles.presetsLink}>Custom amount</Text>
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.presetsGrid}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.presetsRow}
+                  style={styles.presetsScroll}
+                >
                   {PRESET_AMOUNTS.map((amt) => (
                     <TouchableOpacity
                       key={amt}
                       style={styles.presetTile}
                       activeOpacity={0.8}
-                      onPress={() => router.push("/(main)/gift-cards" as any)}
+                      onPress={goBuy}
+                      accessibilityRole="button"
                     >
-                      <Ionicons name="gift-outline" size={13} color="#85651b" />
-                      <Text style={styles.presetAmountText}>
-                        {formatPrice(amt, "LKR")}
-                      </Text>
-                      <Text style={styles.presetSubText}>Instant Delivery</Text>
+                      <View style={styles.presetIcon}>
+                        <Ionicons name="gift-outline" size={15} color={GOLD_DEEP} />
+                      </View>
+                      <Text style={styles.presetAmount}>{formatPrice(amt, "LKR")}</Text>
+                      <Text style={styles.presetSub}>Instant delivery</Text>
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               </View>
 
-              {/* Header label for cards list */}
+              {/* List heading */}
               {cards.length > 0 && (
-                <View style={styles.cardsListHeader}>
-                  <Text style={styles.cardsListEyebrow}>YOUR VOUCHERS</Text>
-                  <Text style={styles.cardsListCount}>
+                <View style={styles.listHeader}>
+                  <Text style={styles.eyebrow}>Your vouchers</Text>
+                  <Text style={styles.listCount}>
                     {cards.length} {cards.length === 1 ? "voucher" : "vouchers"}
                   </Text>
                 </View>
@@ -287,98 +329,55 @@ export default function AccountGiftCards() {
           ListEmptyComponent={
             q.isLoading ? (
               <View style={styles.loadingWrap}>
-                <ActivityIndicator color="#C8A44A" size="small" />
+                <ActivityIndicator color={GOLD} size="small" />
                 <Text style={styles.loadingText}>Loading gift vouchers…</Text>
               </View>
             ) : (
               <View style={styles.emptyWrap}>
-                {/* Empty Medallion */}
                 <View style={styles.emptyCard}>
-                  <View style={styles.emptyMedallion}>
-                    <Ionicons name="gift" size={30} color="#C8A44A" />
+                  <View style={styles.emptyIcon}>
+                    <Ionicons name="gift-outline" size={26} color={colors.olive[700]} />
                   </View>
-                  <Text style={styles.emptyTitle}>No Active Gift Cards</Text>
-                  <Text style={styles.emptySubtitle}>
-                    You do not have any stored gift vouchers. Send a luxury digital voucher to someone special, or redeem a code to shop across any atelier.
+                  <Text style={styles.emptyTitle}>No vouchers yet</Text>
+                  <Text style={styles.emptySub}>
+                    Send a digital voucher to someone special, or redeem a code to use
+                    across the boutique.
                   </Text>
-
-                  <View style={styles.emptyActionsRow}>
-                    <TouchableOpacity
-                      style={styles.emptyBuyBtn}
-                      activeOpacity={0.88}
-                      onPress={() => router.push("/(main)/gift-cards" as any)}
-                    >
-                      <Text style={styles.emptyBuyBtnText}>
-                        PURCHASE GIFT VOUCHER
-                      </Text>
-                      <Ionicons name="arrow-forward" size={13} color="#ffffff" />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.emptyRedeemBtn}
-                      activeOpacity={0.8}
-                      onPress={() => router.push("/(main)/gift-cards/redeem" as any)}
-                    >
-                      <Text style={styles.emptyRedeemBtnText}>
-                        Redeem Voucher Code
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.primaryBtn}
+                    activeOpacity={0.88}
+                    onPress={goBuy}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.primaryBtnText}>Purchase gift voucher</Text>
+                    <View style={styles.primaryBtnArrow}>
+                      <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.textLink}
+                    activeOpacity={0.7}
+                    onPress={() => router.push("/(main)/gift-cards/redeem" as any)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.textLinkText}>Redeem a voucher code</Text>
+                  </TouchableOpacity>
                 </View>
 
-                {/* The Atelier Gifting Standards (3 Value Cards) */}
+                {/* Standards */}
                 <View style={styles.standardsCard}>
-                  <View style={styles.standardsHeader}>
-                    <Ionicons name="sparkles" size={13} color="#85651b" />
-                    <Text style={styles.standardsEyebrow}>
-                      ATELIER GIFTING PRIVILEGES
-                    </Text>
-                  </View>
-                  <Text style={styles.standardsTitle}>
-                    The Luxury Gifting Experience
-                  </Text>
-
-                  <View style={styles.standardItem}>
-                    <View style={styles.standardIconBox}>
-                      <Ionicons name="mail-outline" size={15} color="#85651b" />
+                  <Text style={styles.eyebrow}>Good to know</Text>
+                  {STANDARDS.map((s, i) => (
+                    <View key={s.title} style={[styles.standardRow, i > 0 && styles.rowDivider]}>
+                      <View style={styles.standardIcon}>
+                        <Ionicons name={s.icon} size={16} color={GOLD_DEEP} />
+                      </View>
+                      <View style={styles.standardBody}>
+                        <Text style={styles.standardTitle}>{s.title}</Text>
+                        <Text style={styles.standardDesc}>{s.desc}</Text>
+                      </View>
                     </View>
-                    <View style={styles.standardContent}>
-                      <Text style={styles.standardHeading}>
-                        Instant & Scheduled Delivery
-                      </Text>
-                      <Text style={styles.standardDesc}>
-                        Dispatched directly to the recipient&apos;s email with your personalized message and selected delivery date.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.standardItem}>
-                    <View style={styles.standardIconBox}>
-                      <Ionicons name="storefront-outline" size={15} color="#85651b" />
-                    </View>
-                    <View style={styles.standardContent}>
-                      <Text style={styles.standardHeading}>
-                        Universal Atelier Acceptance
-                      </Text>
-                      <Text style={styles.standardDesc}>
-                        Redeemable seamlessly across all independent boutiques, verified sellers, and luxury lookbooks.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.standardItem}>
-                    <View style={styles.standardIconBox}>
-                      <Ionicons name="shield-checkmark-outline" size={15} color="#85651b" />
-                    </View>
-                    <View style={styles.standardContent}>
-                      <Text style={styles.standardHeading}>
-                        Permanent Balance Protection
-                      </Text>
-                      <Text style={styles.standardDesc}>
-                        Gift card credits never expire and can be spent across multiple separate acquisitions.
-                      </Text>
-                    </View>
-                  </View>
+                  ))}
                 </View>
               </View>
             )
@@ -388,17 +387,17 @@ export default function AccountGiftCards() {
             const isVoided = !!item.voided_at;
 
             return (
-              <View style={styles.voucherCard}>
-                {/* Voucher Top Row */}
-                <View style={styles.voucherTopRow}>
-                  <View style={styles.voucherTypeBadge}>
+              <View style={styles.voucher}>
+                {/* Top row */}
+                <View style={styles.voucherTop}>
+                  <View style={styles.typeBadge}>
                     <Ionicons
-                      name={purchased ? "arrow-up-circle" : "arrow-down-circle"}
-                      size={12}
-                      color="#85651b"
+                      name={purchased ? "arrow-up" : "arrow-down"}
+                      size={10}
+                      color={GOLD_DEEP}
                     />
-                    <Text style={styles.voucherTypeText}>
-                      {purchased ? "GIFT SENT" : "GIFT RECEIVED"}
+                    <Text style={styles.typeText}>
+                      {purchased ? "Sent" : "Received"}
                     </Text>
                   </View>
 
@@ -414,7 +413,7 @@ export default function AccountGiftCards() {
                         isVoided ? styles.statusVoidedText : styles.statusActiveText,
                       ]}
                     >
-                      {isVoided ? "VOIDED" : "ACTIVE"}
+                      {isVoided ? "Voided" : "Active"}
                     </Text>
                   </View>
                 </View>
@@ -425,33 +424,33 @@ export default function AccountGiftCards() {
                     {formatPrice(item.current_balance, item.currency)}
                   </Text>
                   <Text style={styles.voucherInitial}>
-                    of {formatPrice(item.initial_balance, item.currency)} initial
+                    of {formatPrice(item.initial_balance, item.currency)}
                   </Text>
                 </View>
 
-                {/* Code Pill with 1-Tap Copy */}
-                <View style={styles.codeContainer}>
-                  <View style={styles.codeTextCol}>
-                    <Text style={styles.codeLabel}>VOUCHER CODE</Text>
-                    <Text style={styles.codeValue}>{item.code}</Text>
+                {/* Code */}
+                <TouchableOpacity
+                  style={styles.codeRow}
+                  activeOpacity={0.7}
+                  onPress={() => copyCode(item.code)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy voucher code"
+                >
+                  <Text style={styles.codeValue} numberOfLines={1}>
+                    {item.code}
+                  </Text>
+                  <View style={styles.codeCopyBtn}>
+                    <Ionicons name="copy-outline" size={13} color={colors.light.foreground} />
+                    <Text style={styles.codeCopyText}>Copy</Text>
                   </View>
+                </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.copyBtn}
-                    activeOpacity={0.7}
-                    onPress={() => copyCode(item.code)}
-                  >
-                    <Ionicons name="copy-outline" size={13} color="#181b12" />
-                    <Text style={styles.copyBtnText}>COPY</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Recipient / Note details */}
+                {/* Recipient / message */}
                 <View style={styles.voucherDetails}>
                   <Text style={styles.recipientText}>
                     {purchased
-                      ? `To: ${item.recipient_email || "Recipient"}`
-                      : `From: ${item.recipient_name || "Generous Patron"}`}
+                      ? `To ${item.recipient_email || "Recipient"}`
+                      : `From ${item.recipient_name || "A generous friend"}`}
                   </Text>
                   {item.message ? (
                     <Text style={styles.voucherMessage} numberOfLines={2}>
@@ -460,22 +459,27 @@ export default function AccountGiftCards() {
                   ) : null}
                 </View>
 
-                {/* Expiry date / Scheduled date */}
-                <View style={styles.voucherFooterRow}>
+                {/* Footer */}
+                <View style={styles.voucherFooter}>
                   {item.scheduled_for && !item.email_sent_at ? (
-                    <View style={styles.scheduledPill}>
-                      <Ionicons name="time-outline" size={11} color="#85651b" />
-                      <Text style={styles.scheduledText}>
-                        Scheduled:{" "}
-                        {new Date(item.scheduled_for).toLocaleDateString()}
+                    <View style={styles.footerMeta}>
+                      <Ionicons name="time-outline" size={12} color={GOLD_DEEP} />
+                      <Text style={[styles.footerText, { color: GOLD_DEEP }]}>
+                        Scheduled {formatDate(item.scheduled_for)}
                       </Text>
                     </View>
                   ) : item.expires_at ? (
-                    <Text style={styles.expiryText}>
-                      Expires {new Date(item.expires_at).toLocaleDateString()}
-                    </Text>
+                    <View style={styles.footerMeta}>
+                      <Ionicons name="calendar-outline" size={12} color={colors.light.mutedForeground} />
+                      <Text style={styles.footerText}>
+                        Expires {formatDate(item.expires_at)}
+                      </Text>
+                    </View>
                   ) : (
-                    <Text style={styles.expiryText}>Lifetime Validity</Text>
+                    <View style={styles.footerMeta}>
+                      <Ionicons name="infinite-outline" size={13} color={colors.light.mutedForeground} />
+                      <Text style={styles.footerText}>No expiry</Text>
+                    </View>
                   )}
                 </View>
               </View>
@@ -487,9 +491,6 @@ export default function AccountGiftCards() {
   );
 }
 
-/* =========================================================================
-   Styles
-   ========================================================================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -500,574 +501,519 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   loadingText: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 13,
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13.5,
     color: colors.light.mutedForeground,
-    fontStyle: "italic",
   },
 
-  /* Navigation Bar */
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navTitleWrap: {
-    alignItems: "center",
+    borderColor: HAIRLINE,
   },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
-    letterSpacing: 2,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
   },
 
   listContent: {
-    paddingBottom: 40,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2],
   },
   headerSection: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
+    gap: 14,
+    marginBottom: 4,
   },
 
-  /* 1. Hero Card */
-  heroCard: {
-    borderRadius: 20,
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
+  },
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+
+  /* Balance hero */
+  hero: {
+    borderRadius: 24,
     padding: spacing[5],
-    marginBottom: spacing[4],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
+    gap: 4,
     ...shadows.editorial,
   },
-  heroTopRow: {
+  heroTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 8,
   },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
+  heroEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
   },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  giftMedallion: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  heroGiftIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "rgba(200, 164, 74, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
-  balanceBlock: {
-    marginVertical: 14,
-  },
-  balanceNumber: {
+  heroBalance: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
-    color: "#E8CF8F",
-    lineHeight: 40,
-    letterSpacing: -0.5,
+    fontSize: 40,
+    letterSpacing: -1,
+    color: colors.paper.cream,
   },
-  balanceLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "rgba(255, 255, 255, 0.7)",
-    letterSpacing: 0.8,
-    marginTop: 3,
+  heroSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: "rgba(250, 248, 241, 0.6)",
   },
-  heroActionsRow: {
+  heroActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 4,
+    gap: 10,
+    marginTop: spacing[5],
   },
   heroBuyBtn: {
-    flex: 1.3,
+    flex: 1.4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#E8CF8F",
-    paddingVertical: 11,
+    gap: 7,
+    height: 48,
     borderRadius: radii.full,
+    backgroundColor: GOLD_SOFT,
   },
   heroBuyBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#181b12",
-    letterSpacing: 0.8,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.olive[900],
   },
   heroRedeemBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    paddingVertical: 11,
+    gap: 7,
+    height: 48,
     borderRadius: radii.full,
+    backgroundColor: "rgba(250, 248, 241, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: "rgba(250, 248, 241, 0.15)",
   },
   heroRedeemBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#E8CF8F",
-    letterSpacing: 0.8,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: GOLD_SOFT,
   },
 
-  /* 2. Redeem Card */
+  /* Redeem */
   redeemCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    marginBottom: spacing[4],
-    gap: 10,
-    ...shadows.soft,
-  },
-  redeemHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    borderColor: HAIRLINE,
+    padding: spacing[4],
     gap: 6,
   },
   redeemTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 15.5,
+    fontSize: 17,
     color: colors.light.foreground,
   },
   redeemSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
+    fontSize: 12.5,
     lineHeight: 17,
+    color: colors.light.mutedForeground,
+    marginBottom: 6,
   },
   redeemInputRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    marginTop: 4,
+    backgroundColor: colors.paper.warm,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingLeft: 16,
+    paddingRight: 4,
+    paddingVertical: 4,
   },
   redeemInput: {
     flex: 1,
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
-    borderRadius: radii.xl,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 11 : 7,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12.5,
+    fontSize: 14,
+    letterSpacing: 1.2,
     color: colors.light.foreground,
-    letterSpacing: 1,
+    paddingVertical: Platform.OS === "ios" ? 10 : 6,
   },
   redeemSubmitBtn: {
-    backgroundColor: "#181b12",
+    height: 38,
     paddingHorizontal: 18,
-    borderRadius: radii.xl,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
   },
   redeemSubmitBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: colors.paper.cream,
   },
 
-  /* 3. Presets Section */
-  presetsSection: {
-    marginBottom: spacing[4],
+  /* Presets */
+  presets: {
+    gap: 12,
   },
   presetsHeader: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  presetsEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
   },
   presetsTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontSize: 20,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
-    marginTop: 1,
   },
-  presetsViewAll: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#85651b",
+  presetsLink: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: GOLD_DEEP,
+    textDecorationLine: "underline",
   },
-  presetsGrid: {
-    flexDirection: "row",
-    gap: 8,
+  presetsScroll: {
+    marginHorizontal: -spacing[5],
+  },
+  presetsRow: {
+    paddingHorizontal: spacing[5],
+    gap: 10,
   },
   presetTile: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 3,
-    ...shadows.soft,
-  },
-  presetAmountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: colors.light.foreground,
-  },
-  presetSubText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-  },
-
-  /* Cards List Header */
-  cardsListHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  cardsListEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  cardsListCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10.5,
-    color: colors.light.mutedForeground,
-  },
-
-  /* Empty Wrap */
-  emptyWrap: {
-    paddingHorizontal: spacing[5],
-    gap: 16,
-  },
-  emptyCard: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
+    width: 122,
+    backgroundColor: colors.paper.cream,
     borderRadius: 20,
-    padding: spacing[7],
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    padding: 14,
+    gap: 3,
   },
-  emptyMedallion: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  presetIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "rgba(200, 164, 74, 0.12)",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 6,
+  },
+  presetAmount: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
+    color: colors.light.foreground,
+  },
+  presetSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    color: colors.light.mutedForeground,
+  },
+
+  /* List heading */
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  listCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+
+  /* Empty */
+  emptyWrap: {
+    gap: 14,
+  },
+  emptyCard: {
+    alignItems: "center",
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    marginBottom: 12,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[6],
+  },
+  emptyIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.paper.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing[4],
   },
   emptyTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
+    fontSize: 22,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
     textAlign: "center",
   },
-  emptySubtitle: {
+  emptySub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
+    fontSize: 13,
+    lineHeight: 19,
     color: colors.light.mutedForeground,
     textAlign: "center",
-    lineHeight: 18,
     marginTop: 6,
-    maxWidth: 290,
+    maxWidth: 280,
   },
-  emptyActionsRow: {
-    width: "100%",
-    maxWidth: 290,
-    gap: 10,
-    marginTop: 18,
-  },
-  emptyBuyBtn: {
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#181b12",
-    paddingVertical: 12,
-    borderRadius: radii.full,
-    ...shadows.soft,
-  },
-  emptyBuyBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#ffffff",
-    letterSpacing: 1,
-  },
-  emptyRedeemBtn: {
-    alignItems: "center",
-    paddingVertical: 6,
-  },
-  emptyRedeemBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#85651b",
-    letterSpacing: 0.5,
-  },
-
-  /* Standards Card */
-  standardsCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-    gap: 14,
-  },
-  standardsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  standardsEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  standardsTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16.5,
-    color: colors.light.foreground,
-    marginTop: -4,
-  },
-  standardItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
     gap: 12,
+    height: 50,
+    paddingLeft: 22,
+    paddingRight: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    marginTop: spacing[5],
   },
-  standardIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
   },
-  standardContent: {
-    flex: 1,
-    gap: 2,
+  textLink: {
+    marginTop: spacing[3],
+    paddingVertical: 4,
   },
-  standardHeading: {
+  textLinkText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
+    color: colors.light.foreground,
+    textDecorationLine: "underline",
+  },
+
+  /* Standards */
+  standardsCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[2],
+  },
+  standardRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    paddingVertical: spacing[3.5],
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  standardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  standardBody: {
+    flex: 1,
+    gap: 3,
+  },
+  standardTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
     color: colors.light.foreground,
   },
   standardDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.light.mutedForeground,
-    lineHeight: 16,
   },
 
-  /* Voucher Card (Populated) */
-  voucherCard: {
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[3],
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
+  /* Voucher card */
+  voucher: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 10,
+    borderColor: HAIRLINE,
+    padding: spacing[4],
+    marginTop: 12,
+    gap: spacing[3],
     ...shadows.soft,
   },
-  voucherTopRow: {
+  voucherTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  voucherTypeBadge: {
+  typeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.1)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
   },
-  voucherTypeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: "#85651b",
-    letterSpacing: 0.6,
+  typeText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: GOLD_DEEP,
   },
   statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
   },
   statusActive: {
-    backgroundColor: "rgba(22, 101, 52, 0.1)",
-    borderColor: "rgba(22, 101, 52, 0.25)",
+    backgroundColor: "rgba(21, 128, 61, 0.1)",
   },
   statusVoided: {
-    backgroundColor: "rgba(220, 38, 38, 0.1)",
-    borderColor: "rgba(220, 38, 38, 0.25)",
+    backgroundColor: "rgba(184, 92, 58, 0.1)",
   },
   statusPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.5,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
   },
   statusActiveText: {
     color: "#15803d",
   },
   statusVoidedText: {
-    color: "#dc2626",
+    color: colors.accent2.rust,
   },
   voucherBalanceRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    gap: 8,
+    gap: 6,
   },
   voucherBalance: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
+    fontSize: 26,
+    letterSpacing: -0.4,
     color: colors.light.foreground,
   },
   voucherInitial: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10.5,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
     color: colors.light.mutedForeground,
   },
-  codeContainer: {
+  codeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.lg,
+    gap: 10,
+    backgroundColor: colors.paper.warm,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.06)",
-  },
-  codeTextCol: {
-    gap: 1,
-  },
-  codeLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.8,
+    borderColor: HAIRLINE,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 6,
   },
   codeValue: {
+    flex: 1,
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 13,
+    fontSize: 14,
+    letterSpacing: 1.2,
     color: colors.light.foreground,
-    letterSpacing: 1.5,
   },
-  copyBtn: {
+  codeCopyBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
+    gap: 5,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: colors.paper.cream,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
   },
-  copyBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#181b12",
-    letterSpacing: 0.5,
-  },
-  voucherDetails: {
-    gap: 2,
-  },
-  recipientText: {
+  codeCopyText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 12,
     color: colors.light.foreground,
   },
-  voucherMessage: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
-    fontStyle: "italic",
-    lineHeight: 16,
-  },
-  voucherFooterRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(22, 23, 15, 0.05)",
-  },
-  scheduledPill: {
-    flexDirection: "row",
-    alignItems: "center",
+  voucherDetails: {
     gap: 4,
   },
-  scheduledText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: "#85651b",
+  recipientText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: colors.light.foreground,
   },
-  expiryText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
+  voucherMessage: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.light.mutedForeground,
+  },
+  voucherFooter: {
+    paddingTop: spacing[2.5],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  footerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  footerText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
   },
 });

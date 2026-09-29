@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -8,10 +9,11 @@ import {
   Text,
   RefreshControl,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
+import { PaperBackground } from "@/components/layout";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast } from "@/components/ui";
 import { getMyReviews, deleteReview as deleteReviewApi } from "@/lib/api";
@@ -26,8 +28,54 @@ import { fontFamilies } from "@/lib/theme/fonts";
 
 type Tab = "all" | "published" | "pending";
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const GREEN = "#15803d";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "published", label: "Published" },
+  { key: "pending", label: "Pending" },
+];
+
+const REVIEW_TIPS = [
+  {
+    n: "01",
+    title: "Mention fit and fabric",
+    desc: "Note the sizing, drape and feel — it helps other shoppers most.",
+  },
+  {
+    n: "02",
+    title: "Share how it wears",
+    desc: "How the piece ages and washes is what photos can't show.",
+  },
+  {
+    n: "03",
+    title: "Earn patron points",
+    desc: "Published reviews credit loyalty points to your account.",
+  },
+];
+
+function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
+  return (
+    <View style={styles.starsRow}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Ionicons
+          key={star}
+          name={star <= rating ? "star" : "star-outline"}
+          size={size}
+          color={GOLD}
+        />
+      ))}
+    </View>
+  );
+}
+
 export default function ReviewsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("all");
@@ -89,19 +137,13 @@ export default function ReviewsScreen() {
     return "Bronze";
   }, [reviews.length]);
 
-  const rankTitle = useMemo(() => {
-    if (reviews.length >= 10) return "Gold Connoisseur";
-    if (reviews.length >= 5) return "Silver Critic";
-    return "Bronze Patron";
-  }, [reviews.length]);
-
   const removeReview = async (id: string, productName?: string) => {
     if (!user?.id) return;
     Alert.alert(
-      "Remove Critique",
-      `Are you sure you wish to delete your review for "${productName ?? "this piece"}"?`,
+      "Delete review",
+      `Delete your review of "${productName ?? "this piece"}"?`,
       [
-        { text: "Keep Review", style: "cancel" },
+        { text: "Keep", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
@@ -121,969 +163,753 @@ export default function ReviewsScreen() {
     );
   };
 
+  const tabCount = (key: Tab) =>
+    key === "all" ? reviews.length : key === "published" ? publishedCount : pendingCount;
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      {/* 1. Custom Atelier Top Navigation Header */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="chevron-back" size={20} color="#141311" />
-        </TouchableOpacity>
-
-        <View style={styles.headerTitleCenter}>
-          <Text style={styles.headerEyebrow}>COMMUNITY ARCHIVES</Text>
-          <Text style={styles.headerTitle}>My Reviews</Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => loadReviews(true)}
-          style={styles.refreshButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="refresh-outline"
-            size={18}
-            color={refreshing ? "#C8A44A" : "#141311"}
-          />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadReviews(true)}
-            tintColor="#C8A44A"
-            colors={["#C8A44A"]}
-          />
-        }
-      >
-        {/* 2. Velvet Obsidian Hero Card ("Words Left Behind") */}
-        <LinearGradient
-          colors={["#141311", "#1E1C18", "#0F0E0D"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
-        >
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroTagBadge}>
-              <Ionicons name="sparkles" size={10} color="#C8A44A" />
-              <Text style={styles.heroTagText}>PATRON CRITIQUE ARCHIVE</Text>
-            </View>
-
-            {/* Feather/Quill Medallion */}
-            <View style={styles.featherMedallion}>
-              <View style={styles.featherMedallionInner}>
-                <Ionicons name="document-text-outline" size={18} color="#E8CF8F" />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.heroBodyRow}>
-            <View style={styles.heroTextCol}>
-              <Text style={styles.heroTitle}>Words Left Behind</Text>
-              <Text style={styles.heroSubtitle}>
-                Your personal chronicle of impressions, drape evaluations, and tactile notes on
-                pieces you've acquired, worn, or gifted.
-              </Text>
-            </View>
-
-            {/* Score Box */}
-            <View style={styles.scoreBox}>
-              <Text style={styles.scoreNumber}>{avg}</Text>
-              <View style={styles.starsRow}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons
-                    key={star}
-                    name={star <= Math.round(Number(avg)) ? "star" : "star-outline"}
-                    size={11}
-                    color="#C8A44A"
-                  />
-                ))}
-              </View>
-              <Text style={styles.scoreLabel}>SCORE</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* 3. Luxury 2x2 Metric Grid */}
-        <View style={styles.statsGrid}>
-          {/* Card 1: Reviews */}
-          <View style={styles.statCard}>
-            <View style={styles.statIconWrap}>
-              <Ionicons name="star-outline" size={16} color="#85651B" />
-            </View>
-            <Text style={styles.statNumber}>{reviews.length}</Text>
-            <Text style={styles.statLabel}>CRITIQUES</Text>
-            <Text style={styles.statSub}>Written records</Text>
-          </View>
-
-          {/* Card 2: Helpful */}
-          <View style={styles.statCard}>
-            <View style={styles.statIconWrap}>
-              <Ionicons name="thumbs-up-outline" size={16} color="#85651B" />
-            </View>
-            <Text style={styles.statNumber}>{totalHelpful}</Text>
-            <Text style={styles.statLabel}>PATRON ACCLAIM</Text>
-            <Text style={styles.statSub}>Helpful endorsements</Text>
-          </View>
-
-          {/* Card 3: Photos */}
-          <View style={styles.statCard}>
-            <View style={styles.statIconWrap}>
-              <Ionicons name="image-outline" size={16} color="#85651B" />
-            </View>
-            <Text style={styles.statNumber}>{totalPhotos}</Text>
-            <Text style={styles.statLabel}>VISUAL ASSETS</Text>
-            <Text style={styles.statSub}>Editorial imagery</Text>
-          </View>
-
-          {/* Card 4: Rank */}
-          <View style={styles.statCard}>
-            <View style={styles.statIconWrap}>
-              <Ionicons name="ribbon-outline" size={16} color="#85651B" />
-            </View>
-            <Text style={styles.statNumber}>{rank}</Text>
-            <Text style={styles.statLabel}>CRITIC RANK</Text>
-            <Text style={styles.statSub}>{rankTitle}</Text>
-          </View>
-        </View>
-
-        {/* 4. Segmented Filter Tabs */}
-        <View style={styles.tabsRow}>
+    <PaperBackground>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        {/* Navigation */}
+        <View style={styles.navBar}>
           <TouchableOpacity
-            style={[styles.tabButton, tab === "all" && styles.tabButtonActive]}
-            onPress={() => setTab("all")}
+            onPress={() => router.back()}
+            style={styles.navBtn}
+            activeOpacity={0.7}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
-            <Text style={[styles.tabButtonText, tab === "all" && styles.tabButtonTextActive]}>
-              All ({reviews.length})
-            </Text>
+            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.tabButton, tab === "published" && styles.tabButtonActive]}
-            onPress={() => setTab("published")}
-          >
-            <Text
-              style={[styles.tabButtonText, tab === "published" && styles.tabButtonTextActive]}
-            >
-              Published ({publishedCount})
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.navTitle}>My reviews</Text>
 
           <TouchableOpacity
-            style={[styles.tabButton, tab === "pending" && styles.tabButtonActive]}
-            onPress={() => setTab("pending")}
+            onPress={() => loadReviews(true)}
+            disabled={refreshing}
+            style={styles.navBtn}
+            activeOpacity={0.7}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
           >
-            <Text style={[styles.tabButtonText, tab === "pending" && styles.tabButtonTextActive]}>
-              Pending ({pendingCount})
-            </Text>
+            {refreshing ? (
+              <ActivityIndicator size="small" color={GOLD} />
+            ) : (
+              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* 5. Reviews List or Luxury Empty State */}
-        {filtered.length === 0 ? (
-          /* Editorial Empty State */
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyCard}>
-              {/* Double-Ring Gold Medallion */}
-              <View style={styles.emptyMedallionOuter}>
-                <View style={styles.emptyMedallionInner}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={26} color="#C8A44A" />
-                  <View style={styles.emptySparkle}>
-                    <Ionicons name="sparkles" size={10} color="#E8CF8F" />
-                  </View>
-                </View>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadReviews(true)}
+              tintColor={GOLD}
+              colors={[GOLD]}
+            />
+          }
+        >
+          {/* Heading */}
+          <View style={styles.pageHead}>
+            <Text style={styles.eyebrow}>Community</Text>
+            <Text style={styles.pageTitle}>
+              My <Text style={styles.pageTitleAccent}>reviews.</Text>
+            </Text>
+          </View>
+
+          {/* Score hero */}
+          <LinearGradient
+            colors={["#1f2418", "#14170e"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.hero}
+          >
+            <View style={styles.heroTop}>
+              <Text style={styles.heroEyebrow}>Average score</Text>
+              <View style={styles.heroIcon}>
+                <Ionicons name="create-outline" size={15} color={GOLD_SOFT} />
               </View>
-
-              <Text style={styles.emptyTitle}>The Archive Awaits Your Voice</Text>
-              <Text style={styles.emptyBody}>
-                You haven't chronicled any acquisitions yet. After receiving a garment or bespoke
-                piece, share your textural and sizing notes to guide fellow connoisseurs.
-              </Text>
-
-              {/* Primary Action Button */}
-              <TouchableOpacity
-                style={styles.emptyPrimaryButton}
-                activeOpacity={0.85}
-                onPress={() => router.push("/(main)/account/orders")}
-              >
-                <LinearGradient
-                  colors={["#1C1A17", "#141311"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.emptyPrimaryButtonGradient}
-                >
-                  <Text style={styles.emptyPrimaryButtonText}>Review Completed Orders</Text>
-                  <Ionicons name="arrow-forward" size={15} color="#E8CF8F" />
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {/* Secondary Action Button */}
-              <TouchableOpacity
-                style={styles.emptySecondaryButton}
-                activeOpacity={0.7}
-                onPress={() => router.push("/(main)/account/wardrobe")}
-              >
-                <Ionicons name="shirt-outline" size={14} color="#85651B" />
-                <Text style={styles.emptySecondaryButtonText}>Explore The Wardrobe</Text>
-              </TouchableOpacity>
             </View>
-
-            {/* 6. "The Art of the Atelier Critique" 3-Feature Section */}
-            <View style={styles.protocolsSection}>
-              <View style={styles.protocolsHeaderRow}>
-                <Ionicons name="shield-outline" size={14} color="#85651B" />
-                <Text style={styles.protocolsEyebrow}>CONNOISSEUR STANDARDS</Text>
-              </View>
-              <Text style={styles.protocolsTitle}>The Art of the Atelier Critique</Text>
-
-              <View style={styles.protocolCardsList}>
-                {/* Step 1 */}
-                <View style={styles.protocolCard}>
-                  <View style={styles.protocolNumberBadge}>
-                    <Text style={styles.protocolNumberText}>01</Text>
-                  </View>
-                  <View style={styles.protocolCardContent}>
-                    <Text style={styles.protocolCardTitle}>Sizing & Drape Precision</Text>
-                    <Text style={styles.protocolCardDesc}>
-                      Inform fellow patrons on true-to-form chest drape, shoulder ease, and fabric
-                      hand-feel across various silhouettes.
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Step 2 */}
-                <View style={styles.protocolCard}>
-                  <View style={styles.protocolNumberBadge}>
-                    <Text style={styles.protocolNumberText}>02</Text>
-                  </View>
-                  <View style={styles.protocolCardContent}>
-                    <Text style={styles.protocolCardTitle}>Material Resilience</Text>
-                    <Text style={styles.protocolCardDesc}>
-                      Document how natural wools, raw linens, and woven silks age, soften, and patina
-                      over seasons of wear.
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Step 3 */}
-                <View style={styles.protocolCard}>
-                  <View style={styles.protocolNumberBadge}>
-                    <Text style={styles.protocolNumberText}>03</Text>
-                  </View>
-                  <View style={styles.protocolCardContent}>
-                    <Text style={styles.protocolCardTitle}>Patron Status Progression</Text>
-                    <Text style={styles.protocolCardDesc}>
-                      Earn Atelier loyalty points and unlock exclusive critic standing badges across
-                      the private member directory.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Concierge Guarantee Callout */}
-              <View style={styles.guaranteeBanner}>
-                <Ionicons name="ribbon-outline" size={16} color="#C8A44A" />
-                <Text style={styles.guaranteeText}>
-                  Authenticity Guarantee: All reviews undergo editorial moderation to ensure genuine
-                  patron insights and verified provenance.
+            <View style={styles.heroScoreRow}>
+              <Text style={styles.heroScore}>{avg}</Text>
+              <View style={styles.heroScoreRight}>
+                <Stars rating={Math.round(Number(avg))} size={14} />
+                <Text style={styles.heroScoreSub}>
+                  {reviews.length === 0
+                    ? "No reviews yet"
+                    : `Across ${reviews.length} ${reviews.length === 1 ? "review" : "reviews"}`}
                 </Text>
               </View>
             </View>
+          </LinearGradient>
+
+          {/* Stat strip */}
+          <View style={styles.statsStrip}>
+            <View style={styles.statCell}>
+              <Text style={[styles.statNum, reviews.length === 0 && styles.statNumMuted]}>
+                {reviews.length}
+              </Text>
+              <Text style={styles.statLabel}>Reviews</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={[styles.statNum, totalHelpful === 0 && styles.statNumMuted]}>
+                {totalHelpful}
+              </Text>
+              <Text style={styles.statLabel}>Helpful</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={[styles.statNum, totalPhotos === 0 && styles.statNumMuted]}>
+                {totalPhotos}
+              </Text>
+              <Text style={styles.statLabel}>Photos</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={styles.statNum} numberOfLines={1}>{rank}</Text>
+              <Text style={styles.statLabel}>Rank</Text>
+            </View>
           </View>
-        ) : (
-          /* Active Reviews List */
-          <View style={styles.reviewsList}>
-            {filtered.map((review) => {
-              const initials = review.product
-                .split(" ")
-                .filter(Boolean)
-                .map((w) => w[0])
-                .slice(0, 2)
-                .join("")
-                .toUpperCase();
 
-              return (
-                <View key={review.id} style={styles.reviewCard}>
-                  {/* Header Row: Status & Actions */}
-                  <View style={styles.cardHeaderRow}>
-                    <View style={styles.statusBadgesRow}>
-                      {review.status === "published" ? (
-                        <View style={styles.publishedBadge}>
-                          <Ionicons name="checkmark-circle" size={12} color="#2B6E3F" />
-                          <Text style={styles.publishedBadgeText}>PUBLISHED</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.pendingBadge}>
-                          <Ionicons name="time-outline" size={12} color="#85651B" />
-                          <Text style={styles.pendingBadgeText}>MODERATION</Text>
-                        </View>
-                      )}
+          {/* Filter tabs */}
+          {reviews.length > 0 && (
+            <View style={styles.segmented}>
+              {TABS.map((t) => {
+                const count = tabCount(t.key);
+                const isActive = tab === t.key;
+                return (
+                  <TouchableOpacity
+                    key={t.key}
+                    style={[styles.segment, isActive && styles.segmentActive]}
+                    onPress={() => setTab(t.key)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
+                      {t.label}
+                      {count > 0 ? ` ${count}` : ""}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
-                      {review.isVerifiedPurchase && (
-                        <View style={styles.verifiedBadge}>
-                          <Ionicons name="shield-checkmark" size={11} color="#414A23" />
-                          <Text style={styles.verifiedBadgeText}>VERIFIED ACQUISITION</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.deleteIconButton}
-                      onPress={() => removeReview(review.id, review.product)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons name="trash-outline" size={15} color="#8F8B82" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Middle Row: Product Emblem & Title */}
-                  <View style={styles.productRow}>
-                    <View style={styles.productEmblem}>
-                      <Text style={styles.productEmblemText}>{initials || "AT"}</Text>
-                    </View>
-
-                    <View style={styles.productInfo}>
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onPress={() =>
-                          review.productSlug && router.push(`/(main)/products/${review.productSlug}`)
-                        }
-                      >
-                        <Text style={styles.productName} numberOfLines={1}>
-                          {review.product}
-                        </Text>
-                      </TouchableOpacity>
-                      <Text style={styles.productMeta}>
-                        {review.variant} · {new Date(review.date).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Rating Stars & Critique Content */}
-                  <View style={styles.reviewBodyContainer}>
-                    <View style={styles.starsRow}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Ionicons
-                          key={star}
-                          name={star <= review.rating ? "star" : "star-outline"}
-                          size={13}
-                          color="#C8A44A"
-                        />
-                      ))}
-                      <Text style={styles.ratingDigit}>{review.rating}.0</Text>
-                    </View>
-
-                    {review.title ? (
-                      <Text style={styles.reviewHeadline}>{review.title}</Text>
-                    ) : null}
-
-                    {review.body ? (
-                      <Text style={styles.reviewBodyText}>{review.body}</Text>
-                    ) : null}
-                  </View>
-
-                  {/* Card Footer: Acclaim & Navigation */}
-                  <View style={styles.cardFooterRow}>
-                    <View style={styles.helpfulBadge}>
-                      <Ionicons name="thumbs-up-outline" size={13} color="#85651B" />
-                      <Text style={styles.helpfulBadgeText}>
-                        {review.helpful} {review.helpful === 1 ? "endorsement" : "endorsements"}
-                      </Text>
-                    </View>
-
-                    {review.productSlug && (
-                      <TouchableOpacity
-                        style={styles.viewProductLink}
-                        onPress={() => router.push(`/(main)/products/${review.productSlug}`)}
-                      >
-                        <Text style={styles.viewProductLinkText}>View Piece</Text>
-                        <Ionicons name="arrow-forward" size={12} color="#141311" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
+          {/* List / empty */}
+          {loading && reviews.length === 0 ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color={GOLD} size="small" />
+              <Text style={styles.loadingText}>Loading your reviews…</Text>
+            </View>
+          ) : filtered.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyCard}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="chatbubble-ellipses-outline"
+                    size={26}
+                    color={colors.olive[700]}
+                  />
                 </View>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+                <Text style={styles.emptyTitle}>
+                  {reviews.length > 0 ? "No reviews here" : "No reviews yet"}
+                </Text>
+                <Text style={styles.emptySub}>
+                  {reviews.length > 0
+                    ? "No reviews match this filter."
+                    : "After an order arrives, share your notes on fit and fabric to help other shoppers."}
+                </Text>
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  activeOpacity={0.88}
+                  onPress={() => router.push("/(main)/account/orders")}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.primaryBtnText}>Review your orders</Text>
+                  <View style={styles.primaryBtnArrow}>
+                    <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.textLink}
+                  activeOpacity={0.7}
+                  onPress={() => router.push("/(main)/account/wardrobe")}
+                  hitSlop={8}
+                >
+                  <Text style={styles.textLinkText}>View wardrobe</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Tips */}
+              <View style={styles.tipsCard}>
+                <Text style={styles.eyebrow}>Writing a good review</Text>
+                {REVIEW_TIPS.map((s, i) => (
+                  <View key={s.n} style={[styles.tipRow, i > 0 && styles.rowDivider]}>
+                    <Text style={styles.tipNum}>{s.n}</Text>
+                    <View style={styles.tipBody}>
+                      <Text style={styles.tipTitle}>{s.title}</Text>
+                      <Text style={styles.tipDesc}>{s.desc}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.reviewsList}>
+              {filtered.map((review) => {
+                const initials = review.product
+                  .split(" ")
+                  .filter(Boolean)
+                  .map((w) => w[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase();
+
+                return (
+                  <View key={review.id} style={styles.reviewCard}>
+                    {/* Status row */}
+                    <View style={styles.cardTop}>
+                      <View style={styles.badgeRow}>
+                        {review.status === "published" ? (
+                          <View style={[styles.pill, styles.pillPublished]}>
+                            <Ionicons name="checkmark" size={10} color={GREEN} />
+                            <Text style={[styles.pillText, { color: GREEN }]}>Published</Text>
+                          </View>
+                        ) : (
+                          <View style={[styles.pill, styles.pillPending]}>
+                            <Ionicons name="time-outline" size={10} color={GOLD_DEEP} />
+                            <Text style={[styles.pillText, { color: GOLD_DEEP }]}>
+                              In review
+                            </Text>
+                          </View>
+                        )}
+                        {review.isVerifiedPurchase && (
+                          <View style={[styles.pill, styles.pillVerified]}>
+                            <Ionicons name="shield-checkmark" size={9} color={colors.olive[700]} />
+                            <Text style={[styles.pillText, { color: colors.olive[700] }]}>
+                              Verified
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => removeReview(review.id, review.product)}
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel="Delete review"
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={15}
+                          color={colors.light.mutedForeground}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Product */}
+                    <View style={styles.productRow}>
+                      <View style={styles.productEmblem}>
+                        <Text style={styles.productEmblemText}>{initials || "—"}</Text>
+                      </View>
+                      <View style={styles.productInfo}>
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            review.productSlug &&
+                            router.push(`/(main)/products/${review.productSlug}`)
+                          }
+                        >
+                          <Text style={styles.productName} numberOfLines={1}>
+                            {review.product}
+                          </Text>
+                        </TouchableOpacity>
+                        <Text style={styles.productMeta}>
+                          {review.variant} ·{" "}
+                          {new Date(review.date).toLocaleDateString(undefined, {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Review body */}
+                    <View style={styles.reviewBody}>
+                      <Stars rating={review.rating} />
+                      {review.title ? (
+                        <Text style={styles.reviewHeadline}>{review.title}</Text>
+                      ) : null}
+                      {review.body ? (
+                        <Text style={styles.reviewBodyText}>{review.body}</Text>
+                      ) : null}
+                    </View>
+
+                    {/* Footer */}
+                    <View style={styles.cardFooter}>
+                      <View style={styles.helpfulMeta}>
+                        <Ionicons name="thumbs-up-outline" size={12} color={GOLD_DEEP} />
+                        <Text style={styles.helpfulText}>
+                          {review.helpful === 0
+                            ? "No votes yet"
+                            : `${review.helpful} found helpful`}
+                        </Text>
+                      </View>
+                      {review.productSlug && (
+                        <TouchableOpacity
+                          style={styles.viewLink}
+                          onPress={() => router.push(`/(main)/products/${review.productSlug}`)}
+                          hitSlop={6}
+                        >
+                          <Text style={styles.viewLinkText}>View piece</Text>
+                          <Ionicons name="arrow-forward" size={11} color={colors.light.foreground} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#F5F4EF",
-  },
-  topHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
-    backgroundColor: "#F5F4EF",
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  headerTitleCenter: {
-    alignItems: "center",
-  },
-  headerEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: "#85651B",
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: "#141311",
-    letterSpacing: -0.3,
-  },
-  refreshButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
   },
 
-  /* Velvet Obsidian Hero Card */
-  heroCard: {
+  /* Nav */
+  navBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[2.5],
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-    marginBottom: 16,
-    ...shadows.glow,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: "#E8CF8F",
-  },
-  featherMedallion: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    padding: 3,
-  },
-  featherMedallionInner: {
-    flex: 1,
-    borderRadius: 16,
-    backgroundColor: "#201E1A",
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
-  },
-  heroBodyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  heroTextCol: {
-    flex: 1,
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#FAF8F5",
-    letterSpacing: -0.4,
-    marginBottom: 6,
-  },
-  heroSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#B3AFA5",
-  },
-  scoreBox: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-    minWidth: 80,
+    borderColor: HAIRLINE,
   },
-  scoreNumber: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 22,
-    color: "#FAF8F5",
+  navTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.foreground,
+  },
+
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2],
+    gap: 14,
+  },
+
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
+  },
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
     marginBottom: 4,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
+  },
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+
+  /* Hero */
+  hero: {
+    borderRadius: 24,
+    padding: spacing[5],
+    ...shadows.editorial,
+  },
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  heroEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
+  },
+  heroIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(200, 164, 74, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroScoreRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 14,
+  },
+  heroScore: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 44,
+    letterSpacing: -1.2,
+    lineHeight: 50,
+    color: colors.paper.cream,
+  },
+  heroScoreRight: {
+    gap: 4,
+    paddingBottom: 8,
+  },
+  heroScoreSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: "rgba(250, 248, 241, 0.6)",
   },
   starsRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    marginBottom: 4,
-  },
-  scoreLabel: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 8,
-    letterSpacing: 1.4,
-    color: "#85651B",
   },
 
-  /* 2x2 Metric Grid */
-  statsGrid: {
+  /* Stat strip */
+  statsStrip: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 16,
-  },
-  statCard: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 14,
+    alignItems: "center",
+    backgroundColor: colors.paper.cream,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
+    borderColor: HAIRLINE,
+    paddingVertical: 14,
     ...shadows.soft,
   },
-  statIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F6F4EB",
-    borderWidth: 1,
-    borderColor: "#E5E1D4",
+  statCell: {
+    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
+    gap: 2,
   },
-  statNumber: {
+  statNum: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: "#141311",
-    marginBottom: 2,
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
+  },
+  statNumMuted: {
+    color: "rgba(22, 23, 15, 0.35)",
   },
   statLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: "#85651B",
-    marginBottom: 2,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
   },
-  statSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#8F8B82",
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
+    backgroundColor: colors.light.border,
   },
 
-  /* Segmented Filter Tabs */
-  tabsRow: {
+  /* Segmented tabs */
+  segmented: {
     flexDirection: "row",
-    backgroundColor: "#EBE8DF",
-    borderRadius: 16,
+    gap: 4,
+    backgroundColor: colors.paper.warm,
+    borderRadius: radii.full,
     padding: 4,
     borderWidth: 1,
-    borderColor: "#DFDBCF",
-    marginBottom: 16,
+    borderColor: HAIRLINE,
   },
-  tabButton: {
+  segment: {
     flex: 1,
-    alignItems: "center",
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  tabButtonActive: {
-    backgroundColor: "#141311",
-  },
-  tabButtonText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: "#6B675E",
-  },
-  tabButtonTextActive: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: "#FAF8F5",
-  },
-
-  /* Editorial Empty State */
-  emptyContainer: {
-    gap: 20,
-  },
-  emptyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 26,
-    alignItems: "center",
-    ...shadows.soft,
-  },
-  emptyMedallionOuter: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    padding: 4,
-    marginBottom: 16,
-  },
-  emptyMedallionInner: {
-    flex: 1,
-    borderRadius: 30,
-    backgroundColor: "#141311",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
+    paddingVertical: 9,
+    borderRadius: radii.full,
   },
-  emptySparkle: {
-    position: "absolute",
-    top: 6,
-    right: 8,
+  segmentActive: {
+    backgroundColor: colors.paper.cream,
+    ...shadows.soft,
+  },
+  segmentText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+  },
+  segmentTextActive: {
+    color: colors.light.foreground,
+  },
+
+  /* Loading */
+  loadingWrap: {
+    paddingVertical: 50,
+    alignItems: "center",
+    gap: 10,
+  },
+  loadingText: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13.5,
+    color: colors.light.mutedForeground,
+  },
+
+  /* Empty */
+  emptyWrap: {
+    gap: 14,
+  },
+  emptyCard: {
+    alignItems: "center",
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    paddingVertical: spacing[8],
+    paddingHorizontal: spacing[6],
+  },
+  emptyIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.paper.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing[4],
   },
   emptyTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    color: "#141311",
+    fontSize: 22,
     letterSpacing: -0.3,
-    marginBottom: 8,
+    color: colors.light.foreground,
     textAlign: "center",
   },
-  emptyBody: {
+  emptySub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    lineHeight: 20,
-    color: "#787469",
+    lineHeight: 19,
+    color: colors.light.mutedForeground,
     textAlign: "center",
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    marginTop: 6,
+    maxWidth: 280,
   },
-  emptyPrimaryButton: {
-    width: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 10,
-    ...shadows.soft,
-  },
-  emptyPrimaryButtonGradient: {
+  primaryBtn: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    height: 50,
+    paddingLeft: 22,
+    paddingRight: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    marginTop: spacing[5],
+  },
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    gap: 8,
   },
-  emptyPrimaryButtonText: {
+  textLink: {
+    marginTop: spacing[3],
+    paddingVertical: 4,
+  },
+  textLinkText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: "#FAF8F5",
-  },
-  emptySecondaryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  emptySecondaryButtonText: {
-    fontFamily: fontFamilies.sans.medium,
     fontSize: 13,
-    color: "#85651B",
+    color: colors.light.foreground,
+    textDecorationLine: "underline",
   },
 
-  /* Protocols Section */
-  protocolsSection: {
-    backgroundColor: "#FAF9F5",
-    borderRadius: 18,
+  /* Tips */
+  tipsCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#EBE7DD",
-    padding: 20,
+    borderColor: HAIRLINE,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[2],
   },
-  protocolsHeaderRow: {
+  tipRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
+    alignItems: "flex-start",
+    gap: spacing[4],
+    paddingVertical: spacing[3.5],
   },
-  protocolsEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: "#85651B",
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
-  protocolsTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: "#141311",
-    marginBottom: 16,
+  tipNum: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 16,
+    color: GOLD_DEEP,
+    width: 24,
   },
-  protocolCardsList: {
-    gap: 12,
-    marginBottom: 18,
-  },
-  protocolCard: {
-    flexDirection: "row",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#EAE6DB",
-    padding: 14,
-  },
-  protocolNumberBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#F2EFE6",
-    borderWidth: 1,
-    borderColor: "#E0DCcf",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  protocolNumberText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#85651B",
-  },
-  protocolCardContent: {
+  tipBody: {
     flex: 1,
+    gap: 3,
   },
-  protocolCardTitle: {
+  tipTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#141311",
-    marginBottom: 3,
+    fontSize: 13.5,
+    color: colors.light.foreground,
   },
-  protocolCardDesc: {
+  tipDesc: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: "#787469",
-  },
-  guaranteeBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(200, 164, 74, 0.08)",
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.2)",
-  },
-  guaranteeText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "#6B5219",
+    color: colors.light.mutedForeground,
   },
 
-  /* Reviews List */
+  /* Review cards */
   reviewsList: {
-    gap: 14,
+    gap: 12,
   },
   reviewCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 18,
+    borderColor: HAIRLINE,
+    padding: spacing[4],
+    gap: spacing[3],
     ...shadows.soft,
   },
-  cardHeaderRow: {
+  cardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
   },
-  statusBadgesRow: {
+  badgeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
-  publishedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#EBF7EE",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#C5E6CC",
-  },
-  publishedBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: "#2B6E3F",
-  },
-  pendingBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#F7F5EE",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E6E2D4",
-  },
-  pendingBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: "#85651B",
-  },
-  verifiedBadge: {
+  pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#F1EEDB",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
   },
-  verifiedBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.6,
-    color: "#414A23",
+  pillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
   },
-  deleteIconButton: {
-    padding: 4,
+  pillPublished: {
+    backgroundColor: "rgba(21, 128, 61, 0.1)",
+  },
+  pillPending: {
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+  },
+  pillVerified: {
+    backgroundColor: "rgba(65, 74, 35, 0.1)",
   },
   productRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F1EC",
+    gap: spacing[3],
   },
   productEmblem: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: "#F6F4EB",
-    borderWidth: 1,
-    borderColor: "#E5E1D4",
+    borderRadius: 14,
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
   },
   productEmblemText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 14,
-    color: "#414A23",
-    letterSpacing: 1,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15,
+    color: colors.olive[700],
   },
   productInfo: {
     flex: 1,
+    gap: 2,
   },
   productName: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: "#141311",
-    marginBottom: 2,
+    fontSize: 16,
+    letterSpacing: -0.2,
+    color: colors.light.foreground,
   },
   productMeta: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: "#8F8B82",
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
   },
-  reviewBodyContainer: {
+  reviewBody: {
     gap: 6,
-    marginBottom: 12,
-  },
-  ratingDigit: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#85651B",
-    marginLeft: 4,
   },
   reviewHeadline: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 14,
-    color: "#141311",
-    marginTop: 2,
+    color: colors.light.foreground,
   },
   reviewBodyText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: "#6B675E",
+    color: colors.light.mutedForeground,
   },
-  cardFooterRow: {
+  cardFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F1EC",
+    paddingTop: spacing[2.5],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
-  helpfulBadge: {
+  helpfulMeta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
-  helpfulBadgeText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: "#85651B",
+  helpfulText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
-  viewProductLink: {
+  viewLink: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
-  viewProductLinkText: {
+  viewLinkText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: "#141311",
+    fontSize: 12.5,
+    color: colors.light.foreground,
   },
 });

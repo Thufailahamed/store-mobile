@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
+import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { submitContactSubmission } from "@/lib/api";
@@ -21,13 +21,17 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 const TOPICS = [
-  { id: "Order issue", label: "Order Adjustment", icon: "cube-outline" as const },
-  { id: "Return or refund", label: "Returns & Refunds", icon: "refresh-outline" as const },
-  { id: "Delivery", label: "Air Freight & Delivery", icon: "airplane-outline" as const },
-  { id: "Product question", label: "Bespoke Sizing & Fit", icon: "cut-outline" as const },
-  { id: "Account & security", label: "Vault & Security", icon: "shield-checkmark-outline" as const },
-  { id: "Other", label: "General Inquiry", icon: "chatbubble-ellipses-outline" as const },
+  { id: "Order issue", label: "Orders", icon: "cube-outline" as const },
+  { id: "Return or refund", label: "Returns & refunds", icon: "refresh-outline" as const },
+  { id: "Delivery", label: "Delivery", icon: "airplane-outline" as const },
+  { id: "Product question", label: "Sizing & fit", icon: "cut-outline" as const },
+  { id: "Account & security", label: "Account", icon: "shield-checkmark-outline" as const },
+  { id: "Other", label: "Other", icon: "chatbubble-ellipses-outline" as const },
 ];
+
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 
 export default function ContactScreen() {
   const router = useRouter();
@@ -79,738 +83,528 @@ export default function ContactScreen() {
     setSubmitting(false);
 
     if (!res.ok) {
-      toast(res.error || "Failed to transmit message", "error");
+      toast(res.error || "Failed to send message", "error");
       return;
     }
 
     setSent(true);
-    toast("Inquiry transmitted to concierge", "success");
+    toast("Message sent to support", "success");
   };
+
+  const navBar = (title: string) => (
+    <View style={styles.navBar}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={styles.navBtn}
+        activeOpacity={0.7}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+      >
+        <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
+      </TouchableOpacity>
+
+      <Text style={styles.navTitle}>{title}</Text>
+
+      <View style={styles.navBtn}>
+        <Ionicons name="headset-outline" size={17} color={GOLD_DEEP} />
+      </View>
+    </View>
+  );
 
   if (sent) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-        <View style={styles.topHeader}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="chevron-back" size={20} color="#141311" />
-          </TouchableOpacity>
-          <View style={styles.headerTitleCenter}>
-            <Text style={styles.headerEyebrow}>TRANSMISSION RECORD</Text>
-            <Text style={styles.headerTitle}>Inquiry Logged</Text>
-          </View>
-          <View style={{ width: 40 }} />
-        </View>
-
-        <View style={styles.successContainer}>
-          <View style={styles.successCard}>
-            <View style={styles.successMedallionOuter}>
-              <View style={styles.successMedallionInner}>
-                <Ionicons name="checkmark" size={32} color="#C8A44A" />
-                <View style={styles.successSparkle}>
-                  <Ionicons name="sparkles" size={12} color="#E8CF8F" />
-                </View>
-              </View>
+      <PaperBackground>
+        <SafeAreaView style={styles.container} edges={["top"]}>
+          {navBar("Message sent")}
+          <View style={styles.successWrap}>
+            <View style={styles.successIcon}>
+              <Ionicons name="checkmark" size={26} color={colors.olive[700]} />
             </View>
-
-            <Text style={styles.successTitle}>Dispatch Received</Text>
-            <Text style={styles.successBody}>
-              Your inquiry has been allocated to an Atelier Concierge specialist. A formal reply
-              will be dispatched to{" "}
-              <Text style={styles.successEmailHighlight}>{email.trim()}</Text> within 24 hours.
+            <Text style={styles.successTitle}>Message sent</Text>
+            <Text style={styles.successSub}>
+              A member of our team will reply to{" "}
+              <Text style={styles.successEmail}>{email.trim()}</Text> — usually
+              within 24 hours.
             </Text>
 
             <TouchableOpacity
-              style={styles.successPrimaryButton}
-              activeOpacity={0.85}
+              style={styles.primaryBtn}
+              activeOpacity={0.88}
               onPress={() => router.back()}
+              accessibilityRole="button"
             >
-              <LinearGradient
-                colors={["#1C1A17", "#141311"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.successPrimaryGradient}
-              >
-                <Text style={styles.successPrimaryText}>Return to Account</Text>
-                <Ionicons name="arrow-forward" size={15} color="#E8CF8F" />
-              </LinearGradient>
+              <Text style={styles.primaryBtnText}>Back to account</Text>
+              <View style={styles.primaryBtnArrow}>
+                <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.viewTicketsButton}
+              style={styles.textLink}
               activeOpacity={0.7}
               onPress={() => {
                 router.replace("/(main)/account/tickets" as never);
               }}
+              hitSlop={8}
             >
-              <Ionicons name="documents-outline" size={14} color="#85651B" />
-              <Text style={styles.viewTicketsButtonText}>Review Inquiries Log</Text>
+              <Text style={styles.textLinkText}>View my tickets</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      {/* 1. Custom Atelier Top Navigation Header */}
-      <View style={styles.topHeader}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    <PaperBackground>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        {navBar("Contact support")}
+
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Ionicons name="chevron-back" size={20} color="#141311" />
-        </TouchableOpacity>
-
-        <View style={styles.headerTitleCenter}>
-          <Text style={styles.headerEyebrow}>ATELIER DIRECT LIAISON</Text>
-          <Text style={styles.headerTitle}>Contact Support</Text>
-        </View>
-
-        <View style={styles.conciergeBadgeSmall}>
-          <Ionicons name="headset-outline" size={17} color="#85651B" />
-        </View>
-      </View>
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: insets.bottom + 40 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* 2. Velvet Obsidian Hero Card ("Direct Concierge Advisory") */}
-          <LinearGradient
-            colors={["#141311", "#1E1C18", "#0F0E0D"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.heroTopRow}>
-              <View style={styles.heroTagBadge}>
-                <Ionicons name="sparkles" size={10} color="#C8A44A" />
-                <Text style={styles.heroTagText}>PRIVATE CLIENT LIAISON</Text>
-              </View>
-
-              {/* Headset Seal Medallion */}
-              <View style={styles.headsetMedallion}>
-                <View style={styles.headsetMedallionInner}>
-                  <Ionicons name="headset-outline" size={18} color="#E8CF8F" />
-                </View>
-              </View>
-            </View>
-
-            <Text style={styles.heroTitle}>Direct Concierge Advisory</Text>
-            <Text style={styles.heroSubtitle}>
-              Questions regarding bespoke sizing, private showroom viewings, insured freight, or
-              order adjustments — send a note to our boutique directors.
-            </Text>
-
-            {/* 3-Point Advisory Strip */}
-            <View style={styles.heroMetricsStrip}>
-              <View style={styles.metricItem}>
-                <Text style={styles.metricValue}>&lt; 24h</Text>
-                <Text style={styles.metricLabel}>DIRECT RESPONSE</Text>
-              </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={styles.metricValue}>Priority</Text>
-                <Text style={styles.metricLabel}>TRIAGE LEVEL</Text>
-              </View>
-              <View style={styles.metricDivider} />
-              <View style={styles.metricItem}>
-                <Text style={[styles.metricValue, { color: "#54B870" }]}>Active</Text>
-                <Text style={styles.metricLabel}>DESK STATUS</Text>
-              </View>
-            </View>
-          </LinearGradient>
-
-          {/* 3. Curated Topic Selector Rail */}
-          <View style={styles.topicsSection}>
-            <Text style={styles.sectionLabel}>INQUIRY CLASSIFICATION</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.topicsRow}
-            >
-              {TOPICS.map((topic) => {
-                const active = subject === topic.id;
-                return (
-                  <TouchableOpacity
-                    key={topic.id}
-                    style={[styles.topicChip, active && styles.topicChipActive]}
-                    onPress={() => handleSelectTopic(topic.id)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons
-                      name={topic.icon}
-                      size={13}
-                      color={active ? "#E8CF8F" : "#787469"}
-                    />
-                    <Text
-                      style={[
-                        styles.topicChipText,
-                        active && styles.topicChipTextActive,
-                      ]}
-                    >
-                      {topic.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* 4. Bespoke Patron Intake Form */}
-          <View style={styles.formCard}>
-            {/* Full Name */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>
-                PATRON NAME <Text style={styles.requiredAsterisk}>*</Text>
+            {/* Heading */}
+            <View style={styles.pageHead}>
+              <Text style={styles.eyebrow}>Help &amp; concierge</Text>
+              <Text style={styles.pageTitle}>
+                How can we <Text style={styles.pageTitleAccent}>help?</Text>
               </Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="person-outline" size={16} color="#85651B" style={styles.inputIcon} />
+              <Text style={styles.pageSub}>
+                Send us a note — a real person replies within 24 hours.
+              </Text>
+            </View>
+
+            {/* Topics */}
+            <View style={styles.topicsSection}>
+              <Text style={styles.sectionLabel}>What's it about?</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.topicsRow}
+                style={styles.topicsScroll}
+              >
+                {TOPICS.map((topic) => {
+                  const active = subject === topic.id;
+                  return (
+                    <TouchableOpacity
+                      key={topic.id}
+                      style={[styles.topicChip, active && styles.topicChipActive]}
+                      onPress={() => handleSelectTopic(topic.id)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons
+                        name={topic.icon}
+                        size={13}
+                        color={active ? colors.paper.cream : GOLD_DEEP}
+                      />
+                      <Text
+                        style={[
+                          styles.topicChipText,
+                          active && styles.topicChipTextActive,
+                        ]}
+                      >
+                        {topic.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Form */}
+            <View style={styles.formCard}>
+              <Field label="Your name" required>
                 <TextInput
-                  style={styles.textInput}
+                  style={styles.input}
                   value={name}
                   onChangeText={setName}
-                  placeholder="Your full name"
-                  placeholderTextColor="#9C988F"
+                  placeholder="Full name"
+                  placeholderTextColor={colors.light.mutedForeground}
                   autoCapitalize="words"
                 />
-              </View>
-            </View>
+              </Field>
 
-            {/* Email */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>
-                CORRESPONDENCE EMAIL <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={16} color="#85651B" style={styles.inputIcon} />
+              <Field label="Email" required>
                 <TextInput
-                  style={styles.textInput}
+                  style={styles.input}
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="patron@domain.com"
-                  placeholderTextColor="#9C988F"
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.light.mutedForeground}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-              </View>
-            </View>
+              </Field>
 
-            {/* Phone */}
-            <View style={styles.field}>
-              <View style={styles.fieldHeaderRow}>
-                <Text style={styles.fieldLabel}>DIRECT TELEPHONE</Text>
-                <Text style={styles.optionalTag}>OPTIONAL</Text>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="call-outline" size={16} color="#85651B" style={styles.inputIcon} />
+              <Field label="Phone" optional>
                 <TextInput
-                  style={styles.textInput}
+                  style={styles.input}
                   value={phone}
                   onChangeText={setPhone}
                   placeholder="+94 7X XXX XXXX"
-                  placeholderTextColor="#9C988F"
+                  placeholderTextColor={colors.light.mutedForeground}
                   keyboardType="phone-pad"
                 />
-              </View>
-            </View>
+              </Field>
 
-            {/* Subject */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>
-                SUBJECT / TOPIC SUMMARY <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="pricetag-outline" size={16} color="#85651B" style={styles.inputIcon} />
+              <Field label="Subject" required>
                 <TextInput
-                  style={styles.textInput}
+                  style={styles.input}
                   value={subject}
                   onChangeText={setSubject}
-                  placeholder="e.g. Order modification or bespoke fit inquiry"
-                  placeholderTextColor="#9C988F"
+                  placeholder="e.g. Change my delivery address"
+                  placeholderTextColor={colors.light.mutedForeground}
                 />
-              </View>
-            </View>
+              </Field>
 
-            {/* Message */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>
-                DETAILED SPECIFICATION <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <View style={styles.textAreaWrapper}>
+              <Field label="Message" required>
                 <TextInput
-                  style={styles.textAreaInput}
+                  style={styles.textArea}
                   value={message}
                   onChangeText={setMessage}
-                  placeholder="Detail your request, referencing order numbers or specific garments if relevant..."
-                  placeholderTextColor="#9C988F"
+                  placeholder="Tell us what you need — include order numbers if relevant."
+                  placeholderTextColor={colors.light.mutedForeground}
                   multiline
                   textAlignVertical="top"
                 />
-              </View>
-            </View>
+              </Field>
 
-            {/* Submit Action */}
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                (!name.trim() || !email.trim() || !subject.trim() || !message.trim() || submitting) &&
-                  styles.submitButtonDisabled,
-              ]}
-              onPress={handleSubmit}
-              disabled={
-                !name.trim() || !email.trim() || !subject.trim() || !message.trim() || submitting
-              }
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#1E1C18", "#141311"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.submitGradient}
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  (!name.trim() ||
+                    !email.trim() ||
+                    !subject.trim() ||
+                    !message.trim() ||
+                    submitting) && { opacity: 0.5 },
+                ]}
+                onPress={handleSubmit}
+                disabled={
+                  !name.trim() ||
+                  !email.trim() ||
+                  !subject.trim() ||
+                  !message.trim() ||
+                  submitting
+                }
+                activeOpacity={0.88}
+                accessibilityRole="button"
               >
                 {submitting ? (
-                  <ActivityIndicator color="#E8CF8F" size="small" />
+                  <ActivityIndicator color={colors.paper.cream} size="small" />
                 ) : (
                   <>
-                    <Ionicons name="send-outline" size={15} color="#E8CF8F" />
-                    <Text style={styles.submitButtonText}>Transmit Concierge Dispatch</Text>
+                    <Text style={styles.primaryBtnText}>Send message</Text>
+                    <View style={styles.primaryBtnArrow}>
+                      <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                    </View>
                   </>
                 )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-
-          {/* 5. Concierge Guarantee Banner */}
-          <View style={styles.guaranteeCard}>
-            <View style={styles.guaranteeHeader}>
-              <Ionicons name="shield-checkmark" size={16} color="#C8A44A" />
-              <Text style={styles.guaranteeTitle}>Atelier Concierge Commitments</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.guaranteeText}>
-              Every dispatch is reviewed directly by a member of our senior styling and logistics
-              directors. We never utilize automated chatbot replies for our patrons.
-            </Text>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+            {/* Footnote */}
+            <View style={styles.footnote}>
+              <Ionicons name="shield-checkmark-outline" size={13} color={GOLD_DEEP} />
+              <Text style={styles.footnoteText}>
+                Every message is read by a member of our team — no automated
+                replies.
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </PaperBackground>
+  );
+}
+
+function Field({
+  label,
+  required,
+  optional,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  optional?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.field}>
+      <View style={styles.fieldHeader}>
+        <Text style={styles.fieldLabel}>
+          {label}
+          {required ? <Text style={styles.fieldRequired}> *</Text> : null}
+        </Text>
+        {optional ? <Text style={styles.fieldOptional}>Optional</Text> : null}
+      </View>
+      <View style={styles.inputWrap}>{children}</View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#F5F4EF",
   },
   flex: {
     flex: 1,
   },
-  topHeader: {
+
+  /* Nav */
+  navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
-    backgroundColor: "#F5F4EF",
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[2.5],
   },
-  backButton: {
+  navBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.soft,
-  },
-  headerTitleCenter: {
-    alignItems: "center",
-  },
-  headerEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: "#85651B",
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: "#141311",
-    letterSpacing: -0.3,
-  },
-  conciergeBadgeSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
+  navTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.foreground,
   },
 
-  /* Velvet Obsidian Hero Card */
-  heroCard: {
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
-    marginBottom: 16,
-    ...shadows.glow,
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2],
+    gap: 14,
   },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
+
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
   },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
   },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: "#E8CF8F",
-  },
-  headsetMedallion: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    padding: 3,
-  },
-  headsetMedallionInner: {
-    flex: 1,
-    borderRadius: 16,
-    backgroundColor: "#201E1A",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroTitle: {
+  pageTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#FAF8F5",
-    letterSpacing: -0.4,
-    marginBottom: 6,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
+    color: colors.light.foreground,
   },
-  heroSubtitle: {
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
+  },
+  pageSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: "#B3AFA5",
-    marginBottom: 18,
-  },
-  heroMetricsStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  metricItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  metricValue: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 15,
-    color: "#FAF8F5",
-    marginBottom: 2,
-  },
-  metricLabel: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: "#8F8B82",
-  },
-  metricDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 300,
   },
 
-  /* Topics Section */
+  /* Topics */
   topicsSection: {
-    marginBottom: 16,
+    gap: 10,
   },
   sectionLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: "#85651B",
-    marginBottom: 8,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: colors.light.foreground,
+  },
+  topicsScroll: {
+    marginHorizontal: -spacing[5],
   },
   topicsRow: {
+    paddingHorizontal: spacing[5],
     gap: 8,
   },
   topicChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+    backgroundColor: colors.paper.cream,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
+    borderColor: HAIRLINE,
   },
   topicChipActive: {
-    backgroundColor: "#141311",
-    borderColor: "#141311",
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
   },
   topicChipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: "#6B675E",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.light.foreground,
   },
   topicChipTextActive: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: "#FAF8F5",
+    color: colors.paper.cream,
   },
 
-  /* Form Card */
+  /* Form */
   formCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 18,
-    marginBottom: 16,
+    borderColor: HAIRLINE,
+    padding: spacing[5],
+    gap: spacing[4],
     ...shadows.soft,
   },
   field: {
-    marginBottom: 14,
+    gap: 6,
   },
-  fieldHeaderRow: {
+  fieldHeader: {
     flexDirection: "row",
+    alignItems: "baseline",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
+    paddingHorizontal: 4,
   },
   fieldLabel: {
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
     letterSpacing: 1.2,
-    color: "#85651B",
-    marginBottom: 6,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
   },
-  requiredAsterisk: {
-    color: "#C0392B",
+  fieldRequired: {
+    color: colors.accent2.rust,
   },
-  optionalTag: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 9,
-    letterSpacing: 1,
-    color: "#8F8B82",
+  fieldOptional: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
   },
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FAF9F5",
+  inputWrap: {
+    backgroundColor: colors.paper.warm,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E5E1D4",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 46,
+    borderColor: HAIRLINE,
+    paddingHorizontal: 14,
   },
-  inputIcon: {
-    marginRight: 8,
-  },
-  textInput: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: "#141311",
-  },
-  textAreaWrapper: {
-    backgroundColor: "#FAF9F5",
-    borderWidth: 1,
-    borderColor: "#E5E1D4",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 120,
-  },
-  textAreaInput: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#141311",
-    textAlignVertical: "top",
-  },
-  submitButton: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginTop: 6,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-  },
-  submitButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
+  input: {
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 14,
-    color: "#FAF8F5",
+    color: colors.light.foreground,
+    paddingVertical: Platform.OS === "ios" ? 12 : 9,
   },
-
-  /* Guarantee Card */
-  guaranteeCard: {
-    backgroundColor: "#FAF9F5",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EAE6DB",
-    padding: 14,
+  textArea: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 110,
+    color: colors.light.foreground,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
-  guaranteeHeader: {
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
+    justifyContent: "center",
+    gap: 10,
+    height: 50,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
+    paddingRight: 6,
+    marginTop: 2,
   },
-  guaranteeTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#141311",
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
   },
-  guaranteeText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "#787469",
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  /* Success Screen */
-  successContainer: {
+  /* Footnote */
+  footnote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingHorizontal: spacing[2],
+  },
+  footnoteText: {
     flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: colors.light.mutedForeground,
   },
-  successCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 28,
-    alignItems: "center",
-    ...shadows.soft,
-  },
-  successMedallionOuter: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    padding: 4,
-    marginBottom: 16,
-  },
-  successMedallionInner: {
+
+  /* Success */
+  successWrap: {
     flex: 1,
-    borderRadius: 30,
-    backgroundColor: "#141311",
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
+    paddingHorizontal: spacing[6],
   },
-  successSparkle: {
-    position: "absolute",
-    top: 6,
-    right: 8,
+  successIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(200, 164, 74, 0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing[5],
   },
   successTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#141311",
-    letterSpacing: -0.3,
-    marginBottom: 8,
-    textAlign: "center",
+    fontSize: 26,
+    letterSpacing: -0.4,
+    color: colors.light.foreground,
   },
-  successBody: {
+  successSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 20,
-    color: "#787469",
+    color: colors.light.mutedForeground,
     textAlign: "center",
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    marginTop: 8,
+    maxWidth: 300,
   },
-  successEmailHighlight: {
-    fontFamily: fontFamilies.mono.semibold,
-    color: "#141311",
-  },
-  successPrimaryButton: {
-    width: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 10,
-    ...shadows.soft,
-  },
-  successPrimaryGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    gap: 8,
-  },
-  successPrimaryText: {
+  successEmail: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: "#FAF8F5",
+    color: colors.light.foreground,
   },
-  viewTicketsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+  textLink: {
+    marginTop: spacing[3],
+    paddingVertical: 4,
   },
-  viewTicketsButtonText: {
-    fontFamily: fontFamilies.sans.medium,
+  textLinkText: {
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
-    color: "#85651B",
+    color: colors.light.foreground,
+    textDecorationLine: "underline",
   },
 });

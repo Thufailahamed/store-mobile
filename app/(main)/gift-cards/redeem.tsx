@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -21,7 +21,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 
 const REASONS: Record<string, string> = {
-  not_found: "Voucher code not found. Please verify the characters and try again.",
+  not_found: "Voucher code not found. Please check the characters and try again.",
   voided: "This gift voucher has been voided by the issuer.",
   expired: "This gift voucher has passed its validity window.",
   inactive: "This gift voucher is currently inactive or awaiting payment confirmation.",
@@ -30,8 +30,14 @@ const REASONS: Record<string, string> = {
   currency_mismatch: "Voucher currency does not match your shopping region.",
 };
 
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
 export default function RedeemGiftCardScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { toast } = useToast();
 
   const [code, setCode] = useState("");
@@ -65,69 +71,61 @@ export default function RedeemGiftCardScreen() {
     setResult(res.data as typeof result);
   };
 
+  const canSubmit = code.trim().length >= 4 && !checking;
+
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Navigation Bar */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>REDEEM VOUCHER</Text>
-            <Text style={styles.navSubtitle}>STORE CREDIT INTAKE</Text>
-          </View>
+          <Text style={styles.navTitle}>Redeem voucher</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.push("/(main)/account/gift-cards" as any)}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="My vouchers"
           >
             <Ionicons name="wallet-outline" size={18} color={colors.light.foreground} />
           </TouchableOpacity>
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Hero Card */}
-          <LinearGradient
-            colors={["#1c2016", "#14170e", "#0e110a"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
-          >
-            <View style={styles.heroEyebrowRow}>
-              <View style={styles.heroTagBadge}>
-                <Ionicons name="ticket" size={11} color="#C8A44A" />
-                <Text style={styles.heroTagText}>VOUCHER INTAKE</Text>
-              </View>
-            </View>
-
-            <Text style={styles.heroTitle}>Redeem Your Gift Card</Text>
-            <Text style={styles.heroSubtitle}>
-              Check the remaining balance on any physical or digital voucher, or apply it toward your upcoming purchases.
+          {/* Heading */}
+          <View style={styles.pageHead}>
+            <Text style={styles.eyebrow}>Store credit</Text>
+            <Text style={styles.pageTitle}>
+              Redeem a <Text style={styles.pageTitleAccent}>voucher.</Text>
             </Text>
-          </LinearGradient>
+            <Text style={styles.pageSub}>
+              Check the balance on a physical or digital voucher before you shop.
+            </Text>
+          </View>
 
-          {/* Code Input Card */}
+          {/* Code input */}
           <View style={styles.inputCard}>
-            <Text style={styles.cardEyebrow}>ENTER CODE</Text>
-            <Text style={styles.cardTitle}>Voucher Number</Text>
-            <Text style={styles.cardSub}>
-              Enter the 16-character code found on your digital gift email or physical card.
-            </Text>
-
-            <View style={styles.inputWrap}>
-              <Ionicons name="barcode-outline" size={18} color="#85651b" />
+            <View style={styles.inputField}>
+              <Ionicons name="barcode-outline" size={18} color={GOLD_DEEP} />
               <TextInput
                 style={styles.textInput}
                 value={code}
@@ -135,108 +133,129 @@ export default function RedeemGiftCardScreen() {
                 placeholder="XXXX-XXXX-XXXX-XXXX"
                 placeholderTextColor={colors.light.mutedForeground}
                 autoCapitalize="characters"
+                autoCorrect={false}
                 maxLength={40}
                 returnKeyType="done"
+                onSubmitEditing={canSubmit ? onCheck : undefined}
               />
               {code.length > 0 && (
-                <TouchableOpacity onPress={() => setCode("")} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
+                <TouchableOpacity
+                  onPress={() => setCode("")}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear code"
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={17}
+                    color={colors.light.mutedForeground}
+                  />
                 </TouchableOpacity>
               )}
             </View>
+            <Text style={styles.inputHint}>
+              The 16-character code in your gift email or on the back of the card.
+            </Text>
 
             <TouchableOpacity
-              style={[
-                styles.checkBtn,
-                (checking || code.length < 4) && styles.checkBtnDisabled,
-              ]}
+              style={[styles.primaryBtn, !canSubmit && styles.primaryBtnDisabled]}
               onPress={onCheck}
-              disabled={checking || code.length < 4}
+              disabled={!canSubmit}
               activeOpacity={0.88}
+              accessibilityRole="button"
             >
               {checking ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={colors.paper.cream} />
               ) : (
                 <>
-                  <Ionicons name="search" size={14} color="#ffffff" />
-                  <Text style={styles.checkBtnText}>VERIFY VOUCHER</Text>
+                  <Text style={styles.primaryBtnText}>Verify voucher</Text>
+                  <View style={styles.primaryBtnArrow}>
+                    <Ionicons name="checkmark" size={15} color={colors.olive[900]} />
+                  </View>
                 </>
               )}
             </TouchableOpacity>
           </View>
 
-          {/* Verification Result */}
+          {/* Result */}
           {result && (
-            <View style={styles.resultSection}>
-              {result.valid && result.card ? (
-                /* Valid Card Preview */
-                <LinearGradient
-                  colors={["#272c20", "#181d14", "#11140e"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.validCard}
-                >
-                  <View style={styles.validTopRow}>
-                    <View style={styles.validBadge}>
-                      <Ionicons name="checkmark-circle" size={13} color="#4ade80" />
-                      <Text style={styles.validBadgeText}>ACTIVE & VALID</Text>
-                    </View>
-                    <Text style={styles.validCodeText}>{result.card.code}</Text>
+            result.valid && result.card ? (
+              <LinearGradient
+                colors={["#1f2418", "#14170e"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.validCard}
+              >
+                <View style={styles.validTop}>
+                  <View style={styles.validBadge}>
+                    <Ionicons name="checkmark" size={11} color="#1f2418" />
+                    <Text style={styles.validBadgeText}>Active</Text>
                   </View>
-
-                  <View style={styles.validAmountBlock}>
-                    <Text style={styles.validAmount}>
-                      {formatPrice(result.card.current_balance, result.card.currency)}
-                    </Text>
-                    <Text style={styles.validAmountLabel}>AVAILABLE STORE BALANCE</Text>
-                  </View>
-
-                  {result.card.message ? (
-                    <View style={styles.messageBubble}>
-                      <Text style={styles.messageText}>
-                        &quot;{result.card.message}&quot;
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.validFooterRow}>
-                    <Text style={styles.validExpiryText}>
-                      {result.card.expires_at
-                        ? `Expires: ${new Date(result.card.expires_at).toLocaleDateString()}`
-                        : "Lifetime Store Validity"}
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.useInStoreBtn}
-                      onPress={() => router.push("/(main)/products" as any)}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.useInStoreBtnText}>Shop Now</Text>
-                      <Ionicons name="arrow-forward" size={12} color="#181b12" />
-                    </TouchableOpacity>
-                  </View>
-                </LinearGradient>
-              ) : (
-                /* Invalid / Expired Card */
-                <View style={styles.invalidCard}>
-                  <View style={styles.invalidIconBox}>
-                    <Ionicons name="close-circle" size={24} color="#dc2626" />
-                  </View>
-                  <Text style={styles.invalidTitle}>Cannot Redeem Voucher</Text>
-                  <Text style={styles.invalidDesc}>
-                    {result.reason ? (REASONS[result.reason] ?? result.reason) : "This code could not be verified."}
+                  <Text style={styles.validCode} numberOfLines={1}>
+                    {result.card.code}
                   </Text>
                 </View>
-              )}
-            </View>
+
+                <Text style={styles.validEyebrow}>Available balance</Text>
+                <Text style={styles.validAmount}>
+                  {formatPrice(result.card.current_balance, result.card.currency)}
+                </Text>
+
+                {result.card.message ? (
+                  <Text style={styles.validMessage} numberOfLines={3}>
+                    &quot;{result.card.message}&quot;
+                  </Text>
+                ) : null}
+
+                <View style={styles.validFooter}>
+                  <View style={styles.validExpiryRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={12}
+                      color="rgba(250, 248, 241, 0.55)"
+                    />
+                    <Text style={styles.validExpiry}>
+                      {result.card.expires_at
+                        ? `Expires ${new Date(result.card.expires_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
+                        : "No expiry"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.shopBtn}
+                    onPress={() => router.push("/(main)/products" as any)}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.shopBtnText}>Shop now</Text>
+                    <Ionicons name="arrow-forward" size={12} color={colors.olive[900]} />
+                  </TouchableOpacity>
+                </View>
+              </LinearGradient>
+            ) : (
+              <View style={styles.invalidCard}>
+                <View style={styles.invalidIcon}>
+                  <Ionicons name="close" size={18} color={colors.accent2.rust} />
+                </View>
+                <Text style={styles.invalidTitle}>Cannot redeem this voucher</Text>
+                <Text style={styles.invalidDesc}>
+                  {result.reason
+                    ? (REASONS[result.reason] ?? result.reason)
+                    : "This code could not be verified."}
+                </Text>
+              </View>
+            )
           )}
 
-          {/* Concierge Assistance Footnote */}
-          <View style={styles.assistanceCard}>
-            <Ionicons name="help-circle-outline" size={18} color="#85651b" />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.assistanceTitle}>Need Assistance?</Text>
-              <Text style={styles.assistanceDesc}>
-                If you received a gift voucher that isn&apos;t activating, our concierge team is available to verify it manually.
+          {/* Help footnote */}
+          <View style={styles.assistCard}>
+            <View style={styles.assistIcon}>
+              <Ionicons name="help" size={14} color={GOLD_DEEP} />
+            </View>
+            <View style={styles.assistBody}>
+              <Text style={styles.assistTitle}>Need help?</Text>
+              <Text style={styles.assistDesc}>
+                If a voucher won&apos;t activate, our concierge team can verify it
+                for you manually.
               </Text>
             </View>
           </View>
@@ -250,302 +269,288 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navTitleWrap: {
-    alignItems: "center",
+    borderColor: HAIRLINE,
   },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
-    letterSpacing: 2,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: 40,
-    gap: 14,
-  },
-  heroCard: {
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    ...shadows.editorial,
-  },
-  heroEyebrowRow: {
-    marginBottom: 10,
-  },
-  heroTagBadge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#ffffff",
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(255, 255, 255, 0.72)",
-    lineHeight: 18,
-    marginTop: 6,
   },
 
-  /* Input Card */
-  inputCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 6,
-    ...shadows.soft,
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[2],
+    gap: 14,
   },
-  cardEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
+
+  /* Heading */
+  pageHead: {
+    marginBottom: spacing[2],
   },
-  cardTitle: {
+  eyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  pageTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontSize: 32,
+    letterSpacing: -0.6,
+    lineHeight: 38,
     color: colors.light.foreground,
   },
-  cardSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    lineHeight: 17,
-    marginBottom: 6,
+  pageTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD_DEEP,
   },
-  inputWrap: {
+  pageSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 300,
+  },
+
+  /* Input card */
+  inputCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    padding: spacing[4],
+    gap: 10,
+    ...shadows.soft,
+  },
+  inputField: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
-    borderRadius: radii.xl,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 11 : 7,
+    gap: 10,
+    backgroundColor: colors.paper.warm,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    gap: 8,
+    borderColor: HAIRLINE,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
   },
   textInput: {
     flex: 1,
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 13,
+    fontSize: 14,
+    letterSpacing: 1.4,
     color: colors.light.foreground,
-    letterSpacing: 1.5,
+    padding: 0,
   },
-  checkBtn: {
+  inputHint: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: colors.light.mutedForeground,
+    paddingHorizontal: 4,
+  },
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#181b12",
+    gap: 10,
+    height: 50,
     borderRadius: radii.full,
-    paddingVertical: 12,
-    marginTop: 8,
-    ...shadows.soft,
+    backgroundColor: colors.olive[900],
+    paddingRight: 6,
   },
-  checkBtnDisabled: {
-    opacity: 0.5,
+  primaryBtnDisabled: {
+    opacity: 0.45,
   },
-  checkBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
+  primaryBtnArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.paper.cream,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  /* Results */
-  resultSection: {
-    marginTop: 4,
-  },
+  /* Valid result */
   validCard: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    gap: 12,
-    ...shadows.soft,
+    gap: 4,
+    ...shadows.editorial,
   },
-  validTopRow: {
+  validTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 10,
   },
   validBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(74, 222, 128, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: GOLD_SOFT,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(74, 222, 128, 0.25)",
   },
   validBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: "#4ade80",
-    letterSpacing: 0.6,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    color: "#1f2418",
   },
-  validCodeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.6)",
+  validCode: {
+    flexShrink: 1,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11.5,
     letterSpacing: 1,
+    color: "rgba(250, 248, 241, 0.55)",
   },
-  validAmountBlock: {
-    gap: 1,
+  validEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
   },
   validAmount: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: "#E8CF8F",
+    fontSize: 38,
+    letterSpacing: -0.8,
+    color: colors.paper.cream,
   },
-  validAmountLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: "rgba(255, 255, 255, 0.6)",
-    letterSpacing: 0.8,
-  },
-  messageBubble: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderRadius: radii.md,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  messageText: {
+  validMessage: {
     fontFamily: fontFamilies.display.italic,
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.85)",
-    lineHeight: 16,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "rgba(250, 248, 241, 0.8)",
+    marginTop: 6,
   },
-  validFooterRow: {
+  validFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 8,
+    marginTop: spacing[4],
+    paddingTop: spacing[3],
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    borderTopColor: "rgba(250, 248, 241, 0.12)",
   },
-  validExpiryText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: "rgba(255, 255, 255, 0.6)",
-  },
-  useInStoreBtn: {
+  validExpiryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#E8CF8F",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
+    gap: 6,
   },
-  useInStoreBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#181b12",
-    letterSpacing: 0.5,
+  validExpiry: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: "rgba(250, 248, 241, 0.6)",
   },
-
-  /* Invalid Card */
-  invalidCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(220, 38, 38, 0.2)",
+  shopBtn: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    ...shadows.soft,
+    backgroundColor: GOLD_SOFT,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.full,
   },
-  invalidIconBox: {
-    marginBottom: 2,
+  shopBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12.5,
+    color: colors.olive[900],
+  },
+
+  /* Invalid result */
+  invalidCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(184, 92, 58, 0.25)",
+    paddingVertical: spacing[6],
+    paddingHorizontal: spacing[5],
+    alignItems: "center",
+    gap: 6,
+  },
+  invalidIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(184, 92, 58, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
   invalidTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontSize: 18,
+    letterSpacing: -0.2,
     color: colors.light.foreground,
   },
   invalidDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: colors.light.mutedForeground,
     textAlign: "center",
-    lineHeight: 17,
+    maxWidth: 280,
   },
 
-  /* Assistance */
-  assistanceCard: {
+  /* Assist */
+  assistCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
-    padding: 14,
+    gap: 12,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
+    borderColor: HAIRLINE,
+    padding: 14,
   },
-  assistanceTitle: {
+  assistIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(200, 164, 74, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  assistBody: {
+    flex: 1,
+    gap: 3,
+  },
+  assistTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
+    fontSize: 13,
     color: colors.light.foreground,
   },
-  assistanceDesc: {
+  assistDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.light.mutedForeground,
-    lineHeight: 16,
   },
 });

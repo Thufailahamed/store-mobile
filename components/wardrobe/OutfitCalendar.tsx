@@ -1,16 +1,18 @@
 import React, { useMemo, useState } from "react";
-import { View, StyleSheet, Text, TouchableOpacity, ScrollView } from "react-native";
+import { View, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { radii } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import type { WardrobeOutfit } from "@/lib/types";
 
-const INK = "#16170f";
-const MUTED = "#6b6b6b";
-const BORDER = "rgba(22,23,15,0.10)";
-const OLIVE = "#556b2f";
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const GOLD_DEEP = "#85651b";
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -21,6 +23,15 @@ function formatISO(d: Date) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
+}
+
+function formatChipDate(iso: string) {
+  const d = new Date(`${iso}T12:00:00`);
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 }
 
 export function OutfitCalendar({
@@ -50,7 +61,7 @@ export function OutfitCalendar({
   const days = useMemo(() => {
     const year = cursor.getFullYear();
     const month = cursor.getMonth();
-    const firstWeekday = new Date(year, month, 1).getDay(); // 0..6
+    const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7; // 0 = Monday
     const lastDay = new Date(year, month + 1, 0).getDate();
     const cells: Array<{ key: string; date?: Date; iso?: string }> = [];
     for (let i = 0; i < firstWeekday; i++) {
@@ -71,25 +82,43 @@ export function OutfitCalendar({
   };
 
   const todayIso = formatISO(new Date());
+  const scheduledDates = Object.keys(byDate).sort();
+  const upcoming = scheduledDates.filter((iso) => iso >= todayIso);
+  const list = (upcoming.length > 0 ? upcoming : scheduledDates).slice(0, 4);
 
   return (
     <View style={styles.wrap}>
+      {/* Month navigation */}
       <View style={styles.head}>
-        <TouchableOpacity onPress={goPrev} hitSlop={10} style={styles.navBtn}>
-          <Ionicons name="chevron-back" size={16} color={INK} />
+        <TouchableOpacity
+          onPress={goPrev}
+          hitSlop={8}
+          style={styles.navBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Previous month"
+        >
+          <Ionicons name="chevron-back" size={17} color={colors.light.foreground} />
         </TouchableOpacity>
         <Text style={styles.title}>{monthLabel}</Text>
-        <TouchableOpacity onPress={goNext} hitSlop={10} style={styles.navBtn}>
-          <Ionicons name="chevron-forward" size={16} color={INK} />
+        <TouchableOpacity
+          onPress={goNext}
+          hitSlop={8}
+          style={styles.navBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Next month"
+        >
+          <Ionicons name="chevron-forward" size={17} color={colors.light.foreground} />
         </TouchableOpacity>
       </View>
 
+      {/* Weekday labels */}
       <View style={styles.weekRow}>
-        {["S","M","T","W","T","F","S"].map((d, i) => (
+        {WEEKDAYS.map((d, i) => (
           <Text key={`${d}-${i}`} style={styles.weekLabel}>{d}</Text>
         ))}
       </View>
 
+      {/* Days */}
       <View style={styles.grid}>
         {days.map((c) => {
           if (!c.iso) return <View key={c.key} style={styles.dayCell} />;
@@ -100,8 +129,8 @@ export function OutfitCalendar({
               key={c.key}
               style={[
                 styles.dayCell,
-                isToday && styles.dayCellToday,
                 items.length > 0 && styles.dayCellWith,
+                isToday && styles.dayCellToday,
               ]}
               onPress={() => {
                 if (items.length > 0) {
@@ -111,14 +140,27 @@ export function OutfitCalendar({
               }}
               activeOpacity={0.7}
               disabled={items.length === 0}
+              accessibilityLabel={
+                items.length > 0
+                  ? `${c.date!.toDateString()}, ${items.length} scheduled`
+                  : undefined
+              }
             >
-              <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>
+              <Text
+                style={[
+                  styles.dayNum,
+                  isToday && styles.dayNumToday,
+                ]}
+              >
                 {c.date!.getDate()}
               </Text>
               {items.length > 0 && (
                 <View style={styles.dots}>
                   {items.slice(0, 3).map((o) => (
-                    <View key={o.id} style={[styles.dot, isToday && styles.dotToday]} />
+                    <View
+                      key={o.id}
+                      style={[styles.dot, isToday && styles.dotToday]}
+                    />
                   ))}
                   {items.length > 3 && (
                     <Text style={styles.moreTxt}>+{items.length - 3}</Text>
@@ -130,170 +172,210 @@ export function OutfitCalendar({
         })}
       </View>
 
-      {/* Upcoming list */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.upcoming}
-      >
-        {Object.keys(byDate)
-          .sort()
-          .slice(0, 8)
-          .map((iso) => (
-            <TouchableOpacity
-              key={iso}
-              style={styles.chip}
-              onPress={() => {
-                const items = byDate[iso];
-                if (items.length === 1) onSelectOutfit?.(items[0]);
-                else onSelectDay?.(iso, items);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.chipDate}>{iso.slice(5)}</Text>
-              <Text style={styles.chipName} numberOfLines={1}>
-                {byDate[iso][0].name}
-              </Text>
-              {byDate[iso].length > 1 && (
-                <Text style={styles.chipMore}>+{byDate[iso].length - 1} more</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-        {Object.keys(byDate).length === 0 && (
-          <Text style={styles.empty}>No scheduled outfits this month</Text>
+      {/* Scheduled looks */}
+      <View style={styles.schedule}>
+        <Text style={styles.scheduleEyebrow}>
+          {upcoming.length > 0 ? "Coming up" : scheduledDates.length > 0 ? "Scheduled" : "Coming up"}
+        </Text>
+        {list.length === 0 ? (
+          <Text style={styles.scheduleEmpty}>
+            Nothing planned yet — schedule an outfit from its page.
+          </Text>
+        ) : (
+          list.map((iso, i) => {
+            const items = byDate[iso];
+            return (
+              <TouchableOpacity
+                key={iso}
+                style={[styles.schedRow, i > 0 && styles.schedRowDivider]}
+                onPress={() => {
+                  if (items.length === 1) onSelectOutfit?.(items[0]);
+                  else onSelectDay?.(iso, items);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.schedDateBox}>
+                  <Text style={styles.schedDayNum}>{iso.slice(8)}</Text>
+                  <Text style={styles.schedDayLabel}>
+                    {new Date(`${iso}T12:00:00`)
+                      .toLocaleDateString(undefined, { weekday: "short" })
+                      .toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.schedBody}>
+                  <Text style={styles.schedName} numberOfLines={1}>
+                    {items[0].name}
+                  </Text>
+                  <Text style={styles.schedMeta} numberOfLines={1}>
+                    {formatChipDate(iso)}
+                    {items.length > 1 ? `  ·  +${items.length - 1} more` : ""}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
+              </TouchableOpacity>
+            );
+          })
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
-const styles: Record<string, any> = StyleSheet.create({
+const styles = StyleSheet.create({
   wrap: {
     marginHorizontal: 16,
-    borderRadius: radii.lg,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: "#fff",
-    padding: 12,
-    gap: 8,
+    borderColor: HAIRLINE,
+    backgroundColor: colors.paper.cream,
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[2],
   },
   head: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: spacing[4],
   },
   navBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f3f1e7",
+    backgroundColor: colors.paper.warm,
   },
   title: {
-    fontSize: 14,
-    fontFamily: fontFamilies.display.regular,
-    fontWeight: "600",
-    color: INK,
+    fontSize: 20,
+    fontFamily: fontFamilies.display.semibold,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
   },
   weekRow: {
     flexDirection: "row",
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
   },
   weekLabel: {
     flex: 1,
     textAlign: "center",
-    fontSize: 9,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-    letterSpacing: 0.6,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.mono.medium,
+    letterSpacing: 1,
   },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
+    paddingTop: 6,
   },
   dayCell: {
     width: `${100 / 7}%`,
-    aspectRatio: 1,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 4,
-    borderRadius: 6,
   },
+  dayCellWith: {},
   dayCellToday: {
-    backgroundColor: "rgba(85,107,47,0.10)",
-  },
-  dayCellWith: {
-    backgroundColor: "rgba(85,107,47,0.06)",
+    backgroundColor: colors.olive[900],
+    borderRadius: 12,
   },
   dayNum: {
-    fontSize: 12,
-    fontFamily: fontFamilies.sans.regular,
-    color: INK,
+    fontSize: 13.5,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.light.foreground,
   },
   dayNumToday: {
-    color: OLIVE,
-    fontWeight: "700",
+    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.bold,
   },
   dots: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    marginTop: 2,
+    marginTop: 3,
+    height: 6,
   },
   dot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: OLIVE,
+    backgroundColor: colors.accent2.ochre,
   },
   dotToday: {
-    backgroundColor: OLIVE,
+    backgroundColor: "#E8CF8F",
   },
   moreTxt: {
     fontSize: 8,
-    color: MUTED,
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.mono.medium,
+    marginLeft: 1,
+  },
+  schedule: {
+    marginTop: spacing[2],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+    paddingTop: spacing[3],
+    paddingBottom: spacing[1],
+  },
+  scheduleEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
+    marginBottom: 4,
+  },
+  scheduleEmpty: {
     fontFamily: fontFamilies.sans.regular,
-    marginLeft: 2,
-  },
-  upcoming: {
-    paddingTop: 4,
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 10,
+    fontSize: 12.5,
+    color: colors.light.mutedForeground,
     paddingVertical: 8,
-    backgroundColor: "#fbfaf3",
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: BORDER,
-    minWidth: 130,
-    maxWidth: 180,
   },
-  chipDate: {
-    fontSize: 10,
-    color: OLIVE,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
+  schedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingVertical: 10,
   },
-  chipName: {
-    fontSize: 12,
-    color: INK,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
-    marginTop: 2,
+  schedRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
-  chipMore: {
-    fontSize: 10,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    marginTop: 2,
+  schedDateBox: {
+    width: 40,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.paper.warm,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  empty: {
-    fontSize: 12,
-    color: MUTED,
+  schedDayNum: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
+    color: colors.light.foreground,
+  },
+  schedDayLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 7.5,
+    letterSpacing: 0.6,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
+  },
+  schedBody: {
+    flex: 1,
+    gap: 1,
+  },
+  schedName: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: colors.light.foreground,
+  },
+  schedMeta: {
     fontFamily: fontFamilies.sans.regular,
-    fontStyle: "italic",
-    paddingVertical: 6,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
   },
 });
