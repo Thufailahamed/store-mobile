@@ -51,10 +51,9 @@ describe("mobile seller coupon screen — BXGY badge", () => {
   const screen = readFileSync(join(root, "app/(seller)/coupons/index.tsx"), "utf8");
 
   it("renders a distinct badge for bxgy type", () => {
-    // Pre-fix: bxgy fell through to "FREE" badge (free_shipping style).
-    expect(screen).toMatch(/typeBadgeStyle/);
-    expect(screen).toMatch(/case "bxgy":\s*return s\.badgeBxgy/);
-    expect(screen).toMatch(/function typeBadgeLabel/);
-    expect(screen).toMatch(/coupon\.type === "bxgy"\)?\s*return "BXGY"/);
+    // Ticket UI refactor: bxgy renders hero "BXGY"/"bundle", distinct from
+    // free_shipping "FREE"/"shipping" (no separate typeBadgeStyle helper).
+    expect(screen).toMatch(/coupon\.type === "bxgy" \? "BXGY"/);
+    expect(screen).toMatch(/coupon\.type === "bxgy" \? "bundle"/);
   });
 });
