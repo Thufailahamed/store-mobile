@@ -14,12 +14,29 @@ export interface UploadResult {
   error?: string;
 }
 
-const AVATAR_BUCKET = "user-avatars";
+const AVATAR_BUCKET = "public";
 
 // 8 MB cap on raw image bytes (camera shots at quality=0.85 are typically
 // 1-4 MB). Without this, picking a multi-MB photo can exhaust the device
 // heap and cause the upload to silently OOM before reaching storage.
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+const AVATAR_MIMES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
+export function validateAvatarAsset(
+  mimeType: string | null | undefined,
+  byteLength: number,
+): { ok: true } | { ok: false; reason: string } {
+  const m = (mimeType ?? "image/jpeg").toLowerCase();
+  if (!AVATAR_MIMES.has(m)) {
+    return { ok: false, reason: `Unsupported image type "${m}". Allowed: jpg, png, webp.` };
+  }
+  if (byteLength > AVATAR_MAX_BYTES) {
+    return { ok: false, reason: `Image too large (${Math.round(byteLength / 1024 / 1024)} MB; max 5 MB)` };
+  }
+  return { ok: true };
+}
 
 /**
  * Explicit allow-list of extensions we will accept for uploads. We refuse
@@ -162,9 +179,9 @@ async function uploadImageToBucket(
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({
-        bucket,
+        bucket: bucket === "user-avatars" ? "public" : bucket,
         filename,
-        contentType,
+        content_type: contentType,
         ...(prefix ? { prefix } : {}),
       }),
     });
@@ -174,7 +191,12 @@ async function uploadImageToBucket(
       return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
     }
 
-    const { uploadUrl, publicUrl } = await presignedRes.json();
+    const raw = await presignedRes.json();
+    const uploadUrl = raw.uploadUrl || raw.url;
+    const publicUrl = raw.publicUrl || raw.key || "";
+    if (!uploadUrl || !publicUrl) {
+      return { url: "", error: "Upload registration failed (missing URL)" };
+    }
 
     const putRes = await fetch(uploadUrl, {
       method: "PUT",
@@ -287,39 +309,66 @@ export async function uploadAvatar(
   options?: { mimeType?: string | null; fileName?: string | null }
 ): Promise<UploadResult> {
   try {
-    const ext = normalizeExtension(
-      options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
-      options?.mimeType
-    );
-    const path = `${userId}/avatar-${Date.now()}.${ext}`;
+    if (!userId) return { url: "", error: "userId required" };
+    const rawExt =
+      options?.fileName?.split(".").pop() ?? uri.split(".").pop() ?? "jpg";
+    let ext = normalizeExtension(rawExt, options?.mimeType).toLowerCase();
+    if (ext === "jpeg") ext = "jpg";
+    if (!["jpg", "png", "webp"].includes(ext)) ext = "jpg";
+    const contentType =
+      ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
 
-    const uploaded = await uploadImageToBucket(AVATAR_BUCKET, path, uri, {
-      mimeType: options?.mimeType,
-      upsert: true,
-    });
-    if (uploaded.error || !uploaded.url) return uploaded;
+    const body = await readUriAsArrayBuffer(uri);
+    const verdict = validateAvatarAsset(options?.mimeType ?? contentType, body.byteLength);
+    if (!verdict.ok) return { url: "", error: verdict.reason };
 
-    const cacheBustedUrl = `${uploaded.url}?v=${Date.now()}`;
+    const host = getStoreApiHost();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      return { url: "", error: "Authentication session not found" };
+    }
 
-    const { error: dbError } = await supabase
-      .from("users")
-      .update({ avatar_url: cacheBustedUrl })
-      .eq("id", userId);
-    if (dbError) return { url: "", error: dbError.message };
-
-    const { data: authUser } = await supabase.auth.getUser();
-    const { error: authError } = await supabase.auth.updateUser({
-      data: {
-        ...(authUser.user?.user_metadata ?? {}),
-        avatar_url: cacheBustedUrl,
+    const filename = `avatar-${Date.now()}.${ext}`;
+    const presignedRes = await fetch(`${host}/api/storage/presigned-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
       },
+      body: JSON.stringify({
+        bucket: "public",
+        filename,
+        content_type: contentType,
+        prefix: userId,
+      }),
     });
-    if (authError) return { url: "", error: authError.message };
 
-    // No explicit refreshSession() — updateUser() already persists the
-    // new session, and an extra refresh races with concurrent calls.
+    if (!presignedRes.ok) {
+      const errData = await presignedRes.json().catch(() => ({}));
+      return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
+    }
 
-    return { url: cacheBustedUrl };
+    const raw = await presignedRes.json();
+    const uploadUrl = raw.uploadUrl || raw.url;
+    const publicUrl: string = raw.publicUrl || raw.key || "";
+    if (!uploadUrl || !publicUrl) {
+      return { url: "", error: "Upload registration failed (missing URL)" };
+    }
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body,
+    });
+    if (!putRes.ok) {
+      return { url: "", error: `Failed to stream data to Cloudflare (HTTP ${putRes.status})` };
+    }
+
+    // Pure upload: caller persists via updateProfileBackend({avatar_url})
+    // + supabase.auth.updateUser so audit/rate-limit apply uniformly.
+    // No ?v= cache-bust in DB value (backend max 500 + resolveImageUrl).
+    return { url: publicUrl };
   } catch (e: any) {
     return { url: "", error: e?.message ?? "Upload failed" };
   }
