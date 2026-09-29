@@ -334,9 +334,8 @@ function AskQuestionModal({
 
 const s = StyleSheet.create({
   card: {
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[5],
-    borderRadius: radii.xl,
+    marginHorizontal: spacing[4],
+    borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: colors.light.border,
     backgroundColor: colors.light.card,

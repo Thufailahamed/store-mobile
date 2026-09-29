@@ -128,6 +128,12 @@ export async function getStoreBySlug(slug: string): Promise<Result<Store | null>
       return ok(mapStore(match as Store));
     }
 
+    // Callers sometimes pass the store id when no slug is set (e.g. the
+    // seller "View storefront" button) — resolve those too.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized)) {
+      return getStoreById(normalized);
+    }
+
     return ok(null);
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch store");

@@ -27,7 +27,7 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
   const headerHeight = insets.top + 52; // Header vertical offset
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const CARD_WIDTH = SCREEN_WIDTH - 32; // 16px margin on each side
-  const CARD_HEIGHT = CARD_WIDTH * (4 / 3); // 3:4 portrait aspect ratio
+  const CARD_HEIGHT = CARD_WIDTH * (5 / 4); // 4:5 keeps title + price above the fold
   const SNAP_INTERVAL = CARD_WIDTH + CARD_GAP;
 
   const sorted = [...images].sort((a, b) => a.position - b.position);
@@ -97,7 +97,7 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
         {/* Floating Overlays */}
         {pct > 0 && (
           <View style={styles.stamp}>
-            <Label style={styles.stampText}>-{pct}%</Label>
+            <Label style={styles.stampText}>{pct}% OFF</Label>
           </View>
         )}
 
@@ -107,8 +107,9 @@ export function ProductImageGallery({ images, mrp, price }: ProductImageGalleryP
           onPress={() => displayImages[activeIndex]?.url && setZoomVisible(true)}
           activeOpacity={0.8}
           hitSlop={6}
+          accessibilityLabel="Zoom image"
         >
-          <Ionicons name="expand-outline" size={15} color="#ffffff" />
+          <Ionicons name="expand-outline" size={16} color={colors.light.foreground} />
         </TouchableOpacity>
 
         {/* Image counter */}
@@ -183,8 +184,10 @@ const styles = StyleSheet.create({
     marginRight: CARD_GAP,
   },
   imageContainer: {
-    backgroundColor: colors.light.muted,
+    backgroundColor: colors.light.card,
     borderRadius: radii["3xl"],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: `${colors.olive[900]}14`,
     overflow: "hidden",
   },
   mainImage: {
@@ -199,30 +202,32 @@ const styles = StyleSheet.create({
   },
   stamp: {
     position: "absolute",
-    bottom: 16,
+    top: 16,
     left: 32,
     backgroundColor: colors.accent2.rust,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.sm,
-    ...shadows.soft,
+    paddingVertical: 6,
+    borderRadius: radii.full,
   },
   stampText: {
     color: "#ffffff",
     fontSize: 10,
     fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   zoomHintBtn: {
     position: "absolute",
     top: 16,
     right: 32,
-    backgroundColor: "rgba(22, 23, 15, 0.45)",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: `${colors.olive[900]}1F`,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    ...shadows.soft,
   },
   counter: {
     position: "absolute",

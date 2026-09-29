@@ -45,15 +45,17 @@ export function ProductStoreCard({ store }: ProductStoreCardProps) {
         </View>
         <View style={styles.statsRow}>
           {store.total_reviews > 0 && (
-            <>
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={10} color={colors.accent2.ochre} />
-                <Body size="xs" style={styles.ratingText}>{store.rating?.toFixed(1)}</Body>
-              </View>
-              <View style={styles.miniDot} />
-            </>
+            <View style={styles.ratingBadge}>
+              <Ionicons name="star" size={10} color={colors.accent2.ochre} />
+              <Body size="xs" style={styles.ratingText}>{store.rating?.toFixed(1)}</Body>
+            </View>
           )}
-          <Body size="xs" muted>{store.total_products} products</Body>
+          {store.total_reviews > 0 && store.total_products > 0 && <View style={styles.miniDot} />}
+          {store.total_products > 0 && (
+            <Body size="xs" muted>
+              {store.total_products} {store.total_products === 1 ? "product" : "products"}
+            </Body>
+          )}
         </View>
       </View>
       <View style={styles.visitLink}>
@@ -69,7 +71,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    marginHorizontal: spacing[5],
+    marginHorizontal: spacing[4],
     padding: spacing[4],
     backgroundColor: colors.paper.cream,
     borderRadius: radii["2xl"],

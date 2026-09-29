@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   ScrollView,
@@ -315,14 +315,6 @@ export default function AccountScreen() {
     }, [user?.id, user?.user_metadata?.avatar_url, user?.user_metadata?.full_name]),
   );
 
-  const followingAvatars = useMemo(() => {
-    return followedStores.slice(0, 4).map((fs) => ({
-      id: fs.id,
-      uri: fs.store.logo_url,
-      label: fs.store.name,
-    }));
-  }, [followedStores]);
-
   const handleSignIn = useCallback(() => {
     router.push("/(auth)/login");
   }, [router]);
@@ -339,6 +331,11 @@ export default function AccountScreen() {
   );
 
   const initials = getInitials(name);
+  const memberSince = (() => {
+    if (!user?.created_at) return null;
+    const d = new Date(user.created_at);
+    return Number.isNaN(d.getTime()) ? null : d.getFullYear();
+  })();
 
   return (
     <PaperBackground style={{ backgroundColor: "#f8f7f2" }}>
@@ -423,13 +420,13 @@ export default function AccountScreen() {
                   color="#E8CF8F"
                 />
                 <Text style={styles.privilegePillText}>
-                  {role === "admin" ? "PLATFORM EXECUTIVE" : "PRIVATE CLIENT"}
+                  {role === "admin" ? "Platform admin" : "Private client"}
                 </Text>
               </View>
 
               <View style={styles.memberIdBadge}>
                 <Text style={styles.memberIdText}>
-                  {user ? `VIP · #${user.id.slice(0, 6).toUpperCase()}` : "GUEST PASS"}
+                  {user ? (memberSince ? `Member since ${memberSince}` : "Member") : "Guest"}
                 </Text>
               </View>
             </View>
@@ -461,8 +458,8 @@ export default function AccountScreen() {
                     )}
                   </View>
                 </View>
-                {user ? (
-                  <View style={styles.avatarVerifiedBadge}>
+                {user?.email_confirmed_at ? (
+                  <View style={styles.avatarVerifiedBadge} accessibilityLabel="Email verified">
                     <Ionicons name="checkmark-sharp" size={10} color="#14170d" />
                   </View>
                 ) : null}
@@ -478,161 +475,98 @@ export default function AccountScreen() {
                   </Text>
                 </View>
 
-                {/* Quick Action Pills */}
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={styles.actionPill}
-                    onPress={() =>
-                      user
-                        ? router.push("/(main)/account/profile")
-                        : handleSignIn()
-                    }
-                    activeOpacity={0.75}
-                  >
-                    <Ionicons name="person-outline" size={12} color="#E6E2D3" />
-                    <Text style={styles.actionPillText}>Profile</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.actionPill}
-                    onPress={() =>
-                      user
-                        ? router.push("/(main)/account/settings")
-                        : handleSignIn()
-                    }
-                    activeOpacity={0.75}
-                  >
-                    <Ionicons name="settings-outline" size={12} color="#E6E2D3" />
-                    <Text style={styles.actionPillText}>Settings</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={styles.actionPill}
+                  onPress={() => (user ? router.push("/(main)/account/profile") : handleSignIn())}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name={user ? "create-outline" : "log-in-outline"} size={13} color="#E6E2D3" />
+                  <Text style={styles.actionPillText}>{user ? "Edit profile" : "Sign in"}</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
             {/* Haute Horlogerie / Private Client Stats Ribbon */}
             <View style={styles.statsRibbon}>
-              <TouchableOpacity
-                style={styles.statItem}
-                onPress={() => (user ? router.push("/(main)/account/orders") : handleSignIn())}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.statValue}>{orderCount}</Text>
-                <Text style={styles.statLabel}>PURCHASES</Text>
-              </TouchableOpacity>
-
-              <View style={styles.statDivider} />
-
-              <TouchableOpacity
-                style={styles.statItem}
-                onPress={() => router.push("/(main)/products")}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.statValue}>{wishlistCount}</Text>
-                <Text style={styles.statLabel}>WISHLIST</Text>
-              </TouchableOpacity>
-
-              <View style={styles.statDivider} />
-
-              <TouchableOpacity
-                style={styles.statItem}
-                onPress={() => router.push("/(main)/account/following")}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.statValue}>{followedStores.length}</Text>
-                <Text style={styles.statLabel}>BOUTIQUES</Text>
-              </TouchableOpacity>
+              {[
+                {
+                  key: "orders",
+                  value: orderCount,
+                  label: orderCount === 1 ? "Order" : "Orders",
+                  icon: "bag-handle-outline" as const,
+                  onPress: () => (user ? router.push("/(main)/account/orders") : handleSignIn()),
+                },
+                {
+                  key: "wishlist",
+                  value: wishlistCount,
+                  label: "Wishlist",
+                  icon: "heart-outline" as const,
+                  onPress: () => router.push("/(main)/wishlist"),
+                },
+                {
+                  key: "following",
+                  value: followedStores.length,
+                  label: "Following",
+                  icon: "storefront-outline" as const,
+                  onPress: () => router.push("/(main)/account/following"),
+                },
+              ].map((st, i) => (
+                <React.Fragment key={st.key}>
+                  {i > 0 ? <View style={styles.statDivider} /> : null}
+                  <TouchableOpacity
+                    style={styles.statItem}
+                    onPress={st.onPress}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${st.value} ${st.label}`}
+                  >
+                    <Text style={styles.statValue}>{st.value}</Text>
+                    <View style={styles.statLabelRow}>
+                      <Ionicons name={st.icon} size={11} color="#C8A44A" />
+                      <Text style={styles.statLabel}>{st.label}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </React.Fragment>
+              ))}
             </View>
           </LinearGradient>
         </View>
 
-        {/* Action Tiles (Order History + Followed Boutiques) */}
-        <View style={styles.summaryGrid}>
-          {/* Order History Tile */}
+        {/* Recent orders strip */}
+        {user ? (
           <TouchableOpacity
-            style={styles.summaryTile}
-            onPress={() => (user ? router.push("/(main)/account/orders") : handleSignIn())}
+            style={styles.ordersRow}
+            onPress={() => router.push("/(main)/account/orders")}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Order history"
           >
-            <View style={styles.summaryTileTop}>
-              <View style={styles.summaryIconBadge}>
-                <Ionicons name="bag-handle-outline" size={16} color={colors.olive[700]} />
+            {orderThumbs.length > 0 ? (
+              <View style={[styles.overlapContainer, { width: 40 + (orderThumbs.length - 1) * 22 }]}>
+                {orderThumbs.map((uri, idx) => (
+                  <Image
+                    key={`${uri}-${idx}`}
+                    source={{ uri }}
+                    style={[styles.overlapThumb, { left: idx * 22, zIndex: 10 - idx }]}
+                    contentFit="cover"
+                  />
+                ))}
               </View>
-              <Text style={styles.summaryTileKicker}>PURCHASES</Text>
-            </View>
-
-            <View style={styles.summaryVisualBox}>
-              {orderThumbs.length > 0 ? (
-                <View style={styles.overlapContainer}>
-                  {orderThumbs.map((uri, idx) => (
-                    <Image
-                      key={`${uri}-${idx}`}
-                      source={{ uri }}
-                      style={[
-                        styles.overlapThumb,
-                        { left: idx * 24, zIndex: 10 - idx },
-                      ]}
-                      contentFit="cover"
-                    />
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.emptyTileVisual}>
-                  <Text style={styles.emptyTileText}>View order history & tracking</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.summaryTileFooter}>
-              <Text style={styles.summaryTileTitle}>Order history</Text>
-              <Ionicons name="arrow-forward" size={14} color={colors.light.mutedForeground} />
-            </View>
-          </TouchableOpacity>
-
-          {/* Following Tile */}
-          <TouchableOpacity
-            style={styles.summaryTile}
-            onPress={() => router.push("/(main)/account/following")}
-            activeOpacity={0.85}
-          >
-            <View style={styles.summaryTileTop}>
-              <View style={styles.summaryIconBadge}>
-                <Ionicons name="storefront-outline" size={16} color={colors.olive[700]} />
+            ) : (
+              <View style={styles.ordersIcon}>
+                <Ionicons name="bag-handle-outline" size={18} color={colors.olive[700]} />
               </View>
-              <Text style={styles.summaryTileKicker}>BOUTIQUES</Text>
+            )}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.ordersTitle}>Order history</Text>
+              <Text style={styles.ordersSub} numberOfLines={1}>
+                {orderCount > 0 ? `${orderCount} recent · track deliveries` : "Your orders will appear here"}
+              </Text>
             </View>
-
-            <View style={styles.summaryVisualBox}>
-              {followingAvatars.length > 0 ? (
-                <View style={styles.overlapContainer}>
-                  {followingAvatars.map((item, idx) => (
-                    <View
-                      key={item.id}
-                      style={[
-                        styles.overlapAvatarWrap,
-                        { left: idx * 24, zIndex: 10 - idx },
-                      ]}
-                    >
-                      {item.uri ? (
-                        <Image source={{ uri: item.uri }} style={styles.overlapAvatarImg} contentFit="cover" />
-                      ) : (
-                        <Text style={styles.overlapAvatarLetter}>{item.label.charAt(0)}</Text>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <View style={styles.emptyTileVisual}>
-                  <Text style={styles.emptyTileText}>Explore followed designers</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.summaryTileFooter}>
-              <Text style={styles.summaryTileTitle}>Following</Text>
-              <Ionicons name="arrow-forward" size={14} color={colors.light.mutedForeground} />
-            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
           </TouchableOpacity>
-        </View>
+        ) : null}
 
         {/* Recently Viewed Editorial Rail */}
         <View style={styles.sectionHeaderWrap}>
@@ -1049,11 +983,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(200, 164, 74, 0.35)",
   },
   privilegePillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    letterSpacing: 1.4,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
     color: "#E8CF8F",
-    textTransform: "uppercase",
   },
   memberIdBadge: {
     paddingHorizontal: 8,
@@ -1064,10 +996,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
   memberIdText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
     color: "#C5BEA8",
-    letterSpacing: 1,
   },
   profileRow: {
     flexDirection: "row",
@@ -1157,6 +1088,8 @@ const styles = StyleSheet.create({
     marginTop: spacing[2],
   },
   actionPill: {
+    alignSelf: "flex-start",
+    marginTop: spacing[2],
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
@@ -1194,12 +1127,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: -0.2,
   },
+  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   statLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#C8A44A",
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: "rgba(250,248,241,0.7)",
   },
   statDivider: {
     width: 1,
@@ -1207,51 +1139,32 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(200, 164, 74, 0.2)",
   },
 
-  /* Action Tiles */
-  summaryGrid: {
-    flexDirection: "row",
-    gap: CARD_GAP,
-    marginBottom: spacing[5],
-  },
-  summaryTile: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    padding: spacing[4],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    justifyContent: "space-between",
-    minHeight: 128,
-    ...shadows.soft,
-  },
-  summaryTileTop: {
+  /* Recent orders strip */
+  ordersRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: spacing[3],
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    paddingHorizontal: spacing[4],
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.08)",
+    marginBottom: spacing[6],
   },
-  summaryIconBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+  ordersIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
-  summaryTileKicker: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: colors.light.mutedForeground,
-    letterSpacing: 1.2,
-  },
-  summaryVisualBox: {
-    height: 44,
-    justifyContent: "center",
-    marginVertical: spacing[2],
-  },
+  ordersTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.light.foreground },
+  ordersSub: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
   overlapContainer: {
     position: "relative",
     height: 40,
-    width: "100%",
   },
   overlapThumb: {
     position: "absolute",
@@ -1262,48 +1175,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#ffffff",
     backgroundColor: "#f0ede2",
-  },
-  overlapAvatarWrap: {
-    position: "absolute",
-    top: 0,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#ffffff",
-    backgroundColor: colors.olive[100],
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  overlapAvatarImg: {
-    width: "100%",
-    height: "100%",
-  },
-  overlapAvatarLetter: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.olive[800],
-  },
-  emptyTileVisual: {
-    justifyContent: "center",
-  },
-  emptyTileText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    lineHeight: 15,
-  },
-  summaryTileFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  summaryTileTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
   },
 
   /* Section Header */

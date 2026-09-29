@@ -140,6 +140,7 @@ export default function ProductDetailScreen() {
     liveVariantStock?.available ?? selectedVariant?.stock ?? (hasVariants ? 0 : Infinity);
   const isWishlisted = product ? !!wishlistItems[product.id] : false;
   const soldOut = currentStock <= 0;
+  const lowStock = !soldOut && Number.isFinite(currentStock) && currentStock <= 5;
   const cartItemKey = product
     ? buildCartLineKeyFromItem({
         storeId: product.store_id,
@@ -229,18 +230,6 @@ export default function ProductDetailScreen() {
     extrapolate: "clamp",
   });
 
-  const stickyBottomTranslate = scrollY.interpolate({
-    inputRange: [380, 480],
-    outputRange: [100, 0],
-    extrapolate: "clamp",
-  });
-
-  const stickyBottomOpacity = scrollY.interpolate({
-    inputRange: [380, 460],
-    outputRange: [0, 1],
-    extrapolate: "clamp",
-  });
-
   if (loading) {
     return (
       <PaperBackground>
@@ -303,6 +292,14 @@ export default function ProductDetailScreen() {
         <View style={styles.topRight}>
           <TouchableOpacity
             style={styles.topBtn}
+            onPress={handleShare}
+            activeOpacity={0.8}
+            accessibilityLabel="Share product"
+          >
+            <Ionicons name="share-outline" size={17} color={colors.light.foreground} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.topBtn}
             onPress={() => {
               if (product) {
                 tracker.wishlist(product, isWishlisted ? "remove" : "add");
@@ -359,26 +356,27 @@ export default function ProductDetailScreen() {
           <ProductInfo
             product={product}
             unitPrice={unitPrice}
-            isWishlisted={isWishlisted}
-            onWishlistToggle={() => {
-              tracker.wishlist(product, isWishlisted ? "remove" : "add");
-              toggle(product.id);
-            }}
-            onShare={handleShare}
           />
+          {!soldOut && (
+            <View style={styles.priceAlertWrap}>
+              <PriceAlertPill
+                productId={product.id}
+                variantId={selectedVariant?.id ?? null}
+                currency={product.currency || "LKR"}
+                currentPrice={unitPrice}
+              />
+            </View>
+          )}
         </View>
 
         {/* Variant selectors */}
         <View style={styles.purchasePanel}>
           <View style={styles.purchaseHeader}>
-            <View>
-              <Label style={styles.purchaseEyebrow}>YOUR SELECTION</Label>
-              <Display size="md" style={styles.purchaseTitle}>Choose your options</Display>
-            </View>
-            <View style={[styles.stockPill, soldOut && styles.stockPillSoldOut]}>
-              <View style={[styles.stockDot, soldOut && styles.stockDotSoldOut]} />
-              <Label style={[styles.stockText, soldOut && styles.stockTextSoldOut]}>
-                {soldOut ? "Sold out" : "In stock"}
+            <Label style={styles.purchaseEyebrow}>SELECT OPTIONS</Label>
+            <View style={[styles.stockPill, (soldOut || lowStock) && styles.stockPillSoldOut]}>
+              <View style={[styles.stockDot, (soldOut || lowStock) && styles.stockDotSoldOut]} />
+              <Label style={[styles.stockText, (soldOut || lowStock) && styles.stockTextSoldOut]}>
+                {soldOut ? "Sold out" : lowStock ? `Only ${currentStock} left` : "In stock"}
               </Label>
             </View>
           </View>
@@ -416,27 +414,16 @@ export default function ProductDetailScreen() {
 
           {/* Quantity */}
           <View style={styles.qtySection}>
-          {product?.id ? (
-            <View style={{ marginBottom: spacing[3] }}>
-              <OverlapWarningBanner
-                productId={product.id}
-                onOpenWardrobe={() => router.push("/(main)/account/wardrobe" as never)}
-              />
-            </View>
-          ) : null}
+          <OverlapWarningBanner
+            productId={product.id}
+            onOpenWardrobe={() => router.push("/(main)/account/wardrobe" as never)}
+          />
           <View style={styles.qtyControlRow}>
-            <View style={styles.qtyLabel}>
-              <View style={styles.qtyIcon}>
-                <Ionicons name="layers-outline" size={14} color={colors.olive[700]} />
-              </View>
-              <View>
-                <Label style={styles.qtyLabelText}>QUANTITY</Label>
-                <Body size="xs" muted>Choose how many</Body>
-              </View>
-            </View>
+            <Label style={styles.qtyLabelText}>QUANTITY</Label>
             <View style={styles.qtyContainer}>
               <TouchableOpacity
-                style={styles.qtyPillBtn}
+                style={[styles.qtyPillBtn, quantity <= 1 && styles.qtyPillBtnDisabled]}
+                disabled={quantity <= 1}
                 onPress={() => setQuantity(Math.max(1, quantity - 1))}
                 activeOpacity={0.7}
                 accessibilityLabel="Decrease quantity"
@@ -456,38 +443,7 @@ export default function ProductDetailScreen() {
           </View>
           <View style={styles.purchaseDivider} />
 
-          {/* Action buttons directly below quantity selection */}
           <PincodeChecker />
-          <View style={styles.actionRow}>
-            <Button
-              variant="outline"
-              onPress={handleAddToCart}
-              disabled={!isInCart && soldOut}
-              style={styles.addBtn}
-              textStyle={{ color: colors.light.primary, fontSize: 13, letterSpacing: 1 }}
-              size="lg"
-            >
-              {isInCart ? "Go to basket" : (soldOut ? "Sold out" : "Add to basket")}
-            </Button>
-            <Button
-              variant="brand"
-              onPress={handleBuyNow}
-              disabled={soldOut}
-              style={styles.buyNowBtn}
-              textStyle={{ fontSize: 13, letterSpacing: 1 }}
-              size="lg"
-            >
-              Buy Now
-            </Button>
-          </View>
-            {!soldOut && (
-              <PriceAlertPill
-                productId={product.id}
-                variantId={selectedVariant?.id ?? null}
-                currency={product.currency || "LKR"}
-                currentPrice={unitPrice}
-              />
-            )}
           </View>
         </View>
 
@@ -513,7 +469,9 @@ export default function ProductDetailScreen() {
         </View>
 
         {/* Questions & answers */}
-        <ProductQA productId={product.id} />
+        <View style={styles.section}>
+          <ProductQA productId={product.id} />
+        </View>
 
         {/* Related products — content-similar (always shown) */}
         {relatedProducts.length > 0 && (
@@ -603,45 +561,39 @@ export default function ProductDetailScreen() {
         )}
 
         {/* Bottom spacer for sticky bar & insets */}
-        <View style={{ height: insets.bottom + 84 }} />
+        <View style={{ height: Math.max(insets.bottom, 12) + 110 }} />
       </ScrollView>
 
-      {/* Floating Sticky Bottom Bar */}
-      <Animated.View
-        style={[
-          styles.stickyBottomBar,
-          {
-            paddingBottom: Math.max(insets.bottom, 12),
-            transform: [{ translateY: stickyBottomTranslate }],
-            opacity: stickyBottomOpacity,
-          },
-        ]}
-      >
+      {/* Fixed bottom purchase bar */}
+      <View style={[styles.stickyBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <Body size="xs" muted numberOfLines={1} style={styles.stickyVariant}>
+          {[selectedSize && `Size ${selectedSize}`, selectedColor, quantity > 1 && `Qty ${quantity}`]
+            .filter(Boolean)
+            .join(" · ") || "Select your options"}
+        </Body>
         <View style={styles.stickyBottomInner}>
-          <View style={styles.stickyPriceCol}>
-            <Price size="md" style={styles.stickyPrice}>
-              {formatPrice(unitPrice, product.currency)}
-            </Price>
-            <Body size="xs" muted numberOfLines={1} style={styles.stickyVariant}>
-              {selectedSize ? `Size ${selectedSize}` : "Select size"}
-              {selectedColor ? ` · ${selectedColor}` : ""}
-            </Body>
-          </View>
-
-          <View style={styles.stickyBtnWrapper}>
-            <Button
-              variant={isInCart ? "outline" : "brand"}
-              onPress={handleAddToCart}
-              disabled={!isInCart && soldOut}
-              style={styles.stickyAddBtn}
-              textStyle={{ fontSize: 13, letterSpacing: 0.5 }}
-              size="md"
-            >
-              {isInCart ? "Go to basket" : (soldOut ? "Sold out" : "Add to basket")}
-            </Button>
-          </View>
+          <Button
+            variant="outline"
+            onPress={handleAddToCart}
+            disabled={!isInCart && soldOut}
+            style={[styles.stickyBtn, styles.stickyAddBtn]}
+            textStyle={styles.stickyAddText}
+            size="md"
+          >
+            {isInCart ? "Go to basket" : soldOut ? "Sold out" : "Add to basket"}
+          </Button>
+          <Button
+            variant="brand"
+            onPress={handleBuyNow}
+            disabled={soldOut}
+            style={[styles.stickyBtn, styles.stickyBuyBtn]}
+            textStyle={styles.stickyBuyText}
+            size="md"
+          >
+            Buy now
+          </Button>
         </View>
-      </Animated.View>
+      </View>
     </PaperBackground>
 
     <ReviewForm
@@ -712,9 +664,9 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   topBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: `${colors.light.primary}18`,
     backgroundColor: colors.light.card,
@@ -742,10 +694,13 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono.semibold,
   },
   section: {
-    marginTop: spacing[4],
+    marginTop: spacing[5],
+  },
+  priceAlertWrap: {
+    paddingHorizontal: spacing[5],
   },
   purchasePanel: {
-    marginTop: spacing[5],
+    marginTop: spacing[6],
     marginHorizontal: spacing[4],
     paddingVertical: spacing[4],
     backgroundColor: colors.paper.cream,
@@ -762,13 +717,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
   },
   purchaseEyebrow: {
-    color: colors.olive[600],
-    fontSize: 9,
-    marginBottom: 3,
-  },
-  purchaseTitle: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
+    color: colors.olive[700],
+    fontSize: 10,
+    letterSpacing: 1.6,
   },
   stockPill: {
     flexDirection: "row",
@@ -813,22 +764,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing[3],
   },
-  qtyLabel: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  qtyIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: `${colors.olive[500]}12`,
-  },
   qtyLabelText: {
     color: colors.light.foreground,
-    fontSize: 10,
+    fontSize: 11,
+    letterSpacing: 1.2,
   },
   qtyContainer: {
     flexDirection: "row",
@@ -837,17 +776,19 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     borderWidth: 1,
     borderColor: colors.light.border,
-    alignSelf: "flex-start",
-    paddingHorizontal: spacing[1],
-    paddingVertical: spacing[1],
+    paddingHorizontal: 3,
+    paddingVertical: 3,
   },
   qtyPillBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.light.card,
+  },
+  qtyPillBtnDisabled: {
+    opacity: 0.4,
   },
   qtyValue: {
     paddingHorizontal: spacing[4],
@@ -863,63 +804,50 @@ const styles = StyleSheet.create({
   relatedList: {
     paddingHorizontal: spacing[5],
   },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginTop: spacing[3],
-    width: "100%",
-  },
-  addBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: radii.xl,
-    borderWidth: 1.5,
-    borderColor: colors.olive[800],
-    backgroundColor: colors.paper.cream,
-  },
-  buyNowBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: radii.xl,
-    backgroundColor: colors.olive[900],
-  },
-  /* Floating Sticky Bottom Bar */
+  /* Fixed bottom purchase bar */
   stickyBottomBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
     backgroundColor: colors.paper.cream,
-    borderTopWidth: 1,
-    borderTopColor: `${colors.olive[700]}20`,
-    paddingTop: spacing[3],
-    paddingHorizontal: spacing[5],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: `${colors.olive[700]}30`,
+    paddingTop: spacing[2],
+    paddingHorizontal: spacing[4],
+    gap: spacing[2],
     ...shadows.editorial,
-  },
-  stickyBottomInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing[4],
-  },
-  stickyPriceCol: {
-    flex: 1,
-    gap: 1,
-  },
-  stickyPrice: {
-    color: colors.light.foreground,
   },
   stickyVariant: {
     fontSize: 11,
     fontFamily: fontFamilies.sans.medium,
+    textAlign: "center",
   },
-  stickyBtnWrapper: {
-    flex: 1.2,
+  stickyBottomInner: {
+    flexDirection: "row",
+    gap: spacing[3],
+  },
+  stickyBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: radii.xl,
+    paddingHorizontal: spacing[2],
   },
   stickyAddBtn: {
-    height: 48,
-    borderRadius: radii.xl,
+    borderWidth: 1.5,
+    borderColor: colors.olive[800],
+    backgroundColor: colors.paper.cream,
+  },
+  stickyBuyBtn: {
+    backgroundColor: colors.olive[900],
+  },
+  stickyAddText: {
+    color: colors.olive[900],
+    fontSize: 13,
+    letterSpacing: 0.6,
+  },
+  stickyBuyText: {
+    fontSize: 13,
+    letterSpacing: 0.6,
   },
 });

@@ -3,7 +3,7 @@ import { View, StyleSheet, TouchableOpacity } from "react-native";
 import { Link } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
-import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { colors, spacing, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, discountPct } from "@/lib/utils";
 import type { Product } from "@/lib/types";
@@ -11,17 +11,11 @@ import type { Product } from "@/lib/types";
 interface ProductInfoProps {
   product: Product;
   unitPrice: number;
-  isWishlisted: boolean;
-  onWishlistToggle: () => void;
-  onShare: () => void;
 }
 
 export function ProductInfo({
   product,
   unitPrice,
-  isWishlisted,
-  onWishlistToggle,
-  onShare,
 }: ProductInfoProps) {
   const pct = discountPct(product.mrp, unitPrice);
   const showRating = product.total_reviews > 0 && product.rating > 0;
@@ -44,32 +38,8 @@ export function ProductInfo({
         </View>
       )}
 
-      {/* Product name and action buttons row */}
-      <View style={styles.nameRow}>
-        <Display size="3xl" style={styles.name}>{product.name}</Display>
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={onWishlistToggle}
-            activeOpacity={0.8}
-            accessibilityLabel="Add to wishlist"
-          >
-            <Ionicons
-              name={isWishlisted ? "heart" : "heart-outline"}
-              size={20}
-              color={isWishlisted ? colors.light.destructive : colors.light.foreground}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={onShare}
-            activeOpacity={0.8}
-            accessibilityLabel="Share product"
-          >
-            <Ionicons name="share-outline" size={20} color={colors.light.foreground} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* Product name — full width; wishlist + share live in the top bar */}
+      <Display size="3xl" style={styles.name}>{product.name}</Display>
 
       {/* Short description */}
       {product.short_description ? (
@@ -105,9 +75,6 @@ export function ProductInfo({
         </View>
       )}
 
-      {/* Olive divider */}
-      <View style={styles.divider} />
-
       {/* Price */}
       <View style={styles.priceBlock}>
         <View style={styles.priceRow}>
@@ -115,21 +82,24 @@ export function ProductInfo({
             {formatPrice(unitPrice, product.currency)}
           </Price>
           {pct > 0 && (
-            <Body muted size="lg" style={styles.mrp}>
+            <Body muted style={styles.mrp}>
               {formatPrice(product.mrp, product.currency)}
             </Body>
           )}
-          {pct > 0 && (
-            <View style={styles.saveBadge}>
-              <Label style={styles.saveBadgeText}>
-                SAVE {formatPrice(product.mrp - unitPrice, product.currency)}
-              </Label>
-            </View>
-          )}
         </View>
-        <Body size="xs" muted style={styles.taxNote}>
-          Inclusive of all taxes
-        </Body>
+        <View style={styles.metaRow}>
+          {pct > 0 && (
+            <>
+              <Body size="xs" style={styles.saveText}>
+                You save {formatPrice(product.mrp - unitPrice, product.currency)}
+              </Body>
+              <View style={styles.dot} />
+            </>
+          )}
+          <Body size="xs" muted style={styles.taxNote}>
+            Inclusive of all taxes
+          </Body>
+        </View>
       </View>
     </View>
   );
@@ -157,35 +127,11 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: "uppercase",
   },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-  },
   name: {
-    flex: 1,
-    letterSpacing: -0.02,
-    lineHeight: 34,
+    letterSpacing: -0.4,
+    lineHeight: 36,
     fontFamily: fontFamilies.display.semibold,
     color: colors.light.foreground,
-  },
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 2,
-  },
-  actionBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
   },
   shortDesc: {
     lineHeight: 22,
@@ -233,17 +179,13 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
     fontFamily: fontFamilies.sans.regular,
   },
-  divider: {
-    height: 1,
-    backgroundColor: `${colors.olive[600]}20`,
-    marginVertical: spacing[1],
-  },
   priceBlock: {
-    gap: 2,
+    gap: 6,
+    marginTop: spacing[1],
   },
   priceRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
     gap: spacing[2],
     flexWrap: "wrap",
   },
@@ -254,28 +196,23 @@ const styles = StyleSheet.create({
   mrp: {
     textDecorationLine: "line-through",
     fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
     color: colors.light.mutedForeground,
-    marginLeft: 2,
   },
-  saveBadge: {
-    backgroundColor: `${colors.accent2.rust}12`,
-    borderWidth: 1,
-    borderColor: `${colors.accent2.rust}25`,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.sm,
-    marginLeft: 4,
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    flexWrap: "wrap",
   },
-  saveBadgeText: {
-    color: colors.accent2.rust,
-    fontSize: 9,
-    fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.5,
+  saveText: {
+    color: colors.olive[700],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
   },
   taxNote: {
-    marginTop: 2,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.light.mutedForeground,
   },
 });

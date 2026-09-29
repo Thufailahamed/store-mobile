@@ -10,8 +10,6 @@ import {
   Pressable,
 } from "react-native";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
@@ -45,28 +43,28 @@ const STATUS_TONE: Record<
   }
 > = {
   pending: {
-    label: "Pending confirmation",
+    label: "Awaiting confirmation",
     bg: "rgba(232, 169, 56, 0.12)",
     fg: "#9a6700",
     border: "rgba(232, 169, 56, 0.3)",
     icon: "time-outline",
   },
   confirmed: {
-    label: "Confirmed at Atelier",
+    label: "Confirmed",
     bg: "rgba(83, 94, 44, 0.12)",
     fg: colors.olive[800],
     border: "rgba(83, 94, 44, 0.25)",
     icon: "checkmark-circle-outline",
   },
   processing: {
-    label: "Preparing in Atelier",
+    label: "Preparing",
     bg: "rgba(83, 94, 44, 0.12)",
     fg: colors.olive[800],
     border: "rgba(83, 94, 44, 0.25)",
     icon: "cube-outline",
   },
   shipped: {
-    label: "Dispatched · In transit",
+    label: "In transit",
     bg: "rgba(59, 130, 246, 0.1)",
     fg: "#1d4ed8",
     border: "rgba(59, 130, 246, 0.25)",
@@ -80,7 +78,7 @@ const STATUS_TONE: Record<
     icon: "bicycle-outline",
   },
   delivered: {
-    label: "Safely delivered",
+    label: "Delivered",
     bg: "rgba(16, 185, 129, 0.12)",
     fg: "#047857",
     border: "rgba(16, 185, 129, 0.3)",
@@ -210,7 +208,7 @@ export default function OrdersScreen() {
               <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
             </TouchableOpacity>
             <View style={styles.topBarCenter}>
-              <Text style={styles.topBarKicker}>ACQUISITIONS</Text>
+              <Text style={styles.topBarKicker}>ACCOUNT</Text>
               <Text style={styles.topBarTitle}>My orders</Text>
             </View>
             <View style={styles.navBtnPlaceholder} />
@@ -242,7 +240,7 @@ export default function OrdersScreen() {
           </TouchableOpacity>
 
           <View style={styles.topBarCenter}>
-            <Text style={styles.topBarKicker}>ACQUISITIONS</Text>
+            <Text style={styles.topBarKicker}>ACCOUNT</Text>
             <Text style={styles.topBarTitle}>My orders</Text>
           </View>
 
@@ -267,89 +265,44 @@ export default function OrdersScreen() {
             />
           }
         >
-          {/* Haute Horlogerie Order Archive Hero Card */}
-          <View style={styles.heroCard}>
-            <LinearGradient
-              colors={["#181b12", "#273019", "#13160e"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroGradient}
-            >
-              {/* Guilloche Wave Engravings */}
-              <Svg style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                <Path
-                  d="M-30 20 C 70 80, 180 15, 270 70 S 370 25, 450 65"
-                  fill="none"
-                  stroke="rgba(200, 164, 74, 0.08)"
-                  strokeWidth={1.2}
-                />
-                <Path
-                  d="M-30 35 C 70 95, 180 30, 270 85 S 370 40, 450 80"
-                  fill="none"
-                  stroke="rgba(200, 164, 74, 0.08)"
-                  strokeWidth={1.2}
-                />
-              </Svg>
-
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroBadgePill}>
-                  <Ionicons name="sparkles" size={10} color="#E8CF8F" />
-                  <Text style={styles.heroBadgeText}>ATELIER ARCHIVE</Text>
-                </View>
-                <View style={styles.heroSeal}>
-                  <Ionicons name="receipt-outline" size={18} color="#E8CF8F" />
-                </View>
-              </View>
-
-              <View style={styles.heroCopyBlock}>
-                <Text style={styles.heroTitle}>Threads, tracked</Text>
-                <Text style={styles.heroSub}>
-                  Real-time parcel logistics, authentication & delivery timeline
+          {/* Summary */}
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryTop}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.summaryLabel}>Total spent</Text>
+                <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  {formatPrice(lifetimeSpend)}
+                </Text>
+                <Text style={styles.summarySub}>
+                  across {counts.all} order{counts.all === 1 ? "" : "s"}
                 </Text>
               </View>
-            </LinearGradient>
-          </View>
-
-          {/* Unified Haute Horlogerie Metric Bar */}
-          <View style={styles.metricsCard}>
-            <View style={styles.metricItem}>
-              <View style={styles.metricIconBox}>
-                <Ionicons name="layers-outline" size={14} color={colors.olive[700]} />
+              <View style={styles.summaryIcon}>
+                <Ionicons name="bag-handle-outline" size={18} color="#E8CF8F" />
               </View>
-              <Text style={styles.metricValue}>{counts.all}</Text>
-              <Text style={styles.metricLabel}>LIFETIME</Text>
             </View>
-
-            <View style={styles.metricDivider} />
-
-            <View style={styles.metricItem}>
-              <View style={[styles.metricIconBox, styles.metricIconAccent]}>
-                <Ionicons name="pulse-outline" size={14} color="#85651b" />
-              </View>
-              <Text style={[styles.metricValue, { color: "#85651b" }]}>{counts.active}</Text>
-              <Text style={styles.metricLabel}>ACTIVE</Text>
-            </View>
-
-            <View style={styles.metricDivider} />
-
-            <View style={styles.metricItem}>
-              <View style={styles.metricIconBox}>
-                <Ionicons name="checkmark-done-outline" size={14} color="#047857" />
-              </View>
-              <Text style={[styles.metricValue, { color: "#047857" }]}>{counts.delivered}</Text>
-              <Text style={styles.metricLabel}>DELIVERED</Text>
-            </View>
-
-            <View style={styles.metricDivider} />
-
-            <View style={[styles.metricItem, { flex: 1.2 }]}>
-              <View style={styles.metricIconBox}>
-                <Ionicons name="wallet-outline" size={14} color={colors.olive[700]} />
-              </View>
-              <Text style={styles.metricValueMono} numberOfLines={1}>
-                {formatPrice(lifetimeSpend)}
-              </Text>
-              <Text style={styles.metricLabel}>SPENT</Text>
+            <View style={styles.summaryStats}>
+              {([
+                { key: "active", label: "In progress", value: counts.active, dot: "#E8A938" },
+                { key: "shipped", label: "On the way", value: counts.shipped, dot: "#7FB3E8" },
+                { key: "delivered", label: "Delivered", value: counts.delivered, dot: "#7ACF9E" },
+              ] as const).map((m) => (
+                <TouchableOpacity
+                  key={m.key}
+                  style={[styles.summaryStat, tab === m.key && styles.summaryStatActive]}
+                  onPress={() => setTab(tab === m.key ? "all" : m.key)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: tab === m.key }}
+                  accessibilityLabel={`${m.value} ${m.label}`}
+                >
+                  <Text style={styles.summaryStatValue}>{m.value}</Text>
+                  <View style={styles.summaryStatLabelRow}>
+                    <View style={[styles.summaryDot, { backgroundColor: m.dot }]} />
+                    <Text style={styles.summaryStatLabel} numberOfLines={1}>{m.label}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
 
@@ -445,31 +398,25 @@ function LuxuryOrderCard({ order: o, router }: { order: Order; router: ReturnTyp
   const moreCount = items.length - 1;
   const canTrack = TRACKABLE.includes(o.status);
 
+  const brand = firstItem?.product?.brand?.name || firstItem?.product?.store?.name || null;
+
   return (
     <Pressable
       style={({ pressed }) => [styles.orderCard, pressed && { opacity: 0.94 }]}
       onPress={() => router.push(`/(main)/account/orders/${o.id}` as never)}
+      accessibilityRole="button"
+      accessibilityLabel={`Order ${o.order_number}, ${tone.label}, ${formatPrice(o.total, o.currency)}`}
     >
-      {/* Card Header: Meta & Status */}
       <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderLeft}>
-          <View style={styles.orderKickerRow}>
-            <Text style={styles.orderKickerText}>ACQUISITION</Text>
-            <View style={styles.metaDot} />
-            <Text style={styles.orderDateText}>{formatRelative(o.placed_at)}</Text>
-          </View>
-          <Text style={styles.orderNumberText}>#{o.order_number}</Text>
-        </View>
-
-        <View style={[styles.statusBadge, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+        <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
           <Ionicons name={tone.icon} size={12} color={tone.fg} />
           <Text style={[styles.statusBadgeText, { color: tone.fg }]}>{tone.label}</Text>
         </View>
+        <Text style={styles.orderDateText}>{formatRelative(o.placed_at)}</Text>
       </View>
 
-      {/* Main Items Showcase */}
-      {firstItem && (
-        <View style={styles.itemShowcaseBox}>
+      {firstItem ? (
+        <View style={styles.itemRow}>
           <View style={styles.itemThumbWrap}>
             {firstImg ? (
               <Image source={{ uri: firstImg }} style={styles.itemThumbImage} contentFit="cover" transition={200} />
@@ -478,70 +425,47 @@ function LuxuryOrderCard({ order: o, router }: { order: Order; router: ReturnTyp
                 <Ionicons name="shirt-outline" size={22} color={colors.light.mutedForeground} />
               </View>
             )}
-            {itemCount > 1 && (
+            {moreCount > 0 ? (
               <View style={styles.itemQtyBadge}>
-                <Text style={styles.itemQtyBadgeText}>{itemCount}</Text>
+                <Text style={styles.itemQtyBadgeText}>+{moreCount}</Text>
               </View>
-            )}
+            ) : null}
           </View>
 
           <View style={styles.itemMetaColumn}>
-            <Text style={styles.itemBrandName} numberOfLines={1}>
-              {firstItem.product?.brand?.name || firstItem.product?.store?.name || "LUXE CURATED"}
-            </Text>
-            <Text style={styles.itemTitleName} numberOfLines={1}>
+            {brand ? (
+              <Text style={styles.itemBrandName} numberOfLines={1}>{brand}</Text>
+            ) : null}
+            <Text style={styles.itemTitleName} numberOfLines={2}>
               {firstItem.product_name}
             </Text>
-
-            <View style={styles.itemVariantRow}>
-              {firstItem.variant_label ? (
-                <View style={styles.variantChip}>
-                  <Text style={styles.variantChipText}>{firstItem.variant_label}</Text>
-                </View>
-              ) : null}
-              {moreCount > 0 && (
-                <Text style={styles.moreItemsText}>
-                  +{moreCount} more piece{moreCount === 1 ? "" : "s"}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.priceColumn}>
-            <Text style={styles.orderPriceText}>{formatPrice(o.total, o.currency)}</Text>
-            <Text style={styles.orderQtySub}>
-              {itemCount} item{itemCount === 1 ? "" : "s"}
+            <Text style={styles.itemVariantText} numberOfLines={1}>
+              {[firstItem.variant_label, `${itemCount} item${itemCount === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
             </Text>
           </View>
-        </View>
-      )}
 
-      {/* Card Logistics & Footer */}
+          <Text style={styles.orderPriceText}>{formatPrice(o.total, o.currency)}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.cardFooter}>
-        <View style={styles.paymentMethodPill}>
-          <Ionicons
-            name={o.payment_method === "cod" ? "cash-outline" : "card-outline"}
-            size={12}
-            color={colors.olive[700]}
-          />
-          <Text style={styles.paymentMethodText}>{paymentLabel(o.payment_method)}</Text>
-        </View>
-
-        <View style={styles.cardActionsRow}>
-          {canTrack && (
-            <TouchableOpacity
-              style={styles.trackLogisticsBtn}
-              onPress={() => router.push(`/(main)/account/orders/${o.id}/track` as never)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="paper-plane-outline" size={12} color={colors.olive[800]} />
-              <Text style={styles.trackLogisticsBtnText}>Track parcel</Text>
-            </TouchableOpacity>
-          )}
-          <View style={styles.arrowCircle}>
-            <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
-          </View>
-        </View>
+        <Text style={styles.orderNumberText} numberOfLines={1}>
+          #{o.order_number} · {paymentLabel(o.payment_method)}
+        </Text>
+        {canTrack ? (
+          <TouchableOpacity
+            style={styles.trackLogisticsBtn}
+            onPress={() => router.push(`/(main)/account/orders/${o.id}/track` as never)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Track order ${o.order_number}`}
+          >
+            <Ionicons name="navigate-outline" size={12} color={colors.olive[800]} />
+            <Text style={styles.trackLogisticsBtnText}>Track</Text>
+          </TouchableOpacity>
+        ) : (
+          <Ionicons name="chevron-forward" size={15} color={colors.light.mutedForeground} />
+        )}
       </View>
     </Pressable>
   );
@@ -600,124 +524,54 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
 
-  /* Hero Card */
-  heroCard: {
-    borderRadius: radii["2xl"],
-    overflow: "hidden",
+  /* Summary */
+  summaryCard: {
+    backgroundColor: colors.olive[950],
+    borderRadius: 24,
+    padding: 18,
     marginBottom: spacing[4],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    ...shadows.soft,
   },
-  heroGradient: {
-    padding: spacing[5],
-    position: "relative",
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing[3],
-  },
-  heroBadgePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.15)",
-    borderRadius: radii.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-  },
-  heroBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    letterSpacing: 1.4,
-    color: "#E8CF8F",
+  summaryTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  summaryLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
+    color: "rgba(250,248,241,0.6)",
   },
-  heroSeal: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  summaryValue: {
+    marginTop: 4,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 32,
+    lineHeight: 40,
+    color: "#FAF8F1",
+    fontVariant: ["tabular-nums"],
+  },
+  summarySub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+  summaryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: "rgba(200,164,74,0.16)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
   },
-  heroCopyBlock: {
-    gap: 3,
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#ffffff",
-    letterSpacing: -0.4,
-  },
-  heroSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: "rgba(250, 248, 241, 0.75)",
-    lineHeight: 17,
-  },
-
-  /* Metrics Card */
-  metricsCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    paddingVertical: spacing[3] + 2,
-    paddingHorizontal: spacing[3],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    marginBottom: spacing[4],
-    ...shadows.soft,
-  },
-  metricItem: {
+  summaryStats: { flexDirection: "row", gap: 8, marginTop: 16 },
+  summaryStat: {
     flex: 1,
-    alignItems: "center",
-    gap: 2,
+    minWidth: 0,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: "rgba(250,248,241,0.06)",
+    borderWidth: 1,
+    borderColor: "transparent",
   },
-  metricIconBox: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: colors.olive[50],
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-  metricIconAccent: {
-    backgroundColor: "rgba(200, 164, 74, 0.15)",
-  },
-  metricValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
-    letterSpacing: -0.3,
-  },
-  metricValueMono: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
-  },
-  metricLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  metricDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: "#ecebe4",
-  },
+  summaryStatActive: { borderColor: "rgba(232,207,143,0.6)", backgroundColor: "rgba(250,248,241,0.1)" },
+  summaryStatValue: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
+  summaryStatLabelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  summaryDot: { width: 6, height: 6, borderRadius: 3 },
+  summaryStatLabel: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "rgba(250,248,241,0.65)" },
 
   /* Search Bar */
   searchBarWrap: {
@@ -847,221 +701,92 @@ const styles = StyleSheet.create({
   },
 
   /* Order Cards */
-  ordersList: {
-    gap: spacing[3] + 2,
-  },
+  ordersList: { gap: 12 },
   orderCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    padding: spacing[4],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: spacing[3],
-    ...shadows.soft,
+    borderColor: "rgba(22,23,15,0.08)",
+    padding: 14,
+    gap: 12,
   },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing[2],
-  },
-  cardHeaderLeft: {
-    gap: 2,
-  },
-  orderKickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  orderKickerText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: colors.olive[700],
-    textTransform: "uppercase",
-  },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "#d1d5db",
-  },
-  orderDateText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  orderNumberText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-    letterSpacing: 0.5,
-  },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
   },
-  statusBadgeText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10.5,
-    letterSpacing: 0.2,
-  },
-
-  /* Items Showcase */
-  itemShowcaseBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[2] + 2,
-    backgroundColor: "#f9f8f4",
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.05)",
-  },
-  itemThumbWrap: {
-    width: 60,
-    height: 72,
-    borderRadius: radii.lg,
-    overflow: "hidden",
-    backgroundColor: "#eae7dd",
-    position: "relative",
-  },
-  itemThumbImage: {
-    width: "100%",
-    height: "100%",
-  },
+  statusBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12 },
+  orderDateText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  itemThumbWrap: { width: 64, height: 64, borderRadius: 14, overflow: "visible" },
+  itemThumbImage: { width: 64, height: 64, borderRadius: 14, backgroundColor: "#f0ede2" },
   itemThumbPlaceholder: {
-    flex: 1,
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    backgroundColor: "#f0ede2",
     alignItems: "center",
     justifyContent: "center",
   },
   itemQtyBadge: {
     position: "absolute",
-    top: 3,
-    right: 3,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#2c3119",
+    right: -6,
+    bottom: -6,
+    minWidth: 24,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    backgroundColor: colors.olive[900],
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
   },
-  itemQtyBadgeText: {
-    color: "#E8CF8F",
-    fontSize: 9,
-    fontFamily: fontFamilies.mono.semibold,
-  },
-  itemMetaColumn: {
-    flex: 1,
-    gap: 2,
-  },
+  itemQtyBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: "#FAF8F1" },
+  itemMetaColumn: { flex: 1, minWidth: 0, gap: 2 },
   itemBrandName: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1,
-    color: colors.olive[700],
-    textTransform: "uppercase",
-  },
-  itemTitleName: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
-  },
-  itemVariantRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 2,
-  },
-  variantChip: {
-    backgroundColor: "#ffffff",
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.06)",
-  },
-  variantChipText: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 9,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.4,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.olive[700],
   },
-  moreItemsText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  priceColumn: {
-    alignItems: "flex-end",
-    gap: 2,
-  },
+  itemTitleName: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, lineHeight: 19, color: colors.light.foreground },
+  moreItemsText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
+  itemVariantText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
   orderPriceText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 13.5,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
     color: colors.light.foreground,
-    letterSpacing: -0.2,
+    fontVariant: ["tabular-nums"],
   },
-  orderQtySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    color: colors.light.mutedForeground,
-  },
-
-  /* Card Footer */
   cardFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: spacing[1],
-    borderTopWidth: 1,
-    borderTopColor: "#f3f2eb",
+    gap: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(22,23,15,0.1)",
   },
-  paymentMethodPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  paymentMethodText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
+  orderNumberText: {
+    flex: 1,
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 11,
     color: colors.light.mutedForeground,
-  },
-  cardActionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
   },
   trackLogisticsBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: colors.olive[50],
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.olive[200],
+    backgroundColor: colors.olive[50],
   },
-  trackLogisticsBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10.5,
-    color: colors.olive[800],
-    letterSpacing: 0.3,
-  },
-  arrowCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#f5f4ef",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  trackLogisticsBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
 });

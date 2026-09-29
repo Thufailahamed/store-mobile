@@ -38,7 +38,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [showPwd, setShowPwd] = useState(false);
-  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState(false);
   const [method, setMethod] = useState<Method>("password");
@@ -49,8 +48,8 @@ export default function LoginScreen() {
 
   const methods: { key: Method; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
     { key: "password", label: "Password", icon: "key-outline" },
-    { key: "otp", label: "Magic link", icon: "sparkles-outline" },
-    { key: "phone", label: "Phone OTP", icon: "call-outline" },
+    { key: "otp", label: "Email link", icon: "sparkles-outline" },
+    { key: "phone", label: "Phone", icon: "call-outline" },
   ];
 
   const activeIndex = methods.findIndex((m) => m.key === method);
@@ -229,14 +228,19 @@ export default function LoginScreen() {
       >
         {/* Header section with luxury editorial brand details */}
         <View style={styles.header}>
-          <Label style={styles.kicker}>— 01 / Sign in</Label>
+          <View style={styles.brandRow}>
+            <View style={styles.brandMark}>
+              <Display size="lg" style={styles.brandMarkText}>L</Display>
+            </View>
+            <Label style={styles.brandName}>LUXE</Label>
+          </View>
           <View style={styles.titleRow}>
             <Display size="4xl" style={styles.titleText}>Welcome </Display>
             <Display italic size="4xl" style={styles.titleTextItalic}>back</Display>
             <Display size="4xl" style={styles.titleText}>.</Display>
           </View>
           <Body muted style={styles.subtitle}>
-            Sign in to track orders, save pieces, and pick up where you left off.
+            Sign in to track orders, save pieces and pick up where you left off.
           </Body>
         </View>
 
@@ -252,13 +256,13 @@ export default function LoginScreen() {
               <ActivityIndicator size="small" color={colors.light.foreground} />
             ) : (
               <>
-                <Svg viewBox="0 0 24 24" width={16} height={16}>
+                <Svg viewBox="0 0 24 24" width={18} height={18}>
                   <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
                   <Path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.72.12-1.42.34-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.83z"/>
                   <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83C6.71 7.31 9.14 5.38 12 5.38z"/>
                 </Svg>
-                <Label style={styles.googleBtnText}>Sign in with Google</Label>
+                <Body style={styles.googleBtnText}>Continue with Google</Body>
               </>
             )}
           </TouchableOpacity>
@@ -267,7 +271,7 @@ export default function LoginScreen() {
         {/* Divider */}
         <View style={styles.divider}>
           <View style={styles.dividerLine} />
-          <Label style={styles.dividerText}>or continue with</Label>
+          <Body size="sm" style={styles.dividerText}>or sign in with</Body>
           <View style={styles.dividerLine} />
         </View>
 
@@ -295,14 +299,16 @@ export default function LoginScreen() {
                 activeOpacity={0.8}
                 onPress={() => setMethod(m.key)}
                 style={styles.pillTab}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
               >
                 <Ionicons
                   name={m.icon}
                   size={14}
-                  color={active ? colors.light.primaryForeground : colors.light.mutedForeground}
+                  color={active ? colors.light.foreground : colors.light.mutedForeground}
                   style={styles.tabIcon}
                 />
-                <Label
+                <Body
                   style={[
                     styles.tabLabel,
                     active ? styles.tabLabelActive : styles.tabLabelInactive,
@@ -310,7 +316,7 @@ export default function LoginScreen() {
                   numberOfLines={1}
                 >
                   {m.label}
-                </Label>
+                </Body>
               </TouchableOpacity>
             );
           })}
@@ -327,6 +333,10 @@ export default function LoginScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               autoComplete="email"
+              textContentType="username"
+              autoCorrect={false}
+              returnKeyType={method === "password" ? "next" : "send"}
+              onSubmitEditing={method === "password" ? undefined : handleLogin}
               leftIcon={<Ionicons name="mail-outline" size={18} color={colors.light.mutedForeground} />}
             />
           ) : (
@@ -337,6 +347,7 @@ export default function LoginScreen() {
               onChangeText={setPhone}
               keyboardType="phone-pad"
               autoComplete="tel"
+              textContentType="telephoneNumber"
               leftIcon={<Ionicons name="call-outline" size={18} color={colors.light.mutedForeground} />}
             />
           )}
@@ -350,9 +361,18 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={!showPwd}
                 autoComplete="password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
                 leftIcon={<Ionicons name="lock-closed-outline" size={18} color={colors.light.mutedForeground} />}
                 rightIcon={
-                  <TouchableOpacity onPress={() => setShowPwd(!showPwd)} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    onPress={() => setShowPwd(!showPwd)}
+                    activeOpacity={0.7}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPwd ? "Hide password" : "Show password"}
+                  >
                     <Ionicons
                       name={showPwd ? "eye-off-outline" : "eye-outline"}
                       size={18}
@@ -362,38 +382,33 @@ export default function LoginScreen() {
                 }
               />
 
-              <View style={styles.optionsRow}>
-                <TouchableOpacity
-                  style={styles.rememberRow}
-                  activeOpacity={0.8}
-                  onPress={() => setRemember(!remember)}
-                >
-                  <View style={[styles.checkbox, remember && styles.checkboxChecked]}>
-                    {remember && <Ionicons name="checkmark" size={10} color="#fff" />}
-                  </View>
-                  <Body size="sm" style={styles.rememberText}>Remember me</Body>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => router.push("/(auth)/forgot-password")}
-                  style={styles.forgotLink}
-                >
-                  <Body size="sm" style={styles.forgotText}>Forgot password?</Body>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={() => router.push("/(auth)/forgot-password")}
+                style={styles.forgotLink}
+                hitSlop={8}
+                accessibilityRole="link"
+              >
+                <Body size="sm" style={styles.forgotText}>Forgot password?</Body>
+              </TouchableOpacity>
             </>
           )}
 
           {method === "otp" && (
-            <Body size="sm" muted style={styles.methodInfo}>
-              We'll email you a one-time link/code. No password needed.
-            </Body>
+            <View style={styles.methodInfo}>
+              <Ionicons name="mail-open-outline" size={16} color={colors.olive[700]} />
+              <Body size="sm" style={styles.methodInfoText}>
+                We'll email you a one-time sign-in link. No password needed.
+              </Body>
+            </View>
           )}
 
           {method === "phone" && (
-            <Body size="sm" muted style={styles.methodInfo}>
-              Enter your mobile number. We'll send you a 6-digit code.
-            </Body>
+            <View style={styles.methodInfo}>
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.olive[700]} />
+              <Body size="sm" style={styles.methodInfoText}>
+                We'll text you a 6-digit code to sign in.
+              </Body>
+            </View>
           )}
 
           <Button
@@ -402,7 +417,7 @@ export default function LoginScreen() {
             variant="brand"
             style={styles.submitButton}
           >
-            {method === "password" ? "Sign In" : method === "otp" ? "Send magic link" : "Send SMS OTP"}
+            {method === "password" ? "Sign in" : method === "otp" ? "Email me a link" : "Text me a code"}
           </Button>
         </View>
 
@@ -414,9 +429,10 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <Label style={styles.finePrint}>
-          Protected by industry-standard encryption
-        </Label>
+        <View style={styles.finePrintRow}>
+          <Ionicons name="lock-closed-outline" size={11} color={colors.light.mutedForeground} />
+          <Body size="sm" style={styles.finePrint}>Secured with industry-standard encryption</Body>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -433,16 +449,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 28,
   },
-  kicker: {
-    color: colors.olive[600],
-    marginBottom: 8,
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 28 },
+  brandMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
   },
+  brandMarkText: { color: colors.paper.cream, lineHeight: 26 },
+  brandName: { color: colors.light.foreground, letterSpacing: 3, fontSize: 12 },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   titleText: {
     color: colors.light.foreground,
@@ -453,68 +476,65 @@ const styles = StyleSheet.create({
     lineHeight: 46,
   },
   subtitle: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: 15,
     color: colors.light.mutedForeground,
-    lineHeight: 20,
-    marginTop: 4,
+    lineHeight: 22,
   },
   socialSection: {
-    marginBottom: 24,
+    marginBottom: 22,
   },
   googleBtn: {
     flexDirection: "row",
-    height: 48,
-    borderRadius: radii.xl,
+    height: 52,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    shadowColor: colors.light.foreground,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   googleBtnText: {
     color: colors.light.foreground,
-    fontSize: 11,
-    textTransform: "none",
+    fontSize: 15,
+    fontFamily: fontFamilies.sans.semibold,
   },
   divider: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 22,
     gap: 12,
   },
   dividerLine: {
     flex: 1,
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.light.border,
   },
   dividerText: {
     color: colors.light.mutedForeground,
-    fontSize: 9,
+    fontSize: 12,
   },
   pillContainer: {
     flexDirection: "row",
-    backgroundColor: "rgba(229, 229, 219, 0.5)",
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.full,
-    padding: 3,
-    marginBottom: 24,
+    backgroundColor: "rgba(83,94,44,0.07)",
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 22,
     position: "relative",
-    height: 40,
+    height: 44,
   },
   pillIndicator: {
     position: "absolute",
-    top: 3,
-    bottom: 3,
-    left: 3,
-    backgroundColor: colors.light.foreground,
-    borderRadius: radii.full,
+    top: 4,
+    bottom: 4,
+    left: 4,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   pillTab: {
     flex: 1,
@@ -524,13 +544,14 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   tabIcon: {
-    marginRight: 4,
+    marginRight: 5,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 13,
   },
   tabLabelActive: {
-    color: colors.light.primaryForeground,
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
   },
   tabLabelInactive: {
     color: colors.light.mutedForeground,
@@ -538,60 +559,50 @@ const styles = StyleSheet.create({
   form: {
     gap: 16,
   },
-  optionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  rememberRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  checkbox: {
-    width: 16,
-    height: 16,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.sm,
-    backgroundColor: colors.light.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxChecked: {
-    backgroundColor: colors.olive[700],
-    borderColor: colors.olive[700],
-  },
-  rememberText: {
-    color: colors.light.mutedForeground,
-  },
   forgotLink: {
+    alignSelf: "flex-end",
+    marginTop: -6,
     paddingVertical: 2,
   },
   forgotText: {
-    color: colors.light.mutedForeground,
-    textDecorationLine: "underline",
+    color: colors.olive[700],
+    fontFamily: fontFamilies.sans.semibold,
   },
   methodInfo: {
-    lineHeight: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.olive[50],
+  },
+  methodInfoText: {
+    flex: 1,
+    lineHeight: 19,
+    color: colors.olive[800],
   },
   submitButton: {
-    marginTop: 8,
+    marginTop: 6,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 32,
+    alignItems: "center",
+    marginTop: 28,
   },
   footerLink: {
     color: colors.olive[700],
     fontFamily: fontFamilies.sans.semibold,
   },
+  finePrintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    marginTop: 32,
+  },
   finePrint: {
-    textAlign: "center",
     color: colors.light.mutedForeground,
-    fontSize: 8,
-    marginTop: 40,
+    fontSize: 11,
   },
 });

@@ -192,7 +192,7 @@ export function StoreInfoCard({
 
           <TouchableOpacity
             style={styles.storefrontLink}
-            onPress={() => router.push(`/store/${store.slug || store.id}` as any)}
+            onPress={() => router.push(`/stores/${store.slug || store.id}` as any)}
             accessibilityRole="button"
             accessibilityLabel="View public storefront"
           >

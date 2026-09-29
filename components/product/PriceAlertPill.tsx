@@ -117,7 +117,7 @@ export function PriceAlertPill({ productId, variantId, currency, currentPrice }:
       {!state.subscribed && !editing && (
         <Pressable style={styles.pill} onPress={() => setEditing(true)}>
           <Ionicons name="notifications-outline" size={14} color={colors.olive[700]} />
-          <Label style={styles.pillText}>Notify me on price drop</Label>
+          <Body size="sm" style={styles.pillText}>Notify me if the price drops</Body>
         </Pressable>
       )}
       {editing && !state.subscribed && (
@@ -182,12 +182,13 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: "row", alignItems: "center", alignSelf: "flex-start",
     gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: radii.full,
-    borderWidth: 1, borderColor: colors.olive[200],
-    backgroundColor: colors.olive[50],
+    paddingVertical: 4,
   },
-  pillText: { color: colors.olive[700], fontSize: 12 },
+  pillText: {
+    color: colors.olive[700], fontSize: 13,
+    fontFamily: fontFamilies.sans.medium,
+    textDecorationLine: "underline",
+  },
   editRow: {
     flexDirection: "row", alignItems: "center", gap: 8,
     backgroundColor: colors.light.card,

@@ -549,7 +549,7 @@ export default function SellerDashboard() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.viewStoreButton}
-            onPress={() => router.push(`/store/${store.slug || store.id}` as any)}
+            onPress={() => router.push(`/stores/${store.slug || store.id}` as any)}
             activeOpacity={0.86}
           >
             <Ionicons name="storefront-outline" size={17} color={colors.olive[900]} />
