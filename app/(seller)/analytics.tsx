@@ -74,19 +74,47 @@ const PAYMENT_ICONS: Record<string, IonIconName> = {
   KOKO: "calendar-outline",
 };
 
-function DeltaPill({ value }: { value: number }) {
-  if (!value) return <Text style={styles.deltaFlat}>No change</Text>;
+function DeltaPill({ value, onDark = false }: { value: number; onDark?: boolean }) {
+  if (!value) {
+    return <Text style={[styles.deltaFlat, onDark && { color: "rgba(250,248,241,0.55)" }]}>No change vs previous</Text>;
+  }
   const up = value > 0;
+  const tone = onDark ? (up ? "#B7C98A" : "#E8A084") : up ? "#4a7a3a" : RUST;
   return (
-    <View style={[styles.deltaPill, up ? styles.deltaUp : styles.deltaDown]}>
-      <Ionicons
-        name={up ? "arrow-up" : "arrow-down"}
-        size={10}
-        color={up ? "#4a7a3a" : RUST}
-      />
-      <Text style={[styles.deltaText, { color: up ? "#4a7a3a" : RUST }]}>
-        {Math.abs(value).toFixed(0)}%
-      </Text>
+    <View style={styles.deltaRow}>
+      <View
+        style={[
+          styles.deltaPill,
+          onDark
+            ? { backgroundColor: up ? "rgba(183,201,138,0.14)" : "rgba(232,160,132,0.14)" }
+            : up ? styles.deltaUp : styles.deltaDown,
+        ]}
+      >
+        <Ionicons name={up ? "arrow-up" : "arrow-down"} size={10} color={tone} />
+        <Text style={[styles.deltaText, { color: tone }]}>{Math.abs(value).toFixed(0)}%</Text>
+      </View>
+      <Text style={[styles.deltaCaption, onDark && { color: "rgba(250,248,241,0.55)" }]}>vs previous</Text>
+    </View>
+  );
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  if (values.length === 0) return null;
+  return (
+    <View style={styles.spark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {values.map((v, i) => (
+        <View
+          key={i}
+          style={[
+            styles.sparkBar,
+            {
+              height: `${Math.max(4, (v / max) * 100)}%`,
+              backgroundColor: v > 0 ? GOLD : "rgba(250,248,241,0.12)",
+            },
+          ]}
+        />
+      ))}
     </View>
   );
 }
@@ -268,15 +296,7 @@ export default function SellerAnalyticsScreen() {
             <>
               {/* Hero revenue */}
               <View style={styles.heroCard}>
-                <View style={styles.heroTop}>
-                  <View style={styles.heroIconWrap}>
-                    <Ionicons name="trending-up" size={18} color={GOLD} />
-                  </View>
-                  <View style={styles.rangeBadge}>
-                    <Text style={styles.rangeBadgeText}>{RANGE_LABEL[range]}</Text>
-                  </View>
-                </View>
-                <Text style={styles.heroLabel}>Total revenue</Text>
+                <Text style={styles.heroLabel}>Revenue · {RANGE_LABEL[range].toLowerCase()}</Text>
                 <Text
                   style={styles.heroValue}
                   numberOfLines={1}
@@ -285,67 +305,68 @@ export default function SellerAnalyticsScreen() {
                 >
                   {formatPrice(data.totalRevenue)}
                 </Text>
-                <View style={styles.heroMeta}>
-                  <View style={styles.heroMetaItem}>
-                    <Ionicons name="receipt-outline" size={13} color={GOLD} />
-                    <Text style={styles.heroMetaValue}>{data.totalOrders}</Text>
-                    <Text style={styles.heroMetaLabel}>{pluralize(data.totalOrders, "order")}</Text>
-                  </View>
-                  <View style={styles.heroMetaRule} />
-                  <View style={styles.heroMetaItem}>
-                    <Ionicons name="pricetag-outline" size={13} color={GOLD} />
-                    <Text style={styles.heroMetaValue}>{formatPrice(data.avgOrderValue)}</Text>
-                    <Text style={styles.heroMetaLabel}>Avg order</Text>
-                  </View>
-                  <View style={styles.heroMetaRule} />
-                  <View style={styles.heroMetaItem}>
-                    <Ionicons name="return-down-back-outline" size={13} color={GOLD} />
-                    <Text style={styles.heroMetaValue}>{refundPct.toFixed(1)}%</Text>
-                    <Text style={styles.heroMetaLabel}>Refund rate</Text>
-                  </View>
-                </View>
+                <DeltaPill value={data.deltas.revenue} onDark />
+                <Sparkline values={series.map((p) => p.revenue)} />
               </View>
 
               {/* KPI mini grid */}
               <View style={styles.kpiGrid}>
-                <View style={styles.kpiCard}>
-                  <View style={styles.kpiTop}>
-                    <Text style={styles.kpiLabel}>Orders</Text>
-                    <Ionicons name="receipt-outline" size={14} color={colors.olive[700]} />
+                {([
+                  {
+                    key: "orders",
+                    label: "Orders",
+                    icon: "receipt-outline" as IonIconName,
+                    value: String(data.totalOrders),
+                    foot: <DeltaPill value={data.deltas.orders} />,
+                  },
+                  {
+                    key: "aov",
+                    label: "Avg order",
+                    icon: "pricetag-outline" as IonIconName,
+                    value: formatPrice(data.avgOrderValue),
+                    foot: <DeltaPill value={data.deltas.aov} />,
+                  },
+                  {
+                    key: "units",
+                    label: "Units sold",
+                    icon: "cube-outline" as IonIconName,
+                    value: String(data.unitsSold),
+                    foot: (
+                      <Text style={styles.kpiSub}>
+                        {data.totalOrders > 0
+                          ? `${Number(data.basket.avgUnitsPerOrder || 0).toFixed(1)} per order`
+                          : "No orders yet"}
+                      </Text>
+                    ),
+                  },
+                  {
+                    key: "refunds",
+                    label: "Refund rate",
+                    icon: "return-down-back-outline" as IonIconName,
+                    value: `${refundPct.toFixed(1)}%`,
+                    foot: (
+                      <View style={styles.deltaRow}>
+                        <View style={[styles.kpiDot, { backgroundColor: refundPct <= 3 ? "#4a7a3a" : "#8a6a2a" }]} />
+                        <Text style={[styles.kpiSub, refundPct <= 3 ? styles.kpiGood : styles.kpiWarn]}>
+                          {refundPct <= 3 ? "Healthy" : "Needs review"}
+                        </Text>
+                      </View>
+                    ),
+                  },
+                ]).map((k) => (
+                  <View key={k.key} style={styles.kpiCard}>
+                    <View style={styles.kpiTop}>
+                      <View style={styles.kpiIcon}>
+                        <Ionicons name={k.icon} size={14} color={colors.olive[800]} />
+                      </View>
+                      <Text style={styles.kpiLabel}>{k.label}</Text>
+                    </View>
+                    <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                      {k.value}
+                    </Text>
+                    {k.foot}
                   </View>
-                  <Text style={styles.kpiValue}>{data.totalOrders}</Text>
-                  <DeltaPill value={data.deltas.orders} />
-                </View>
-                <View style={styles.kpiCard}>
-                  <View style={styles.kpiTop}>
-                    <Text style={styles.kpiLabel}>Avg order</Text>
-                    <Ionicons name="pricetag-outline" size={14} color={colors.olive[700]} />
-                  </View>
-                  <Text style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                    {formatPrice(data.avgOrderValue)}
-                  </Text>
-                  <DeltaPill value={data.deltas.aov} />
-                </View>
-                <View style={styles.kpiCard}>
-                  <View style={styles.kpiTop}>
-                    <Text style={styles.kpiLabel}>Units sold</Text>
-                    <Ionicons name="cube-outline" size={14} color={colors.olive[700]} />
-                  </View>
-                  <Text style={styles.kpiValue}>{data.unitsSold}</Text>
-                  <Text style={styles.kpiSub}>
-                    {data.basket.avgUnitsPerOrder} per order
-                  </Text>
-                </View>
-                <View style={styles.kpiCard}>
-                  <View style={styles.kpiTop}>
-                    <Text style={styles.kpiLabel}>Refunds</Text>
-                    <Ionicons name="return-down-back-outline" size={14} color={colors.olive[700]} />
-                  </View>
-                  <Text style={styles.kpiValue}>{refundPct.toFixed(1)}%</Text>
-                  <Text style={[styles.kpiSub, refundPct <= 3 ? styles.kpiGood : styles.kpiWarn]}>
-                    {refundPct <= 3 ? "Healthy" : "Needs review"}
-                  </Text>
-                </View>
+                ))}
               </View>
 
               {/* Sales trend */}
@@ -805,107 +826,62 @@ const styles = StyleSheet.create({
   rangeWrap: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
   segmentWrap: {
     flexDirection: "row",
-    backgroundColor: CREAM,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-    padding: 4,
-    gap: 4,
+    backgroundColor: "rgba(83,94,44,0.07)",
+    borderRadius: 14,
+    padding: 3,
+    gap: 2,
   },
   segment: {
     flex: 1,
-    minHeight: 36,
-    borderRadius: radii.full,
+    minHeight: 34,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
   segmentActive: {
-    backgroundColor: colors.olive[900],
+    backgroundColor: "#FFFFFF",
     ...shadows.soft,
   },
   segmentText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    letterSpacing: 0.6,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
     color: colors.olive[700],
   },
-  segmentTextActive: { color: CREAM },
+  segmentTextActive: { color: INK, fontFamily: fontFamilies.sans.semibold },
   scroll: { flex: 1 },
-  body: { padding: spacing[5], paddingTop: 0, gap: 14 },
+  body: { padding: spacing[5], paddingTop: 0, gap: 12 },
 
   /* Hero */
   heroCard: {
     backgroundColor: colors.olive[950],
-    borderRadius: radii["2xl"],
-    padding: spacing[5],
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.22)",
+    borderRadius: 24,
+    padding: 20,
+    gap: 8,
     ...shadows.soft,
-  },
-  heroTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  heroIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "rgba(200,164,74,0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rangeBadge: {
-    borderRadius: radii.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: "rgba(250,248,241,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.25)",
-  },
-  rangeBadgeText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    color: "rgba(250,248,241,0.7)",
   },
   heroLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    color: GOLD,
+    color: "rgba(250,248,241,0.6)",
   },
   heroValue: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 38,
+    fontSize: 40,
+    lineHeight: 48,
     color: CREAM,
     letterSpacing: -0.8,
+    fontVariant: ["tabular-nums"],
   },
-  heroMeta: {
+  spark: {
+    height: 44,
     flexDirection: "row",
-    alignItems: "center",
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(250,248,241,0.12)",
+    alignItems: "flex-end",
+    gap: 2,
+    marginTop: 12,
   },
-  heroMetaItem: { flex: 1, alignItems: "center", gap: 3 },
-  heroMetaRule: { width: StyleSheet.hairlineWidth, height: 34, backgroundColor: "rgba(200,164,74,0.28)" },
-  heroMetaValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 14,
-    color: CREAM,
-  },
-  heroMetaLabel: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
-    color: "rgba(250,248,241,0.55)",
-    textTransform: "capitalize",
-  },
+  sparkBar: { flex: 1, borderRadius: 2, minWidth: 2 },
 
   /* KPI mini grid */
   kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
@@ -913,26 +889,34 @@ const styles = StyleSheet.create({
     width: "47%",
     flexGrow: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: radii["2xl"],
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.1)",
     padding: 14,
-    gap: 6,
-    ...shadows.soft,
+    gap: 8,
   },
-  kpiTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  kpiTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  kpiIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
   kpiLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
     color: colors.ink.mute,
   },
   kpiValue: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
+    fontSize: 24,
+    lineHeight: 30,
     color: INK,
     letterSpacing: -0.4,
+    fontVariant: ["tabular-nums"],
   },
   kpiSub: {
     fontFamily: fontFamilies.sans.regular,
@@ -941,11 +925,12 @@ const styles = StyleSheet.create({
   },
   kpiGood: { color: "#4a7a3a", fontFamily: fontFamilies.sans.semibold },
   kpiWarn: { color: "#8a6a2a", fontFamily: fontFamilies.sans.semibold },
+  kpiDot: { width: 6, height: 6, borderRadius: 3 },
+  deltaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   deltaPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    alignSelf: "flex-start",
     borderRadius: radii.full,
     paddingHorizontal: 7,
     paddingVertical: 3,
@@ -956,6 +941,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
   },
+  deltaCaption: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
   deltaFlat: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,

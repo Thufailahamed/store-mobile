@@ -57,35 +57,20 @@ export function StoreInfoCard({
   const monogram = (store.name || "S").trim().charAt(0).toUpperCase();
   const live = store.is_online === true;
   const status = String(store.status ?? "").trim();
-  const rows: { icon: IonIconName; label: string; value: string | null }[] = [
-    { icon: "link-outline", label: "Slug", value: displayValue(store.slug) },
-    { icon: "document-text-outline", label: "Description", value: displayValue(store.description) },
-    { icon: "call-outline", label: "Phone", value: displayValue(phone) },
-    { icon: "mail-outline", label: "Email", value: displayValue(email) },
+  const description = displayValue(store.description);
+  const statusKey = status.toLowerCase();
+  const approved = statusKey === "approved" || statusKey === "active";
+  const rows: { icon: IonIconName; label: string; value: string | null; empty: string }[] = [
+    { icon: "link-outline", label: "Slug", value: displayValue(store.slug), empty: "Not set" },
+    { icon: "call-outline", label: "Phone", value: displayValue(phone), empty: "Add phone number" },
+    { icon: "mail-outline", label: "Email", value: displayValue(email), empty: "Add contact email" },
   ];
 
   return (
     <View style={styles.card}>
-      <View style={styles.identity}>
-        {store.logo_url ? (
-          <Image source={{ uri: store.logo_url }} style={styles.logo} contentFit="cover" />
-        ) : (
-          <View style={styles.monogram}>
-            <Text style={styles.monogramText}>{monogram}</Text>
-          </View>
-        )}
-        <View style={styles.identityText}>
-          <Text style={styles.name} numberOfLines={1}>{store.name}</Text>
-          <View style={styles.tagRow}>
-            <View style={[styles.liveTag, !live && styles.liveTagOff]}>
-              <View style={[styles.liveDot, !live && styles.liveDotOff]} />
-              <Text style={styles.liveText}>{live ? "Live" : "Offline"}</Text>
-            </View>
-            {status ? (
-              <Text style={styles.statusText}>{status.replace(/_/g, " ")}</Text>
-            ) : null}
-          </View>
-        </View>
+      <View style={styles.banner}>
+        <View style={styles.bannerGlow} />
+        <View style={styles.bannerGlowSmall} />
         {!editing ? (
           <TouchableOpacity
             style={styles.editBtn}
@@ -93,11 +78,42 @@ export function StoreInfoCard({
             accessibilityRole="button"
             accessibilityLabel="Edit store details"
           >
-            <Ionicons name="create-outline" size={14} color={colors.olive[800]} />
+            <Ionicons name="create-outline" size={14} color={CREAM} />
             <Text style={styles.editBtnText}>Edit</Text>
           </TouchableOpacity>
         ) : null}
       </View>
+
+      <View style={styles.body}>
+        <View style={styles.logoWrap}>
+          {store.logo_url ? (
+            <Image source={{ uri: store.logo_url }} style={styles.logo} contentFit="cover" />
+          ) : (
+            <View style={styles.monogram}>
+              <Text style={styles.monogramText}>{monogram}</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.name} numberOfLines={2}>{store.name}</Text>
+        <View style={styles.tagRow}>
+          <View style={[styles.liveTag, !live && styles.liveTagOff]}>
+            <View style={[styles.liveDot, !live && styles.liveDotOff]} />
+            <Text style={[styles.liveText, !live && styles.liveTextOff]}>{live ? "Live" : "Offline"}</Text>
+          </View>
+          {status ? (
+            <View style={[styles.statusTag, !approved && styles.statusTagPending]}>
+              <Ionicons
+                name={approved ? "checkmark-circle" : "time-outline"}
+                size={12}
+                color={approved ? colors.olive[700] : "#8A6A1C"}
+              />
+              <Text style={[styles.statusText, !approved && styles.statusTextPending]}>
+                {status.replace(/_/g, " ")}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
       {editing ? (
         <View style={styles.form}>
@@ -140,34 +156,53 @@ export function StoreInfoCard({
         </View>
       ) : (
         <>
-          {rows.map((r, i) => (
-            <View key={r.label} style={[styles.row, i > 0 && styles.rowBorder]}>
-              <View style={styles.rowIcon}>
-                <Ionicons name={r.icon} size={16} color={colors.olive[800]} />
-              </View>
-              <View style={styles.rowText}>
-                <Text style={styles.rowLabel}>{r.label}</Text>
-                <Text
-                  style={[styles.rowValue, !r.value && styles.rowValueEmpty]}
-                  numberOfLines={r.label === "Description" ? 3 : 2}
-                >
-                  {r.value ?? "Not on file"}
-                </Text>
-              </View>
-            </View>
-          ))}
+          <Text
+            style={[styles.description, !description && styles.descriptionEmpty]}
+            numberOfLines={4}
+          >
+            {description ?? "Add a short description so customers know what your store is about."}
+          </Text>
+
+          <View style={styles.list}>
+            {rows.map((r, i) => (
+              <TouchableOpacity
+                key={r.label}
+                activeOpacity={r.value ? 1 : 0.6}
+                onPress={r.value ? undefined : onEdit}
+                style={[styles.row, i > 0 && styles.rowBorder]}
+                accessibilityRole={r.value ? undefined : "button"}
+                accessibilityLabel={r.value ? `${r.label}: ${r.value}` : r.empty}
+              >
+                <View style={styles.rowIcon}>
+                  <Ionicons name={r.icon} size={16} color={colors.olive[800]} />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowLabel}>{r.label}</Text>
+                  <Text
+                    style={[styles.rowValue, !r.value && styles.rowValueEmpty]}
+                    numberOfLines={1}
+                  >
+                    {r.value ?? r.empty}
+                  </Text>
+                </View>
+                {!r.value ? <Ionicons name="add-circle-outline" size={18} color={GOLD} /> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <TouchableOpacity
             style={styles.storefrontLink}
             onPress={() => router.push(`/store/${store.slug || store.id}` as any)}
             accessibilityRole="button"
             accessibilityLabel="View public storefront"
           >
-            <Ionicons name="storefront-outline" size={15} color={colors.olive[800]} />
+            <Ionicons name="storefront-outline" size={16} color={CREAM} />
             <Text style={styles.storefrontLinkText}>View public storefront</Text>
-            <Ionicons name="arrow-forward" size={13} color={colors.olive[700]} />
+            <Ionicons name="arrow-forward" size={14} color={CREAM} />
           </TouchableOpacity>
         </>
       )}
+      </View>
     </View>
   );
 }
@@ -209,20 +244,51 @@ function Field({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    padding: spacing[4],
-    gap: spacing[4],
+    overflow: "hidden",
     ...shadows.soft,
   },
-  identity: { flexDirection: "row", alignItems: "center", gap: 12 },
-  logo: { width: 58, height: 58, borderRadius: 20, backgroundColor: colors.olive[100] },
-  monogram: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+  banner: {
+    height: 92,
     backgroundColor: colors.olive[900],
+    overflow: "hidden",
+    alignItems: "flex-end",
+    padding: spacing[3],
+  },
+  bannerGlow: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    right: -60,
+    top: -110,
+    backgroundColor: "rgba(200,164,74,0.22)",
+  },
+  bannerGlowSmall: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    left: -30,
+    bottom: -70,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  body: { paddingHorizontal: spacing[4], paddingBottom: spacing[4], gap: spacing[3] },
+  logoWrap: {
+    marginTop: -36,
+    alignSelf: "flex-start",
+    padding: 4,
+    borderRadius: 26,
+    backgroundColor: "#FFFFFF",
+  },
+  logo: { width: 64, height: 64, borderRadius: 22, backgroundColor: colors.olive[100] },
+  monogram: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: colors.olive[800],
     borderWidth: 1,
     borderColor: GOLD,
     alignItems: "center",
@@ -230,27 +296,27 @@ const styles = StyleSheet.create({
   },
   monogramText: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
+    fontSize: 26,
     color: CREAM,
   },
-  identityText: { flex: 1, minWidth: 0 },
   name: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
+    fontSize: 26,
     color: INK,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
+    marginTop: -4,
   },
-  tagRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  tagRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: -4 },
   liveTag: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radii.full,
     backgroundColor: "rgba(83,94,44,0.1)",
   },
-  liveTagOff: { backgroundColor: "rgba(160,64,48,0.08)" },
+  liveTagOff: { backgroundColor: "rgba(160,64,48,0.09)" },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[600] },
   liveDotOff: { backgroundColor: colors.accent2.rust },
   liveText: {
@@ -260,38 +326,69 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: colors.olive[800],
   },
+  liveTextOff: { color: colors.accent2.rust },
+  statusTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.1)",
+  },
+  statusTagPending: { backgroundColor: "rgba(200,164,74,0.16)" },
   statusText: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
     letterSpacing: 1,
     textTransform: "uppercase",
-    color: colors.light.mutedForeground,
+    color: colors.olive[800],
+  },
+  statusTextPending: { color: "#8A6A1C" },
+  description: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 21,
+    color: colors.olive[900],
+  },
+  descriptionEmpty: { color: colors.light.mutedForeground, fontStyle: "italic" },
+  list: {
+    backgroundColor: colors.olive[50],
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.08)",
   },
   editBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: 36,
     paddingHorizontal: 14,
     borderRadius: radii.full,
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.18)",
-    justifyContent: "center",
+    borderColor: "rgba(255,255,255,0.28)",
   },
   editBtnText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: typography.fontSizes.sm,
-    color: colors.olive[800],
+    color: CREAM,
   },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
   rowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(83,94,44,0.1)",
-    paddingTop: 12,
+    borderTopColor: "rgba(83,94,44,0.16)",
   },
-  rowIcon: { width: 31, height: 31, borderRadius: 10, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  rowText: { flex: 1, paddingTop: 1 },
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowText: { flex: 1 },
   rowLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
@@ -300,30 +397,28 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   rowValue: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: typography.fontSizes.sm,
     color: INK,
     marginTop: 2,
   },
   rowValueEmpty: {
     color: colors.light.mutedForeground,
-    fontStyle: "italic",
+    fontFamily: fontFamilies.sans.regular,
   },
   storefrontLink: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    minHeight: 44,
+    gap: 8,
+    minHeight: 50,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.22)",
-    backgroundColor: colors.olive[50],
+    backgroundColor: colors.olive[900],
   },
   storefrontLinkText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[800],
+    fontSize: typography.fontSizes.sm,
+    color: CREAM,
   },
   form: { gap: spacing[3], marginTop: 4 },
   field: { gap: 6 },

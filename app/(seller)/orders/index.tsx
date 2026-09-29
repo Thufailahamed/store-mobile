@@ -236,9 +236,12 @@ export default function SellerOrders() {
     const extraUnits = units != null && units > 1 ? units - 1 : 0;
     const nextStatus = getSellerNextStatus(item.status);
 
+    const busy = updatingId === item.id;
+    const canCancel = canSellerCancelOrder(item.status);
+    const customerName = ship.name?.trim();
+
     return (
       <View style={[styles.orderCard, codUnpaid && styles.orderCardUnpaid]}>
-        <View style={[styles.statusAccent, { backgroundColor: tone.text }]} />
         <TouchableOpacity
           style={styles.orderMain}
           onPress={() => router.push(`/(seller)/orders/${item.id}` as const)}
@@ -248,8 +251,8 @@ export default function SellerOrders() {
         >
           <View style={styles.orderHeader}>
             <View style={styles.orderIdentity}>
-              <Text style={styles.orderEyebrow}>ORDER</Text>
               <Text style={styles.orderNumber} numberOfLines={1}>{item.order_number || "—"}</Text>
+              <Text style={styles.orderTime}>{formatRelative(item.placed_at)}</Text>
             </View>
             <SellerStatusPill
               label={formatOrderStatusLabel(item.status)}
@@ -278,60 +281,44 @@ export default function SellerOrders() {
               <Text style={styles.itemName} numberOfLines={2}>
                 {line?.name ?? "Order items"}{line?.variant ? ` · ${line.variant}` : ""}
               </Text>
-              <View style={styles.customerRow}>
-                <Ionicons name="person-outline" size={12} color={colors.ink.mute} />
-                <Text style={styles.customerText} numberOfLines={1}>{ship.name || "Customer"}</Text>
-              </View>
-              <View style={styles.orderMetaRow}>
-                <Text style={styles.orderMeta}>{formatRelative(item.placed_at)}</Text>
-                <View style={styles.metaDot} />
-                <Text style={styles.orderMeta}>{units ?? 0} item{units === 1 ? "" : "s"}</Text>
-                {ship.place ? (
-                  <>
-                    <View style={styles.metaDot} />
-                    <Text style={styles.orderMeta} numberOfLines={1}>{ship.place}</Text>
-                  </>
-                ) : null}
-              </View>
+              <Text style={styles.orderMeta} numberOfLines={1}>
+                {[customerName, ship.place, `${units ?? 0} item${units === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={15} color={colors.ink.mute} />
           </View>
 
           <View style={styles.orderFooter}>
-            <View>
-              <Text style={styles.totalLabel}>ORDER TOTAL</Text>
-              <Text style={styles.orderTotal}>{orderMoney(item)}</Text>
-            </View>
+            <Text style={styles.orderTotal}>{orderMoney(item)}</Text>
             <View style={[styles.paymentPill, codUnpaid && styles.paymentPillWarn]}>
-              <Ionicons name={codUnpaid ? "alert-circle-outline" : "checkmark-circle-outline"} size={13} color={codUnpaid ? RUST : colors.olive[700]} />
+              <Ionicons name={codUnpaid ? "alert-circle-outline" : "checkmark-circle"} size={13} color={codUnpaid ? RUST : colors.olive[700]} />
               <Text style={[styles.orderPayment, codUnpaid && styles.orderPaymentWarn]} numberOfLines={1}>{method} · {payStatus}</Text>
             </View>
           </View>
         </TouchableOpacity>
 
-        {(nextStatus || canSellerCancelOrder(item.status)) ? (
+        {(nextStatus || canCancel) ? (
           <View style={styles.cardActions}>
-            {nextStatus ? (
-              <TouchableOpacity
-                style={[styles.primaryAction, updatingId === item.id && styles.primaryActionDisabled]}
-                onPress={() => void handleAdvance(item)}
-                disabled={updatingId === item.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
-              >
-                <Ionicons name="arrow-forward-circle-outline" size={16} color={CREAM} />
-                <Text style={styles.primaryActionText}>{updatingId === item.id ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus)}`}</Text>
-              </TouchableOpacity>
-            ) : null}
-            {canSellerCancelOrder(item.status) ? (
+            {canCancel ? (
               <TouchableOpacity
                 style={styles.cancelAction}
                 onPress={() => void handleCancel(item)}
-                disabled={updatingId === item.id}
+                disabled={busy}
                 accessibilityRole="button"
                 accessibilityLabel={`Cancel ${item.order_number}`}
               >
-                <Text style={styles.cancelActionText}>Cancel order</Text>
+                <Text style={styles.cancelActionText}>Cancel</Text>
+              </TouchableOpacity>
+            ) : null}
+            {nextStatus ? (
+              <TouchableOpacity
+                style={[styles.primaryAction, busy && styles.primaryActionDisabled]}
+                onPress={() => void handleAdvance(item)}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+              >
+                <Text style={styles.primaryActionText}>{busy ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}</Text>
+                {busy ? null : <Ionicons name="arrow-forward" size={15} color={CREAM} />}
               </TouchableOpacity>
             ) : null}
           </View>
@@ -340,36 +327,53 @@ export default function SellerOrders() {
     );
   };
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+  const filtered = statusTab !== "all" || !!searchInput;
+  const pipeline: { key: string; label: string }[] = [
+    { key: "pending", label: "Pending" },
+    { key: "confirmed", label: "Confirmed" },
+    { key: "processing", label: "Packing" },
+  ];
+
+  const listHeader = (
+    <View>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.headerKicker}>FULFILLMENT</Text>
+        <Text style={styles.headerKicker}>FULFILLMENT</Text>
+        <View style={styles.headerTitleRow}>
           <Text style={styles.headerTitle}>Orders</Text>
           <Text style={styles.headerCount}>{headerCount}</Text>
-        </View>
-        <View style={styles.headerBadge}>
-          <Ionicons name="receipt-outline" size={18} color={colors.olive[800]} />
         </View>
       </View>
 
       <View style={styles.fulfillmentCard}>
-        <View style={styles.fulfillmentMain}>
-          <Text style={styles.fulfillmentLabel}>NEEDS FULFILLMENT</Text>
+        <View style={styles.fulfillmentTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fulfillmentLabel}>NEEDS FULFILLMENT</Text>
+            <Text style={styles.fulfillmentHint}>
+              {needsFulfillment === 0 ? "You’re all caught up" : `${needsFulfillment} ${needsFulfillment === 1 ? "order is" : "orders are"} waiting on you`}
+            </Text>
+          </View>
           <Text style={styles.fulfillmentValue}>{needsFulfillment}</Text>
-          <Text style={styles.fulfillmentHint}>{needsFulfillment === 0 ? "You’re all caught up" : "Orders waiting for action"}</Text>
         </View>
         <View style={styles.fulfillmentStats}>
-          <View style={styles.fulfillmentStat}>
-            <Text style={styles.fulfillmentStatValue}>{counts.pending ?? 0}</Text>
-            <Text style={styles.fulfillmentStatLabel}>Pending</Text>
-          </View>
-          <View style={styles.fulfillmentRule} />
-          <View style={styles.fulfillmentStat}>
-            <Text style={styles.fulfillmentStatValue}>{counts.processing ?? 0}</Text>
-            <Text style={styles.fulfillmentStatLabel}>Packing</Text>
-          </View>
+          {pipeline.map((stage, index) => {
+            const value = counts[stage.key] ?? 0;
+            const active = statusTab === stage.key;
+            return (
+              <React.Fragment key={stage.key}>
+                {index > 0 ? <Ionicons name="chevron-forward" size={12} color="#5E5A51" /> : null}
+                <TouchableOpacity
+                  style={[styles.fulfillmentStat, active && styles.fulfillmentStatActive]}
+                  onPress={() => setStatusTab(active ? "all" : stage.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${value} ${stage.label}`}
+                >
+                  <Text style={[styles.fulfillmentStatValue, value === 0 && styles.fulfillmentStatZero]}>{value}</Text>
+                  <Text style={styles.fulfillmentStatLabel}>{stage.label}</Text>
+                </TouchableOpacity>
+              </React.Fragment>
+            );
+          })}
         </View>
       </View>
 
@@ -382,54 +386,66 @@ export default function SellerOrders() {
         />
       </View>
 
-      <View style={styles.tabsContainer}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={STATUS_TABS}
-          keyExtractor={(item) => item.key}
-          renderItem={({ item: tab }) => (
-            <SellerFilterTab
-              label={tab.label}
-              count={counts[tab.key] ?? 0}
-              active={statusTab === tab.key}
-              onPress={() => setStatusTab(tab.key)}
-            />
-          )}
-          contentContainerStyle={styles.tabsContent}
-        />
-      </View>
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={STATUS_TABS}
+        keyExtractor={(tab) => tab.key}
+        renderItem={({ item: tab }) => (
+          <SellerFilterTab
+            label={tab.label}
+            count={counts[tab.key] ?? 0}
+            active={statusTab === tab.key}
+            onPress={() => setStatusTab(tab.key)}
+          />
+        )}
+        style={styles.tabsContainer}
+        contentContainerStyle={styles.tabsContent}
+      />
 
-      <View style={styles.resultsHeader}>
-        <View>
-          <Text style={styles.resultsEyebrow}>{statusTab === "all" ? "ALL ORDERS" : statusTab.toUpperCase()}</Text>
-          <Text style={styles.resultsTitle}>{visible.length} {visible.length === 1 ? "order" : "orders"}</Text>
-        </View>
-        {statusTab !== "all" || searchInput ? (
+      {filtered ? (
+        <View style={styles.resultsHeader}>
+          <Text style={styles.resultsText}>
+            Showing {visible.length} {visible.length === 1 ? "order" : "orders"}
+          </Text>
           <TouchableOpacity
             style={styles.clearButton}
             onPress={() => {
               setStatusTab("all");
               setSearchInput("");
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear filters"
           >
             <Ionicons name="close" size={13} color={colors.olive[800]} />
-            <Text style={styles.clearButtonText}>Clear</Text>
+            <Text style={styles.clearButtonText}>Clear filters</Text>
           </TouchableOpacity>
-        ) : null}
-      </View>
+        </View>
+      ) : null}
+    </View>
+  );
 
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       {loading && orders.length === 0 ? (
-        <OrdersSkeleton />
+        <>
+          {listHeader}
+          <OrdersSkeleton />
+        </>
       ) : (
         <FlatList
           data={visible}
           keyExtractor={(item) => item.id}
           renderItem={renderOrder}
+          ListHeaderComponent={listHeader}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[800]} />
           }
-          contentContainerStyle={[styles.listContent, { paddingBottom: 24 + insets.bottom }]}
+          contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}
           ListEmptyComponent={
             <SellerStateView
               variant={loadError ? "error" : "empty"}
@@ -443,75 +459,69 @@ export default function SellerOrders() {
               }
               actionLabel={loadError ? "Try again" : undefined}
               onAction={loadError ? () => void fetchOrders() : undefined}
-              style={{ marginTop: 24 }}
+              style={{ marginTop: 24, marginHorizontal: spacing[5] }}
             />
           }
         />
       )}
+      <View pointerEvents="none" style={[styles.statusScrim, { height: insets.top }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
-  headerCopy: { flex: 1, minWidth: 0 },
-  headerKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.4, color: colors.olive[700], marginBottom: 3 },
-  headerTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 32, lineHeight: 38, color: INK, letterSpacing: -0.6 },
-  headerCount: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
-  headerBadge: { width: 42, height: 42, borderRadius: 15, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: sellerBorder, alignItems: "center", justifyContent: "center" },
-  fulfillmentCard: { flexDirection: "row", alignItems: "stretch", marginHorizontal: spacing[5], marginBottom: 12, padding: 16, borderRadius: 22, backgroundColor: "#1A1915" },
-  fulfillmentMain: { flex: 1, minWidth: 0 },
-  fulfillmentLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: "#AAA396" },
-  fulfillmentValue: { marginTop: 2, fontFamily: fontFamilies.display.semibold, fontSize: 31, lineHeight: 36, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
-  fulfillmentHint: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 10, color: "#AAA396" },
-  fulfillmentStats: { flexDirection: "row", alignItems: "center", borderRadius: 15, backgroundColor: "rgba(255,255,255,0.06)", paddingHorizontal: 5 },
-  fulfillmentStat: { minWidth: 54, alignItems: "center", gap: 2, paddingVertical: 10 },
-  fulfillmentStatValue: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: "#E8CF8F", fontVariant: ["tabular-nums"] },
-  fulfillmentStatLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 8, color: "#AAA396" },
-  fulfillmentRule: { width: StyleSheet.hairlineWidth, height: 32, backgroundColor: "rgba(255,255,255,0.16)" },
+  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.light.background },
+  header: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
+  headerKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.4, color: colors.olive[700], marginBottom: 4 },
+  headerTitleRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
+  headerTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 34, lineHeight: 40, color: INK, letterSpacing: -0.6 },
+  headerCount: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.ink.mute },
+  fulfillmentCard: { marginHorizontal: spacing[5], marginBottom: 14, padding: 18, paddingBottom: 12, borderRadius: 24, backgroundColor: "#1A1915" },
+  fulfillmentTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  fulfillmentLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.2, color: "#AAA396" },
+  fulfillmentValue: { fontFamily: fontFamilies.display.semibold, fontSize: 40, lineHeight: 46, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
+  fulfillmentHint: { marginTop: 4, fontFamily: fontFamilies.sans.regular, fontSize: 13, color: "#D9D3C7" },
+  fulfillmentStats: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.13)" },
+  fulfillmentStat: { flex: 1, alignItems: "center", gap: 2, paddingVertical: 8, borderRadius: 14 },
+  fulfillmentStatActive: { backgroundColor: "rgba(232,207,143,0.12)" },
+  fulfillmentStatValue: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: "#E8CF8F", fontVariant: ["tabular-nums"] },
+  fulfillmentStatZero: { color: "#6F6A60" },
+  fulfillmentStatLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: "#AAA396" },
   searchContainer: { paddingHorizontal: spacing[5], marginBottom: 10 },
-  tabsContainer: { marginBottom: spacing[4] },
+  tabsContainer: { flexGrow: 0, marginBottom: spacing[4] },
   tabsContent: { paddingHorizontal: spacing[5], gap: 8 },
-  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing[5], marginBottom: 12 },
-  resultsEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: colors.olive[600], marginBottom: 2 },
-  resultsTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK },
+  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing[5], marginTop: -4, marginBottom: 12 },
+  resultsText: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.ink.mute },
   clearButton: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.olive[50] },
-  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: colors.olive[800] },
-  listContent: { paddingHorizontal: spacing[5], paddingTop: 2 },
-  orderCard: { position: "relative", backgroundColor: "#FFFFFF", borderRadius: 22, borderWidth: 1, borderColor: sellerBorder, marginBottom: 12, overflow: "hidden" },
-  orderCardUnpaid: { borderColor: "rgba(184,92,58,0.3)", backgroundColor: "rgba(184,92,58,0.025)" },
-  statusAccent: { height: 4 },
-  orderMain: { padding: 14 },
-  orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 },
-  orderIdentity: { flex: 1, minWidth: 0 },
-  orderEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 7, letterSpacing: 1, color: colors.ink.mute, marginBottom: 2 },
+  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
+  orderCard: { backgroundColor: "#FFFFFF", borderRadius: 22, borderWidth: 1, borderColor: sellerBorder, marginHorizontal: spacing[5], marginBottom: 12, overflow: "hidden" },
+  orderCardUnpaid: { borderColor: "rgba(184,92,58,0.3)", backgroundColor: "#FFFBF8" },
+  orderMain: { padding: 16 },
+  orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 },
+  orderIdentity: { flex: 1, minWidth: 0, gap: 2 },
   orderNumber: { fontFamily: fontFamilies.mono.semibold, fontSize: 13, color: INK },
-  productRow: { flexDirection: "row", alignItems: "center", gap: 11 },
-  thumbWrap: { width: 66, height: 66 },
-  thumb: { width: 66, height: 66, borderRadius: 17, backgroundColor: colors.olive[50] },
+  orderTime: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+  productRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  thumbWrap: { width: 60, height: 60 },
+  thumb: { width: 60, height: 60, borderRadius: 16, backgroundColor: colors.olive[50] },
   thumbEmpty: { alignItems: "center", justifyContent: "center" },
-  thumbBadge: { position: "absolute", right: -3, bottom: -3, backgroundColor: INK, borderRadius: radii.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 2, borderColor: "#FFFFFF" },
-  thumbBadgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: CREAM },
+  thumbBadge: { position: "absolute", right: -4, bottom: -4, backgroundColor: INK, borderRadius: radii.full, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 2, borderColor: "#FFFFFF" },
+  thumbBadgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: CREAM },
   productInfo: { flex: 1, minWidth: 0, gap: 4 },
-  itemName: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, lineHeight: 18, color: INK },
-  customerRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  customerText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.ink.mute },
-  orderMetaRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
-  orderMeta: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 9, color: colors.light.mutedForeground },
-  metaDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.light.mutedForeground },
-  orderFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: sellerBorder, gap: 10 },
-  totalLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 7, letterSpacing: 0.9, color: colors.ink.mute },
-  orderTotal: { marginTop: 2, fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK, letterSpacing: -0.3 },
-  paymentPill: { maxWidth: "54%", flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radii.full, backgroundColor: colors.olive[50] },
+  itemName: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, lineHeight: 20, color: INK },
+  orderMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+  orderFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: sellerBorder, gap: 10 },
+  orderTotal: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
+  paymentPill: { maxWidth: "58%", flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.full, backgroundColor: colors.olive[50] },
   paymentPillWarn: { backgroundColor: "rgba(184,92,58,0.08)" },
-  orderPayment: { flexShrink: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 9, color: colors.olive[700] },
+  orderPayment: { flexShrink: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[700] },
   orderPaymentWarn: { color: RUST },
-  cardActions: { flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: sellerBorder, backgroundColor: "#FAF9F5" },
-  primaryAction: { flex: 1, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.olive[900], borderRadius: radii.full, paddingHorizontal: 14 },
+  cardActions: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 16 },
+  primaryAction: { flex: 1, minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.olive[900], borderRadius: radii.full, paddingHorizontal: 16 },
   primaryActionDisabled: { opacity: 0.6 },
-  primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: CREAM },
-  cancelAction: { minHeight: 42, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
-  cancelActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: RUST },
+  primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: CREAM },
+  cancelAction: { minHeight: 46, alignItems: "center", justifyContent: "center", paddingHorizontal: 18, borderRadius: radii.full, borderWidth: 1, borderColor: "rgba(184,92,58,0.3)" },
+  cancelActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: RUST },
   skelCard: { flexDirection: "row", gap: 12, backgroundColor: CREAM, borderRadius: 22, borderWidth: 1, borderColor: sellerBorder, padding: 14 },
 });

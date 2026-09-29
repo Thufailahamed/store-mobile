@@ -18,6 +18,8 @@ type Props = {
   points: ChartPoint[];
   height?: number;
   compact?: boolean;
+  /** Compact sparkline that stretches to its parent's width instead of 112px. */
+  fluid?: boolean;
   style?: ViewStyle;
 };
 
@@ -60,17 +62,17 @@ function buildSmoothPath(coords: Array<{ x: number; y: number }>): string {
   return d;
 }
 
-export function RevenueChart({ points, height = 168, compact = false, style }: Props) {
+export function RevenueChart({ points, height = 168, compact = false, fluid = false, style }: Props) {
   const [measuredW, setMeasuredW] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const width = compact ? 112 : Math.max(measuredW || 300, 200);
+  const width = compact ? (fluid ? Math.max(measuredW, 1) : 112) : Math.max(measuredW || 300, 200);
   const padX = compact ? 2 : 12;
   const padY = compact ? 4 : 16;
   const chartW = width - padX * 2;
   const chartH = height - padY * 2;
 
   const onLayout = (e: LayoutChangeEvent) => {
-    if (compact) return;
+    if (compact && !fluid) return;
     const w = e.nativeEvent.layout.width;
     if (w > 0 && Math.abs(w - measuredW) > 1) setMeasuredW(w);
   };
@@ -123,8 +125,12 @@ export function RevenueChart({ points, height = 168, compact = false, style }: P
 
   if (compact) {
     return (
-      <View style={[{ width, height }, style]} pointerEvents="none">
-        <Svg width={width} height={height}>
+      <View
+        style={[fluid ? { alignSelf: "stretch", height } : { width, height }, style]}
+        onLayout={onLayout}
+        pointerEvents="none"
+      >
+        {fluid && measuredW === 0 ? null : <Svg width={width} height={height}>
           <Defs>
             <LinearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
               <Stop offset="0" stopColor={colors.accent2.ochre} stopOpacity="0.4" />
@@ -133,9 +139,16 @@ export function RevenueChart({ points, height = 168, compact = false, style }: P
           </Defs>
           {areaPath ? <Path d={areaPath} fill="url(#sparkFill)" /> : null}
           {linePath ? (
-            <Path d={linePath} stroke={colors.accent2.ochre} strokeWidth={1.75} fill="none" />
+            <Path
+              d={linePath}
+              stroke={colors.accent2.ochre}
+              strokeWidth={fluid ? 2 : 1.75}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              fill="none"
+            />
           ) : null}
-        </Svg>
+        </Svg>}
       </View>
     );
   }

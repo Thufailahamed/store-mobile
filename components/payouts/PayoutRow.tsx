@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { formatPrice } from "@/lib/utils";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPayoutStatus } from "@/lib/payouts/ledger";
 import type { Payout } from "@/lib/api/backend";
@@ -28,9 +28,12 @@ function formatDate(payout: Payout): string {
 interface Props {
   payout: Payout;
   onPress: () => void;
+  /** Position within the history list, so rows render as one grouped card. */
+  first?: boolean;
+  last?: boolean;
 }
 
-export function PayoutRow({ payout, onPress }: Props) {
+export function PayoutRow({ payout, onPress, first = true, last = true }: Props) {
   const tone = STATUS_TONE[payout.status] ?? STATUS_TONE.pending;
   const label = formatPayoutStatus(payout.status);
   return (
@@ -38,20 +41,18 @@ export function PayoutRow({ payout, onPress }: Props) {
       accessibilityLabel={`Payout ${label} ${formatPrice(payout.amount, payout.currency)}`}
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [styles.row, first ? styles.rowFirst : styles.rowDivider, last && styles.rowLast, pressed && styles.rowPressed]}
     >
       <View style={[styles.iconWrap, { backgroundColor: tone.bg }]}>
         <Ionicons name={tone.icon} size={18} color={tone.text} />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.amount}>{formatPrice(payout.amount, payout.currency)}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.amount} numberOfLines={1}>{formatPrice(payout.amount, payout.currency)}</Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {payout.method ?? "Bank"} · {formatDate(payout)}
+          {(payout.method ?? "bank").replace(/_/g, " ")} · {formatDate(payout)}
         </Text>
       </View>
-      <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-        <Text style={[styles.badgeText, { color: tone.text }]}>{label}</Text>
-      </View>
+      <Text style={[styles.status, { color: tone.text }]}>{label}</Text>
       <Ionicons name="chevron-forward" size={14} color={colors.ink.mute} />
     </Pressable>
   );
@@ -63,19 +64,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[3],
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 10,
-    backgroundColor: colors.paper.cream,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
+    paddingVertical: 13,
+    backgroundColor: "#FFFFFF",
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
   },
-  rowPressed: { opacity: 0.85 },
+  rowFirst: { borderTopWidth: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  rowLast: { borderBottomWidth: 1, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.12)" },
+  rowPressed: { backgroundColor: colors.olive[50] },
   iconWrap: {
     width: 40,
     height: 40,
@@ -96,6 +94,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textTransform: "capitalize",
   },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
-  badgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11 },
+  status: { fontFamily: fontFamilies.sans.semibold, fontSize: 12 },
 });

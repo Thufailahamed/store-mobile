@@ -11,7 +11,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { pickImage } from "@/lib/upload";
-import { colors, radii, typography } from "@/lib/theme/tokens";
+import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { ProductImage } from "@/lib/types";
 
@@ -77,34 +77,16 @@ export function ProductMediaSection({
   return (
     <View style={styles.section}>
       <View style={styles.header}>
-        <View style={styles.headerIcon}>
-          <Ionicons name="images-outline" size={17} color={colors.olive[800]} />
-        </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.kicker}>LOOKBOOK</Text>
-          <Text style={styles.title}>Product photos</Text>
-          <Text style={styles.subtitle}>{total === 0 ? "Add a clear cover photo" : "Tap a photo to manage its cover"}</Text>
+          <Text style={styles.title}>Photos</Text>
+          <Text style={styles.subtitle}>
+            {total === 0 ? "Add a clear cover photo — it’s what shoppers see first" : "The cover photo shows in listings and search"}
+          </Text>
         </View>
-        <View style={styles.countPill}>
-          <Text style={styles.countText}>{total}/10</Text>
-        </View>
+        <Text style={styles.countText}>{total} of 10</Text>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        <TouchableOpacity style={styles.addTile} onPress={handleAdd} activeOpacity={0.85} disabled={uploading}>
-          {uploading ? (
-            <ActivityIndicator color={colors.light.primary} />
-          ) : (
-            <>
-              <View style={styles.addIcon}>
-                <Ionicons name="camera-outline" size={21} color={colors.olive[800]} />
-              </View>
-              <Text style={styles.addText}>Add photo</Text>
-              <Text style={styles.addHint}>JPG or PNG</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
         {existing.map((img, idx) => (
           <View key={img.id} style={styles.tile}>
             <Image source={{ uri: img.url }} style={styles.image} contentFit="cover" />
@@ -176,6 +158,27 @@ export function ProductMediaSection({
             </TouchableOpacity>
           </View>
         ))}
+        {total < 10 ? (
+          <TouchableOpacity
+            style={[styles.addTile, total === 0 && styles.addTileEmpty]}
+            onPress={handleAdd}
+            activeOpacity={0.85}
+            disabled={uploading}
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
+          >
+            {uploading ? (
+              <ActivityIndicator color={colors.light.primary} />
+            ) : (
+              <>
+                <View style={styles.addIcon}>
+                  <Ionicons name="camera-outline" size={21} color={colors.olive[800]} />
+                </View>
+                <Text style={styles.addText}>Add photo</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -185,15 +188,12 @@ const TILE_W = 108;
 const TILE_H = 144;
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 16, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, paddingVertical: 16 },
-  header: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 15, paddingHorizontal: 16 },
-  headerIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  headerCopy: { flex: 1, minWidth: 0 },
-  kicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.1, color: colors.olive[600] },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK, marginTop: 2 },
-  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2 },
-  countPill: { minWidth: 42, height: 28, borderRadius: 14, backgroundColor: colors.paper.warm, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  countText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: colors.ink.mute },
+  section: { marginBottom: 14, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, paddingVertical: 16 },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 16, paddingHorizontal: 16 },
+  headerCopy: { flex: 1, minWidth: 0, gap: 3 },
+  title: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: INK },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 18, color: colors.light.mutedForeground },
+  countText: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: colors.ink.mute, marginTop: 4 },
   row: { gap: 10, paddingHorizontal: 16 },
   addTile: {
     width: TILE_W,
@@ -207,9 +207,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  addIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center", marginBottom: 2 },
-  addText: { fontSize: typography.fontSizes.xs, color: colors.olive[800], fontFamily: fontFamilies.sans.semibold },
-  addHint: { fontSize: 8, color: colors.ink.mute, fontFamily: fontFamilies.sans.regular },
+  addTileEmpty: { width: TILE_W * 1.6 },
+  addIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  addText: { fontSize: 13, color: colors.olive[800], fontFamily: fontFamilies.sans.semibold },
   tile: {
     width: TILE_W,
     height: TILE_H,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   primaryText: {
-    fontSize: 10,
+    fontSize: 11,
     color: INK,
     fontFamily: fontFamilies.sans.semibold,
   },
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   coverBtnText: {
-    fontSize: 10,
+    fontSize: 11,
     color: CREAM,
     fontFamily: fontFamilies.sans.medium,
   },

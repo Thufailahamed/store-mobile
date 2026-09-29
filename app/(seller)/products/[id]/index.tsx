@@ -72,28 +72,41 @@ class ImageSyncError extends Error {
 }
 
 function EditorSection({
-  icon,
-  kicker,
   title,
+  hint,
   children,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  kicker: string;
   title: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <View style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
-        <View style={styles.sectionIcon}>
-          <Ionicons name={icon} size={17} color={colors.olive[800]} />
-        </View>
-        <View>
-          <Text style={styles.sectionKicker}>{kicker}</Text>
-          <Text style={styles.sectionTitle}>{title}</Text>
-        </View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {hint ? <Text style={styles.sectionHint}>{hint}</Text> : null}
       </View>
       {children}
+    </View>
+  );
+}
+
+/** Text input with a fixed unit shown inside the field (LKR, %). */
+function AffixInput({
+  prefix,
+  suffix,
+  warn,
+  ...props
+}: React.ComponentProps<typeof TextInput> & { prefix?: string; suffix?: string; warn?: boolean }) {
+  return (
+    <View style={[styles.affixWrap, warn && styles.inputWarn]}>
+      {prefix ? <Text style={styles.affixText}>{prefix}</Text> : null}
+      <TextInput
+        {...props}
+        style={styles.affixInput}
+        placeholderTextColor={colors.light.mutedForeground}
+      />
+      {suffix ? <Text style={styles.affixText}>{suffix}</Text> : null}
     </View>
   );
 }
@@ -142,6 +155,7 @@ export default function SellerProductEdit() {
     reasons: { rule_id: string; message: string; blocking: boolean }[];
   } | null>(null);
   const [preflightBusy, setPreflightBusy] = useState(false);
+  const [showAttributes, setShowAttributes] = useState(false);
 
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [pendingImages, setPendingImages] = useState<PendingProductImage[]>([]);
@@ -607,6 +621,27 @@ export default function SellerProductEdit() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
     <StatusBar barStyle="dark-content" />
+    <View style={styles.topBar}>
+      <TouchableOpacity
+        style={styles.backBtn}
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Back to products"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="chevron-back" size={20} color={INK} />
+      </TouchableOpacity>
+      <View style={styles.headerCopy}>
+        <Text style={styles.title} numberOfLines={1}>{isNew ? "New product" : "Edit product"}</Text>
+        {!isNew && name.trim() ? <Text style={styles.subtitle} numberOfLines={1}>{name.trim()}</Text> : null}
+      </View>
+      <View style={[styles.headerStatus, status === "active" && styles.headerStatusLive]}>
+        <View style={[styles.headerStatusDot, status === "active" && styles.headerStatusDotLive]} />
+        <Text style={[styles.headerStatusText, status === "active" && styles.headerStatusTextLive]}>
+          {status === "active" ? "Live" : status === "pending" ? "In review" : status === "archived" ? "Archived" : "Draft"}
+        </Text>
+      </View>
+    </View>
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -616,27 +651,6 @@ export default function SellerProductEdit() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
-            accessibilityLabel="Back to products"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="chevron-back" size={19} color={INK} />
-          </TouchableOpacity>
-          <View style={styles.headerCopy}>
-            <Text style={styles.kicker}>{isNew ? "NEW PRODUCT" : "PRODUCT EDITOR"}</Text>
-            <Text style={styles.title}>{isNew ? "Add product" : "Edit product"}</Text>
-            <Text style={styles.subtitle}>Photos, details, variants and publishing</Text>
-          </View>
-          <View style={[styles.headerStatus, status === "active" && styles.headerStatusLive]}>
-            <View style={[styles.headerStatusDot, status === "active" && styles.headerStatusDotLive]} />
-            <Text style={[styles.headerStatusText, status === "active" && styles.headerStatusTextLive]}>
-              {status === "active" ? "Live" : status === "pending" ? "Review" : status === "archived" ? "Archived" : "Draft"}
-            </Text>
-          </View>
-        </View>
         {moderation ? <ModerationResultBanner result={moderation} isNew={isNew} /> : null}
 
         <ProductMediaSection
@@ -651,75 +665,83 @@ export default function SellerProductEdit() {
           onMoveExisting={!isNew ? handleMoveExisting : undefined}
         />
 
-        <EditorSection icon="information-circle-outline" kicker="ESSENTIALS" title="Product details">
-        <View style={styles.field}>
-          <Text style={styles.label}>Name</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. Classic cotton tee"
-            placeholderTextColor={colors.light.mutedForeground}
-          />
-        </View>
+        <EditorSection title="Details">
+          <View style={styles.field}>
+            <Text style={styles.label}>Product name</Text>
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Classic cotton tee"
+              placeholderTextColor={colors.light.mutedForeground}
+            />
+          </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>SKU</Text>
-          <TextInput
-            style={[styles.input, styles.monoInput]}
-            value={sku}
-            onChangeText={setSku}
-            placeholder="e.g. LUXE-TS-001"
-            placeholderTextColor={colors.light.mutedForeground}
-            autoCapitalize="characters"
-          />
-        </View>
-
-        <View style={styles.row}>
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>List price (LKR)</Text>
+          <View style={[styles.field, { marginBottom: 0 }]}>
+            <Text style={styles.label}>SKU</Text>
             <TextInput
               style={[styles.input, styles.monoInput]}
-              value={mrp}
-              onChangeText={setMrp}
-              placeholder="0"
-              keyboardType="numeric"
+              value={sku}
+              onChangeText={setSku}
+              placeholder="e.g. LUXE-TS-001"
               placeholderTextColor={colors.light.mutedForeground}
+              autoCapitalize="characters"
+              autoCorrect={false}
             />
           </View>
-          <View style={{ width: 12 }} />
-          <View style={[styles.field, { flex: 1 }]}>
-            <Text style={styles.label}>Selling price (LKR)</Text>
-            <TextInput
-              style={[styles.input, styles.monoInput, priceAheadOfMrp && styles.inputWarn]}
-              value={price}
-              onChangeText={setPrice}
-              placeholder="0"
-              keyboardType="numeric"
-              placeholderTextColor={colors.light.mutedForeground}
-            />
-          </View>
-        </View>
-        {priceAheadOfMrp ? (
-          <Text style={styles.fieldHintWarn}>Selling price cannot exceed list price.</Text>
-        ) : computedDiscount > 0 ? (
-          <Text style={styles.fieldHint}>{computedDiscount}% off list price</Text>
-        ) : (
-          <Text style={styles.fieldHint}>Discount is calculated from list vs selling price.</Text>
-        )}
+        </EditorSection>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Tax</Text>
-          <TextInput
-            style={[styles.input, styles.monoInput]}
-            value={taxRate}
-            onChangeText={setTaxRate}
-            placeholder="0"
-            keyboardType="numeric"
-            placeholderTextColor={colors.light.mutedForeground}
-          />
-          <Text style={[styles.fieldHint, { marginBottom: 0 }]}>Percent, e.g. 15 for 15% VAT.</Text>
-        </View>
+        <EditorSection title="Pricing">
+          <View style={styles.row}>
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Selling price</Text>
+              <AffixInput
+                prefix="LKR"
+                value={price}
+                onChangeText={setPrice}
+                placeholder="0"
+                keyboardType="numeric"
+                warn={priceAheadOfMrp}
+              />
+            </View>
+            <View style={{ width: 12 }} />
+            <View style={[styles.field, { flex: 1 }]}>
+              <Text style={styles.label}>Compare-at price</Text>
+              <AffixInput
+                prefix="LKR"
+                value={mrp}
+                onChangeText={setMrp}
+                placeholder="Optional"
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+          {priceAheadOfMrp ? (
+            <View style={[styles.priceNote, styles.priceNoteWarn]}>
+              <Ionicons name="alert-circle-outline" size={15} color={RUST} />
+              <Text style={styles.fieldHintWarn}>Selling price can’t be higher than the compare-at price.</Text>
+            </View>
+          ) : computedDiscount > 0 ? (
+            <View style={styles.priceNote}>
+              <Ionicons name="pricetag-outline" size={15} color={colors.olive[700]} />
+              <Text style={styles.priceNoteText}>Shoppers see <Text style={styles.priceNoteStrong}>{computedDiscount}% off</Text></Text>
+            </View>
+          ) : (
+            <Text style={styles.fieldHint}>Set a compare-at price above the selling price to show a discount.</Text>
+          )}
+
+          <View style={[styles.field, { marginBottom: 0 }]}>
+            <Text style={styles.label}>Tax rate</Text>
+            <View style={{ width: "48%" }}>
+              <AffixInput
+                suffix="%"
+                value={taxRate}
+                onChangeText={setTaxRate}
+                placeholder="0"
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
         </EditorSection>
 
         <ProductVariantsSection
@@ -728,7 +750,7 @@ export default function SellerProductEdit() {
           onChange={trackRemovedVariant}
         />
 
-        <EditorSection icon="document-text-outline" kicker="STORY" title="Description & attributes">
+        <EditorSection title="Description">
         <View style={styles.field}>
           <Text style={styles.label}>Short description</Text>
           <TextInput
@@ -756,6 +778,24 @@ export default function SellerProductEdit() {
           />
         </View>
 
+        <TouchableOpacity
+          style={[styles.disclosure, !showAttributes && { marginBottom: 0 }]}
+          onPress={() => setShowAttributes((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showAttributes }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.disclosureTitle}>Attributes</Text>
+            <Text style={styles.disclosureHint} numberOfLines={1}>
+              {[material, pattern, fit, sleeve, season, occasion].filter((v) => v.trim()).join(" · ") ||
+                "Material, fit, season, care — helps search and filters"}
+            </Text>
+          </View>
+          <Ionicons name={showAttributes ? "chevron-up" : "chevron-down"} size={18} color={colors.olive[800]} />
+        </TouchableOpacity>
+
+        {showAttributes ? (
+        <>
         <View style={styles.field}>
           <Text style={styles.label}>Material</Text>
           <TextInput
@@ -838,12 +878,19 @@ export default function SellerProductEdit() {
             placeholderTextColor={colors.light.mutedForeground}
           />
         </View>
+        </>
+        ) : null}
         </EditorSection>
 
-        <EditorSection icon="pricetags-outline" kicker="ORGANISE" title="Classification">
+        <EditorSection title="Organise" hint="Where shoppers find this product">
         <View style={styles.field}>
           <Text style={styles.label}>Brand</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipScrollContent}
+          >
             <TouchableOpacity
               style={[styles.chip, !brandId && styles.chipActive]}
               onPress={() => setBrandId(null)}
@@ -868,7 +915,12 @@ export default function SellerProductEdit() {
 
         <View style={styles.field}>
           <Text style={styles.label}>Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipScrollContent}
+          >
             <TouchableOpacity
               style={[styles.chip, !categoryId && styles.chipActive]}
               onPress={() => setCategoryId(null)}
@@ -894,7 +946,7 @@ export default function SellerProductEdit() {
           </ScrollView>
         </View>
 
-        <View style={styles.field}>
+        <View style={[styles.field, { marginBottom: 0 }]}>
           <Text style={styles.label}>Gender</Text>
           <View style={styles.chipRow}>
             {genders.map((g) => (
@@ -912,9 +964,8 @@ export default function SellerProductEdit() {
         </View>
         </EditorSection>
 
-        <EditorSection icon="storefront-outline" kicker="PUBLISH" title="Store visibility">
+        <EditorSection title="Visibility">
         <View style={styles.field}>
-          <Text style={styles.label}>Listing</Text>
           {isLive ? (
             <Text style={styles.liveStatusNote}>
               This piece is live. Submit again to re-run moderation. Archive hides it from shoppers.
@@ -924,14 +975,16 @@ export default function SellerProductEdit() {
               Submit sends it for review. Archive keeps it out of the shop.
             </Text>
           )}
-          <View style={styles.chipRow}>
+          <View style={styles.segmented}>
             {statuses.map((s) => (
               <TouchableOpacity
                 key={s.key}
-                style={[styles.chip, status === s.key && styles.chipActive]}
+                style={[styles.segment, status === s.key && styles.segmentActive]}
                 onPress={() => setStatus(s.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: status === s.key }}
               >
-                <Text style={[styles.chipText, status === s.key && styles.chipTextActive]}>
+                <Text style={[styles.segmentText, status === s.key && styles.segmentTextActive]} numberOfLines={1}>
                   {s.label}
                 </Text>
               </TouchableOpacity>
@@ -948,21 +1001,27 @@ export default function SellerProductEdit() {
               size={16}
               color={isFeatured ? GOLD : colors.olive[800]}
             />
-            <Text style={[styles.featureText, isFeatured && styles.featureTextOn]}>
-              {isFeatured ? "Featured in the lookbook" : "Not featured"}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.featureText, isFeatured && styles.featureTextOn]}>Feature on storefront</Text>
+              <Text style={styles.featureHint}>Highlights this product in featured sections</Text>
+            </View>
+            <View style={[styles.toggle, isFeatured && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, isFeatured && styles.toggleKnobOn]} />
+            </View>
           </TouchableOpacity>
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Tags</Text>
+          <Text style={styles.label}>Search tags</Text>
           <TextInput
             style={styles.input}
             value={tags}
             onChangeText={setTags}
             placeholder="cotton, casual, summer"
             placeholderTextColor={colors.light.mutedForeground}
+            autoCapitalize="none"
           />
+          <Text style={[styles.fieldHint, { marginBottom: 0 }]}>Separate with commas.</Text>
         </View>
 
         <View style={[styles.preflightCard, preflight ? (
@@ -999,23 +1058,37 @@ export default function SellerProductEdit() {
         </EditorSection>
 
         {!isNew ? (
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProduct}>
-            <Text style={styles.deleteButtonText}>Remove from the collection</Text>
+          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteProduct} accessibilityRole="button">
+            <Ionicons name="trash-outline" size={16} color={RUST} />
+            <Text style={styles.deleteButtonText}>Delete product</Text>
           </TouchableOpacity>
         ) : null}
 
         <View style={{ height: 24 }} />
       </ScrollView>
       <View style={styles.saveBar}>
-        <View style={styles.saveSummary}>
-          <View style={styles.saveSummaryIcon}>
-            <Ionicons name={saving ? "sync-outline" : "checkmark"} size={16} color={colors.olive[800]} />
+        {preflight || preflightBusy ? (
+          <View style={styles.saveSummary}>
+            <View
+              style={[
+                styles.saveSummaryDot,
+                preflight?.flagged ? styles.dotFlagged : preflight?.auto_approved ? styles.dotOk : styles.dotPending,
+              ]}
+            />
+            <View style={styles.saveSummaryCopy}>
+              <Text style={styles.saveSummaryTitle} numberOfLines={1}>
+                {preflightBusy
+                  ? "Checking…"
+                  : preflight?.auto_approved
+                    ? "Auto-approval likely"
+                    : preflight?.flagged
+                      ? "Will be flagged"
+                      : "Needs review"}
+              </Text>
+              <Text style={styles.saveSummaryHint} numberOfLines={1}>Moderation check</Text>
+            </View>
           </View>
-          <View style={styles.saveSummaryCopy}>
-            <Text style={styles.saveSummaryTitle}>{saving ? "Saving changes" : isNew ? "Ready to add" : "Ready to update"}</Text>
-            <Text style={styles.saveSummaryHint} numberOfLines={1}>{pendingImages.length > 0 ? `${pendingImages.length} new photo${pendingImages.length === 1 ? "" : "s"}` : `${variants.length} variant${variants.length === 1 ? "" : "s"}`}</Text>
-          </View>
-        </View>
+        ) : null}
         <TouchableOpacity
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -1026,8 +1099,8 @@ export default function SellerProductEdit() {
             <ActivityIndicator color={CREAM} />
           ) : (
             <>
+              <Ionicons name="checkmark" size={18} color={CREAM} />
               <Text style={styles.saveButtonText}>{isNew ? "Add product" : "Save changes"}</Text>
-              <Ionicons name="arrow-forward" size={16} color={CREAM} />
             </>
           )}
         </TouchableOpacity>
@@ -1039,7 +1112,7 @@ export default function SellerProductEdit() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingHorizontal: spacing[5], paddingTop: spacing[3], paddingBottom: spacing[7] },
+  content: { paddingHorizontal: spacing[4], paddingTop: spacing[2], paddingBottom: spacing[7] },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -1077,11 +1150,21 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
 
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing[5] },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: spacing[4],
+    paddingTop: 6,
+    paddingBottom: 12,
+    backgroundColor: colors.light.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(83,94,44,0.12)",
+  },
   backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
@@ -1089,79 +1172,122 @@ const styles = StyleSheet.create({
     borderColor: "rgba(83,94,44,0.14)",
   },
   headerCopy: { flex: 1, minWidth: 0 },
-  kicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: colors.olive[700],
-    marginBottom: 2,
-  },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: 25, lineHeight: 30, color: INK, letterSpacing: -0.4 },
-  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2 },
-  headerStatus: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radii.full, backgroundColor: colors.paper.warm },
+  title: { fontFamily: fontFamilies.display.semibold, fontSize: 20, lineHeight: 25, color: INK, letterSpacing: -0.3 },
+  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 1 },
+  headerStatus: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 11, paddingVertical: 7, borderRadius: radii.full, backgroundColor: colors.paper.warm },
   headerStatusLive: { backgroundColor: colors.olive[50] },
-  headerStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.ink.mute },
-  headerStatusDotLive: { backgroundColor: colors.olive[700] },
-  headerStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 9, color: colors.ink.mute },
+  headerStatusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.ink.mute },
+  headerStatusDotLive: { backgroundColor: "#4E8D42" },
+  headerStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.ink.mute },
   headerStatusTextLive: { color: colors.olive[800] },
-  sectionCard: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, padding: 16, marginBottom: 16 },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18 },
-  sectionIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  sectionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.1, color: colors.olive[600], marginBottom: 2 },
-  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK },
+  sectionCard: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", borderRadius: 22, padding: 16, marginBottom: 14 },
+  sectionHeader: { marginBottom: 16, gap: 3 },
+  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: INK },
+  sectionHint: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.mutedForeground },
 
   field: { marginBottom: 16 },
   label: {
-    fontSize: 9,
-    fontFamily: fontFamilies.mono.semibold,
-    color: colors.olive[700],
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+    fontSize: 13,
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.olive[900],
     marginBottom: 7,
   },
   input: {
     backgroundColor: "#FAF9F5",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
-    borderRadius: 15,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    minHeight: 52,
-    fontSize: typography.fontSizes.sm,
+    minHeight: 50,
+    fontSize: 15,
     fontFamily: fontFamilies.sans.regular,
     color: INK,
   },
   monoInput: {
     fontFamily: fontFamilies.mono.regular,
+    fontSize: 14,
   },
   inputWarn: {
-    borderColor: "rgba(184,92,58,0.45)",
+    borderColor: "rgba(184,92,58,0.55)",
+    backgroundColor: "#FFF8F4",
+  },
+  affixWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FAF9F5",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    minHeight: 50,
+  },
+  affixText: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.light.mutedForeground },
+  affixInput: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    fontSize: 15,
+    fontFamily: fontFamilies.sans.medium,
+    color: INK,
+    fontVariant: ["tabular-nums"],
   },
   fieldHint: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 17,
     color: colors.light.mutedForeground,
-    marginTop: 6,
-    marginBottom: 14,
+    marginTop: -6,
+    marginBottom: 16,
   },
   fieldHintWarn: {
+    flex: 1,
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 17,
     color: RUST,
-    marginTop: 6,
-    marginBottom: 14,
   },
+  priceNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: -6,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: colors.olive[50],
+  },
+  priceNoteWarn: { backgroundColor: "rgba(184,92,58,0.08)" },
+  priceNoteText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.olive[900] },
+  priceNoteStrong: { fontFamily: fontFamilies.sans.semibold },
   textArea: {
     minHeight: 100,
-    paddingTop: 12,
+    paddingTop: 13,
     textAlignVertical: "top",
   },
 
   row: { flexDirection: "row" },
 
+  disclosure: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 58,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    borderRadius: 14,
+    backgroundColor: colors.olive[50],
+  },
+  disclosureTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: INK },
+  disclosureHint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 2 },
+
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chipScroll: { marginHorizontal: -16 },
+  chipScrollContent: { paddingHorizontal: 16, gap: 8 },
   chip: {
     paddingHorizontal: 14,
-    minHeight: 36,
+    minHeight: 38,
     justifyContent: "center",
     borderRadius: radii.full,
     backgroundColor: CREAM,
@@ -1173,27 +1299,38 @@ const styles = StyleSheet.create({
     borderColor: colors.olive[800],
   },
   chipText: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: 14,
     fontFamily: fontFamilies.sans.medium,
     color: colors.olive[800],
   },
   chipTextActive: { color: CREAM },
+  segmented: {
+    flexDirection: "row",
+    padding: 4,
+    gap: 4,
+    borderRadius: 16,
+    backgroundColor: colors.olive[50],
+  },
+  segment: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, paddingHorizontal: 4 },
+  segmentActive: { backgroundColor: "#FFFFFF", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segmentText: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.olive[700] },
+  segmentTextActive: { fontFamily: fontFamilies.sans.semibold, color: INK },
   liveStatusNote: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 13,
     color: colors.light.mutedForeground,
-    marginBottom: 8,
-    lineHeight: 18,
+    marginBottom: 12,
+    lineHeight: 19,
   },
   featureRow: {
     marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    minHeight: 44,
+    gap: 12,
+    minHeight: 60,
     paddingHorizontal: 14,
-    borderRadius: radii.xl,
-    backgroundColor: CREAM,
+    borderRadius: 16,
+    backgroundColor: "#FAF9F5",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
   },
@@ -1202,17 +1339,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#f7f1de",
   },
   featureText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.olive[900],
   },
   featureTextOn: { color: INK },
+  featureHint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 2 },
+  toggle: { width: 44, height: 26, borderRadius: 13, padding: 3, backgroundColor: "rgba(83,94,44,0.2)" },
+  toggleOn: { backgroundColor: GOLD },
+  toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#FFFFFF" },
+  toggleKnobOn: { transform: [{ translateX: 18 }] },
 
   saveBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: spacing[4],
     paddingTop: 10,
     paddingBottom: 10,
     backgroundColor: "#FFFFFF",
@@ -1220,13 +1362,16 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(83,94,44,0.14)",
   },
   saveSummary: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 9 },
-  saveSummaryIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  saveSummaryDot: { width: 9, height: 9, borderRadius: 5 },
+  dotOk: { backgroundColor: "#4E8D42" },
+  dotPending: { backgroundColor: GOLD },
+  dotFlagged: { backgroundColor: RUST },
   saveSummaryCopy: { flex: 1, minWidth: 0 },
-  saveSummaryTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: INK },
-  saveSummaryHint: { marginTop: 1, fontFamily: fontFamilies.sans.regular, fontSize: 9, color: colors.ink.mute },
+  saveSummaryTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: INK },
+  saveSummaryHint: { marginTop: 1, fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
   saveButton: {
-    minWidth: 142,
-    minHeight: 48,
+    flex: 1,
+    minHeight: 52,
     flexDirection: "row",
     gap: 7,
     backgroundColor: colors.olive[900],
@@ -1236,20 +1381,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: { color: CREAM, fontSize: typography.fontSizes.sm, fontFamily: fontFamilies.sans.semibold },
+  saveButtonText: { color: CREAM, fontSize: 16, fontFamily: fontFamilies.sans.semibold },
   deleteButton: {
-    marginTop: 8,
-    minHeight: 44,
+    marginTop: 4,
+    minHeight: 48,
+    flexDirection: "row",
+    gap: 7,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(184,92,58,0.35)",
-    backgroundColor: "#f4e6df",
   },
   deleteButtonText: {
     color: RUST,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 14,
     fontFamily: fontFamilies.sans.semibold,
   },
 
@@ -1267,7 +1411,7 @@ const styles = StyleSheet.create({
   preflightFlagged: { borderColor: "rgba(184,92,58,0.35)", backgroundColor: "#f4e6df" },
   preflightHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   preflightTitle: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: 15,
     fontFamily: fontFamilies.display.semibold,
     color: INK,
   },
@@ -1277,13 +1421,13 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono.medium,
   },
   preflightReason: {
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: fontFamilies.sans.regular,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
   preflightHint: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: fontFamilies.sans.regular,
     color: colors.light.mutedForeground,
     marginTop: 6,

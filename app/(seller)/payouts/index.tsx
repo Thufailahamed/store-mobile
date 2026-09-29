@@ -18,8 +18,8 @@ import { formatPrice, pluralize } from "@/lib/utils";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { SellerStateView } from "@/components/seller/chrome";
 import { payoutUserMessage } from "@/lib/payouts/ledger";
+import { coercePayoutSettings } from "@/lib/payouts/settings";
 import type { PayoutBalance, PayoutSettings } from "@/lib/api/backend";
 
 const CREAM = colors.paper.cream;
@@ -84,7 +84,8 @@ export default function PayoutsIndex() {
 
   const bal: PayoutBalance | null = balance.data?.ok ? balance.data.data : null;
   const payouts = list.data?.ok ? list.data.data.payouts : [];
-  const settings = list.data?.ok ? list.data.data.payout : null;
+  // Coerce so placeholder rows ("Grandfathered Bank", "0000") read as not-set, matching the settings screen.
+  const settings = list.data?.ok && list.data.data.payout ? coercePayoutSettings(list.data.data.payout) : null;
   const balanceError = balance.data && !balance.data.ok ? balance.data.error : null;
   const listError = list.data && !list.data.ok ? list.data.error : null;
   const available = bal ? money(bal.available, bal.currency) : "—";
@@ -96,8 +97,8 @@ export default function PayoutsIndex() {
     : listError
       ? "Payout history unavailable"
       : payouts.length === 0
-        ? "No settlements yet"
-        : pluralize(payouts.length, "settlement");
+        ? "Earnings and withdrawals"
+        : `${payouts.length} ${pluralize(payouts.length, "settlement")}`;
 
   return (
     <View style={styles.container}>
@@ -117,7 +118,6 @@ export default function PayoutsIndex() {
           <Ionicons name="settings-outline" size={17} color={colors.olive[800]} />
         </TouchableOpacity>
       </View>
-      <View style={styles.goldRule} />
 
       <FlatList
         data={payouts}
@@ -137,35 +137,54 @@ export default function PayoutsIndex() {
             ) : (
               <View style={styles.balanceCard}>
                 <View style={styles.balanceTop}>
-                  <View style={styles.balanceIconWrap}>
-                    <Ionicons name="wallet-outline" size={16} color={GOLD} />
-                  </View>
                   <Text style={styles.balanceKicker}>Available to withdraw</Text>
+                  <View style={styles.balanceIconWrap}>
+                    <Ionicons name="wallet-outline" size={15} color={GOLD} />
+                  </View>
                 </View>
-                <Text style={styles.balanceValue}>{available}</Text>
+                <Text style={styles.balanceValue} numberOfLines={1} adjustsFontSizeToFit>{available}</Text>
+
                 <View style={styles.balanceRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.statValue}>{bal ? money(bal.pending, bal.currency) : "—"}</Text>
-                    <Text style={styles.statLabel}>Pending</Text>
+                  <View style={styles.statTile}>
+                    <View style={styles.statHead}>
+                      <Ionicons name="time-outline" size={12} color="rgba(250,248,241,0.55)" />
+                      <Text style={styles.statLabel}>Pending</Text>
+                    </View>
+                    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+                      {bal ? money(bal.pending, bal.currency) : "—"}
+                    </Text>
                   </View>
-                  <View style={styles.statDivider} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.statValue}>{bal ? money(bal.lifetime, bal.currency) : "—"}</Text>
-                    <Text style={styles.statLabel}>Lifetime paid</Text>
+                  <View style={styles.statTile}>
+                    <View style={styles.statHead}>
+                      <Ionicons name="checkmark-circle-outline" size={12} color="rgba(250,248,241,0.55)" />
+                      <Text style={styles.statLabel}>Lifetime paid</Text>
+                    </View>
+                    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+                      {bal ? money(bal.lifetime, bal.currency) : "—"}
+                    </Text>
                   </View>
                 </View>
+
                 <TouchableOpacity
                   style={[styles.withdrawBtn, !canWithdraw && styles.withdrawBtnDisabled]}
                   onPress={() => router.push("/(seller)/payouts/withdraw")}
                   accessibilityRole="button"
                   accessibilityLabel="Withdraw funds"
                   disabled={!canWithdraw}
+                  activeOpacity={0.85}
                 >
-                  <Ionicons name="arrow-up-outline" size={15} color={colors.olive[900]} />
                   <Text style={styles.withdrawBtnText}>
                     {canWithdraw ? "Withdraw funds" : `Minimum ${money(MIN_WITHDRAWAL, bal?.currency)}`}
                   </Text>
+                  <View style={styles.withdrawArrow}>
+                    <Ionicons name="arrow-forward" size={14} color={GOLD} />
+                  </View>
                 </TouchableOpacity>
+                {canWithdraw ? (
+                  <Text style={styles.balanceFoot}>
+                    Minimum withdrawal {money(MIN_WITHDRAWAL, bal?.currency)}
+                  </Text>
+                ) : null}
                 {balanceError ? (
                   <Text style={styles.balanceError}>
                     {payoutUserMessage(balanceError, "Couldn’t load balance. Pull to retry.")}
@@ -174,6 +193,7 @@ export default function PayoutsIndex() {
               </View>
             )}
 
+            <Text style={styles.groupLabel}>Paid out to</Text>
             <TouchableOpacity
               style={styles.destinationCard}
               onPress={() => router.push("/(seller)/payouts/settings")}
@@ -188,8 +208,7 @@ export default function PayoutsIndex() {
                   color={colors.olive[800]}
                 />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.destinationEyebrow}>Payout destination</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.destinationTitle} numberOfLines={1}>
                   {settings ? destinationTitle(settings) : "Not set up"}
                 </Text>
@@ -197,20 +216,20 @@ export default function PayoutsIndex() {
                   {settings ? destinationSubtitle(settings) : "Add a bank account to withdraw earnings"}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={15} color={colors.ink.mute} />
+              <Text style={styles.destinationAction}>{settings ? "Change" : "Set up"}</Text>
             </TouchableOpacity>
 
             {failedCount > 0 ? (
               <View style={styles.failedStrip}>
                 <Ionicons name="alert-circle-outline" size={15} color={colors.accent2.rust} />
                 <Text style={styles.failedText}>
-                  {pluralize(failedCount, "payout")} failed — tap to review details
+                  {failedCount} {pluralize(failedCount, "payout")} failed — tap to review details
                 </Text>
               </View>
             ) : null}
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionHeading}>History</Text>
+              <Text style={styles.groupLabel}>History</Text>
               {payouts.length > 0 ? (
                 <Text style={styles.sectionCount}>{payouts.length}</Text>
               ) : null}
@@ -220,8 +239,13 @@ export default function PayoutsIndex() {
             ) : null}
           </View>
         }
-        renderItem={({ item }) => (
-          <PayoutRow payout={item} onPress={() => router.push(`/(seller)/payouts/${item.id}` as const)} />
+        renderItem={({ item, index }) => (
+          <PayoutRow
+            payout={item}
+            first={index === 0}
+            last={index === payouts.length - 1}
+            onPress={() => router.push(`/(seller)/payouts/${item.id}` as const)}
+          />
         )}
         ListEmptyComponent={
           list.isLoading ? (
@@ -230,13 +254,28 @@ export default function PayoutsIndex() {
               <Skeleton height={68} borderRadius={16} />
             </View>
           ) : listError ? null : (
-            <SellerStateView
-              variant="empty"
-              icon="wallet-outline"
-              title="No payouts yet"
-              description="Settlements appear here after a withdrawal is requested."
-              style={{ marginTop: 8 }}
-            />
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No payouts yet</Text>
+              <Text style={styles.emptyLead}>Here’s how money reaches your bank:</Text>
+              {[
+                { icon: "time-outline" as const, title: "Pending", body: "New earnings wait here until they clear." },
+                { icon: "wallet-outline" as const, title: "Available", body: "Cleared funds are ready to withdraw." },
+                { icon: "business-outline" as const, title: "Paid out", body: "Withdrawals settle to your payout account and show up below." },
+              ].map((step, i, arr) => (
+                <View key={step.title} style={styles.step}>
+                  <View style={styles.stepRail}>
+                    <View style={styles.stepIcon}>
+                      <Ionicons name={step.icon} size={14} color={colors.olive[800]} />
+                    </View>
+                    {i < arr.length - 1 ? <View style={styles.stepLine} /> : null}
+                  </View>
+                  <View style={styles.stepBody}>
+                    <Text style={styles.stepTitle}>{step.title}</Text>
+                    <Text style={styles.stepText}>{step.body}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
           )
         }
       />
@@ -251,7 +290,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[4],
     gap: 12,
   },
   kicker: {
@@ -285,31 +324,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 4,
   },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
-  },
   listContent: { paddingHorizontal: spacing[5], paddingBottom: 48 },
 
   balanceCard: {
     backgroundColor: colors.olive[900],
-    borderRadius: radii["2xl"],
-    padding: 18,
-    marginBottom: 12,
-    gap: 8,
+    borderRadius: 26,
+    padding: 20,
+    marginBottom: 22,
     shadowColor: colors.olive[950],
     shadowOpacity: 0.18,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
-  balanceTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  balanceTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   balanceIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "rgba(200,164,74,0.16)",
     alignItems: "center",
     justifyContent: "center",
@@ -323,101 +355,114 @@ const styles = StyleSheet.create({
   },
   balanceValue: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
+    fontSize: 38,
+    lineHeight: 46,
     color: CREAM,
     letterSpacing: -0.8,
-    marginTop: 2,
-  },
-  balanceRow: {
-    flexDirection: "row",
-    alignItems: "center",
     marginTop: 6,
+    fontVariant: ["tabular-nums"],
   },
-  statLabel: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "rgba(250,248,241,0.6)",
-    marginTop: 2,
+  balanceRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  statTile: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    backgroundColor: "rgba(250,248,241,0.07)",
   },
+  statHead: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: "rgba(250,248,241,0.6)" },
   statValue: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 14,
+    marginTop: 4,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
     color: CREAM,
-  },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: "stretch",
-    backgroundColor: "rgba(250,248,241,0.16)",
-    marginRight: 16,
+    fontVariant: ["tabular-nums"],
   },
   withdrawBtn: {
-    marginTop: 10,
-    minHeight: 44,
+    marginTop: 16,
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    justifyContent: "space-between",
+    paddingLeft: 20,
+    paddingRight: 6,
     backgroundColor: GOLD,
     borderRadius: radii.full,
   },
   withdrawBtnDisabled: { opacity: 0.45 },
-  withdrawBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.olive[900],
+  withdrawBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.olive[950] },
+  withdrawArrow: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.olive[950],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  balanceFoot: {
+    marginTop: 10,
+    textAlign: "center",
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: "rgba(250,248,241,0.5)",
   },
   balanceError: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: "rgba(250,248,241,0.8)",
-    marginTop: 4,
+    marginTop: 10,
   },
 
+  groupLabel: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
   destinationCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
     padding: 14,
-    marginBottom: 12,
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    marginBottom: 22,
   },
   destinationIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
-  destinationEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.ink.mute,
-  },
   destinationTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
     color: INK,
-    marginTop: 2,
-    letterSpacing: -0.2,
   },
   destinationSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.ink.mute,
-    marginTop: 1,
+    marginTop: 2,
+  },
+  destinationAction: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.olive[800],
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    overflow: "hidden",
   },
 
   failedStrip: {
@@ -439,22 +484,13 @@ const styles = StyleSheet.create({
     color: colors.accent2.rust,
   },
 
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  sectionHeading: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: INK,
-  },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionCount: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.ink.mute,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   emptySub: {
     fontFamily: fontFamilies.sans.regular,
@@ -463,4 +499,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
+  emptyCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    padding: 18,
+  },
+  emptyTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK },
+  emptyLead: { marginTop: 3, marginBottom: 16, fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.ink.mute },
+  step: { flexDirection: "row", gap: 12 },
+  stepRail: { alignItems: "center", width: 30 },
+  stepIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepLine: { flex: 1, width: 1, minHeight: 14, backgroundColor: "rgba(83,94,44,0.18)", marginVertical: 3 },
+  stepBody: { flex: 1, paddingBottom: 14, paddingTop: 5 },
+  stepTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: INK },
+  stepText: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12, lineHeight: 17, color: colors.ink.mute },
 });

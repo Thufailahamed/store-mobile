@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -62,6 +63,13 @@ const STATUS_ACTION: Record<string, string> = {
   rejected: "Closed",
 };
 
+const RETURN_STEPS: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+  { icon: "mail-unread-outline", label: "Buyer requests" },
+  { icon: "checkmark-circle-outline", label: "You approve" },
+  { icon: "cube-outline", label: "Item returns" },
+  { icon: "cash-outline", label: "Refund sent" },
+];
+
 function formatRelative(dateStr: string) {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return "—";
@@ -81,6 +89,49 @@ function refundMoney(row: SellerReturnRequest): string {
   const amount = returnRefundAmount(row);
   if (amount == null) return "—";
   return formatPrice(amount, row.currency || "LKR");
+}
+
+function EmptyReturnsState() {
+  return (
+    <View style={styles.emptyCard}>
+      <View style={styles.emptyIconHalo}>
+        <View style={styles.emptyIconCore}>
+          <Ionicons name="return-down-back-outline" size={22} color={colors.olive[800]} />
+        </View>
+      </View>
+      <Text style={styles.emptyTitle}>No returns yet</Text>
+      <Text style={styles.emptyDesc}>
+        When a buyer requests a return, it lands here for your review — nothing needs your attention right now.
+      </Text>
+
+      <View style={styles.emptyEyebrowRow}>
+        <View style={styles.emptyRule} />
+        <Text style={styles.emptyEyebrow}>How it works</Text>
+        <View style={styles.emptyRule} />
+      </View>
+
+      <View style={styles.stepsRow}>
+        <View style={styles.stepsTrack} />
+        {RETURN_STEPS.map((step) => (
+          <View key={step.label} style={styles.step}>
+            <View style={styles.stepIconWrap}>
+              <Ionicons name={step.icon} size={15} color={colors.olive[700]} />
+            </View>
+            <Text style={styles.stepLabel} numberOfLines={2}>
+              {step.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.emptyNote}>
+        <Ionicons name="shield-checkmark-outline" size={13} color={colors.olive[700]} />
+        <Text style={styles.emptyNoteText}>
+          Buyers can return within 14 days of delivery
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 function ReturnsSkeleton() {
@@ -281,7 +332,12 @@ export default function SellerReturns() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+      <LinearGradient
+        colors={["#F9F7F1", "#EEEADD"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}
+      >
         <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
@@ -289,8 +345,16 @@ export default function SellerReturns() {
             <Text style={styles.title}>Returns</Text>
             <Text style={styles.subtitle}>{headerSubtitle}</Text>
           </View>
+          {!loading && !loadError ? (
+            <View style={[styles.queuePill, counts.requested > 0 && styles.queuePillWarn]}>
+              <View style={[styles.queueDot, counts.requested > 0 && styles.queueDotWarn]} />
+              <Text style={[styles.queuePillText, counts.requested > 0 && styles.queuePillTextWarn]}>
+                {counts.requested > 0 ? `${counts.requested} to review` : "All clear"}
+              </Text>
+            </View>
+          ) : null}
         </View>
-      </View>
+      </LinearGradient>
       <View style={styles.goldRule} />
 
       <View style={styles.searchContainer}>
@@ -361,15 +425,25 @@ export default function SellerReturns() {
                   <Text style={styles.summaryEyebrow}>Return queue</Text>
                 </View>
                 <View style={styles.summaryStats}>
-                  <View style={styles.summaryStat}>
+                  <TouchableOpacity
+                    style={styles.summaryStat}
+                    onPress={() => setStatusTab("requested")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${counts.requested} to review. Filter to requested returns`}
+                  >
                     <Text style={styles.summaryValue}>{counts.requested}</Text>
                     <Text style={styles.summaryLabel}>To review</Text>
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.summaryDivider} />
-                  <View style={styles.summaryStat}>
+                  <TouchableOpacity
+                    style={styles.summaryStat}
+                    onPress={() => setStatusTab("approved")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${inFlight} in progress. Filter to approved returns`}
+                  >
                     <Text style={styles.summaryValue}>{inFlight}</Text>
                     <Text style={styles.summaryLabel}>In progress</Text>
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.summaryDivider} />
                   <View style={styles.summaryStat}>
                     <Text style={styles.summaryValue} numberOfLines={1}>
@@ -395,20 +469,22 @@ export default function SellerReturns() {
             ) : null
           }
           ListEmptyComponent={
-            <SellerStateView
-              variant={loadError ? "error" : "empty"}
-              icon={loadError ? "cloud-offline-outline" : "return-down-back-outline"}
-              title={loadError ? "Couldn’t load returns" : search || statusTab !== "all" ? "Nothing matches" : "No returns"}
-              description={
-                loadError ??
-                (search || statusTab !== "all"
-                  ? "Try a different order number, buyer name, or status filter."
-                  : "Buyer return requests for this store will appear here.")
-              }
-              actionLabel={loadError ? "Try again" : isFiltered ? "Clear filters" : undefined}
-              onAction={loadError ? onRefresh : isFiltered ? clearFilters : undefined}
-              style={{ marginTop: 24 }}
-            />
+            loadError || isFiltered ? (
+              <SellerStateView
+                variant={loadError ? "error" : "empty"}
+                icon={loadError ? "cloud-offline-outline" : "return-down-back-outline"}
+                title={loadError ? "Couldn’t load returns" : "Nothing matches"}
+                description={
+                  loadError ??
+                  "Try a different order number, buyer name, or status filter."
+                }
+                actionLabel={loadError ? "Try again" : "Clear filters"}
+                onAction={loadError ? onRefresh : clearFilters}
+                style={{ marginTop: 24 }}
+              />
+            ) : (
+              <EmptyReturnsState />
+            )
           }
         />
       )}
@@ -448,6 +524,37 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
     marginTop: 3,
   },
+  queuePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    marginBottom: 2,
+  },
+  queuePillWarn: {
+    backgroundColor: "rgba(200,164,74,0.16)",
+    borderColor: "rgba(200,164,74,0.45)",
+  },
+  queueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[600],
+  },
+  queueDotWarn: { backgroundColor: GOLD },
+  queuePillText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: colors.olive[800],
+  },
+  queuePillTextWarn: { color: "#8a6a2a" },
   goldRule: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(200,164,74,0.55)",
@@ -670,6 +777,124 @@ const styles = StyleSheet.create({
     color: colors.olive[800],
   },
   actionUrgent: { color: CREAM },
+
+  emptyCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    marginTop: 20,
+    paddingHorizontal: 22,
+    paddingVertical: 30,
+    alignItems: "center",
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  emptyIconHalo: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "rgba(200,164,74,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  emptyIconCore: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    letterSpacing: -0.3,
+    color: INK,
+    textAlign: "center",
+  },
+  emptyDesc: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 21,
+    color: colors.ink.mute,
+    textAlign: "center",
+    maxWidth: 280,
+    marginTop: 6,
+  },
+  emptyEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    alignSelf: "stretch",
+    marginTop: 22,
+    marginBottom: 16,
+  },
+  emptyRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(83,94,44,0.16)",
+  },
+  emptyEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+  },
+  stepsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    alignSelf: "stretch",
+  },
+  stepsTrack: {
+    position: "absolute",
+    top: 16,
+    left: 34,
+    right: 34,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(83,94,44,0.2)",
+  },
+  step: { width: 68, alignItems: "center", gap: 7 },
+  stepIconWrap: {
+    width: 33,
+    height: 33,
+    borderRadius: 17,
+    backgroundColor: colors.paper.DEFAULT,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    lineHeight: 13,
+    color: colors.ink.soft,
+    textAlign: "center",
+  },
+  emptyNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.06)",
+  },
+  emptyNoteText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.ink.mute,
+  },
 
   skelSummary: {
     backgroundColor: colors.olive[900],

@@ -31,6 +31,8 @@ import { formatPrice, pluralize } from "@/lib/utils";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { SellerStateView } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui";
+import * as Clipboard from "expo-clipboard";
 import type { AdminCoupon } from "@/lib/api";
 
 const CREAM = colors.paper.cream;
@@ -44,46 +46,6 @@ const COUPON_TYPES = [
   { key: "free_shipping", label: "Free Shipping", icon: "bicycle-outline" as const },
   { key: "bxgy", label: "Buy X Get Y", icon: "gift-outline" as const },
 ] as const;
-
-const TYPE_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  percentage: { label: "Percentage", icon: "pricetag-outline" },
-  fixed: { label: "Fixed amount", icon: "cash-outline" },
-  free_shipping: { label: "Free shipping", icon: "bicycle-outline" },
-  bxgy: { label: "Buy X get Y", icon: "gift-outline" },
-};
-
-/** Map a coupon type to its badge background style. Was previously a
- *  ternary that silently treated `bxgy` as `free_shipping` ("FREE" badge). */
-function typeBadgeStyle(type: AdminCoupon["type"]) {
-  switch (type) {
-    case "percentage":   return s.badgePercentage;
-    case "fixed":        return s.badgeFixed;
-    case "free_shipping": return s.badgeShipping;
-    case "bxgy":         return s.badgeBxgy;
-    default:             return s.badgeShipping;
-  }
-}
-
-function typeBadgeLabel(coupon: AdminCoupon) {
-  if (coupon.type === "percentage") return `${coupon.value}%`;
-  if (coupon.type === "fixed") return formatPrice(coupon.value ?? 0);
-  if (coupon.type === "bxgy") return "BXGY";
-  return "FREE";
-}
-
-function couponSummary(coupon: AdminCoupon): string {
-  const base =
-    coupon.type === "percentage"
-      ? `${coupon.value}% off`
-      : coupon.type === "fixed"
-        ? `${formatPrice(coupon.value ?? 0)} off`
-        : coupon.type === "bxgy"
-          ? "Buy X get Y"
-          : "Free shipping";
-  return coupon.min_order_total
-    ? `${base} · min ${formatPrice(coupon.min_order_total)}`
-    : base;
-}
 
 function isExpired(coupon: AdminCoupon): boolean {
   if (!coupon.ends_at) return false;
@@ -113,6 +75,7 @@ function CouponsSkeleton() {
 export default function SellerCoupons() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [coupons, setCoupons] = useState<AdminCoupon[]>([]);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -189,7 +152,7 @@ export default function SellerCoupons() {
     ? "Promotions unavailable"
     : coupons.length === 0
       ? "No promotions yet"
-      : `${stats.active} active · ${pluralize(stats.redemptions, "redemption")}`;
+      : "Discount codes for your store";
 
   const handleToggle = async (coupon: AdminCoupon) => {
     const res = await updateStoreCoupon(coupon.id, { is_active: !coupon.is_active });
@@ -200,6 +163,11 @@ export default function SellerCoupons() {
     } else {
       Alert.alert("Update failed", res.error);
     }
+  };
+
+  const copyCode = async (code: string) => {
+    await Clipboard.setStringAsync(code);
+    toast.success(`Copied ${code}`);
   };
 
   const handleDelete = (coupon: AdminCoupon) => {
@@ -424,11 +392,11 @@ export default function SellerCoupons() {
               accessibilityRole="button"
               accessibilityLabel="Create coupon"
             >
-              <Ionicons name="add" size={20} color={CREAM} />
+              <Ionicons name="add" size={17} color={CREAM} />
+              <Text style={s.addBtnText}>New</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <View style={s.goldRule} />
 
         {loading ? (
           <CouponsSkeleton />
@@ -445,29 +413,23 @@ export default function SellerCoupons() {
         ) : (
           <View style={s.body}>
             {/* Stats */}
-            <View style={s.statsRow}>
-              <View style={s.statCard}>
-                <View style={[s.statIcon, { backgroundColor: colors.olive[50] }]}>
-                  <Ionicons name="pricetag-outline" size={14} color={colors.olive[700]} />
-                </View>
-                <Text style={s.statValue}>{stats.total}</Text>
-                <Text style={s.statLabel}>Total</Text>
+            {coupons.length > 0 ? (
+              <View style={s.statsStrip}>
+                {[
+                  { label: "Live", value: stats.active, dot: colors.olive[500] },
+                  { label: "Paused / ended", value: stats.inactive, dot: colors.ink.mute },
+                  { label: "Redeemed", value: stats.redemptions, dot: GOLD },
+                ].map((st, i) => (
+                  <View key={st.label} style={[s.statCell, i > 0 && s.statCellDivider]}>
+                    <Text style={s.statValue}>{st.value}</Text>
+                    <View style={s.statLabelRow}>
+                      <View style={[s.statDot, { backgroundColor: st.dot }]} />
+                      <Text style={s.statLabel} numberOfLines={1}>{st.label}</Text>
+                    </View>
+                  </View>
+                ))}
               </View>
-              <View style={s.statCard}>
-                <View style={[s.statIcon, { backgroundColor: "rgba(106,118,57,0.14)" }]}>
-                  <Ionicons name="checkmark-circle-outline" size={14} color={colors.olive[600]} />
-                </View>
-                <Text style={[s.statValue, { color: colors.olive[600] }]}>{stats.active}</Text>
-                <Text style={s.statLabel}>Active</Text>
-              </View>
-              <View style={s.statCard}>
-                <View style={[s.statIcon, { backgroundColor: "rgba(200,164,74,0.16)" }]}>
-                  <Ionicons name="ticket-outline" size={14} color="#8a6a2a" />
-                </View>
-                <Text style={s.statValue}>{stats.redemptions}</Text>
-                <Text style={s.statLabel}>Redeemed</Text>
-              </View>
-            </View>
+            ) : null}
 
             {/* Coupons list */}
             {coupons.length === 0 ? (
@@ -484,95 +446,126 @@ export default function SellerCoupons() {
               coupons.map((coupon) => {
                 const expired = isExpired(coupon);
                 const live = coupon.is_active && !expired;
+                const uses = coupon.current_uses ?? 0;
                 const usageCap = coupon.max_uses ?? null;
-                const usagePct = usageCap ? Math.min(1, (coupon.current_uses ?? 0) / usageCap) : 0;
-                const usageFull = usageCap != null && (coupon.current_uses ?? 0) >= usageCap;
+                const usagePct = usageCap ? Math.min(1, uses / usageCap) : 0;
+                const usageFull = usageCap != null && uses >= usageCap;
+                const status = expired ? "Expired" : usageFull ? "Used up" : live ? "Live" : "Paused";
+                const statusTone =
+                  status === "Live"
+                    ? { fg: colors.olive[800], bg: "rgba(106,118,57,0.14)" }
+                    : status === "Paused"
+                      ? { fg: colors.ink.mute, bg: "rgba(83,94,44,0.08)" }
+                      : { fg: RUST, bg: "rgba(184,92,58,0.1)" };
+                const heroValue =
+                  coupon.type === "percentage" ? `${coupon.value}%`
+                  : coupon.type === "fixed" ? formatPrice(coupon.value ?? 0)
+                  : coupon.type === "bxgy" ? "BXGY"
+                  : "FREE";
+                const heroSub =
+                  coupon.type === "free_shipping" ? "shipping"
+                  : coupon.type === "bxgy" ? "bundle"
+                  : "off";
+                const endsLabel = coupon.ends_at
+                  ? `${expired ? "Ended" : "Ends"} ${new Date(coupon.ends_at).toLocaleDateString("en-LK", { month: "short", day: "numeric", year: "numeric" })}`
+                  : "No expiry";
                 return (
                   <TouchableOpacity
                     key={coupon.id}
-                    style={[s.couponCard, !live && s.couponCardDim]}
-                    activeOpacity={0.85}
+                    style={s.ticket}
+                    activeOpacity={0.9}
                     onPress={() => openEdit(coupon)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Edit coupon ${coupon.code}`}
+                    accessibilityLabel={`Coupon ${coupon.code}, ${status}. Tap to edit`}
                   >
-                    <View style={s.couponTop}>
-                      <View style={[s.couponTypeBadge, typeBadgeStyle(coupon.type)]}>
-                        <Ionicons
-                          name={TYPE_META[coupon.type]?.icon ?? "pricetag-outline"}
-                          size={12}
-                          color={colors.olive[900]}
-                        />
-                        <Text style={s.couponTypeText}>{typeBadgeLabel(coupon)}</Text>
+                    <View style={[s.ticketMain, !live && s.dim]}>
+                      <View style={[s.stub, !live && s.stubMuted]}>
+                        <Text style={s.stubValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                          {heroValue}
+                        </Text>
+                        <Text style={s.stubSub}>{heroSub}</Text>
                       </View>
-                      <Text style={s.couponCode} numberOfLines={1}>{coupon.code}</Text>
-                      <Switch
-                        value={coupon.is_active}
-                        onValueChange={() => handleToggle(coupon)}
-                        trackColor={{ false: colors.olive[100], true: colors.olive[300] }}
-                        thumbColor={coupon.is_active ? colors.olive[700] : colors.ink.mute}
-                      />
-                    </View>
-
-                    <View style={s.couponMetaRow}>
-                      <Text style={s.couponMetaText}>{couponSummary(coupon)}</Text>
-                      {expired ? (
-                        <View style={s.expiredChip}>
-                          <Text style={s.expiredChipText}>Expired</Text>
+                      <View style={s.perf}>
+                        <View style={[s.notch, s.notchTop]} />
+                        <View style={s.perfLine} />
+                        <View style={[s.notch, s.notchBottom]} />
+                      </View>
+                      <View style={s.ticketBody}>
+                        <View style={s.codeRow}>
+                          <Text style={s.couponCode} numberOfLines={1}>{coupon.code}</Text>
+                          <TouchableOpacity
+                            onPress={() => void copyCode(coupon.code)}
+                            hitSlop={8}
+                            style={s.copyBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Copy ${coupon.code}`}
+                          >
+                            <Ionicons name="copy-outline" size={14} color={colors.olive[700]} />
+                          </TouchableOpacity>
                         </View>
-                      ) : coupon.ends_at ? (
+                        <Text style={s.couponMetaText} numberOfLines={1}>
+                          {coupon.min_order_total ? `Min. order ${formatPrice(coupon.min_order_total)}` : "No minimum order"}
+                        </Text>
                         <View style={s.metaItem}>
-                          <Ionicons name="calendar-outline" size={11} color={colors.ink.mute} />
-                          <Text style={s.couponMetaText}>
-                            Ends {new Date(coupon.ends_at).toLocaleDateString("en-LK", { month: "short", day: "numeric", year: "numeric" })}
-                          </Text>
+                          <Ionicons name="calendar-outline" size={11} color={expired ? RUST : colors.ink.mute} />
+                          <Text style={[s.couponMetaText, expired && { color: RUST }]}>{endsLabel}</Text>
                         </View>
-                      ) : (
-                        <Text style={s.couponMetaText}>No expiry</Text>
-                      )}
+                      </View>
                     </View>
 
-                    <View style={s.usageRow}>
-                      <View style={s.usageBarBg}>
-                        <View
-                          style={[
-                            s.usageBarFill,
-                            { width: `${usageCap ? Math.max(usagePct * 100, usagePct > 0 ? 4 : 0) : 0}%` },
-                            usageFull && s.usageBarFull,
-                          ]}
-                        />
+                    <View style={s.usageBlock}>
+                      <View style={s.usageTop}>
+                        <Text style={s.usageLabel}>
+                          <Text style={s.usageStrong}>{uses}</Text>
+                          {usageCap ? ` of ${usageCap} redeemed` : ` ${pluralize(uses, "redemption")} · no limit`}
+                        </Text>
+                        {usageCap ? (
+                          <Text style={s.usageLabel}>{Math.max(0, usageCap - uses)} left</Text>
+                        ) : null}
                       </View>
-                      <Text style={s.usageText}>
-                        {coupon.current_uses ?? 0}/{usageCap ?? "∞"} used
-                      </Text>
+                      {usageCap ? (
+                        <View style={s.usageBarBg}>
+                          <View
+                            style={[
+                              s.usageBarFill,
+                              { width: `${Math.max(usagePct * 100, usagePct > 0 ? 3 : 0)}%` },
+                              usageFull && s.usageBarFull,
+                            ]}
+                          />
+                        </View>
+                      ) : null}
                     </View>
 
                     <View style={s.couponActions}>
-                      <View style={s.liveRow}>
-                        <View style={[s.liveDot, { backgroundColor: live ? colors.olive[500] : colors.ink.mute }]} />
-                        <Text style={s.liveText}>{expired ? "Expired" : live ? "Live" : "Paused"}</Text>
+                      <View style={[s.statusPill, { backgroundColor: statusTone.bg }]}>
+                        <View style={[s.liveDot, { backgroundColor: statusTone.fg }]} />
+                        <Text style={[s.statusText, { color: statusTone.fg }]}>{status}</Text>
                       </View>
                       <View style={s.actionGroup}>
+                        <View style={s.switchWrap}>
+                          <Text style={s.switchLabel}>{coupon.is_active ? "On" : "Off"}</Text>
+                          <Switch
+                            value={coupon.is_active}
+                            onValueChange={() => handleToggle(coupon)}
+                            trackColor={{ false: "rgba(83,94,44,0.18)", true: colors.olive[700] }}
+                            thumbColor="#FFFFFF"
+                            ios_backgroundColor="rgba(83,94,44,0.18)"
+                            style={{ transform: [{ scale: 0.85 }] }}
+                            accessibilityLabel={`${coupon.is_active ? "Pause" : "Activate"} ${coupon.code}`}
+                          />
+                        </View>
                         <TouchableOpacity
-                          style={s.couponActionBtn}
-                          onPress={() => openEdit(coupon)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Edit ${coupon.code}`}
-                        >
-                          <Ionicons name="create-outline" size={14} color={colors.olive[700]} />
-                          <Text style={s.couponActionText}>Edit</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={s.deleteBtn}
+                          style={s.iconAction}
                           onPress={() => handleDelete(coupon)}
                           disabled={deletingId === coupon.id}
                           accessibilityRole="button"
                           accessibilityLabel={`Delete ${coupon.code}`}
                         >
-                          <Ionicons name="trash-outline" size={14} color={RUST} />
-                          <Text style={s.deleteText}>
-                            {deletingId === coupon.id ? "Deleting…" : "Delete"}
-                          </Text>
+                          <Ionicons
+                            name={deletingId === coupon.id ? "hourglass-outline" : "trash-outline"}
+                            size={16}
+                            color={RUST}
+                          />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -873,201 +866,136 @@ const s = StyleSheet.create({
     marginTop: 3,
   },
   addBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.olive[800],
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
-  },
-
-  statsRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
-  statCard: {
-    flex: 1,
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: 14,
     gap: 4,
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
-  },
-  statIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
+    height: 40,
+    paddingLeft: 12,
+    paddingRight: 16,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
     marginBottom: 4,
   },
-  statValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: INK,
-    letterSpacing: -0.4,
-  },
-  statLabel: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.ink.mute,
-  },
+  addBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: CREAM },
 
-  couponCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+  statsStrip: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: 16,
+    borderColor: "rgba(83,94,44,0.1)",
+    paddingVertical: 12,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  statCell: { flex: 1, paddingHorizontal: 14 },
+  statCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(83,94,44,0.16)" },
+  statValue: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: INK, fontVariant: ["tabular-nums"] },
+  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  statDot: { width: 6, height: 6, borderRadius: 3 },
+  statLabel: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
+
+  ticket: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.1)",
     marginBottom: 12,
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    overflow: "hidden",
   },
-  couponCardDim: { opacity: 0.62 },
-  couponTop: {
+  dim: { opacity: 0.55 },
+  ticketMain: { flexDirection: "row", alignItems: "stretch", minHeight: 104 },
+  stub: {
+    width: 104,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  stubMuted: { backgroundColor: colors.ink.mute },
+  stubValue: { fontFamily: fontFamilies.display.semibold, fontSize: 28, color: CREAM, letterSpacing: -0.5 },
+  stubSub: {
+    marginTop: 2,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: GOLD,
+  },
+  perf: { width: 14, alignItems: "center", marginLeft: -7, zIndex: 1 },
+  notch: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.paper.DEFAULT },
+  notchTop: { marginTop: -7 },
+  notchBottom: { marginBottom: -7 },
+  perfLine: {
+    flex: 1,
+    width: 0,
+    borderLeftWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "rgba(83,94,44,0.25)",
+    marginVertical: 4,
+  },
+  ticketBody: { flex: 1, minWidth: 0, justifyContent: "center", paddingVertical: 14, paddingRight: 14, paddingLeft: 6, gap: 4 },
+  codeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  couponCode: {
+    flexShrink: 1,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 18,
+    letterSpacing: 1.6,
+    color: INK,
+  },
+  copyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  couponMetaText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+
+  usageBlock: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(83,94,44,0.12)",
+  },
+  usageTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
+  usageLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+  usageStrong: { fontFamily: fontFamilies.sans.semibold, color: INK },
+  usageBarBg: { height: 6, borderRadius: 3, backgroundColor: "rgba(83,94,44,0.1)", overflow: "hidden" },
+  usageBarFill: { height: "100%", borderRadius: 3, backgroundColor: colors.olive[600] },
+  usageBarFull: { backgroundColor: RUST },
+
+  couponActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  couponTypeBadge: {
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radii.full,
   },
-  badgePercentage: { backgroundColor: colors.olive[100] },
-  badgeFixed: { backgroundColor: "rgba(200,164,74,0.22)" },
-  badgeShipping: { backgroundColor: "rgba(83,94,44,0.12)" },
-  badgeBxgy: { backgroundColor: "rgba(184,92,58,0.14)" },
-  couponTypeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[900],
-  },
-  couponCode: {
-    flex: 1,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.md,
-    color: INK,
-    letterSpacing: 1.4,
-  },
-  couponMetaRow: {
-    flexDirection: "row",
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12 },
+  actionGroup: { flexDirection: "row", alignItems: "center", gap: 6 },
+  switchWrap: { flexDirection: "row", alignItems: "center", gap: 2 },
+  switchLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: colors.ink.mute },
+  iconAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginTop: 10,
-  },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  couponMetaText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.ink.mute,
-    flexShrink: 1,
-  },
-  expiredChip: {
-    backgroundColor: "rgba(184,92,58,0.12)",
-    borderRadius: radii.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  expiredChipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    color: RUST,
-  },
-  usageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 10,
-  },
-  usageBarBg: {
-    flex: 1,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.olive[100],
-    overflow: "hidden",
-  },
-  usageBarFill: {
-    height: "100%",
-    borderRadius: 3,
-    backgroundColor: colors.olive[500],
-  },
-  usageBarFull: { backgroundColor: RUST },
-  usageText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.ink.mute,
-  },
-  couponActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(83,94,44,0.12)",
-  },
-  liveRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  liveDot: { width: 7, height: 7, borderRadius: 4 },
-  liveText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.ink.soft,
-  },
-  actionGroup: { flexDirection: "row", gap: 8 },
-  couponActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.22)",
-    backgroundColor: colors.paper.DEFAULT,
-  },
-  couponActionText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[800],
-  },
-  deleteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(184,92,58,0.3)",
+    justifyContent: "center",
     backgroundColor: "rgba(184,92,58,0.08)",
-  },
-  deleteText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: RUST,
   },
 
   modalContainer: { flex: 1, backgroundColor: colors.paper.DEFAULT },

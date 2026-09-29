@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerNotifications, markSellerNotificationRead, markAllSellerNotificationsRead } from "@/lib/api";
-import { colors, shadows, typography, radii, spacing } from "@/lib/theme/tokens";
+import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -87,8 +87,8 @@ function groupByKey(dateStr: string): string {
 }
 
 type ListRow =
-  | { kind: "header"; id: string; title: string }
-  | { kind: "item"; id: string; item: Notification };
+  | { kind: "header"; id: string; title: string; count: number }
+  | { kind: "item"; id: string; item: Notification; first: boolean; last: boolean };
 
 function toRows(items: Notification[]): ListRow[] {
   const groups: Record<string, Notification[]> = {};
@@ -101,28 +101,28 @@ function toRows(items: Notification[]): ListRow[] {
   for (const title of order) {
     const list = groups[title];
     if (!list?.length) continue;
-    rows.push({ kind: "header", id: `h-${title}`, title });
-    for (const item of list) rows.push({ kind: "item", id: item.id, item });
+    rows.push({ kind: "header", id: `h-${title}`, title, count: list.length });
+    list.forEach((item, i) =>
+      rows.push({ kind: "item", id: item.id, item, first: i === 0, last: i === list.length - 1 }),
+    );
   }
   return rows;
 }
 
 function InboxSkeleton() {
   return (
-    <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
-      {[0, 1, 2, 3].map((i) => (
-        <View key={i} style={styles.skelCard}>
-          <Skeleton width={50} height={50} borderRadius={16} />
+    <View style={[styles.group, { marginHorizontal: spacing[5], marginTop: 12 }]}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <View key={i} style={[styles.row, i > 0 && styles.rowDivider]}>
+          <Skeleton width={40} height={40} borderRadius={12} />
           <View style={{ flex: 1, gap: 8 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Skeleton width="45%" height={14} />
-              <Skeleton width={60} height={14} borderRadius={8} />
+              <Skeleton width="50%" height={13} />
+              <Skeleton width={36} height={10} />
             </View>
-            <Skeleton width="70%" height={12} />
-            <Skeleton width="35%" height={12} />
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
-              <Skeleton width={50} height={10} />
-              <Skeleton width={90} height={22} borderRadius={12} />
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Skeleton width="40%" height={11} />
+              <Skeleton width={70} height={13} />
             </View>
           </View>
         </View>
@@ -247,7 +247,7 @@ export default function SellerNotifications() {
       return (
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionLabel}>{row.title}</Text>
-          <View style={styles.sectionLine} />
+          <Text style={styles.sectionCount}>{row.count}</Text>
         </View>
       );
     }
@@ -258,60 +258,50 @@ export default function SellerNotifications() {
     const parsed = parseOrderAlert(item.body, item.data);
     const facts = formatNotificationBody(item.body, item.data);
     const href = sellerNotifHref(item);
-    const actionLabel =
-      parsed.orderNumber ? `View ${parsed.orderNumber}` :
-      bucket === "inventory" ? "Open inventory" :
-      bucket === "review" ? "Open reviews" :
-      href ? "Open" : null;
+    const isOrderAlert = !!parsed.orderNumber || parsed.amount != null;
 
     return (
       <TouchableOpacity
-        style={[styles.card, unread && styles.cardUnread]}
+        style={[
+          styles.row,
+          styles.rowInGroup,
+          row.first && styles.rowFirst,
+          row.last && styles.rowLast,
+          !row.first && styles.rowDivider,
+          unread && styles.rowUnread,
+        ]}
         onPress={() => handlePress(item)}
-        activeOpacity={0.7}
+        activeOpacity={0.6}
         accessibilityRole="button"
-        accessibilityLabel={`${item.title}${unread ? ", unread" : ""}`}
+        accessibilityLabel={`${meta.label}: ${item.title}${parsed.orderNumber ? `, ${parsed.orderNumber}` : ""}${unread ? ", unread" : ""}`}
       >
         <View style={[styles.iconWrap, { backgroundColor: meta.bg }]}>
-          <Ionicons name={meta.icon} size={20} color={meta.color} />
+          <Ionicons name={meta.icon} size={18} color={meta.color} />
+          {unread ? <View style={styles.unreadDot} /> : null}
         </View>
-        <View style={styles.cardBody}>
-          <View style={styles.cardTop}>
-            <View style={styles.titleRow}>
-              <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>{item.title || "Update"}</Text>
-              {unread ? <View style={styles.unreadDot} /> : null}
-            </View>
-            <View style={[styles.typeChip, { backgroundColor: meta.bg }]}>
-              <Text style={[styles.typeChipText, { color: meta.color }]}>{meta.label}</Text>
-            </View>
+        <View style={styles.rowBody}>
+          <View style={styles.rowLine}>
+            <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
+              {item.title || "Update"}
+            </Text>
+            <Text style={[styles.time, unread && styles.timeUnread]}>{formatRelative(item.created_at)}</Text>
           </View>
-
-          {parsed.orderNumber || parsed.amount != null || parsed.storeName ? (
-            <View style={styles.facts}>
-              {parsed.orderNumber ? (
-                <Text style={styles.orderRef}>{parsed.orderNumber}</Text>
-              ) : null}
+          {isOrderAlert ? (
+            <View style={styles.rowLine}>
+              <Text style={styles.orderRef} numberOfLines={1}>
+                {parsed.orderNumber ?? parsed.storeName ?? meta.label}
+              </Text>
               {parsed.amount != null ? (
-                <Text style={styles.amount}>{formatPrice(parsed.amount, parsed.currency || "LKR")}</Text>
-              ) : null}
-              {parsed.storeName ? (
-                <Text style={styles.storeName}>{parsed.storeName}</Text>
+                <Text style={[styles.amount, !unread && styles.amountRead]}>
+                  {formatPrice(parsed.amount, parsed.currency || "LKR")}
+                </Text>
               ) : null}
             </View>
           ) : facts ? (
-            <Text style={styles.body}>{facts}</Text>
+            <Text style={styles.body} numberOfLines={2}>{facts}</Text>
           ) : null}
-
-          <View style={styles.footer}>
-            <Text style={styles.time}>{formatRelative(item.created_at)}</Text>
-            {actionLabel ? (
-              <View style={styles.actionPill}>
-                <Text style={styles.action}>{actionLabel}</Text>
-                <Ionicons name="arrow-forward" size={12} color={colors.olive[700]} />
-              </View>
-            ) : null}
-          </View>
         </View>
+        {href ? <Ionicons name="chevron-forward" size={14} color={colors.olive[400]} /> : null}
       </TouchableOpacity>
     );
   };
@@ -319,29 +309,35 @@ export default function SellerNotifications() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
-        <SellerBackButton label="Back" fallbackHref="/(seller)/more" style={{ marginBottom: 8 }} />
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>Atelier</Text>
-            <Text style={styles.pageTitle}>Notifications</Text>
-            <Text style={styles.subtitle}>{headerSubtitle}</Text>
-          </View>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 6 }]}>
+        <View style={styles.topBar}>
+          <SellerBackButton label="Back" fallbackHref="/(seller)/more" />
           {unreadCount > 0 ? (
             <TouchableOpacity
-              style={styles.markAllBtn}
+              style={[styles.markAllBtn, markingAll && { opacity: 0.6 }]}
               onPress={handleMarkAllRead}
               disabled={markingAll}
               accessibilityRole="button"
               accessibilityLabel="Mark all as read"
             >
-              <Ionicons name="checkmark-done-outline" size={18} color={CREAM} />
-              <Text style={styles.markAllText}>{markingAll ? "Saving…" : "Mark all"}</Text>
+              <Ionicons name="checkmark-done-outline" size={16} color={colors.olive[900]} />
+              <Text style={styles.markAllText}>{markingAll ? "Saving…" : "Mark all read"}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
+        <Text style={styles.kicker}>Atelier</Text>
+        <View style={styles.titleLine}>
+          <Text style={styles.pageTitle}>Notifications</Text>
+          {unreadCount > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.subtitle}>
+          {unreadCount > 0 ? `${unreadCount} unread of ${notifications.length}` : headerSubtitle}
+        </Text>
       </View>
-      <View style={styles.goldRule} />
 
       <View style={styles.searchContainer}>
         <SellerSearchField
@@ -434,16 +430,8 @@ export default function SellerNotifications() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
-  header: {
-    paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: 12,
-  },
+  header: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
   kicker: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
@@ -452,6 +440,7 @@ const styles = StyleSheet.create({
     color: colors.olive[700],
     marginBottom: 4,
   },
+  titleLine: { flexDirection: "row", alignItems: "center", gap: 10 },
   pageTitle: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 32,
@@ -459,10 +448,21 @@ const styles = StyleSheet.create({
     color: INK,
     letterSpacing: -0.6,
   },
+  unreadBadge: {
+    minWidth: 26,
+    height: 26,
+    paddingHorizontal: 8,
+    borderRadius: 13,
+    backgroundColor: RUST,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  unreadBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: CREAM, fontVariant: ["tabular-nums"] },
   subtitle: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
-    color: colors.olive[700],
+    color: colors.light.mutedForeground,
     marginTop: 4,
   },
   markAllBtn: {
@@ -471,56 +471,26 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 14,
     gap: 6,
-    backgroundColor: colors.olive[900],
-    borderRadius: 18,
-    ...shadows.soft,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.16)",
+    borderRadius: radii.full,
   },
-  markAllText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: CREAM,
-  },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[3],
-  },
+  markAllText: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xs, color: colors.olive[900] },
   searchContainer: { paddingHorizontal: spacing[5], marginBottom: spacing[3] },
-  tabsContainer: { marginBottom: 6, flexGrow: 0 },
-  tabsContent: { paddingHorizontal: spacing[5], gap: 8, paddingBottom: 6 },
+  tabsContainer: { flexGrow: 0, flexShrink: 0 },
+  tabsContent: { paddingHorizontal: spacing[5], paddingVertical: 2, gap: 8, alignItems: "center" },
   resultsBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: 10,
-    marginBottom: 2,
+    paddingTop: 12,
   },
-  resultsText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[700],
-  },
-  resultsClear: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[900],
-  },
-  listContent: { paddingHorizontal: spacing[5], paddingTop: 4, paddingBottom: 48 },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  sectionLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(83,94,44,0.14)",
-  },
+  resultsText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: typography.fontSizes.xs, color: colors.olive[700] },
+  resultsClear: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xs, color: colors.olive[900] },
+  listContent: { paddingHorizontal: spacing[5], paddingBottom: 48 },
+  sectionHeaderRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 20, marginBottom: 8, paddingHorizontal: 4 },
   sectionLabel: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
@@ -528,135 +498,45 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: colors.olive[700],
   },
-  card: {
-    flexDirection: "row",
-    gap: 14,
+  sectionCount: { fontFamily: fontFamilies.mono.regular, fontSize: 9, color: colors.light.mutedForeground },
+  group: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.10)",
-    padding: 16,
-    marginBottom: 12,
-    ...shadows.soft,
+    overflow: "hidden",
   },
-  cardUnread: {
-    borderLeftWidth: 5,
-    borderLeftColor: colors.olive[800],
-    backgroundColor: "#FCFBF6",
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  rowInGroup: {
+    backgroundColor: "#FFFFFF",
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: "rgba(83,94,44,0.10)",
   },
-  iconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  cardBody: { flex: 1, minWidth: 0, gap: 8 },
-  cardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  titleRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 0,
-  },
-  title: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 15,
-    color: colors.olive[800],
-    lineHeight: 20,
-  },
-  titleUnread: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: INK,
-  },
+  rowFirst: { borderTopWidth: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  rowLast: { borderBottomWidth: 1, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.12)" },
+  rowUnread: { backgroundColor: "#FBFAF2" },
+  iconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.olive[800],
-    flexShrink: 0,
+    position: "absolute",
+    top: -2,
+    right: -2,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: RUST,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
   },
-  typeChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  typeChipText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  facts: { gap: 3 },
-  orderRef: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 12,
-    color: colors.olive[900],
-    letterSpacing: 0.2,
-  },
-  amount: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: INK,
-    marginTop: 1,
-  },
-  storeName: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[700],
-    lineHeight: 20,
-  },
-  body: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[800],
-    lineHeight: 20,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 4,
-    gap: 8,
-  },
-  time: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  actionPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: radii.full,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.10)",
-  },
-  action: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    color: colors.olive[700],
-  },
-  skelCard: {
-    flexDirection: "row",
-    gap: 14,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.08)",
-    marginBottom: 12,
-    ...shadows.soft,
-  },
+  rowBody: { flex: 1, minWidth: 0, gap: 4 },
+  rowLine: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 10 },
+  title: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 19, color: colors.olive[800] },
+  titleUnread: { fontFamily: fontFamilies.sans.semibold, color: INK },
+  time: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.light.mutedForeground },
+  timeUnread: { color: RUST, fontFamily: fontFamilies.sans.medium },
+  orderRef: { flex: 1, fontFamily: fontFamilies.mono.regular, fontSize: 11, letterSpacing: 0.2, color: colors.light.mutedForeground },
+  amount: { fontFamily: fontFamilies.display.semibold, fontSize: 15, color: INK, fontVariant: ["tabular-nums"] },
+  amountRead: { color: colors.olive[800] },
+  body: { fontFamily: fontFamilies.sans.regular, fontSize: 12, lineHeight: 17, color: colors.olive[700] },
 });

@@ -80,6 +80,11 @@ function formatBadgeCount(count: number) {
   return count > 99 ? "99+" : String(count);
 }
 
+function splitCurrency(formatted: string) {
+  const match = formatted.match(/^([^\d\-−]+?)\s*([\d\-−].*)$/);
+  return match ? { currency: match[1].trim(), amount: match[2] } : { currency: "", amount: formatted };
+}
+
 function formatCompactPrice(value: number | null) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (Math.abs(value) >= 1_000_000) return `LKR ${(value / 1_000_000).toFixed(1)}M`;
@@ -335,9 +340,12 @@ export default function SellerDashboard() {
   const revenueDelta = kpis?.analyticsReady ? kpis.revenueDelta : 0;
   const revenueSeries = kpis?.analyticsReady ? kpis.revenueSeries : [];
   const revenueTrend = analyticsReady && Math.abs(revenueDelta) >= 0.5
-    ? `${revenueDelta > 0 ? "+" : ""}${revenueDelta.toFixed(0)}%`
+    ? `${revenueDelta > 0 ? "+" : "−"}${Math.min(Math.abs(revenueDelta), 999).toFixed(0)}%${Math.abs(revenueDelta) > 999 ? "+" : ""}`
     : null;
   const latestNotification = notifications.find(isNotificationUnread);
+  const todayLabel = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const openTaskCount = [pendingOrders, inventoryIssues, returnsCount].filter((value) => (value ?? 0) > 0).length;
+  const revenueParts = splitCurrency(formatCompactPrice(totalRevenue));
 
   return (
     <ScrollView
@@ -369,7 +377,9 @@ export default function SellerDashboard() {
               </View>
             )}
             <View style={styles.storeIdentityText}>
-              <Text style={styles.storeEyebrow}>{greeting.toUpperCase()}</Text>
+              <Text style={styles.storeEyebrow}>
+                {greeting.toUpperCase()} · {todayLabel.toUpperCase()}
+              </Text>
               <Text style={styles.storeName} numberOfLines={1}>{storeName}</Text>
             </View>
           </TouchableOpacity>
@@ -388,140 +398,143 @@ export default function SellerDashboard() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.statusRow}>
-          <View style={[styles.storeStatus, !store.is_online && styles.storeStatusOffline]}>
-            <View style={[styles.statusDot, !store.is_online && styles.statusDotOffline]} />
-            <Text style={[styles.storeStatusText, !store.is_online && styles.storeStatusTextOffline]}>
-              {store.is_online ? "Store live" : "Store offline"}
-            </Text>
+        {store.is_online ? (
+          <View style={styles.storeStatus}>
+            <View style={styles.statusDot} />
+            <Text style={styles.storeStatusText}>Store live · accepting orders</Text>
           </View>
-          <Text style={styles.headerDate}>
-            {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-          </Text>
-        </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.offlineBanner}
+            onPress={() => router.push("/(seller)/settings" as any)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Store offline. Open settings to go live"
+          >
+            <View style={styles.offlineIcon}>
+              <Ionicons name="moon-outline" size={15} color={SELLER_RUST} />
+            </View>
+            <View style={styles.offlineText}>
+              <Text style={styles.offlineTitle}>Your store is offline</Text>
+              <Text style={styles.offlineSub} numberOfLines={1}>Shoppers can’t place new orders</Text>
+            </View>
+            <View style={styles.goLivePill}>
+              <Text style={styles.goLiveText}>Go live</Text>
+              <Ionicons name="arrow-forward" size={12} color={SELLER_CREAM} />
+            </View>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={styles.revenueCard}
           onPress={() => router.push("/(seller)/analytics" as any)}
           activeOpacity={0.9}
           accessibilityRole="button"
-          accessibilityLabel={`Revenue ${totalRevenue == null ? "unavailable" : formatPrice(totalRevenue)}`}
+          accessibilityLabel={`Revenue ${totalRevenue == null ? "unavailable" : formatPrice(totalRevenue)}. Open analytics`}
         >
           <View style={styles.revenueTop}>
-            <View>
-              <Text style={styles.revenueLabel}>Revenue · last 30 days</Text>
-              <Text style={styles.revenueValue} numberOfLines={1}>{formatCompactPrice(totalRevenue)}</Text>
-            </View>
-            {revenueTrend ? (
-              <View style={[styles.trendPill, revenueDelta < 0 && styles.trendPillDown]}>
-                <Ionicons name={revenueDelta >= 0 ? "arrow-up" : "arrow-down"} size={11} color={revenueDelta >= 0 ? "#DCE8D2" : "#FFD7CA"} />
-                <Text style={[styles.trendText, revenueDelta < 0 && styles.trendTextDown]}>{revenueTrend}</Text>
-              </View>
-            ) : null}
-          </View>
-          <View style={styles.revenueBottom}>
-            <View style={styles.chartWrap}>
-              {revenueSeries.length > 1 ? (
-                <RevenueChart compact height={42} points={revenueSeries} />
-              ) : (
-                <Text style={styles.revenueHint}>{analyticsReady ? "Sales will appear here" : "Pull to refresh metrics"}</Text>
-              )}
-            </View>
+            <Text style={styles.revenueLabel}>Revenue · last 30 days</Text>
             <View style={styles.openAnalytics}>
-              <Text style={styles.openAnalyticsText}>Details</Text>
+              <Text style={styles.openAnalyticsText}>Analytics</Text>
               <Ionicons name="arrow-forward" size={12} color="#E8CF8F" />
             </View>
           </View>
+          <View style={styles.revenueValueRow}>
+            {revenueParts.currency ? <Text style={styles.revenueCurrency}>{revenueParts.currency}</Text> : null}
+            <Text style={styles.revenueValue} numberOfLines={1} adjustsFontSizeToFit>{revenueParts.amount}</Text>
+          </View>
+          {revenueTrend ? (
+            <View style={styles.trendRow}>
+              <View style={[styles.trendPill, revenueDelta < 0 && styles.trendPillDown]}>
+                <Ionicons name={revenueDelta >= 0 ? "trending-up" : "trending-down"} size={12} color={revenueDelta >= 0 ? "#DCE8D2" : "#FFD7CA"} />
+                <Text style={[styles.trendText, revenueDelta < 0 && styles.trendTextDown]}>{revenueTrend}</Text>
+              </View>
+              <Text style={styles.trendCaption}>vs previous 30 days</Text>
+            </View>
+          ) : null}
+          <View style={styles.chartWrap}>
+            {revenueSeries.length > 1 ? (
+              <RevenueChart compact fluid height={56} points={revenueSeries} />
+            ) : (
+              <Text style={styles.revenueHint}>{analyticsReady ? "Sales will appear here" : "Pull to refresh metrics"}</Text>
+            )}
+          </View>
           <View style={styles.revenueInsights}>
-            <View style={styles.revenueInsight}>
-              <Text style={styles.revenueInsightLabel}>ORDERS</Text>
-              <Text style={styles.revenueInsightValue}>{totalOrders ?? "—"}</Text>
-            </View>
+            <RevenueInsight label="Orders" value={totalOrders == null ? "—" : String(totalOrders)} />
             <View style={styles.revenueInsightRule} />
-            <View style={styles.revenueInsight}>
-              <Text style={styles.revenueInsightLabel}>AVG. ORDER</Text>
-              <Text style={styles.revenueInsightValue}>{averageOrderValue == null ? "—" : formatCompactPrice(averageOrderValue)}</Text>
-            </View>
+            <RevenueInsight label="Avg. order" value={averageOrderValue == null ? "—" : formatCompactPrice(averageOrderValue)} />
             <View style={styles.revenueInsightRule} />
-            <View style={styles.revenueInsight}>
-              <Text style={styles.revenueInsightLabel}>WINDOW</Text>
-              <Text style={styles.revenueInsightValue}>30 days</Text>
-            </View>
+            <RevenueInsight label="Products" value={totalProducts == null ? "—" : String(totalProducts)} />
           </View>
         </TouchableOpacity>
       </LinearGradient>
 
       <View style={styles.body}>
-        <View style={styles.metricsRow}>
-          <TouchableOpacity style={styles.metricCard} onPress={() => router.push("/(seller)/orders" as any)}>
-            <View style={styles.metricIcon}><Ionicons name="bag-handle-outline" size={16} color={colors.olive[800]} /></View>
-            <Text style={styles.metricValue}>{pendingOrders ?? "—"}</Text>
-            <Text style={styles.metricLabel}>Pending</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.metricCard} onPress={() => router.push("/(seller)/products" as any)}>
-            <View style={styles.metricIcon}><Ionicons name="pricetag-outline" size={16} color={colors.olive[800]} /></View>
-            <Text style={styles.metricValue}>{totalProducts ?? "—"}</Text>
-            <Text style={styles.metricLabel}>Products</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.metricCard} onPress={() => router.push("/(seller)/inventory" as any)}>
-            <View style={[styles.metricIcon, inventoryIssues > 0 && styles.metricIconWarn]}><Ionicons name="cube-outline" size={16} color={inventoryIssues > 0 ? SELLER_RUST : colors.olive[800]} /></View>
-            <Text style={[styles.metricValue, inventoryIssues > 0 && styles.metricValueWarn]}>
-              {inventoryReady ? inventoryIssues : "—"}
-            </Text>
-            <Text style={styles.metricLabel}>Stock issues</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.section}>
+        <View style={styles.sectionFirst}>
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionEyebrow}>TODAY</Text>
               <Text style={styles.sectionTitle}>{hasTasks ? "Needs attention" : "You’re all caught up"}</Text>
             </View>
-            {hasTasks ? <Text style={styles.taskCount}>{[pendingOrders, inventoryIssues, returnsCount].filter((value) => (value ?? 0) > 0).length}</Text> : null}
+            {hasTasks ? (
+              <View style={styles.taskCountPill}>
+                <View style={styles.taskCountDot} />
+                <Text style={styles.taskCountText}>{openTaskCount} open</Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.taskPanel}>
-            {(pendingOrders ?? 0) > 0 ? (
-              <TaskRow
-                icon="bag-check-outline"
-                title={`${pendingOrders} ${pluralize(pendingOrders ?? 0, "order")} to process`}
-                subtitle="Confirm and prepare fulfilment"
-                action="Open"
-                onPress={() => router.push("/(seller)/orders" as any)}
-              />
-            ) : null}
-            {inventoryIssues > 0 ? (
-              <TaskRow
-                icon="alert-circle-outline"
-                title={`${inventoryIssues} stock ${pluralize(inventoryIssues, "issue")}`}
-                subtitle={stockAttentionSubtitle || "Inventory needs review"}
-                action="Fix"
-                tone="warn"
-                onPress={() => router.push("/(seller)/inventory" as any)}
-              />
-            ) : null}
-            {(returnsCount ?? 0) > 0 ? (
-              <TaskRow
-                icon="return-down-back-outline"
-                title={`${returnsCount} ${pluralize(returnsCount ?? 0, "return")} waiting`}
-                subtitle="Review and make a decision"
-                action="Review"
-                tone="warn"
-                onPress={() => router.push("/(seller)/returns" as any)}
-              />
-            ) : null}
-            {!hasTasks ? (
-              <View style={styles.clearState}>
-                <View style={styles.clearIcon}>
-                  <Ionicons name="checkmark" size={20} color={colors.olive[800]} />
-                </View>
-                <View style={styles.clearText}>
-                  <Text style={styles.clearTitle}>No urgent tasks</Text>
-                  <Text style={styles.clearSub}>Orders, returns, and stock are in good shape.</Text>
-                </View>
-              </View>
-            ) : null}
+            <TaskRow
+              icon="bag-check-outline"
+              title={
+                pendingOrders == null
+                  ? "Orders unavailable"
+                  : pendingOrders > 0
+                    ? `${pendingOrders} ${pluralize(pendingOrders, "order")} to process`
+                    : "No orders waiting"
+              }
+              subtitle={(pendingOrders ?? 0) > 0 ? "Confirm and prepare fulfilment" : "New orders will show up here"}
+              action="Open"
+              done={(pendingOrders ?? 0) === 0}
+              onPress={() => router.push("/(seller)/orders" as any)}
+            />
+            <TaskRow
+              icon="cube-outline"
+              title={
+                !inventoryReady
+                  ? "Inventory unavailable"
+                  : inventoryIssues > 0
+                    ? `${inventoryIssues} stock ${pluralize(inventoryIssues, "issue")}`
+                    : "Stock levels healthy"
+              }
+              subtitle={inventoryIssues > 0 ? stockAttentionSubtitle || "Inventory needs review" : "Nothing out of stock or running low"}
+              action="Fix"
+              tone="warn"
+              done={inventoryIssues === 0}
+              onPress={() => router.push("/(seller)/inventory" as any)}
+              meter={
+                inventoryIssues > 0 && (kpis?.totalSkus ?? 0) > 0
+                  ? { out: outOfStockCount ?? 0, low: lowStockCount ?? 0, total: kpis!.totalSkus }
+                  : undefined
+              }
+            />
+            <TaskRow
+              icon="return-down-back-outline"
+              title={
+                returnsCount == null
+                  ? "Returns unavailable"
+                  : returnsCount > 0
+                    ? `${returnsCount} ${pluralize(returnsCount, "return")} waiting`
+                    : "No returns to review"
+              }
+              subtitle={(returnsCount ?? 0) > 0 ? "Review and make a decision" : "Return requests will show up here"}
+              action="Review"
+              tone="warn"
+              done={(returnsCount ?? 0) === 0}
+              last
+              onPress={() => router.push("/(seller)/returns" as any)}
+            />
           </View>
         </View>
 
@@ -640,6 +653,15 @@ export default function SellerDashboard() {
   );
 }
 
+function RevenueInsight({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.revenueInsight}>
+      <Text style={styles.revenueInsightLabel}>{label.toUpperCase()}</Text>
+      <Text style={styles.revenueInsightValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
 function TaskRow({
   icon,
   title,
@@ -647,6 +669,9 @@ function TaskRow({
   action,
   onPress,
   tone = "default",
+  done = false,
+  last = false,
+  meter,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -654,20 +679,45 @@ function TaskRow({
   action: string;
   onPress: () => void;
   tone?: "default" | "warn";
+  done?: boolean;
+  last?: boolean;
+  meter?: { out: number; low: number; total: number };
 }) {
+  const warn = tone === "warn" && !done;
   return (
-    <TouchableOpacity style={styles.taskRow} onPress={onPress} activeOpacity={0.75}>
-      <View style={[styles.taskIcon, tone === "warn" && styles.taskIconWarn]}>
-        <Ionicons name={icon} size={18} color={tone === "warn" ? SELLER_RUST : colors.olive[800]} />
+    <TouchableOpacity
+      style={[styles.taskRow, last && styles.lastRow]}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
+    >
+      <View style={[styles.taskIcon, warn && styles.taskIconWarn, done && styles.taskIconDone]}>
+        <Ionicons
+          name={done ? "checkmark" : icon}
+          size={done ? 16 : 18}
+          color={done ? colors.olive[600] : warn ? SELLER_RUST : colors.olive[800]}
+        />
       </View>
       <View style={styles.taskText}>
-        <Text style={styles.taskTitle}>{title}</Text>
+        <Text style={[styles.taskTitle, done && styles.taskTitleDone]} numberOfLines={1}>{title}</Text>
         <Text style={styles.taskSubtitle} numberOfLines={1}>{subtitle}</Text>
+        {meter ? (
+          <View style={styles.stockMeter}>
+            <View style={[styles.stockMeterOut, { flex: meter.out }]} />
+            <View style={[styles.stockMeterLow, { flex: meter.low }]} />
+            <View style={{ flex: Math.max(meter.total - meter.out - meter.low, 0) }} />
+          </View>
+        ) : null}
       </View>
-      <View style={styles.taskActionPill}>
-        <Text style={styles.taskAction}>{action}</Text>
-        <Ionicons name="chevron-forward" size={12} color={colors.olive[700]} />
-      </View>
+      {done ? (
+        <Ionicons name="chevron-forward" size={14} color={colors.ink.mute} />
+      ) : (
+        <View style={[styles.taskActionPill, warn && styles.taskActionPillWarn]}>
+          <Text style={[styles.taskAction, warn && styles.taskActionWarn]}>{action}</Text>
+          <Ionicons name="chevron-forward" size={12} color={warn ? SELLER_CREAM : colors.olive[700]} />
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -722,20 +772,20 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: SELLER_CREAM, fontFamily: fontFamilies.sans.semibold, fontSize: 14 },
   disabled: { opacity: 0.55 },
-  header: { paddingHorizontal: spacing[5], paddingBottom: 36 },
+  header: { paddingHorizontal: spacing[5], paddingBottom: 40 },
   headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   storeIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
   logo: { width: 48, height: 48, borderRadius: 16 },
   monogram: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center" },
   monogramText: { color: SELLER_CREAM, fontFamily: fontFamilies.display.semibold, fontSize: 20 },
-  storeIdentityText: { flex: 1, minWidth: 0, gap: 1 },
-  storeEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.4, color: colors.ink.mute },
-  storeName: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: colors.olive[950] },
+  storeIdentityText: { flex: 1, minWidth: 0, gap: 2 },
+  storeEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.3, color: colors.ink.mute },
+  storeName: { fontFamily: fontFamilies.display.semibold, fontSize: 24, color: colors.olive[950] },
   notificationButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(255,255,255,0.8)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.85)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -743,96 +793,111 @@ const styles = StyleSheet.create({
   },
   notificationBadge: {
     position: "absolute",
-    top: -3,
-    right: -3,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
     backgroundColor: SELLER_RUST,
     borderWidth: 2,
     borderColor: "#F6F3EA",
     alignItems: "center",
     justifyContent: "center",
   },
-  notificationBadgeText: { color: "#FFFFFF", fontFamily: fontFamilies.sans.semibold, fontSize: 8 },
-  statusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 18, marginBottom: 12 },
-  storeStatus: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(78,141,66,0.1)", borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 6 },
-  storeStatusOffline: { backgroundColor: "rgba(107,103,94,0.1)" },
-  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#4E8D42" },
-  statusDotOffline: { backgroundColor: colors.ink.mute },
-  storeStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: "#35642D" },
-  storeStatusTextOffline: { color: colors.ink.mute },
-  headerDate: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 0.8, color: colors.ink.mute, textTransform: "uppercase" },
-  revenueCard: { backgroundColor: "#191814", borderRadius: 24, padding: 18, overflow: "hidden", ...shadows.soft },
-  revenueTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-  revenueLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.1, color: "#AAA396", textTransform: "uppercase" },
-  revenueValue: { marginTop: 5, fontFamily: fontFamilies.display.semibold, fontSize: 31, lineHeight: 37, color: "#FAF8F3", fontVariant: ["tabular-nums"] },
-  trendPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(125,139,111,0.22)", borderRadius: radii.full, paddingHorizontal: 8, paddingVertical: 5 },
-  trendPillDown: { backgroundColor: "rgba(184,92,58,0.2)" },
-  trendText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: "#DCE8D2" },
+  notificationBadgeText: { color: "#FFFFFF", fontFamily: fontFamilies.sans.semibold, fontSize: 10 },
+  storeStatus: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "rgba(78,141,66,0.1)", borderRadius: radii.full, paddingHorizontal: 12, paddingVertical: 7, marginTop: 18, marginBottom: 14 },
+  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#4E8D42" },
+  storeStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#35642D" },
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 18,
+    marginBottom: 14,
+    padding: 10,
+    paddingLeft: 12,
+    borderRadius: 18,
+    backgroundColor: "rgba(184,92,58,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.18)",
+  },
+  offlineIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: "rgba(184,92,58,0.12)", alignItems: "center", justifyContent: "center" },
+  offlineText: { flex: 1, minWidth: 0, gap: 1 },
+  offlineTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[950] },
+  offlineSub: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
+  goLivePill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.olive[900], borderRadius: radii.full, paddingHorizontal: 12, paddingVertical: 8 },
+  goLiveText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: SELLER_CREAM },
+  revenueCard: { backgroundColor: "#191814", borderRadius: 26, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 6, overflow: "hidden", ...shadows.soft },
+  revenueTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  revenueLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 1.2, color: "#AAA396", textTransform: "uppercase" },
+  revenueValueRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 10 },
+  revenueCurrency: { fontFamily: fontFamilies.mono.semibold, fontSize: 13, letterSpacing: 1, color: "#AAA396" },
+  revenueValue: { flexShrink: 1, fontFamily: fontFamilies.display.semibold, fontSize: 38, lineHeight: 44, color: "#FAF8F3", fontVariant: ["tabular-nums"] },
+  trendRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
+  trendPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(125,139,111,0.22)", borderRadius: radii.full, paddingHorizontal: 8, paddingVertical: 4 },
+  trendPillDown: { backgroundColor: "rgba(184,92,58,0.22)" },
+  trendText: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, color: "#DCE8D2" },
   trendTextDown: { color: "#FFD7CA" },
-  revenueBottom: { minHeight: 42, marginTop: 12, flexDirection: "row", alignItems: "flex-end", gap: 12 },
-  chartWrap: { flex: 1, minWidth: 0, justifyContent: "flex-end" },
-  revenueHint: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "#AAA396", paddingBottom: 7 },
-  openAnalytics: { flexDirection: "row", alignItems: "center", gap: 5, paddingBottom: 6 },
-  openAnalyticsText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: "#E8CF8F" },
-  revenueInsights: { minHeight: 46, flexDirection: "row", alignItems: "center", marginTop: 12, paddingTop: 11, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.13)" },
-  revenueInsight: { flex: 1, alignItems: "center", gap: 3 },
-  revenueInsightRule: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: "rgba(255,255,255,0.14)" },
-  revenueInsightLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 7, letterSpacing: 0.9, color: "#817C72" },
-  revenueInsightValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: "#E6E1D7" },
-  body: { marginTop: -20, paddingTop: spacing[5], paddingHorizontal: spacing[5], backgroundColor: colors.light.background, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  metricsRow: { flexDirection: "row", gap: 10 },
-  metricCard: { flex: 1, minWidth: 0, minHeight: 106, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: sellerBorder, borderRadius: 19, padding: 12, justifyContent: "space-between", ...shadows.soft },
-  metricIcon: { width: 31, height: 31, borderRadius: 10, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  metricIconWarn: { backgroundColor: "rgba(184,92,58,0.08)" },
-  metricValue: { fontFamily: fontFamilies.display.semibold, fontSize: 23, lineHeight: 27, color: colors.olive[950], fontVariant: ["tabular-nums"] },
-  metricValueWarn: { color: SELLER_RUST },
-  metricLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 10, color: colors.ink.mute },
-  section: { marginTop: spacing[7] },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 },
-  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.4, color: colors.olive[600], marginBottom: 3 },
-  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 21, color: colors.olive[950] },
-  sectionLink: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[700] },
-  taskCount: { minWidth: 26, height: 26, borderRadius: 13, backgroundColor: colors.olive[900], color: SELLER_CREAM, textAlign: "center", lineHeight: 26, fontFamily: fontFamilies.sans.semibold, fontSize: 11 },
-  taskPanel: { backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 20, overflow: "hidden" },
-  taskRow: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: sellerBorder },
-  taskIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  taskIconWarn: { backgroundColor: "rgba(184,92,58,0.08)" },
-  taskText: { flex: 1, minWidth: 0, gap: 2 },
-  taskTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[950] },
-  taskSubtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
-  taskActionPill: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radii.full, backgroundColor: colors.olive[50] },
-  taskAction: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: colors.olive[700] },
-  clearState: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 13, padding: 16 },
-  clearIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  clearText: { flex: 1, gap: 2 },
-  clearTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.olive[950] },
-  clearSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, lineHeight: 17, color: colors.ink.mute },
+  trendCaption: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "#8F897D" },
+  chartWrap: { minHeight: 56, marginTop: 14, marginHorizontal: -4, justifyContent: "flex-end" },
+  revenueHint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396", paddingBottom: 8, paddingHorizontal: 4 },
+  openAnalytics: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: "rgba(232,207,143,0.1)" },
+  openAnalyticsText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#E8CF8F" },
+  revenueInsights: { minHeight: 64, flexDirection: "row", alignItems: "center", marginTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.13)" },
+  revenueInsight: { flex: 1, alignItems: "center", gap: 4, paddingHorizontal: 4 },
+  revenueInsightRule: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: "rgba(255,255,255,0.14)" },
+  revenueInsightLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1, color: "#8F897D" },
+  revenueInsightValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: "#F1ECE2", fontVariant: ["tabular-nums"] },
+  body: { marginTop: -22, paddingTop: spacing[6], paddingHorizontal: spacing[5], backgroundColor: colors.light.background, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  section: { marginTop: spacing[8] },
+  sectionFirst: {},
+  sectionHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14 },
+  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.4, color: colors.olive[600], marginBottom: 4 },
+  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 24, color: colors.olive[950] },
+  sectionLink: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[700] },
+  taskCountPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.full, backgroundColor: "rgba(184,92,58,0.08)", marginBottom: 3 },
+  taskCountDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: SELLER_RUST },
+  taskCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: SELLER_RUST },
+  taskPanel: { backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 22, overflow: "hidden" },
+  taskRow: { minHeight: 76, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: sellerBorder },
+  taskIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
+  taskIconWarn: { backgroundColor: "rgba(184,92,58,0.1)" },
+  taskIconDone: { width: 32, height: 32, borderRadius: 16, marginHorizontal: 5 },
+  taskText: { flex: 1, minWidth: 0, gap: 3 },
+  taskTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.olive[950] },
+  taskTitleDone: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: colors.ink.mute },
+  taskSubtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+  stockMeter: { flexDirection: "row", height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: colors.olive[50], marginTop: 6 },
+  stockMeterOut: { backgroundColor: SELLER_RUST },
+  stockMeterLow: { backgroundColor: SELLER_GOLD },
+  taskActionPill: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.full, backgroundColor: colors.olive[50] },
+  taskActionPillWarn: { backgroundColor: colors.olive[900] },
+  taskAction: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[700] },
+  taskActionWarn: { color: SELLER_CREAM },
   primaryActions: { flexDirection: "row", gap: 10, marginTop: spacing[5] },
-  addProductButton: { flex: 1, minHeight: 50, borderRadius: radii.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: colors.olive[900] },
-  addProductText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: SELLER_CREAM },
-  viewStoreButton: { minHeight: 50, paddingHorizontal: 18, borderRadius: radii.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder },
-  viewStoreText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[900] },
+  addProductButton: { flex: 1, minHeight: 54, borderRadius: radii.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: colors.olive[900] },
+  addProductText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: SELLER_CREAM },
+  viewStoreButton: { minHeight: 54, paddingHorizontal: 18, borderRadius: radii.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder },
+  viewStoreText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.olive[900] },
   listPanel: { backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 20, overflow: "hidden" },
   orderRow: { minHeight: 76, flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: sellerBorder },
   lastRow: { borderBottomWidth: 0 },
   orderIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
   orderInfo: { flex: 1, minWidth: 0, gap: 4 },
   orderTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  orderNumber: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[950] },
-  orderMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: colors.ink.mute },
+  orderNumber: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.olive[950] },
+  orderMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
   orderAmountWrap: { flexDirection: "row", alignItems: "center", gap: 5 },
-  orderAmount: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, color: colors.olive[950] },
+  orderAmount: { fontFamily: fontFamilies.mono.semibold, fontSize: 13, color: colors.olive[950] },
   unavailableCard: { minHeight: 70, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 20 },
   unavailableText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
   updateCard: { marginTop: spacing[6], minHeight: 78, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.paper.warm, borderRadius: 18, padding: 14 },
   updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: SELLER_GOLD },
   updateText: { flex: 1, minWidth: 0, gap: 1 },
-  updateLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: colors.olive[600] },
-  updateTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[950] },
-  updateBody: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
+  updateLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.2, color: colors.olive[600] },
+  updateTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.olive[950] },
+  updateBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
   summaryFooter: { alignItems: "center", paddingVertical: spacing[7] },
-  summaryText: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute, textAlign: "center" },
+  summaryText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute, textAlign: "center" },
 });

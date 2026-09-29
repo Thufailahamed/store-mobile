@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { ScrollView, View, Text, StyleSheet, Alert, TouchableOpacity, StatusBar } from "react-native";
+import {
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  StatusBar,
+} from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,17 +17,27 @@ import {
   getSellerPayoutSettingsBackend,
   updatePayoutSettingsBackend,
 } from "@/lib/api/backend";
-import { MethodPicker } from "@/components/payouts/MethodPicker";
+import {
+  MethodPicker,
+  describePayout,
+} from "@/components/payouts/MethodPicker";
+import { useToast } from "@/components/ui";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { SellerStateView } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { colors, spacing, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { mergePayoutSettings, toPayoutPayload, validatePayoutDraft, withPayoutDefaults } from "@/lib/payouts/settings";
+import {
+  mergePayoutSettings,
+  toPayoutPayload,
+  validatePayoutDraft,
+  withPayoutDefaults,
+} from "@/lib/payouts/settings";
 import type { PayoutSettings } from "@/lib/api/backend";
 
 const CREAM = colors.paper.cream;
 const INK = colors.olive[950];
+const GOLD = colors.accent2.ochre;
 
 async function loadPayoutSettings(): Promise<PayoutSettings> {
   const [listRes, settingsRes] = await Promise.all([
@@ -63,6 +81,7 @@ function SettingsSkeleton() {
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["payout-settings"],
     queryFn: loadPayoutSettings,
@@ -85,7 +104,10 @@ export default function SettingsScreen() {
     }
     setDraft((prev) => {
       if (!prev) return data;
-      if (data.stripe_account_id && data.stripe_account_id !== prev.stripe_account_id) {
+      if (
+        data.stripe_account_id &&
+        data.stripe_account_id !== prev.stripe_account_id
+      ) {
         return { ...prev, stripe_account_id: data.stripe_account_id };
       }
       return prev;
@@ -99,13 +121,15 @@ export default function SettingsScreen() {
       const payload = toPayoutPayload(next);
       const patchRes = await updatePayoutSettingsBackend(payload);
       if (!patchRes.ok) throw new Error(patchRes.error || "Save failed");
-      return withPayoutDefaults(mergePayoutSettings(patchRes.data.payout, next));
+      return withPayoutDefaults(
+        mergePayoutSettings(patchRes.data.payout, next),
+      );
     },
     onSuccess: async (saved) => {
       setDraft(saved);
       await qc.invalidateQueries({ queryKey: ["payouts"] });
       await qc.invalidateQueries({ queryKey: ["payout-settings"] });
-      Alert.alert("Saved", "Payout details updated.");
+      toast.success("Payout details saved");
     },
     onError: (e: unknown) => {
       Alert.alert("Save failed", e instanceof Error ? e.message : "Try again.");
@@ -114,13 +138,18 @@ export default function SettingsScreen() {
 
   const header = (
     <>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-        <SellerBackButton label="Payouts" fallbackHref="/(seller)/payouts" style={{ marginBottom: 6 }} />
+      <View
+        style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}
+      >
+        <SellerBackButton
+          label="Payouts"
+          fallbackHref="/(seller)/payouts"
+          style={{ marginBottom: 14 }}
+        />
         <Text style={styles.kicker}>Atelier · Ledger</Text>
         <Text style={styles.title}>Payout settings</Text>
         <Text style={styles.subtitle}>Where your earnings are sent</Text>
       </View>
-      <View style={styles.goldRule} />
     </>
   );
 
@@ -152,49 +181,93 @@ export default function SettingsScreen() {
     );
   }
 
+  const dirty = JSON.stringify(draft) !== JSON.stringify(data);
+  const summary = describePayout(draft);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: 40 + insets.bottom },
-        ]}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {header}
 
-        <View style={styles.panel}>
-          <MethodPicker value={draft} onChange={setDraft} />
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>
+            {dirty ? "After you save" : "Currently paying out to"}
+          </Text>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryIcon}>
+              <Ionicons name={summary.icon} size={18} color={GOLD} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.summaryTitle} numberOfLines={1}>
+                {summary.title}
+              </Text>
+              <Text style={styles.summaryDetail} numberOfLines={2}>
+                {summary.detail}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.saveBtn, mutation.isPending && styles.saveBtnDisabled]}
-          onPress={() => mutation.mutate(draft)}
-          disabled={mutation.isPending}
-          accessibilityRole="button"
-          accessibilityLabel="Save payout settings"
-        >
-          <Ionicons
-            name={mutation.isPending ? "hourglass-outline" : "checkmark-circle-outline"}
-            size={16}
-            color={CREAM}
-          />
-          <Text style={styles.saveText}>{mutation.isPending ? "Saving…" : "Save payout settings"}</Text>
-        </TouchableOpacity>
-        <Text style={styles.saveHint}>Changes apply to future settlements only.</Text>
+        <View style={styles.sections}>
+          <MethodPicker value={draft} onChange={setDraft} />
+        </View>
       </ScrollView>
+
+      {dirty || mutation.isPending ? (
+        <View style={styles.footer}>
+          <Text style={styles.saveHint}>
+            Unsaved changes · applies to future settlements
+          </Text>
+          <View style={styles.footerActions}>
+            {!mutation.isPending ? (
+              <TouchableOpacity
+                style={styles.discardBtn}
+                onPress={() => data && setDraft(data)}
+                disabled={mutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Discard changes"
+              >
+                <Text style={styles.discardText}>Discard</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                (!dirty || mutation.isPending) && styles.saveBtnDisabled,
+              ]}
+              onPress={() => mutation.mutate(draft)}
+              disabled={!dirty || mutation.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="Save payout settings"
+            >
+              <Ionicons
+                name={mutation.isPending ? "hourglass-outline" : "checkmark"}
+                size={16}
+                color={CREAM}
+              />
+              <Text style={styles.saveText}>
+                {mutation.isPending ? "Saving…" : "Save changes"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
-  content: { paddingBottom: 20 },
+  content: { paddingBottom: 32 },
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[4],
   },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
@@ -216,42 +289,78 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
     marginTop: 3,
   },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
+  summaryCard: {
     marginHorizontal: spacing[5],
     marginBottom: spacing[4],
+    borderRadius: 22,
+    backgroundColor: colors.olive[900],
+    padding: 16,
   },
-  panel: {
-    marginHorizontal: spacing[5],
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+  summaryKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(250,248,241,0.6)",
+    marginBottom: 10,
+  },
+  summaryRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  summaryIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: "rgba(200,164,74,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  summaryTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: CREAM,
+  },
+  summaryDetail: {
+    marginTop: 2,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: "rgba(250,248,241,0.7)",
+  },
+  sections: { marginHorizontal: spacing[5] },
+  footer: {
+    paddingHorizontal: spacing[5],
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: colors.paper.DEFAULT,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(83,94,44,0.16)",
+    gap: 8,
+  },
+  footerActions: { flexDirection: "row", gap: 10 },
+  discardBtn: {
+    minHeight: 50,
+    paddingHorizontal: 20,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: spacing[4],
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    borderColor: "rgba(83,94,44,0.2)",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  discardText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: typography.fontSizes.sm,
+    color: colors.olive[900],
   },
   saveBtn: {
-    minHeight: 52,
-    marginHorizontal: spacing[5],
-    marginTop: spacing[4],
+    flex: 1,
+    minHeight: 50,
     flexDirection: "row",
     gap: 8,
     borderRadius: radii.full,
     backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
   },
-  saveBtnDisabled: { opacity: 0.6 },
+  saveBtnDisabled: { opacity: 0.4 },
   saveText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
@@ -259,10 +368,9 @@ const styles = StyleSheet.create({
   },
   saveHint: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 11,
     color: colors.ink.mute,
     textAlign: "center",
-    marginTop: 10,
   },
   skelCard: {
     backgroundColor: CREAM,

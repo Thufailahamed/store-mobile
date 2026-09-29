@@ -9,6 +9,7 @@ import {
   StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -42,6 +43,12 @@ const RATING_FILTERS = [
   { label: "1★", value: 1 },
 ];
 
+const REVIEW_STEPS: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+  { icon: "star-outline", label: "Buyer rates" },
+  { icon: "chatbubble-outline", label: "You reply" },
+  { icon: "trending-up-outline", label: "Trust grows" },
+];
+
 function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
   return (
     <View style={{ flexDirection: "row", gap: 2 }}>
@@ -53,6 +60,49 @@ function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
           color={GOLD}
         />
       ))}
+    </View>
+  );
+}
+
+function EmptyReviewsState() {
+  return (
+    <View style={s.emptyCard}>
+      <View style={s.emptyIconHalo}>
+        <View style={s.emptyIconCore}>
+          <Ionicons name="star-outline" size={22} color={colors.olive[800]} />
+        </View>
+      </View>
+      <Text style={s.emptyTitle}>No reviews yet</Text>
+      <Text style={s.emptyDesc}>
+        Reviews from buyers will land here — replying builds trust and lifts conversion.
+      </Text>
+
+      <View style={s.emptyEyebrowRow}>
+        <View style={s.emptyRule} />
+        <Text style={s.emptyEyebrow}>How it works</Text>
+        <View style={s.emptyRule} />
+      </View>
+
+      <View style={s.stepsRow}>
+        <View style={s.stepsTrack} />
+        {REVIEW_STEPS.map((step) => (
+          <View key={step.label} style={s.step}>
+            <View style={s.stepIconWrap}>
+              <Ionicons name={step.icon} size={15} color={colors.olive[700]} />
+            </View>
+            <Text style={s.stepLabel} numberOfLines={2}>
+              {step.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={s.emptyNote}>
+        <Ionicons name="shield-checkmark-outline" size={13} color={colors.olive[700]} />
+        <Text style={s.emptyNoteText}>
+          Buyers can review items once their order is delivered
+        </Text>
+      </View>
     </View>
   );
 }
@@ -154,11 +204,13 @@ export default function SellerReviews() {
 
   const headerSubtitle = loading
     ? "Loading customer feedback…"
-    : total === 0
-      ? "No reviews yet"
-      : unansweredCount > 0
-        ? `${total} ${total === 1 ? "review" : "reviews"} · ${pluralize(unansweredCount, "reply")} needed`
-        : `${total} ${total === 1 ? "review" : "reviews"} · all answered`;
+    : loadError && !data
+      ? "Feedback unavailable"
+      : total === 0
+        ? "No reviews yet"
+        : unansweredCount > 0
+          ? `${total} ${total === 1 ? "review" : "reviews"} · ${pluralize(unansweredCount, "reply")} needed`
+          : `${total} ${total === 1 ? "review" : "reviews"} · all answered`;
 
   const maxBreakdown = Math.max(...Object.values(data?.ratingBreakdown ?? { 1: 1 }), 1);
   const isFiltered = filterRating !== 0 || unansweredOnly;
@@ -280,32 +332,24 @@ export default function SellerReviews() {
         ) : null}
 
         {visibleReviews.length === 0 ? (
-          <SellerStateView
-            variant="empty"
-            icon="chatbubble-ellipses-outline"
-            title={
-              unansweredOnly
-                ? "All caught up"
-                : filterRating
-                  ? `No ${filterRating}-star reviews`
-                  : "No reviews yet"
-            }
-            description={
-              isFiltered
-                ? "Try a different rating filter."
-                : "Customer reviews for your products will appear here."
-            }
-            actionLabel={isFiltered ? "Clear filters" : undefined}
-            onAction={
-              isFiltered
-                ? () => {
-                    setFilterRating(0);
-                    setUnansweredOnly(false);
-                  }
-                : undefined
-            }
-            style={{ marginTop: 12 }}
-          />
+          isFiltered ? (
+            <SellerStateView
+              variant="empty"
+              icon="chatbubble-ellipses-outline"
+              title={
+                unansweredOnly ? "All caught up" : `No ${filterRating}-star reviews`
+              }
+              description="Try a different rating filter."
+              actionLabel="Clear filters"
+              onAction={() => {
+                setFilterRating(0);
+                setUnansweredOnly(false);
+              }}
+              style={{ marginTop: 12 }}
+            />
+          ) : (
+            <EmptyReviewsState />
+          )
         ) : (
           visibleReviews.map((review) => {
             const reply = (review.seller_reply ?? "").trim();
@@ -414,12 +458,35 @@ export default function SellerReviews() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+        <LinearGradient
+          colors={["#F9F7F1", "#EEEADD"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}
+        >
           <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
-          <Text style={s.kicker}>Atelier</Text>
-          <Text style={s.title}>Reviews</Text>
-          <Text style={s.subtitle}>{headerSubtitle}</Text>
-        </View>
+          <View style={s.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.kicker}>Atelier</Text>
+              <Text style={s.title}>Reviews</Text>
+              <Text style={s.subtitle}>{headerSubtitle}</Text>
+            </View>
+            {!loading && !loadError && total > 0 ? (
+              <View style={[s.queuePill, unansweredCount > 0 && s.queuePillWarn]}>
+                {unansweredCount > 0 ? (
+                  <View style={[s.queueDot, s.queueDotWarn]} />
+                ) : (
+                  <Ionicons name="star" size={11} color={GOLD} />
+                )}
+                <Text style={[s.queuePillText, unansweredCount > 0 && s.queuePillTextWarn]}>
+                  {unansweredCount > 0
+                    ? `${unansweredCount} need reply`
+                    : `${(data?.avgRating ?? 0).toFixed(1)} avg`}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </LinearGradient>
         <View style={s.goldRule} />
 
         {loading ? (
@@ -483,6 +550,43 @@ const s = StyleSheet.create({
     color: colors.ink.mute,
     marginTop: 3,
   },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 12,
+  },
+  queuePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.14)",
+    marginBottom: 2,
+  },
+  queuePillWarn: {
+    backgroundColor: "rgba(200,164,74,0.16)",
+    borderColor: "rgba(200,164,74,0.45)",
+  },
+  queueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[600],
+  },
+  queueDotWarn: { backgroundColor: GOLD },
+  queuePillText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: colors.olive[800],
+  },
+  queuePillTextWarn: { color: "#8a6a2a" },
   goldRule: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(200,164,74,0.55)",
@@ -773,6 +877,125 @@ const s = StyleSheet.create({
     color: colors.olive[800],
   },
   replyBtnLabelPrimary: { color: CREAM },
+
+  emptyCard: {
+    backgroundColor: CREAM,
+    borderRadius: radii["2xl"],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    marginTop: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 30,
+    alignItems: "center",
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  emptyIconHalo: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "rgba(200,164,74,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  emptyIconCore: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    letterSpacing: -0.3,
+    color: INK,
+    textAlign: "center",
+  },
+  emptyDesc: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 21,
+    color: colors.ink.mute,
+    textAlign: "center",
+    maxWidth: 280,
+    marginTop: 6,
+  },
+  emptyEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    alignSelf: "stretch",
+    marginTop: 22,
+    marginBottom: 16,
+  },
+  emptyRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(83,94,44,0.16)",
+  },
+  emptyEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: typography.letterSpacing.editorial,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+  },
+  stepsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    alignSelf: "stretch",
+    paddingHorizontal: 18,
+  },
+  stepsTrack: {
+    position: "absolute",
+    top: 16,
+    left: 52,
+    right: 52,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(83,94,44,0.2)",
+  },
+  step: { width: 76, alignItems: "center", gap: 7 },
+  stepIconWrap: {
+    width: 33,
+    height: 33,
+    borderRadius: 17,
+    backgroundColor: colors.paper.DEFAULT,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    lineHeight: 13,
+    color: colors.ink.soft,
+    textAlign: "center",
+  },
+  emptyNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.06)",
+  },
+  emptyNoteText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: colors.ink.mute,
+  },
 
   skelSummary: {
     flexDirection: "row",

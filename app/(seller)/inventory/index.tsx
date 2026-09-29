@@ -35,16 +35,13 @@ import { groupSellerRows } from "@/lib/seller-inventory";
 import {
   SellerSearchField,
   SellerFilterTab,
-  sellerBorder,
   SELLER_CREAM,
   SELLER_INK,
   SELLER_GOLD,
-  SELLER_RUST,
 } from "@/components/seller/chrome";
 import type { Product, ProductVariant } from "@/lib/types";
 
 const GOLD = SELLER_GOLD;
-const RUST = SELLER_RUST;
 const CREAM = SELLER_CREAM;
 const INK = SELLER_INK;
 
@@ -384,7 +381,16 @@ export default function SellerInventory() {
 
   const countLabel = loading && rows.length === 0
     ? "Loading inventory"
-    : `${filtered.length} of ${rows.length} SKUs · ${groups.length} ${groups.length === 1 ? "product" : "products"}`;
+    : filtered.length === rows.length
+      ? `${rows.length} SKUs across ${new Set(rows.map((r) => r.productId)).size} products`
+      : `Showing ${filtered.length} of ${rows.length} SKUs`;
+
+  const attention = stats.low + stats.out;
+  const healthItems = [
+    { key: "out" as const, label: "Out", value: stats.out, color: "#D2714E" },
+    { key: "low" as const, label: "Low", value: stats.low, color: GOLD },
+    { key: "healthy" as const, label: "Healthy", value: stats.healthy, color: "#9AA86A" },
+  ];
 
   const listHeader = (
     <>
@@ -424,44 +430,64 @@ export default function SellerInventory() {
 
       <View style={styles.overviewCard}>
         <View style={styles.overviewTop}>
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.overviewLabel}>TOTAL ON-HAND VALUE</Text>
-            <Text style={styles.overviewValue}>{money(totalValue)}</Text>
+            <Text style={styles.overviewValue} numberOfLines={1} adjustsFontSizeToFit>
+              {money(totalValue)}
+            </Text>
           </View>
           <View style={styles.skuPill}>
-            <Ionicons name="layers-outline" size={13} color="#E8CF8F" />
+            <Ionicons name="layers-outline" size={12} color="#E8CF8F" />
             <Text style={styles.skuPillText}>{rows.length} SKUs</Text>
           </View>
         </View>
-        <Text style={styles.overviewHint}>
-          {(stats.low + stats.out) > 0
-            ? `${stats.low + stats.out} SKUs need your attention`
-            : rows.length > 0
-              ? "Stock levels look healthy"
-              : "Your inventory summary will appear here"}
-        </Text>
-      </View>
 
-      <View style={styles.healthGrid}>
-        {([
-          { key: "healthy" as const, label: "Healthy", value: stats.healthy, icon: "checkmark-circle-outline" as const, color: colors.olive[700], bg: colors.olive[50] },
-          { key: "low" as const, label: "Low stock", value: stats.low, icon: "alert-circle-outline" as const, color: "#8a6a2a", bg: "rgba(200,164,74,0.12)" },
-          { key: "out" as const, label: "Out", value: stats.out, icon: "close-circle-outline" as const, color: RUST, bg: "rgba(184,92,58,0.08)" },
-        ]).map((item) => (
-          <TouchableOpacity
-            key={item.key}
-            style={[styles.healthCard, filter === item.key && { borderColor: item.color }]}
-            onPress={() => setFilter(item.key)}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.value} ${item.label}`}
-          >
-            <View style={[styles.healthIcon, { backgroundColor: item.bg }]}>
-              <Ionicons name={item.icon} size={15} color={item.color} />
+        {rows.length > 0 ? (
+          <>
+            <View style={styles.healthBar}>
+              {healthItems.map((item) =>
+                item.value > 0 ? (
+                  <View key={item.key} style={{ flex: item.value, backgroundColor: item.color }} />
+                ) : null,
+              )}
             </View>
-            <Text style={[styles.healthValue, { color: item.color }]}>{item.value}</Text>
-            <Text style={styles.healthLabel}>{item.label}</Text>
+            <View style={styles.legend}>
+              {healthItems.map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[styles.legendItem, filter === item.key && styles.legendItemActive]}
+                  onPress={() => setFilter(filter === item.key ? "all" : item.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: filter === item.key }}
+                  accessibilityLabel={`${item.value} ${item.label}`}
+                >
+                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.legendValue}>{item.value}</Text>
+                  <Text style={styles.legendLabel}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {attention > 0 ? (
+          <TouchableOpacity
+            style={styles.attentionRow}
+            onPress={() => setFilter(stats.out > 0 ? "out" : "low")}
+            accessibilityRole="button"
+          >
+            <Ionicons name="alert-circle" size={15} color="#E8A084" />
+            <Text style={styles.attentionText}>
+              {attention} SKU{attention === 1 ? "" : "s"} need{attention === 1 ? "s" : ""} attention
+            </Text>
+            <Text style={styles.attentionCta}>Review</Text>
+            <Ionicons name="arrow-forward" size={13} color="#E8CF8F" />
           </TouchableOpacity>
-        ))}
+        ) : (
+          <Text style={styles.overviewHint}>
+            {rows.length > 0 ? "Stock levels look healthy" : "Your inventory summary will appear here"}
+          </Text>
+        )}
       </View>
 
       <View style={styles.searchWrap}>
@@ -489,10 +515,9 @@ export default function SellerInventory() {
       </View>
 
       <View style={styles.resultsHeader}>
-        <View>
-          <Text style={styles.resultsEyebrow}>{filter === "all" ? "CATALOGUE" : filter.toUpperCase()}</Text>
-          <Text style={styles.resultsTitle}>{groups.length} {groups.length === 1 ? "product" : "products"}</Text>
-        </View>
+        <Text style={styles.resultsMeta}>
+          {groups.length} {groups.length === 1 ? "product" : "products"} · most urgent first
+        </Text>
         {filter !== "all" || search ? (
           <TouchableOpacity
             style={styles.clearButton}
@@ -501,8 +526,8 @@ export default function SellerInventory() {
               setSearch("");
             }}
           >
-            <Ionicons name="close" size={13} color={colors.olive[800]} />
-            <Text style={styles.clearButtonText}>Clear</Text>
+            <Ionicons name="close" size={12} color={colors.olive[800]} />
+            <Text style={styles.clearButtonText}>Clear filters</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -700,35 +725,49 @@ const styles = StyleSheet.create({
   },
   overviewCard: {
     marginHorizontal: spacing[5],
-    marginBottom: 12,
-    borderRadius: 22,
+    marginBottom: spacing[4],
+    borderRadius: 24,
     backgroundColor: "#1A1915",
-    padding: 18,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 6,
   },
   overviewTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
-  overviewLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: "#AAA396" },
-  overviewValue: { marginTop: 5, fontFamily: fontFamilies.display.semibold, fontSize: 27, lineHeight: 33, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
-  overviewHint: { marginTop: 12, paddingTop: 11, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.12)", fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "#AAA396" },
+  overviewLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.2, color: "#AAA396" },
+  overviewValue: { marginTop: 6, fontFamily: fontFamilies.display.semibold, fontSize: 28, lineHeight: 34, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
+  overviewHint: { marginTop: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.12)", fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396" },
   skuPill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radii.full, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(200,164,74,0.14)" },
   skuPillText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 0.5, color: "#E8CF8F" },
-  healthGrid: { flexDirection: "row", gap: 9, marginHorizontal: spacing[5], marginBottom: spacing[4] },
-  healthCard: { flex: 1, minWidth: 0, minHeight: 96, justifyContent: "space-between", borderRadius: 18, borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", backgroundColor: "#FFFFFF", padding: 11 },
-  healthIcon: { width: 30, height: 30, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  healthValue: { fontFamily: fontFamilies.display.semibold, fontSize: 22, lineHeight: 25, fontVariant: ["tabular-nums"] },
-  healthLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 9, color: colors.ink.mute },
+  healthBar: { marginTop: 18, height: 8, borderRadius: 4, flexDirection: "row", gap: 3, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.08)" },
+  legend: { flexDirection: "row", marginTop: 10, marginHorizontal: -8 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, paddingVertical: 7, borderRadius: radii.full },
+  legendItemActive: { backgroundColor: "rgba(255,255,255,0.1)" },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  legendValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
+  legendLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396" },
+  attentionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.12)",
+  },
+  attentionText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "#EDE8DC" },
+  attentionCta: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#E8CF8F" },
   searchWrap: { marginHorizontal: spacing[5], marginBottom: 10 },
   filterTabs: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: spacing[5],
-    marginBottom: spacing[5],
+    marginBottom: spacing[4],
   },
-  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing[5], marginBottom: 12 },
-  resultsEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: colors.olive[600], marginBottom: 2 },
-  resultsTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK },
+  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 30, paddingHorizontal: spacing[5], marginBottom: 10, gap: 10 },
+  resultsMeta: { flex: 1, fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: colors.olive[600] },
   clearButton: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.olive[50] },
-  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: colors.olive[800] },
+  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.olive[800] },
 
   listContent: { paddingBottom: 24 },
   skeletonCard: {
@@ -740,213 +779,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingRight: 12,
     gap: 12,
-  },
-
-  card: {
-    flexDirection: "row",
-    marginHorizontal: spacing[5],
-    marginBottom: 10,
-    backgroundColor: CREAM,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    overflow: "hidden",
-  },
-  cardOut: {
-    borderColor: "rgba(184,92,58,0.28)",
-    backgroundColor: "rgba(184,92,58,0.04)",
-  },
-  cardLow: {
-    borderColor: "rgba(200,164,74,0.4)",
-    backgroundColor: "rgba(200,164,74,0.06)",
-  },
-  toneBar: {
-    width: 4,
-    alignSelf: "stretch",
-  },
-  cardRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-  cardSelected: {
-    borderColor: colors.olive[600],
-    backgroundColor: colors.olive[50],
-  },
-  checkbox: {
-    width: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: "rgba(83,94,44,0.12)",
-  },
-  cardMain: { flex: 1, flexDirection: "row", minWidth: 0 },
-  thumb: { width: 64, height: 88 },
-  thumbEmpty: {
-    backgroundColor: colors.paper.warm,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cardInfo: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    justifyContent: "center",
-  },
-  cardName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: INK,
-  },
-  cardSku: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    marginTop: 3,
-  },
-  cardMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-    textTransform: "capitalize",
-  },
-  cardFooter: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 8,
-  },
-  cardPrice: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: INK,
-  },
-  cardDot: { color: colors.light.mutedForeground, fontSize: 10 },
-  cardHeld: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    color: "#8a6a2a",
-  },
-  stockPanel: {
-    width: 118,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: "rgba(83,94,44,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "rgba(250,248,241,0.65)",
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  statusPillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  stepper: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  stepBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.2)",
-    backgroundColor: CREAM,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepBtnDisabled: { opacity: 0.4 },
-  qtyTap: {
-    minWidth: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 2,
-  },
-  qtyValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    lineHeight: 28,
-    letterSpacing: -0.5,
-  },
-  qtyHint: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 9,
-    color: colors.ink.mute,
-    marginTop: 1,
-  },
-  quickRestock: {
-    minHeight: 28,
-    paddingHorizontal: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quickRestockText: {
-    color: CREAM,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-  },
-  editStack: {
-    width: "100%",
-    gap: 8,
-    alignItems: "center",
-  },
-  qtyInput: {
-    width: "100%",
-    minHeight: 40,
-    borderWidth: 1.5,
-    borderRadius: radii.md,
-    textAlign: "center",
-    fontSize: 20,
-    fontFamily: fontFamilies.display.semibold,
-    color: INK,
-    paddingHorizontal: 6,
-    backgroundColor: colors.light.background,
-  },
-  editActions: {
-    flexDirection: "row",
-    gap: 6,
-    width: "100%",
-  },
-  editCancelBtn: {
-    flex: 1,
-    minHeight: 32,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: sellerBorder,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  editCancelText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.olive[800],
-  },
-  editSaveBtn: {
-    flex: 1,
-    minHeight: 32,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  editSaveText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: CREAM,
   },
 
   emptyContainer: { alignItems: "center", paddingVertical: 48 },
