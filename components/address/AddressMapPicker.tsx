@@ -21,6 +21,8 @@ interface AddressMapPickerProps {
   height?: number;
   initialDelta?: { latitudeDelta: number; longitudeDelta: number };
   disabled?: boolean;
+  /** Show the raw lat/lng strip along the bottom (useful for staff tools, noise for shoppers). */
+  showCoords?: boolean;
 }
 
 const FALLBACK_REGION: Region = {
@@ -59,6 +61,7 @@ export function AddressMapPicker({
   height = 240,
   initialDelta = { latitudeDelta: 0.008, longitudeDelta: 0.008 },
   disabled = false,
+  showCoords = true,
 }: AddressMapPickerProps) {
   const mapRef = useRef<MapView | null>(null);
   const lastPropKey = useRef<string | null>(null);
@@ -182,7 +185,8 @@ export function AddressMapPicker({
       <Pressable
         accessibilityRole="button"
         onPress={handleUseMyLocation}
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        style={({ pressed }) => [styles.fab, !showCoords && styles.fabLow, pressed && styles.fabPressed]}
+        accessibilityLabel="Use my location"
         disabled={loadingLocation || disabled}
       >
         {loadingLocation ? (
@@ -192,6 +196,7 @@ export function AddressMapPicker({
         )}
       </Pressable>
 
+      {showCoords ? (
       <View pointerEvents="none" style={styles.coordsBar}>
         <Ionicons name="pin" size={11} color={colors.light.primaryForeground} />
         <Text style={styles.coordsText} numberOfLines={1}>
@@ -200,6 +205,7 @@ export function AddressMapPicker({
             : "Drop pin to set delivery location"}
         </Text>
       </View>
+      ) : null}
     </View>
   );
 }
@@ -243,7 +249,7 @@ const styles = StyleSheet.create({
   },
   hintText: {
     color: colors.light.primaryForeground,
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: typography.fontSizes.xs,
   },
   fab: {
@@ -259,6 +265,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
     ...shadows.soft,
   },
+  fabLow: { bottom: 10 },
   fabPressed: { opacity: 0.8 },
   coordsBar: {
     position: "absolute",

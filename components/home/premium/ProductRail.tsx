@@ -2,7 +2,7 @@ import React from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
 import { HomeSectionHeader } from "./HomeSectionHeader";
 import { HomeProductCard } from "./HomeProductCard";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { spacing } from "@/lib/theme/tokens";
 import type { Product } from "@/lib/types";
 
 interface ProductRailProps {
@@ -14,11 +14,7 @@ interface ProductRailProps {
   accent?: boolean;
   /** Small disclosure pill (e.g. "Sponsored") shown on every card in the rail. */
   badgeLabel?: string;
-  /**
-   * "feature" lifts the rail into a tinted, larger-card editorial panel for
-   * curated/spotlight sections (e.g. Editor's picks) instead of the plain
-   * listing look used for catalog rails (e.g. On sale, New arrivals).
-   */
+  /** "feature" uses the larger card size for curated rails (e.g. Editor's picks). */
   variant?: "default" | "feature";
 }
 
@@ -37,18 +33,12 @@ export function ProductRail({
   const isFeature = variant === "feature";
 
   return (
-    <View style={[styles.wrap, isFeature && styles.wrapFeature]}>
-      <HomeSectionHeader
-        title={title}
-        onPress={onSeeAll}
-        kicker={kicker}
-        accent={accent}
-        variant={variant}
-      />
+    <View style={styles.wrap}>
+      <HomeSectionHeader title={title} onPress={onSeeAll} kicker={kicker} accent={accent} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, isFeature && styles.scrollFeature]}
+        contentContainerStyle={styles.scroll}
       >
         {list.map((p, i) => (
           <HomeProductCard
@@ -69,20 +59,8 @@ const styles = StyleSheet.create({
   wrap: {
     marginBottom: spacing[8],
   },
-  wrapFeature: {
-    marginHorizontal: spacing[4],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[4],
-    backgroundColor: colors.olive[50],
-    borderRadius: radii["2xl"],
-    ...shadows.soft,
-  },
   scroll: {
     paddingHorizontal: spacing[5],
     gap: spacing[3],
-  },
-  scrollFeature: {
-    paddingHorizontal: spacing[4],
-    gap: spacing[4],
   },
 });

@@ -13,6 +13,7 @@ import {
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Banner } from "@/lib/types";
@@ -118,10 +119,10 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
                   <Text style={styles.headline} numberOfLines={2}>
                     {b.subtitle || "Curated pieces, delivered with care"}
                   </Text>
-                </View>
-                <View style={styles.ctaStamp}>
-                  <View style={styles.ctaDot} />
-                  <Text style={styles.ctaText}>{b.cta_text || "Shop now"}</Text>
+                  <View style={styles.ctaStamp}>
+                    <Text style={styles.ctaText}>{b.cta_text || "Shop now"}</Text>
+                    <Ionicons name="arrow-forward" size={13} color={colors.light.foreground} />
+                  </View>
                 </View>
               </Animated.View>
             </TouchableOpacity>
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: spacing[4],
     right: spacing[4],
-    bottom: spacing[7],
+    bottom: spacing[4],
     gap: 4,
   },
   brand: {
@@ -220,28 +221,19 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   ctaStamp: {
-    position: "absolute",
-    left: spacing[4],
-    bottom: spacing[3],
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    marginTop: spacing[3],
     backgroundColor: colors.paper.cream,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing[3],
-    paddingVertical: 7,
-    transform: [{ rotate: "-2deg" }],
-  },
-  ctaDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: colors.light.foreground,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing[4],
+    paddingVertical: 9,
   },
   ctaText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: colors.light.foreground,
   },
   progressWrap: {

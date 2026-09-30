@@ -50,14 +50,17 @@ export function useTabBarVisibility() {
 /**
  * Attach to a tab screen's primary scroll container (Animated.ScrollView /
  * Animated.FlatList) to hide the floating tab bar on scroll-down and reveal
- * it on scroll-up, Facebook-style.
+ * it on scroll-up, Facebook-style. Pass `scrollY` to also receive the raw
+ * offset (e.g. for AppHeader's collapse-on-scroll).
  */
-export function useHideTabBarOnScroll() {
+export function useHideTabBarOnScroll(scrollY?: SharedValue<number>) {
   const { translateY, lastOffset, hideDistance } = useTabBarVisibility();
 
   return useAnimatedScrollHandler({
     onScroll: (event) => {
       const currentOffset = Math.max(0, event.contentOffset.y);
+      // Optional mirror of the raw offset for scroll-linked UI (e.g. AppHeader collapse).
+      if (scrollY) scrollY.value = currentOffset;
       const diff = currentOffset - lastOffset.value;
 
       if (currentOffset <= TOP_REVEAL_THRESHOLD) {

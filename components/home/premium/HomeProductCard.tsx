@@ -138,23 +138,12 @@ function HomeProductCardInner({
       ) : null}
 
       <View style={styles.priceRow}>
-        {discount > 0 ? (
-          <>
-            <Text style={styles.originalPrice}>
-              {formatPrice(product.mrp)}
-            </Text>
-            <Text style={[styles.sellingPrice, isLarge && styles.sellingPriceLarge]}>
-              {product.price ? formatPrice(product.price) : "Price on request"}
-            </Text>
-            <Text style={styles.discountPct}>
-              {discount}% OFF
-            </Text>
-          </>
-        ) : (
-          <Text style={[styles.sellingPrice, isLarge && styles.sellingPriceLarge]}>
-            {product.price ? formatPrice(product.price) : "Price on request"}
-          </Text>
-        )}
+        {/* Discount is shown once — as the badge on the image — so the
+            price row is just selling price + struck-through MRP. */}
+        <Text style={[styles.sellingPrice, isLarge && styles.sellingPriceLarge]}>
+          {product.price ? formatPrice(product.price) : "Price on request"}
+        </Text>
+        {discount > 0 ? <Text style={styles.originalPrice}>{formatPrice(product.mrp)}</Text> : null}
       </View>
     </TouchableOpacity>
   );
@@ -297,21 +286,16 @@ const styles = StyleSheet.create({
   },
   sellingPrice: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.light.foreground,
   },
   sellingPriceLarge: {
-    fontSize: 13,
+    fontSize: 14,
   },
   originalPrice: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
+    fontSize: 11,
     textDecorationLine: "line-through",
     color: colors.light.mutedForeground,
-  },
-  discountPct: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
-    color: colors.accent2.rust,
   },
 });

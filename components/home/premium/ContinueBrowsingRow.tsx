@@ -41,7 +41,8 @@ export function ContinueBrowsingRow() {
   );
 
   if (!user) return null;
-  if (!entries.length) return null;
+  // A single lonely tile reads as broken — only show once there's a real row.
+  if (entries.length < 3) return null;
 
   return (
     <View style={styles.wrap}>

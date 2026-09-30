@@ -110,7 +110,7 @@ export default function OrderTrackScreen() {
 
   if (loading || !data) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <Stack.Screen options={{ headerShown: false }} />
         <ScreenHeader title="Track order" onBack={() => router.back()} />
         <View style={styles.center}>
@@ -154,47 +154,102 @@ export default function OrderTrackScreen() {
         ? colors.accent2.rust
         : colors.accent2.ochre;
 
+  const heroMeta = STATUS_META[order.status];
+  const heroTone = isException ? exceptionTone : colors.accent2.ochre;
+  const totalSteps = STATUS_ORDER.length;
+  const stepsDone = isException ? reachedStep + 1 : currentStep + 1;
+
+  // First time each status was reached, for per-step timestamps.
+  const reachedAt: Record<string, string> = {};
+  for (const ev of events) {
+    if (!reachedAt[ev.status] || ev.created_at < reachedAt[ev.status]) {
+      reachedAt[ev.status] = ev.created_at;
+    }
+  }
+  if (!reachedAt.pending && order.placed_at) reachedAt.pending = order.placed_at;
+
+  const activity = events.slice().reverse();
+
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScreenHeader
-        title={`Tracking · #${order.order_number}`}
-        onBack={() => router.back()}
-      />
+      <ScreenHeader title="Track order" onBack={() => router.back()} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing[6]) + spacing[4] }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        {/* ── Status hero ───────────────────────────────────────── */}
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
-            <View style={styles.heroIcon}>
-              <Ionicons
-                name={STATUS_META[order.status]?.icon ?? "cube-outline"}
-                size={26}
-                color={colors.olive[700]}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Label style={styles.heroKicker}>
-                {(STATUS_META[order.status]?.label ?? order.status).toUpperCase()}
+            <View style={styles.orderChip}>
+              <Label style={styles.orderChipText} selectable>
+                #{order.order_number}
               </Label>
-              <Body size="sm" style={styles.heroCopy}>
-                {STATUS_META[order.status]?.copy ?? ""}
-              </Body>
             </View>
-          </View>
-          <View style={styles.heroFooter}>
-            <Body muted size="xs">
-              Placed {new Date(order.placed_at).toLocaleDateString()} ·{" "}
-              {formatPrice(order.total, order.currency)}
-            </Body>
-            {order.shipping_address ? (
-              <Body muted size="xs" numberOfLines={1} style={styles.heroAddress}>
-                → {order.shipping_address.line1}, {order.shipping_address.city}
-              </Body>
+            {!isTerminal ? (
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Label style={styles.liveText}>LIVE</Label>
+              </View>
             ) : null}
           </View>
+
+          <View style={styles.heroMain}>
+            <View style={[styles.heroIcon, { borderColor: heroTone + "66" }]}>
+              <Ionicons name={heroMeta?.icon ?? "cube-outline"} size={24} color={heroTone} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Display size="2xl" style={styles.heroTitle}>
+                {heroMeta?.label ?? order.status.replace(/_/g, " ")}
+              </Display>
+              <Body size="sm" style={styles.heroCopy}>
+                {heroMeta?.copy ?? ""}
+              </Body>
+            </View>
+          </View>
+
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTrack}>
+              {STATUS_ORDER.map((step, i) => (
+                <View
+                  key={step}
+                  style={[
+                    styles.progressSeg,
+                    i < stepsDone && { backgroundColor: i === stepsDone - 1 ? heroTone : colors.olive[300] },
+                  ]}
+                />
+              ))}
+            </View>
+            <Label style={styles.progressLabel}>
+              {isException ? "STOPPED" : `STEP ${stepsDone} OF ${totalSteps}`}
+            </Label>
+          </View>
+
+          <View style={styles.heroDivider} />
+
+          <View style={styles.heroFacts}>
+            <View style={styles.heroFact}>
+              <Label style={styles.heroFactKey}>PLACED</Label>
+              <Body size="sm" style={styles.heroFactVal}>
+                {fmtDate(order.placed_at)}
+              </Body>
+            </View>
+            <View style={styles.heroFact}>
+              <Label style={styles.heroFactKey}>TOTAL</Label>
+              <Body size="sm" style={styles.heroFactVal}>
+                {formatPrice(order.total, order.currency)}
+              </Body>
+            </View>
+          </View>
+          {order.shipping_address ? (
+            <View style={styles.heroAddress}>
+              <Ionicons name="location-outline" size={14} color={colors.olive[300]} />
+              <Body size="xs" numberOfLines={1} style={styles.heroAddressText}>
+                {order.shipping_address.line1}, {order.shipping_address.city}
+              </Body>
+            </View>
+          ) : null}
         </View>
 
         {courier ? (
@@ -249,122 +304,145 @@ export default function OrderTrackScreen() {
                 style={styles.callBtn}
                 activeOpacity={0.85}
               >
-                <Ionicons name="call-outline" size={14} color={colors.light.primary} />
+                <Ionicons name="call-outline" size={14} color={colors.light.primaryForeground} />
                 <Label style={styles.callLabel}>CALL</Label>
               </TouchableOpacity>
             ) : null}
           </View>
         ) : null}
 
-        <Display size="lg" style={styles.sectionTitle}>
-          Progress
-        </Display>
-        <View style={styles.timeline}>
+        {/* ── Progress timeline ─────────────────────────────────── */}
+        <View style={styles.sectionHead}>
+          <Label style={styles.sectionKicker}>JOURNEY</Label>
+          <Display size="xl">Progress</Display>
+        </View>
+        <View style={styles.card}>
           {visibleSteps.map((step, i) => {
-            const done = i <= currentStep;
+            const done = i < currentStep || (i === currentStep && isTerminal);
             const current = i === currentStep && !isTerminal;
             const meta = STATUS_META[step];
             const isLastRow = i === visibleSteps.length - 1 && !isException;
+            const lineDone = i < currentStep || (isException && i === visibleSteps.length - 1);
+            const at = reachedAt[step];
             return (
-              <View key={step} style={styles.timelineRow}>
-                <View style={styles.timelineRail}>
-                  <View
-                    style={[
-                      styles.timelineDot,
-                      done && styles.timelineDotDone,
-                      current && styles.timelineDotCurrent,
-                    ]}
-                  >
-                    {done ? (
-                      <Ionicons
-                        name="checkmark"
-                        size={11}
-                        color={colors.light.primaryForeground}
-                      />
+              <View key={step} style={styles.stepRow}>
+                <View style={styles.stepRail}>
+                  {current ? (
+                    <View style={styles.stepDotCurrentHalo}>
+                      <View style={styles.stepDotCurrent}>
+                        <Ionicons name={meta?.icon ?? "ellipse"} size={13} color={colors.light.primaryForeground} />
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={[styles.stepDot, done && styles.stepDotDone]}>
+                      {done ? (
+                        <Ionicons name="checkmark" size={12} color={colors.light.primaryForeground} />
+                      ) : (
+                        <View style={styles.stepDotInner} />
+                      )}
+                    </View>
+                  )}
+                  {!isLastRow ? <View style={[styles.stepLine, lineDone && styles.stepLineDone]} /> : null}
+                </View>
+                <View style={[styles.stepBody, isLastRow && { paddingBottom: 0 }]}>
+                  <View style={styles.stepTitleRow}>
+                    <Body
+                      size="sm"
+                      style={[
+                        styles.stepLabel,
+                        (done || current) && styles.stepLabelDone,
+                      ]}
+                    >
+                      {meta?.label ?? step}
+                    </Body>
+                    {current ? (
+                      <View style={styles.nowPill}>
+                        <Label style={styles.nowText}>NOW</Label>
+                      </View>
                     ) : null}
                   </View>
-                  {!isLastRow && (
-                    <View
-                      style={[styles.timelineLine, done && styles.timelineLineDone]}
-                    />
-                  )}
-                </View>
-                <View style={styles.timelineBody}>
-                  <Body
-                    size="sm"
-                    style={[
-                      styles.timelineLabel,
-                      done && styles.timelineLabelDone,
-                    ]}
-                  >
-                    {meta?.label ?? step}
-                  </Body>
                   {current ? (
-                    <Body muted size="xs">
+                    <Body muted size="xs" style={{ marginTop: 2 }}>
                       {meta?.copy}
                     </Body>
+                  ) : null}
+                  {(done || current) && at ? (
+                    <Label style={styles.stepTime}>{fmtDateTime(at)}</Label>
                   ) : null}
                 </View>
               </View>
             );
           })}
           {isException ? (
-            <View style={styles.timelineRow}>
-              <View style={styles.timelineRail}>
-                <View
-                  style={[
-                    styles.timelineDot,
-                    styles.timelineDotDone,
-                    { backgroundColor: exceptionTone },
-                  ]}
-                >
-                  <Ionicons name="checkmark" size={11} color={colors.light.primaryForeground} />
+            <View style={styles.stepRow}>
+              <View style={styles.stepRail}>
+                <View style={[styles.stepDot, { backgroundColor: exceptionTone }]}>
+                  <Ionicons name="close" size={12} color={colors.light.primaryForeground} />
                 </View>
               </View>
-              <View style={styles.timelineBody}>
-                <Body
-                  size="sm"
-                  style={[styles.timelineLabel, styles.timelineLabelDone, { color: exceptionTone }]}
-                >
+              <View style={[styles.stepBody, { paddingBottom: 0 }]}>
+                <Body size="sm" style={[styles.stepLabel, styles.stepLabelDone, { color: exceptionTone }]}>
                   {STATUS_META[order.status]?.label ?? order.status}
                 </Body>
-                <Body muted size="xs">
+                <Body muted size="xs" style={{ marginTop: 2 }}>
                   {STATUS_META[order.status]?.copy}
                 </Body>
+                {reachedAt[order.status] ? (
+                  <Label style={styles.stepTime}>{fmtDateTime(reachedAt[order.status])}</Label>
+                ) : null}
               </View>
             </View>
           ) : null}
         </View>
 
-        <Display size="lg" style={styles.sectionTitle}>
-          Activity
-        </Display>
-        <View style={styles.eventsCard}>
-          {events
-            .slice()
-            .reverse()
-            .map((ev, i) => (
-              <View key={ev.id} style={styles.eventRow}>
-                <View style={styles.eventDot} />
-                <View style={{ flex: 1 }}>
-                  <Body size="sm" style={styles.eventTitle}>
-                    {ev.description ?? STATUS_META[ev.status]?.label ?? ev.status}
-                  </Body>
-                  <Body muted size="xs">
-                    {new Date(ev.created_at).toLocaleString()} · {STATUS_META[ev.status]?.label ?? ev.status}
-                  </Body>
+        {/* ── Activity feed ─────────────────────────────────────── */}
+        <View style={styles.sectionHead}>
+          <Label style={styles.sectionKicker}>UPDATES</Label>
+          <Display size="xl">Activity</Display>
+        </View>
+        <View style={[styles.card, { paddingVertical: spacing[2] }]}>
+          {activity.map((ev, i) => {
+            const label = STATUS_META[ev.status]?.label ?? ev.status.replace(/_/g, " ");
+            const desc = ev.description?.trim();
+            const showDesc = !!desc && desc.toLowerCase() !== label.toLowerCase();
+            const isLast = i === activity.length - 1;
+            return (
+              <View key={ev.id} style={[styles.eventRow, !isLast && styles.eventRowBorder]}>
+                <View style={[styles.eventIcon, i === 0 && styles.eventIconLatest]}>
+                  <Ionicons
+                    name={STATUS_META[ev.status]?.icon ?? "ellipse-outline"}
+                    size={15}
+                    color={i === 0 ? colors.light.primaryForeground : colors.olive[600]}
+                  />
                 </View>
-                {i === 0 ? (
-                  <Badge style={{ backgroundColor: colors.olive[100] }}>
-                    <Label style={{ color: colors.olive[700], fontSize: 9 }}>LATEST</Label>
-                  </Badge>
-                ) : null}
+                <View style={{ flex: 1, gap: 2 }}>
+                  <View style={styles.stepTitleRow}>
+                    <Body size="sm" style={styles.eventTitle}>
+                      {label}
+                    </Body>
+                    {i === 0 ? (
+                      <Badge style={{ backgroundColor: colors.olive[100] }}>
+                        <Label style={{ color: colors.olive[700], fontSize: 9 }}>LATEST</Label>
+                      </Badge>
+                    ) : null}
+                  </View>
+                  {showDesc ? (
+                    <Body muted size="xs">
+                      {desc}
+                    </Body>
+                  ) : null}
+                  <Label style={styles.eventTime}>
+                    {fmtDateTime(ev.created_at)}
+                    {ev.location ? ` · ${ev.location}` : ""}
+                  </Label>
+                </View>
               </View>
-            ))}
+            );
+          })}
         </View>
 
         <Button
-          variant="ghost"
+          variant="outline"
           onPress={() =>
             router.push({
               pathname: "/(main)/account/orders/[id]" as never,
@@ -379,51 +457,110 @@ export default function OrderTrackScreen() {
   );
 }
 
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function fmtDateTime(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${date} · ${time}`;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: spacing[5], paddingBottom: spacing[10], gap: spacing[5] },
+  content: { padding: spacing[5], paddingBottom: spacing[10], gap: spacing[4] },
+
+  // Hero
   heroCard: {
-    backgroundColor: colors.olive[100],
-    borderRadius: radii["2xl"],
-    padding: spacing[4],
-    gap: spacing[3],
-    borderWidth: 1,
-    borderColor: colors.olive[200],
+    backgroundColor: colors.olive[900],
+    borderRadius: radii["3xl"],
+    padding: spacing[5],
+    gap: spacing[4],
   },
-  heroTop: { flexDirection: "row", gap: spacing[3], alignItems: "center" },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  orderChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(250,248,241,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(250,248,241,0.14)",
+  },
+  orderChipText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: colors.olive[100],
+    letterSpacing: 0.4,
+  },
+  livePill: { flexDirection: "row", alignItems: "center", gap: 6 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent2.ochre },
+  liveText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: colors.accent2.ochre,
+  },
+  heroMain: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
   heroIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.olive[200],
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    backgroundColor: "rgba(250,248,241,0.06)",
     alignItems: "center",
     justifyContent: "center",
   },
-  heroKicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: colors.olive[800],
-    letterSpacing: 1.2,
+  heroTitle: { color: colors.paper.cream },
+  heroCopy: { color: colors.olive[200], marginTop: 2 },
+  progressWrap: { gap: spacing[2] },
+  progressTrack: { flexDirection: "row", gap: 4 },
+  progressSeg: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(250,248,241,0.14)",
   },
-  heroCopy: { color: colors.olive[800], marginTop: 2 },
-  heroFooter: { gap: 2 },
-  heroAddress: { color: colors.olive[700] },
+  progressLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: colors.olive[300],
+  },
+  heroDivider: { height: 1, backgroundColor: "rgba(250,248,241,0.1)" },
+  heroFacts: { flexDirection: "row", gap: spacing[6] },
+  heroFact: { gap: 2 },
+  heroFactKey: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: colors.olive[300],
+  },
+  heroFactVal: { color: colors.paper.cream, fontFamily: fontFamilies.sans.semibold },
+  heroAddress: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: -spacing[1] },
+  heroAddressText: { color: colors.olive[200], flex: 1 },
+
+  // Rider / courier
   riderCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
     backgroundColor: colors.light.card,
     borderRadius: radii["2xl"],
-    padding: spacing[3],
+    padding: spacing[4],
     borderWidth: 1,
     borderColor: colors.light.border,
   },
   riderLeft: { flexDirection: "row", gap: spacing[3], alignItems: "center", flex: 1 },
   riderIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
@@ -438,17 +575,16 @@ const styles = StyleSheet.create({
   callBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.light.primary,
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.primary,
   },
   riderCall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.olive[100],
@@ -456,67 +592,116 @@ const styles = StyleSheet.create({
     borderColor: colors.olive[200],
   },
   callLabel: {
-    color: colors.light.primary,
+    color: colors.light.primaryForeground,
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
   },
-  sectionTitle: {},
-  timeline: {
+
+  // Sections
+  sectionHead: { marginTop: spacing[2], gap: 2 },
+  sectionKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: colors.light.mutedForeground,
+  },
+  card: {
     backgroundColor: colors.light.card,
     borderRadius: radii["2xl"],
     padding: spacing[4],
     borderWidth: 1,
     borderColor: colors.light.border,
   },
-  timelineRow: { flexDirection: "row", gap: spacing[3], minHeight: 56 },
-  timelineRail: { alignItems: "center", width: 24 },
-  timelineDot: {
+
+  // Timeline
+  stepRow: { flexDirection: "row", gap: spacing[3] },
+  stepRail: { alignItems: "center", width: 30 },
+  stepDot: {
+    width: 22,
+    height: 22,
+    marginTop: 4,
+    borderRadius: 11,
+    backgroundColor: colors.light.muted,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotDone: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
+  stepDotInner: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.light.border },
+  stepDotCurrentHalo: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.accent2.ochre + "33",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotCurrent: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: colors.light.border,
+    backgroundColor: colors.accent2.ochre,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
   },
-  timelineDotDone: { backgroundColor: colors.light.primary },
-  timelineDotCurrent: {
-    backgroundColor: colors.accent2.ochre,
-    borderWidth: 2,
-    borderColor: colors.accent2.ochre + "40",
-  },
-  timelineLine: {
-    position: "absolute",
-    top: 22,
-    bottom: -34,
+  stepLine: {
+    flex: 1,
     width: 2,
+    minHeight: 16,
+    marginVertical: 4,
+    borderRadius: 1,
     backgroundColor: colors.light.border,
   },
-  timelineLineDone: { backgroundColor: colors.light.primary },
-  timelineBody: { flex: 1, paddingBottom: spacing[4] },
-  timelineLabel: { color: colors.light.mutedForeground },
-  timelineLabelDone: { color: colors.light.foreground, fontFamily: fontFamilies.sans.semibold },
-  eventsCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[3],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: spacing[3],
+  stepLineDone: { backgroundColor: colors.light.primary },
+  stepBody: { flex: 1, paddingTop: 5, paddingBottom: spacing[5] },
+  stepTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  stepLabel: { color: colors.light.mutedForeground },
+  stepLabelDone: { color: colors.light.foreground, fontFamily: fontFamilies.sans.semibold },
+  stepTime: {
+    marginTop: 4,
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    letterSpacing: 0.3,
+    color: colors.light.mutedForeground,
   },
+  nowPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent2.ochre + "26",
+  },
+  nowText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: "#8a6d22",
+  },
+
+  // Activity
   eventRow: {
     flexDirection: "row",
     gap: spacing[3],
+    alignItems: "flex-start",
+    paddingVertical: spacing[3],
+  },
+  eventRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.light.border },
+  eventIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[100],
     alignItems: "center",
-    paddingVertical: spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+    justifyContent: "center",
   },
-  eventDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.olive[600],
+  eventIconLatest: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
+  eventTitle: { fontFamily: fontFamilies.sans.semibold, flexShrink: 1 },
+  eventTime: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    letterSpacing: 0.3,
+    color: colors.light.mutedForeground,
   },
-  eventTitle: { fontFamily: fontFamilies.sans.semibold },
 });

@@ -9,8 +9,8 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
 
-const CARD_WIDTH = 232;
-const CARD_HEIGHT = 312;
+const CARD_WIDTH = 260;
+const BANNER_HEIGHT = 120;
 
 const GRADIENTS: [string, string][] = [
   [colors.olive[700], colors.olive[950]],
@@ -37,12 +37,9 @@ interface FeaturedStoresRowProps {
 }
 
 /**
- * "Boutique posters" — big, full-bleed portrait cards, numbered like
- * catalogue plates, with the store name set large in the display serif
- * directly over the photo. Full-bleed on purpose (no white caption band)
- * so it reads as one large image, not a smaller card-with-footer shape —
- * and it's a numbered continuous scroll, not the single-focus landscape
- * paging used for FeaturedBrandsRow below it.
+ * Store cards: banner band on top, logo + name + meta on a solid panel
+ * below. Store banners are seller-uploaded wide artwork that often
+ * contains its own text, so the name is never overlaid on the image.
  */
 export function FeaturedStoresRow({ stores }: FeaturedStoresRowProps) {
   const router = useRouter();
@@ -97,15 +94,18 @@ function StorePlate({ store, index, onPress }: { store: Store; index: number; on
   return (
     <Animated.View style={{ opacity: anim, transform: [{ translateY }] }}>
       <TouchableOpacity style={styles.card} activeOpacity={0.92} onPress={onPress}>
-        {store.banner_url ? (
-          <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
-        ) : (
-          <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
-        )}
-        <LinearGradient colors={["transparent", "transparent", "rgba(0,0,0,0.88)"]} style={StyleSheet.absoluteFill} />
+        {/* Banner band — store banners are wide artwork (often with their own
+            text), so they get their own area instead of having the name
+            printed over them. */}
+        <View style={styles.banner}>
+          {store.banner_url ? (
+            <Image source={{ uri: store.banner_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          ) : (
+            <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} />
+          )}
+        </View>
 
-        <View style={styles.top}>
-          <Text style={styles.plate}>PLATE {String(index + 1).padStart(2, "0")}</Text>
+        <View style={styles.panel}>
           <View style={styles.logoWrap}>
             {store.logo_url ? (
               <Image source={{ uri: store.logo_url }} style={styles.logo} contentFit="cover" />
@@ -113,25 +113,23 @@ function StorePlate({ store, index, onPress }: { store: Store; index: number; on
               <Text style={styles.logoInitial}>{store.name.charAt(0)}</Text>
             )}
           </View>
-        </View>
-
-        <View style={styles.bottom}>
-          <Text style={styles.name} numberOfLines={2}>
+          <Text style={styles.name} numberOfLines={1}>
             {store.name}
           </Text>
           <View style={styles.metaRow}>
             {store.rating > 0 ? (
               <View style={styles.metaItem}>
-                <Ionicons name="star" size={11} color="#f5d76e" />
+                <Ionicons name="star" size={11} color={colors.accent2.ochre} />
                 <Text style={styles.metaText}>{store.rating.toFixed(1)}</Text>
               </View>
             ) : null}
+            {store.rating > 0 && store.total_products > 0 ? <Text style={styles.metaText}>·</Text> : null}
             {store.total_products > 0 ? (
               <Text style={styles.metaText}>{formatCount(store.total_products)} pieces</Text>
             ) : null}
             <View style={styles.visitPill}>
               <Text style={styles.visitText}>Visit</Text>
-              <Ionicons name="arrow-forward" size={11} color={colors.light.foreground} />
+              <Ionicons name="arrow-forward" size={11} color={colors.light.primaryForeground} />
             </View>
           </View>
         </View>
@@ -150,67 +148,58 @@ const styles = StyleSheet.create({
   },
   card: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
     borderRadius: radii["2xl"],
     overflow: "hidden",
+    backgroundColor: colors.light.card,
+    borderWidth: 1,
+    borderColor: colors.light.border + "99",
+  },
+  banner: {
+    height: BANNER_HEIGHT,
     backgroundColor: colors.olive[100],
-    ...shadows.editorial,
   },
-  top: {
-    position: "absolute",
-    top: spacing[3],
-    left: spacing[3],
-    right: spacing[3],
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  plate: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: "rgba(255,255,255,0.85)",
-    marginTop: 6,
+  panel: {
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[4],
+    paddingTop: 30,
   },
   logoWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#ffffff",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.85)",
+    position: "absolute",
+    top: -26,
+    left: spacing[4],
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.light.card,
+    borderWidth: 3,
+    borderColor: colors.light.card,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    ...shadows.soft,
   },
   logo: {
     width: "100%",
     height: "100%",
+    borderRadius: 23,
   },
   logoInitial: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontSize: 20,
     color: colors.light.primary,
-  },
-  bottom: {
-    position: "absolute",
-    left: spacing[4],
-    right: spacing[4],
-    bottom: spacing[4],
   },
   name: {
     fontFamily: fontFamilies.display.semibold,
-    fontStyle: "italic",
-    fontSize: 26,
-    lineHeight: 30,
-    color: "#ffffff",
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.light.foreground,
     marginBottom: spacing[2],
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing[2],
+    gap: 6,
+    minHeight: 28,
   },
   metaItem: {
     flexDirection: "row",
@@ -220,21 +209,21 @@ const styles = StyleSheet.create({
   metaText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
-    color: "rgba(255,255,255,0.85)",
+    color: colors.light.mutedForeground,
   },
   visitPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.light.primary,
     borderRadius: radii.full,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     marginLeft: "auto",
   },
   visitText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: colors.light.primaryForeground,
   },
 });

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, ScrollView, Text } from "react-native";
+import { View, StyleSheet, ScrollView, Text, TouchableOpacity } from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@/components/ui/Icon";
 import { Label } from "@/components/ui/Typography";
-import { ProductCard } from "@/components/product/ProductCard";
+import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
 import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Product } from "@/lib/types";
@@ -12,7 +14,12 @@ interface PinnedDropProps {
 }
 
 export function PinnedDrop({ products, endsAt }: PinnedDropProps) {
+  const router = useRouter();
   const items = products.slice(0, 5);
+  const maxDiscount = items.reduce(
+    (m, p) => (p.mrp > p.price ? Math.max(m, Math.round(((p.mrp - p.price) / p.mrp) * 100)) : m),
+    0,
+  );
   const [t, setT] = useState({ h: 0, m: 0, s: 0 });
 
   useEffect(() => {
@@ -39,10 +46,22 @@ export function PinnedDrop({ products, endsAt }: PinnedDropProps) {
     <View style={styles.wrap}>
       {/* Countdown Strip */}
       <View style={styles.countdownStrip}>
-        <Label style={styles.stripLabel}>FLASH SALE ENDS IN</Label>
+        <View style={{ flex: 1 }}>
+          <Label style={styles.stripLabel}>FLASH SALE</Label>
+          {maxDiscount > 0 ? <Text style={styles.stripSub}>Up to {maxDiscount}% off · ends in</Text> : <Text style={styles.stripSub}>Ends in</Text>}
+        </View>
         <Text style={styles.timerText}>
           {String(t.h).padStart(2, "0")}:{String(t.m).padStart(2, "0")}:{String(t.s).padStart(2, "0")}
         </Text>
+        <TouchableOpacity
+          style={styles.seeAll}
+          onPress={() => router.push("/(main)/products?sort=sale")}
+          activeOpacity={0.75}
+          accessibilityLabel="See all sale items"
+        >
+          <Text style={styles.seeAllText}>See all</Text>
+          <Ionicons name="chevron-forward" size={12} color={colors.accent2.rust} />
+        </TouchableOpacity>
       </View>
 
       {/* Horizontal Rail */}
@@ -51,8 +70,8 @@ export function PinnedDrop({ products, endsAt }: PinnedDropProps) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {items.map((p) => (
-          <ProductCard key={p.id} product={p} horizontal />
+        {items.map((p, i) => (
+          <HomeProductCard key={p.id} product={p} index={i} />
         ))}
       </ScrollView>
     </View>
@@ -62,6 +81,7 @@ export function PinnedDrop({ products, endsAt }: PinnedDropProps) {
 const styles = StyleSheet.create({
   wrap: {
     paddingBottom: spacing[5],
+    marginBottom: spacing[6],
     backgroundColor: colors.light.background,
   },
   countdownStrip: {
@@ -80,6 +100,27 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: "uppercase",
   },
+  stripSub: {
+    color: "rgba(250,248,241,0.85)",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11.5,
+    marginTop: 1,
+  },
+  seeAll: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginLeft: spacing[3],
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.light.primaryForeground,
+  },
+  seeAllText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: colors.accent2.rust,
+  },
   timerText: {
     color: colors.light.primaryForeground,
     fontFamily: fontFamilies.mono.semibold,
@@ -87,7 +128,7 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   scroll: {
-    paddingHorizontal: 20,
-    gap: spacing[2],
+    paddingHorizontal: spacing[5],
+    gap: spacing[3],
   },
 });

@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -24,674 +26,541 @@ import {
   cardNumberMaxLength,
   type PaymentBrand,
 } from "@/lib/account-local";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const BRAND_STYLES: Record<
-  PaymentBrand,
-  { name: string; gradient: [string, string, string]; logoText: string; accent: string }
-> = {
-  visa: {
-    name: "Visa",
-    gradient: ["#101C36", "#192B52", "#0B1326"],
-    logoText: "VISA",
-    accent: "#E8CF8F",
-  },
-  mastercard: {
-    name: "Mastercard",
-    gradient: ["#2B1318", "#3E1B22", "#1C0D10"],
-    logoText: "MASTERCARD",
-    accent: "#EB001B",
-  },
-  amex: {
-    name: "American Express",
-    gradient: ["#14241E", "#1F382E", "#0E1A15"],
-    logoText: "AMEX",
-    accent: "#C8A44A",
-  },
+const BRAND_STYLES: Record<PaymentBrand, { name: string; gradient: [string, string]; logoText: string }> = {
+  visa: { name: "Visa", gradient: ["#1A2A52", "#0B1326"], logoText: "VISA" },
+  mastercard: { name: "Mastercard", gradient: ["#3E1B22", "#1C0D10"], logoText: "mastercard" },
+  amex: { name: "American Express", gradient: ["#1F382E", "#0E1A15"], logoText: "AMEX" },
 };
+/** Shown before a brand is recognised — neutral, so we don't imply "Visa" for every card. */
+const NEUTRAL_GRADIENT: [string, string] = [colors.olive[700], colors.olive[950]];
+
+type FieldKey = "number" | "holder" | "exp" | "cvv";
+
+/** Standard Luhn checksum — catches most mistyped card numbers before submit. */
+function passesLuhn(digits: string): boolean {
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return digits.length > 0 && sum % 10 === 0;
+}
+
+/** Typed digits followed by masked placeholders in the brand's grouping. */
+function previewNumber(formatted: string, brand: PaymentBrand | null): string {
+  const template = brand === "amex" ? "•••• •••••• •••••" : "•••• •••• •••• ••••";
+  return formatted + template.slice(formatted.length);
+}
+
+function validate(fields: { number: string; holder: string; exp: string; cvv: string }, brand: PaymentBrand | null) {
+  const errors: Partial<Record<FieldKey, string>> = {};
+  const digits = fields.number.replace(/\D/g, "");
+  if (!digits) errors.number = "Enter your card number";
+  else if (!brand) errors.number = "We accept Visa, Mastercard and American Express";
+  else if (digits.length !== cardNumberMaxLength(brand) || !passesLuhn(digits))
+    errors.number = "This card number doesn't look right";
+
+  if (!fields.holder.trim()) errors.holder = "Enter the name on the card";
+
+  const expDigits = fields.exp.replace(/\D/g, "");
+  if (expDigits.length !== 4) {
+    errors.exp = "Use MM/YY";
+  } else {
+    const m = parseInt(expDigits.slice(0, 2), 10);
+    const y = 2000 + parseInt(expDigits.slice(2), 10);
+    const now = new Date();
+    if (m < 1 || m > 12) errors.exp = "Month must be 01–12";
+    else if (y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth() + 1))
+      errors.exp = "This card has expired";
+  }
+
+  const cvvLen = brand === "amex" ? 4 : 3;
+  if (fields.cvv.length !== cvvLen) errors.cvv = `${cvvLen} digits`;
+
+  return errors;
+}
 
 export default function AddPaymentMethodScreen() {
   const router = useRouter();
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const [rawNumber, setRawNumber] = useState("");
+  const [number, setNumber] = useState("");
   const [holder, setHolder] = useState(user?.user_metadata?.full_name || "");
   const [exp, setExp] = useState("");
   const [cvv, setCvv] = useState("");
   const [isDefault, setIsDefault] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Errors only show for fields the user has left (or after a submit attempt),
+  // so the form doesn't shout while they're still typing.
+  const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [focused, setFocused] = useState<FieldKey | null>(null);
 
-  // Auto-detect brand from raw numbers
-  const detectedBrand: PaymentBrand = detectPaymentBrand(rawNumber) ?? "visa";
-  const brandMeta = BRAND_STYLES[detectedBrand];
-
-  const handleCardNumberChange = (val: string) => {
-    const formatted = formatCardNumberInput(val, detectPaymentBrand(val));
-    setRawNumber(formatted);
+  const brand = detectPaymentBrand(number);
+  const brandMeta = brand ? BRAND_STYLES[brand] : null;
+  const errors = useMemo(() => validate({ number, holder, exp, cvv }, brand), [number, holder, exp, cvv, brand]);
+  const isValid = Object.keys(errors).length === 0;
+  const errorFor = (k: FieldKey) => (touched[k] ? errors[k] : undefined);
+  const blur = (k: FieldKey) => {
+    setFocused(null);
+    setTouched((t) => ({ ...t, [k]: true }));
   };
 
   const handleExpChange = (val: string) => {
     const digits = val.replace(/\D/g, "").slice(0, 4);
-    if (digits.length <= 2) {
-      setExp(digits);
-    } else {
-      setExp(`${digits.slice(0, 2)}/${digits.slice(2)}`);
-    }
+    setExp(digits.length <= 2 ? digits : `${digits.slice(0, 2)}/${digits.slice(2)}`);
   };
 
-  const handleSaveCard = async () => {
-    const cleanNumber = rawNumber.replace(/\D/g, "");
-    if (cleanNumber.length < 15) {
-      toast("Please enter a valid 15 or 16-digit card number", "error");
-      return;
-    }
-    if (!holder.trim()) {
-      toast("Please enter the cardholder's full name", "error");
-      return;
-    }
+  const handleSave = async () => {
+    setTouched({ number: true, holder: true, exp: true, cvv: true });
+    if (!isValid || !brand || saving) return;
 
-    const cleanExp = exp.replace(/\D/g, "");
-    if (cleanExp.length !== 4) {
-      toast("Please enter expiration as MM/YY", "error");
-      return;
-    }
-
-    const expMonth = parseInt(cleanExp.slice(0, 2), 10);
-    const expYear = 2000 + parseInt(cleanExp.slice(2, 4), 10);
-
-    if (expMonth < 1 || expMonth > 12) {
-      toast("Expiration month must be between 01 and 12", "error");
-      return;
-    }
-
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    if (expYear < currentYear || (expYear === currentYear && expMonth < currentMonth)) {
-      toast("Card expiration date is in the past", "error");
-      return;
-    }
-
-    if (cvv.length < 3) {
-      toast("Please enter a valid 3 or 4-digit CVV security code", "error");
-      return;
-    }
-
-    const last4 = cleanNumber.slice(-4);
-
+    const digits = number.replace(/\D/g, "");
+    const expDigits = exp.replace(/\D/g, "");
     setSaving(true);
     try {
       const res = await createPaymentMethodBackend({
-        brand: detectedBrand as SavedCardBrand,
-        last4,
-        exp_month: expMonth,
-        exp_year: expYear,
+        brand: brand as SavedCardBrand,
+        last4: digits.slice(-4),
+        exp_month: parseInt(expDigits.slice(0, 2), 10),
+        exp_year: 2000 + parseInt(expDigits.slice(2), 10),
         holder: holder.trim(),
         is_default: isDefault,
       });
-
-      setSaving(false);
-
       if (!res.ok) {
-        toast(res.error || "Failed to register payment instrument", "error");
+        toast(res.error || "Couldn't save this card. Try again.", "error");
         return;
       }
-
-      toast("Payment card registered to vault", "success");
-      // Replace back to payments list
+      toast(`${brandMeta?.name ?? "Card"} ending ${digits.slice(-4)} saved`, "success");
       router.replace("/(main)/account/payments");
     } catch {
+      toast("Couldn't save this card. Try again.", "error");
+    } finally {
       setSaving(false);
-      toast("Failed to register payment instrument", "error");
     }
   };
 
-  // Preview display number
-  const displayNumber = rawNumber
-    ? rawNumber
-    : "•••• •••• •••• ••••";
-
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      {/* 1. Atelier Top Navigation Header */}
-      <View style={styles.topHeader}>
+      <View style={styles.topBar}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
           activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          hitSlop={12}
+          accessibilityLabel="Back"
         >
-          <Ionicons name="chevron-back" size={20} color="#141311" />
+          <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
         </TouchableOpacity>
-
-        <View style={styles.headerTitleCenter}>
-          <Text style={styles.headerEyebrow}>FINANCIAL VAULT</Text>
-          <Text style={styles.headerTitle}>Add Payment Card</Text>
-        </View>
-
-        <View style={styles.shieldMedallionSmall}>
-          <Ionicons name="shield-checkmark" size={18} color="#C8A44A" />
-        </View>
+        <Text style={styles.topTitle}>Add card</Text>
+        <View style={styles.backButtonPlaceholder} />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* 2. Live Luxury Embossed Card Preview */}
-          <View style={styles.cardPreviewWrapper}>
-            <LinearGradient
-              colors={brandMeta.gradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cardArt}
+          {/* Live card preview */}
+          <LinearGradient
+            colors={brandMeta?.gradient ?? NEUTRAL_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.cardArt}
+          >
+            <View style={styles.cardArtTop}>
+              <View style={styles.cardChip}>
+                <View style={styles.cardChipLine} />
+              </View>
+              {brandMeta ? (
+                <Text style={styles.cardBrandLogo}>{brandMeta.logoText}</Text>
+              ) : (
+                <Ionicons name="card-outline" size={22} color="rgba(255,255,255,0.6)" />
+              )}
+            </View>
+
+            <Text style={styles.cardNumber} numberOfLines={1} adjustsFontSizeToFit>
+              {previewNumber(number, brand)}
+            </Text>
+
+            <View style={styles.cardArtBottom}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardLabel}>Cardholder</Text>
+                <Text style={styles.cardValue} numberOfLines={1}>
+                  {holder.trim() ? holder.toUpperCase() : "YOUR NAME"}
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={styles.cardLabel}>Expires</Text>
+                <Text style={styles.cardValue}>{exp || "MM/YY"}</Text>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {/* Fields */}
+          <View style={styles.form}>
+            <Field
+              label="Card number"
+              error={errorFor("number")}
+              focused={focused === "number"}
+              trailing={
+                brandMeta ? (
+                  <View style={styles.brandPill}>
+                    <Text style={styles.brandPillText}>{brandMeta.name}</Text>
+                  </View>
+                ) : null
+              }
             >
-              {/* Card Top Row */}
-              <View style={styles.cardArtTop}>
-                {/* Gold Micro-chip */}
-                <View style={styles.cardChip}>
-                  <View style={styles.cardChipLine} />
-                </View>
+              <TextInput
+                style={styles.textInput}
+                value={number}
+                onChangeText={(v) => setNumber(formatCardNumberInput(v, detectPaymentBrand(v)))}
+                onFocus={() => setFocused("number")}
+                onBlur={() => blur("number")}
+                placeholder="1234 5678 9012 3456"
+                placeholderTextColor={colors.light.mutedForeground + "80"}
+                keyboardType="number-pad"
+                textContentType="creditCardNumber"
+                autoComplete="cc-number"
+                maxLength={cardNumberMaxLength(brand) + 3}
+              />
+            </Field>
 
-                {/* Brand Logo Badge */}
-                <View style={styles.cardBrandBadge}>
-                  <Text style={styles.cardBrandLogo}>{brandMeta.logoText}</Text>
-                </View>
-              </View>
+            <Field label="Name on card" error={errorFor("holder")} focused={focused === "holder"}>
+              <TextInput
+                style={styles.textInput}
+                value={holder}
+                onChangeText={setHolder}
+                onFocus={() => setFocused("holder")}
+                onBlur={() => blur("holder")}
+                placeholder="As printed on the card"
+                placeholderTextColor={colors.light.mutedForeground + "80"}
+                autoCapitalize="words"
+                textContentType="name"
+                autoComplete="cc-name"
+              />
+            </Field>
 
-              {/* Masked / Live Number */}
-              <Text style={styles.cardNumber}>{displayNumber}</Text>
-
-              {/* Card Bottom Row */}
-              <View style={styles.cardArtBottom}>
-                <View style={styles.cardHolderCol}>
-                  <Text style={styles.cardHolderLabel}>CARDHOLDER</Text>
-                  <Text style={styles.cardHolderName} numberOfLines={1}>
-                    {(holder || "PATRON NAME").toUpperCase()}
-                  </Text>
-                </View>
-
-                <View style={styles.cardExpCol}>
-                  <Text style={styles.cardExpiresLabel}>EXPIRES</Text>
-                  <Text style={styles.cardExpiresDate}>{exp || "MM/YY"}</Text>
-                </View>
-              </View>
-            </LinearGradient>
-          </View>
-
-          {/* 3. Card Input Form Fields */}
-          <View style={styles.formCard}>
-            <View style={styles.formHeaderRow}>
-              <View>
-                <Text style={styles.sectionEyebrow}>TOKENIZED ENROLLMENT</Text>
-                <Text style={styles.sectionTitle}>Card Information</Text>
-              </View>
-              <View style={styles.pciPill}>
-                <Ionicons name="lock-closed" size={10} color="#2B6E3F" />
-                <Text style={styles.pciPillText}>256-BIT ENCRYPTED</Text>
-              </View>
-            </View>
-
-            {/* Card Number Input */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>CARD NUMBER</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="card-outline" size={16} color="#85651B" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={rawNumber}
-                  onChangeText={handleCardNumberChange}
-                  placeholder="4000 1234 5678 9010"
-                  placeholderTextColor="#9C988F"
-                  keyboardType="number-pad"
-                  maxLength={cardNumberMaxLength(detectedBrand) + 4}
-                />
-                <View style={styles.detectedBrandPill}>
-                  <Text style={styles.detectedBrandText}>{brandMeta.name}</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Cardholder Name */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>CARDHOLDER FULL NAME</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="person-outline" size={16} color="#85651B" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={holder}
-                  onChangeText={setHolder}
-                  placeholder="Name as printed on card"
-                  placeholderTextColor="#9C988F"
-                  autoCapitalize="characters"
-                />
-              </View>
-            </View>
-
-            {/* Expiry & CVV Row */}
-            <View style={styles.twoColRow}>
-              {/* Expiry Date */}
-              <View style={[styles.field, styles.halfCol]}>
-                <Text style={styles.fieldLabel}>EXPIRATION (MM/YY)</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="calendar-outline" size={16} color="#85651B" style={styles.inputIcon} />
+            <View style={styles.twoCol}>
+              <View style={{ flex: 1 }}>
+                <Field label="Expiry" error={errorFor("exp")} focused={focused === "exp"}>
                   <TextInput
                     style={styles.textInput}
                     value={exp}
                     onChangeText={handleExpChange}
-                    placeholder="12/28"
-                    placeholderTextColor="#9C988F"
+                    onFocus={() => setFocused("exp")}
+                    onBlur={() => blur("exp")}
+                    placeholder="MM/YY"
+                    placeholderTextColor={colors.light.mutedForeground + "80"}
                     keyboardType="number-pad"
+                    autoComplete="cc-exp"
                     maxLength={5}
                   />
-                </View>
+                </Field>
               </View>
-
-              {/* CVV */}
-              <View style={[styles.field, styles.halfCol]}>
-                <View style={styles.cvvHeader}>
-                  <Text style={styles.fieldLabel}>SECURITY CVV</Text>
-                  <Ionicons name="help-circle-outline" size={13} color="#8F8B82" />
-                </View>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="key-outline" size={16} color="#85651B" style={styles.inputIcon} />
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="CVV"
+                  error={errorFor("cvv")}
+                  focused={focused === "cvv"}
+                  onLabelHelp={() =>
+                    Alert.alert(
+                      "Where's the CVV?",
+                      brand === "amex"
+                        ? "The 4-digit code printed on the front of your card, above the number."
+                        : "The 3-digit code on the back of your card, next to the signature strip.",
+                    )
+                  }
+                >
                   <TextInput
                     style={styles.textInput}
                     value={cvv}
-                    onChangeText={(v) => setCvv(v.replace(/\D/g, "").slice(0, 4))}
-                    placeholder="3 or 4 digits"
-                    placeholderTextColor="#9C988F"
+                    onChangeText={(v) => setCvv(v.replace(/\D/g, "").slice(0, brand === "amex" ? 4 : 3))}
+                    onFocus={() => setFocused("cvv")}
+                    onBlur={() => blur("cvv")}
+                    placeholder={brand === "amex" ? "4 digits" : "3 digits"}
+                    placeholderTextColor={colors.light.mutedForeground + "80"}
                     keyboardType="number-pad"
+                    autoComplete="cc-csc"
                     maxLength={4}
                     secureTextEntry
                   />
-                </View>
+                </Field>
               </View>
             </View>
 
-            {/* Default Card Toggle */}
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleInfo}>
-                <Text style={styles.toggleLabel}>Set as Default Payment Instrument</Text>
-                <Text style={styles.toggleSub}>
-                  Pre-selected during one-touch boutique checkout
-                </Text>
+            <Pressable style={styles.toggleRow} onPress={() => setIsDefault((v) => !v)}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Use as my default card</Text>
+                <Text style={styles.toggleSub}>Pre-selected at checkout</Text>
               </View>
               <Switch
                 value={isDefault}
                 onValueChange={setIsDefault}
-                trackColor={{ false: "#E0DCcf", true: "#141311" }}
-                thumbColor={isDefault ? "#C8A44A" : "#FAF8F5"}
+                trackColor={{ false: colors.light.border, true: colors.light.primary }}
+                thumbColor={colors.paper.cream}
               />
-            </View>
+            </Pressable>
 
-            {/* Submit Button */}
-            <TouchableOpacity
-              style={[styles.submitButton, saving && { opacity: 0.7 }]}
-              disabled={saving}
-              onPress={handleSaveCard}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["#1E1C18", "#141311"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.submitGradient}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#E8CF8F" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="shield-checkmark-outline" size={16} color="#E8CF8F" />
-                    <Text style={styles.submitButtonText}>Save Card to Financial Vault</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-
-          {/* 4. Payments.lk Hosted Gateway Security Guarantee Banner */}
-          <View style={styles.guaranteeCard}>
-            <View style={styles.guaranteeHeader}>
-              <Ionicons name="lock-closed" size={16} color="#C8A44A" />
-              <Text style={styles.guaranteeTitle}>Payments.lk & PCI-DSS Tier 1 Architecture</Text>
+            {/* Accurate to what this screen actually sends: brand, last 4,
+                expiry and name. The full number and CVV never leave the device. */}
+            <View style={styles.securityNote}>
+              <Ionicons name="lock-closed-outline" size={15} color={colors.olive[700]} />
+              <Text style={styles.securityText}>
+                We only keep the card type, last 4 digits, expiry and name. Your full card number and
+                CVV are never stored.
+              </Text>
             </View>
-            <Text style={styles.guaranteeText}>
-              LUXE never stores your full card number, CVV, or PAN in local storage or on unencrypted
-              servers. All transactions execute through Payments.lk's tokenized, 3D-Secure 2.0 banking
-              infrastructure with direct OTP verification from your card issuer.
-            </Text>
           </View>
         </ScrollView>
+
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.submitButton, (!isValid || saving) && styles.submitButtonDisabled]}
+            disabled={saving}
+            onPress={handleSave}
+            activeOpacity={0.85}
+          >
+            {saving ? (
+              <ActivityIndicator color={colors.light.primaryForeground} size="small" />
+            ) : (
+              <Text style={styles.submitButtonText}>Save card</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+function Field({
+  label,
+  error,
+  focused,
+  trailing,
+  onLabelHelp,
+  children,
+}: {
+  label: string;
+  error?: string;
+  focused?: boolean;
+  trailing?: React.ReactNode;
+  onLabelHelp?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.field}>
+      <View style={styles.labelRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {onLabelHelp ? (
+          <TouchableOpacity onPress={onLabelHelp} hitSlop={8} accessibilityLabel={`What is ${label}?`}>
+            <Ionicons name="help-circle-outline" size={15} color={colors.light.mutedForeground} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <View style={[styles.inputWrapper, focused && styles.inputFocused, error ? styles.inputError : null]}>
+        {children}
+        {trailing}
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F5F4EF",
-  },
-  flex: {
-    flex: 1,
-  },
-  topHeader: {
+  safeArea: { flex: 1, backgroundColor: colors.light.background },
+  flex: { flex: 1 },
+
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
-    backgroundColor: "#F5F4EF",
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[2],
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.light.card,
     borderWidth: 1,
-    borderColor: "#E6E3DA",
+    borderColor: colors.light.border + "99",
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.soft,
   },
-  headerTitleCenter: {
-    alignItems: "center",
-  },
-  headerEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: "#85651B",
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  headerTitle: {
+  backButtonPlaceholder: { width: 40, height: 40 },
+  topTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: "#141311",
-    letterSpacing: -0.3,
-  },
-  shieldMedallionSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E6E3DA",
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.soft,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    fontSize: 19,
+    color: colors.light.foreground,
   },
 
-  /* Live Luxury Card Preview */
-  cardPreviewWrapper: {
-    marginBottom: 18,
-    borderRadius: 20,
-    ...shadows.glow,
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[8],
+    gap: spacing[6],
   },
+
+  // Card preview — real card proportions (85.6 × 54 mm)
   cardArt: {
-    borderRadius: 18,
-    padding: 22,
-    minHeight: 180,
+    width: "100%",
+    aspectRatio: 1.586,
+    borderRadius: radii["2xl"],
+    padding: spacing[5],
     justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
   },
-  cardArtTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  cardArtTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   cardChip: {
     width: 40,
     height: 30,
     borderRadius: 6,
-    backgroundColor: "#D8BC7E",
-    borderWidth: 1,
-    borderColor: "#BCA05E",
+    backgroundColor: "#D9BC72",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
-  cardChipLine: {
-    height: 1,
-    backgroundColor: "#A2843E",
-  },
-  cardBrandBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.2)",
-  },
+  cardChipLine: { height: 1, backgroundColor: "rgba(0,0,0,0.25)" },
   cardBrandLogo: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 13,
-    color: "#FAF8F5",
-    letterSpacing: 2,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 18,
+    letterSpacing: 1,
+    color: "#ffffff",
+    fontStyle: "italic",
   },
   cardNumber: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 19,
-    color: "#FAF8F5",
-    letterSpacing: 3,
-    marginVertical: 12,
+    fontSize: 20,
+    letterSpacing: 1.5,
+    color: "#ffffff",
   },
-  cardArtBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  cardHolderCol: {
-    flex: 1,
-  },
-  cardHolderLabel: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: "rgba(250, 248, 245, 0.6)",
+  cardArtBottom: { flexDirection: "row", alignItems: "flex-end", gap: spacing[4] },
+  cardLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    color: "rgba(255,255,255,0.6)",
     marginBottom: 2,
   },
-  cardHolderName: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
-    color: "#FAF8F5",
+  cardValue: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 14,
     letterSpacing: 1,
-    maxWidth: 200,
-  },
-  cardExpCol: {
-    alignItems: "flex-end",
-  },
-  cardExpiresLabel: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: "rgba(250, 248, 245, 0.6)",
-    marginBottom: 2,
-  },
-  cardExpiresDate: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
-    color: "#FAF8F5",
-    letterSpacing: 1,
+    color: "#ffffff",
   },
 
-  /* Form Card */
-  formCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#EAE7DF",
-    padding: 20,
-    marginBottom: 16,
-    ...shadows.soft,
-  },
-  formHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-  sectionEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: "#85651B",
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: "#141311",
-  },
-  pciPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#EBF7EE",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#C5E6CC",
-  },
-  pciPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    letterSpacing: 0.8,
-    color: "#2B6E3F",
-  },
-  field: {
-    marginBottom: 14,
-  },
+  form: { gap: spacing[4] },
+  field: { gap: 6 },
+  labelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   fieldLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: "#85651B",
-    marginBottom: 6,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.foreground,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FAF9F5",
+    height: 50,
+    paddingHorizontal: 14,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: "#E5E1D4",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 46,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.cream,
   },
-  inputIcon: {
-    marginRight: 8,
-  },
+  inputFocused: { borderColor: colors.light.ring, borderWidth: 1.5 },
+  inputError: { borderColor: colors.light.destructive },
   textInput: {
     flex: 1,
+    height: "100%",
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    color: "#141311",
+    fontSize: 16,
+    color: colors.light.foreground,
   },
-  detectedBrandPill: {
-    backgroundColor: "#F2EFE6",
+  errorText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.light.destructive,
+  },
+  brandPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[100],
   },
-  detectedBrandText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: "#85651B",
+  brandPillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.olive[800],
   },
-  twoColRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  halfCol: {
-    flex: 1,
-  },
-  cvvHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
+  twoCol: { flexDirection: "row", gap: spacing[3] },
+
   toggleRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FAF9F5",
-    borderRadius: 12,
+    gap: spacing[3],
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: "#EBE7DD",
-    padding: 14,
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  toggleInfo: {
-    flex: 1,
-    marginRight: 10,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.cream,
+    marginTop: spacing[1],
   },
   toggleLabel: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#141311",
-    marginBottom: 2,
+    fontSize: 14,
+    color: colors.light.foreground,
   },
   toggleSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#787469",
-  },
-  submitButton: {
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  submitGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-  },
-  submitButtonText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: "#FAF8F5",
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
   },
 
-  /* Guarantee Card */
-  guaranteeCard: {
-    backgroundColor: "#FAF9F5",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#EAE6DB",
-    padding: 16,
-  },
-  guaranteeHeader: {
+  securityNote: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 6,
+    gap: spacing[2],
+    alignItems: "flex-start",
+    paddingHorizontal: spacing[1],
   },
-  guaranteeTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#141311",
-  },
-  guaranteeText: {
+  securityText: {
+    flex: 1,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "#787469",
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.light.mutedForeground,
+  },
+
+  footer: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[2],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+    backgroundColor: colors.light.background,
+  },
+  submitButton: {
+    height: 52,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitButtonDisabled: { opacity: 0.5 },
+  submitButtonText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.light.primaryForeground,
   },
 });

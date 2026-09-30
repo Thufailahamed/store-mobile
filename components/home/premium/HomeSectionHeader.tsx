@@ -9,113 +9,84 @@ interface HomeSectionHeaderProps {
   onPress?: () => void;
   kicker?: string;
   accent?: boolean;
-  /**
-   * "feature" swaps the header into the editorial grammar (serif display
-   * title + rule line) used for curated/spotlight rails, so they read as
-   * a different kind of section than plain catalog listing rails.
-   */
-  variant?: "default" | "feature";
+  /** Extra control rendered before the chevron (e.g. a refresh button). */
+  right?: React.ReactNode;
 }
 
-export function HomeSectionHeader({
-  title,
-  onPress,
-  kicker,
-  accent,
-  variant = "default",
-}: HomeSectionHeaderProps) {
-  const isFeature = variant === "feature";
-
-  const content = (
-    <>
-      <View style={styles.left}>
-        {kicker ? (
-          <Text style={[styles.kicker, isFeature && styles.kickerFeature]}>{kicker}</Text>
-        ) : null}
-        <Text
-          style={[
-            styles.title,
-            isFeature && styles.titleFeature,
-            accent && styles.titleAccent,
-          ]}
-        >
-          {title}
-        </Text>
-      </View>
-      {onPress ? (
-        <Ionicons name="chevron-forward" size={18} color={colors.light.foreground} />
-      ) : null}
-    </>
+/**
+ * The one section header used by every Home section: mono kicker, serif
+ * display title, optional chevron. Keep all Home headers on this so the
+ * page reads as one publication instead of a mix of type styles.
+ */
+export function HomeSectionHeader({ title, onPress, kicker, accent, right }: HomeSectionHeaderProps) {
+  const titleBlock = (
+    <View style={styles.left}>
+      {kicker ? <Text style={styles.kicker}>{kicker}</Text> : null}
+      <Text style={[styles.title, accent && styles.titleAccent]} numberOfLines={1}>
+        {title}
+      </Text>
+    </View>
   );
 
   return (
-    <View style={isFeature && styles.featureWrap}>
+    <View style={styles.row}>
       {onPress ? (
-        <TouchableOpacity
-          style={[styles.row, isFeature && styles.rowFeature]}
-          onPress={onPress}
-          activeOpacity={0.7}
-        >
-          {content}
+        <TouchableOpacity style={styles.pressable} onPress={onPress} activeOpacity={0.7}>
+          {titleBlock}
+          {right}
+          <View style={styles.chevron}>
+            <Ionicons name="chevron-forward" size={16} color={colors.light.foreground} />
+          </View>
         </TouchableOpacity>
       ) : (
-        <View style={[styles.row, isFeature && styles.rowFeature]}>{content}</View>
+        <View style={styles.pressable}>
+          {titleBlock}
+          {right}
+        </View>
       )}
-      {isFeature ? <View style={styles.rule} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  featureWrap: {
-    paddingHorizontal: spacing[5],
-  },
   row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    marginBottom: spacing[3],
+    marginBottom: spacing[3.5],
   },
-  rowFeature: {
-    paddingHorizontal: 0,
-    marginBottom: spacing[2],
+  pressable: {
+    flexDirection: "row",
     alignItems: "flex-end",
+    gap: spacing[2],
   },
   left: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    color: colors.light.mutedForeground,
-    letterSpacing: 1.2,
+    color: colors.light.primary,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
-  kickerFeature: {
-    color: colors.light.primary,
-    letterSpacing: 1.8,
-    marginBottom: 1,
-  },
   title: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 18,
-    color: colors.light.foreground,
-    letterSpacing: -0.3,
-  },
-  titleFeature: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 25,
+    fontSize: 23,
+    lineHeight: 28,
+    color: colors.light.foreground,
     letterSpacing: -0.2,
   },
   titleAccent: {
     color: colors.light.primary,
   },
-  rule: {
-    height: 1,
-    backgroundColor: colors.light.border,
-    marginTop: spacing[1],
-    marginBottom: spacing[4],
+  chevron: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 1,
   },
 });

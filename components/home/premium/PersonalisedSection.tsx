@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { HomeProductCard } from "./HomeProductCard";
+import { HomeSectionHeader } from "./HomeSectionHeader";
 import { useAuth } from "@/lib/supabase/auth";
 import { useWishlist } from "@/lib/stores";
 import { useTrackEvent } from "@/lib/recommender";
@@ -24,10 +25,11 @@ import {
   type HomeFeedSectionKey,
   type HomeFeedResponse,
 } from "@/lib/api";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Product, ProductImage } from "@/lib/types";
+import { createSeenSet } from "./dedupe";
 
 function productImage(product: Product) {
   return product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
@@ -139,14 +141,8 @@ export function PersonalisedSection({
 
     type SubRail = { key: HomeFeedSectionKey; label: string; products: Product[] };
 
+    // "recents" is omitted — Home already renders a full "Recently viewed" rail.
     const out: SubRail[] = [];
-    if (sections.recents?.length) {
-      out.push({
-        key: "recents",
-        label: "Pick up where you left off",
-        products: sections.recents.map(productFor),
-      });
-    }
     if (sections.top_categories?.length) {
       out.push({
         key: "top_categories",
@@ -168,8 +164,18 @@ export function PersonalisedSection({
         products: mapFlatProductRows(sections.trending_for_you),
       });
     }
-    return out;
-  }, [sections]);
+
+    // Each sub-rail skips pieces already shown in the main block or an
+    // earlier sub-rail, and is dropped if fewer than 3 remain.
+    const seen = createSeenSet();
+    seen.mark(products);
+    return out
+      .map((rail) => {
+        const fresh = seen.take(rail.products, 3);
+        return fresh.length ? { ...rail, products: fresh } : null;
+      })
+      .filter((r): r is SubRail => r !== null);
+  }, [sections, products]);
 
   const handleRefresh = useCallback(async () => {
     if (!onRefresh) return;
@@ -198,42 +204,46 @@ export function PersonalisedSection({
     [tracker],
   );
 
+  // Feedback lives behind a long-press instead of always-visible ✕ / 👎
+  // buttons on the card, which cluttered the image.
+  const openFeedbackMenu = useCallback(
+    (product: Product) => {
+      Alert.alert(product.name, undefined, [
+        { text: "Not interested", onPress: () => handleNotInterested(product) },
+        { text: "Hide this piece", onPress: () => handleDismiss(product) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    },
+    [handleDismiss, handleNotInterested],
+  );
+
   if (!user) return null;
   if (visible.length === 0 && subRails.length === 0 && !loading) return null;
 
   return (
     <View style={styles.panel}>
-      <View style={styles.headerRow}>
-        <View style={styles.titleBlock}>
-          <View style={styles.kickerRow}>
-            {hasSignal ? (
-              <View style={styles.dotAccent} />
-            ) : (
-              <Ionicons name="sparkles-outline" size={11} color={colors.olive[600]} />
-            )}
-            <Text style={styles.kickerText}>
-              {hasSignal ? "CURATED FOR YOU" : "TRENDING IN THE EDIT"}
-            </Text>
-          </View>
-          <Text style={[styles.title, hasSignal && styles.titleAccent]}>{title}</Text>
-        </View>
-        {onRefresh ? (
-          <TouchableOpacity
-            onPress={handleRefresh}
-            disabled={refreshing}
-            hitSlop={10}
-            style={styles.refreshBtn}
-            accessibilityLabel="Refresh recommendations"
-          >
-            <Ionicons
-              name="refresh"
-              size={14}
-              color={colors.light.mutedForeground}
-              style={refreshing ? styles.spin : undefined}
-            />
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      <HomeSectionHeader
+        kicker={hasSignal ? "Curated for you" : "Trending in the edit"}
+        title={title}
+        right={
+          onRefresh ? (
+            <TouchableOpacity
+              onPress={handleRefresh}
+              disabled={refreshing}
+              hitSlop={10}
+              style={styles.refreshBtn}
+              accessibilityLabel="Refresh recommendations"
+            >
+              <Ionicons
+                name="refresh"
+                size={14}
+                color={colors.light.mutedForeground}
+                style={refreshing ? styles.spin : undefined}
+              />
+            </TouchableOpacity>
+          ) : null
+        }
+      />
 
       {loading && visible.length === 0 ? (
         <View style={styles.loading}>
@@ -246,6 +256,8 @@ export function PersonalisedSection({
               style={styles.heroCard}
               activeOpacity={0.9}
               onPress={() => router.push(`/(main)/products/${heroProduct.slug}`)}
+              onLongPress={() => openFeedbackMenu(heroProduct)}
+              delayLongPress={350}
             >
               {productImage(heroProduct) ? (
                 <Image
@@ -260,24 +272,6 @@ export function PersonalisedSection({
                 colors={["transparent", "rgba(10,9,8,0.72)"]}
                 style={StyleSheet.absoluteFill}
               />
-              <View style={styles.heroActions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => handleDismiss(heroProduct)}
-                  hitSlop={6}
-                  accessibilityLabel="Dismiss"
-                >
-                  <Ionicons name="close" size={12} color={colors.light.mutedForeground} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => handleNotInterested(heroProduct)}
-                  hitSlop={6}
-                  accessibilityLabel="Not interested"
-                >
-                  <Ionicons name="thumbs-down-outline" size={12} color={colors.light.mutedForeground} />
-                </TouchableOpacity>
-              </View>
               <View style={styles.heroHeart}>
                 <WishlistHeart product={heroProduct} size={15} />
               </View>
@@ -299,6 +293,8 @@ export function PersonalisedSection({
                     style={styles.smallCard}
                     activeOpacity={0.9}
                     onPress={() => router.push(`/(main)/products/${p.slug}`)}
+                    onLongPress={() => openFeedbackMenu(p)}
+                    delayLongPress={350}
                   >
                     {productImage(p) ? (
                       <Image
@@ -309,24 +305,27 @@ export function PersonalisedSection({
                     ) : (
                       <View style={[StyleSheet.absoluteFill, styles.heroPlaceholder]} />
                     )}
+                    <LinearGradient
+                      colors={["transparent", "rgba(10,9,8,0.7)"]}
+                      locations={[0.45, 1]}
+                      style={StyleSheet.absoluteFill}
+                    />
                     <View style={styles.smallHeart}>
                       <WishlistHeart product={p} size={13} />
+                    </View>
+                    <View style={styles.smallCopy}>
+                      <Text style={styles.smallName} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                      <Text style={styles.heroPrice}>
+                        {p.price ? formatPrice(p.price) : "Price on request"}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 ))}
               </View>
             ) : null}
           </View>
-
-          {gridSmalls.length > 0 ? (
-            <View style={styles.captionRow}>
-              {gridSmalls.map((p, i) => (
-                <Text key={p.id ? `caption-${p.id}-${i}` : `caption-${i}`} style={styles.captionText} numberOfLines={1}>
-                  {p.name} — {p.price ? formatPrice(p.price) : "Price on request"}
-                </Text>
-              ))}
-            </View>
-          ) : null}
 
           {moreProducts.length > 0 ? (
             <ScrollView
@@ -376,56 +375,15 @@ export function PersonalisedSection({
 
 const styles = StyleSheet.create({
   panel: {
-    marginHorizontal: spacing[4],
     marginBottom: spacing[8],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[4],
-    backgroundColor: colors.olive[50],
-    borderRadius: radii["2xl"],
-    ...shadows.soft,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[3],
-  },
-  titleBlock: {
-    flex: 1,
-    gap: 2,
-  },
-  kickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  dotAccent: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.olive[600],
-  },
-  kickerText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.primary,
-    letterSpacing: 1.4,
-  },
-  title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
-  },
-  titleAccent: {
-    color: colors.light.primary,
   },
   refreshBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.light.card,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    marginBottom: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -442,14 +400,6 @@ const styles = StyleSheet.create({
   },
   moreScroll: {
     marginTop: spacing[4],
-  },
-  actionBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   heartBtn: {
     width: 26,
@@ -474,12 +424,6 @@ const styles = StyleSheet.create({
   heroPlaceholder: {
     backgroundColor: colors.olive[100],
   },
-  heroActions: {
-    position: "absolute",
-    top: spacing[2],
-    left: spacing[2],
-    gap: 4,
-  },
   heroHeart: {
     position: "absolute",
     top: spacing[2],
@@ -492,14 +436,14 @@ const styles = StyleSheet.create({
     bottom: spacing[3],
   },
   heroName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
     lineHeight: 20,
     color: colors.light.card,
   },
   heroPrice: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 12,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: "#e9e2d4",
     marginTop: 2,
   },
@@ -518,18 +462,16 @@ const styles = StyleSheet.create({
     top: spacing[2],
     right: spacing[2],
   },
-  captionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    marginTop: spacing[2],
+  smallCopy: {
+    position: "absolute",
+    left: spacing[2.5],
+    right: spacing[2.5],
+    bottom: spacing[2.5],
   },
-  captionText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
+  smallName: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.light.card,
   },
   seeAllLink: {
     flexDirection: "row",

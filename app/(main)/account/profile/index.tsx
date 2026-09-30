@@ -11,7 +11,7 @@ import {
   Alert,
   Text,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -32,27 +32,63 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+type ProfileForm = { name: string; email: string; phone: string; dob: string; bio: string };
+
+const EMPTY_FORM: ProfileForm = { name: "", email: "", phone: "", dob: "", bio: "" };
+const BIO_MAX = 280;
+
+/** Auto-insert dashes as the user types digits: 19950412 → 1995-04-12. */
+function formatDobInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+}
+
+function isValidDob(v: string): boolean {
+  if (!v) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) return false;
+  return d.getTime() < Date.now() && d.getFullYear() > 1900;
+}
+
+function formatMemberSince(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, loading: authLoading, role } = useAuth();
   const { toast } = useToast();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState(false);
   const [wardrobeCount, setWardrobeCount] = useState<number | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    dob: "",
-    bio: "",
-  });
+  const [form, setForm] = useState<ProfileForm>(EMPTY_FORM);
+  const [savedForm, setSavedForm] = useState<ProfileForm>(EMPTY_FORM);
 
   const displayName = user?.user_metadata?.full_name || form.name || "Guest";
   const initials = getInitials(displayName);
   const showAvatar = Boolean(avatarUrl) && !avatarError;
+  const dirty =
+    form.name !== savedForm.name ||
+    form.phone !== savedForm.phone ||
+    form.dob !== savedForm.dob ||
+    form.bio !== savedForm.bio;
+  const dobInvalid = !isValidDob(form.dob);
+  const emailVerified = Boolean(user?.email_confirmed_at);
+  const memberSince = formatMemberSince(user?.created_at);
+  const completeness = [form.name, form.phone, form.dob, form.bio, showAvatar ? "y" : ""].filter(
+    (v) => String(v).trim().length > 0
+  ).length;
+  const completenessPct = Math.round((completeness / 5) * 100);
 
   useEffect(() => {
     if (user?.user_metadata?.avatar_url) {
@@ -77,13 +113,15 @@ export default function ProfileScreen() {
 
       if (cancelled) return;
 
-      setForm({
+      const loaded: ProfileForm = {
         name: profile?.full_name ?? user.user_metadata?.full_name ?? "",
         email: user.email ?? "",
         phone: profile?.phone ?? "",
         dob: (profile as { metadata?: { dob?: string } } | null)?.metadata?.dob ?? "",
         bio: (profile as { metadata?: { bio?: string } } | null)?.metadata?.bio ?? "",
-      });
+      };
+      setForm(loaded);
+      setSavedForm(loaded);
       if (profile?.avatar_url) {
         setAvatarUrl(resolveImageUrl(profile.avatar_url) || profile.avatar_url);
         setAvatarError(false);
@@ -221,6 +259,14 @@ export default function ProfileScreen() {
 
   const handleSave = useCallback(async () => {
     if (!user) return;
+    if (!form.name.trim()) {
+      toast("Please enter your name", "error");
+      return;
+    }
+    if (dobInvalid) {
+      toast("Date of birth must be a valid date (YYYY-MM-DD)", "error");
+      return;
+    }
     setSaving(true);
     const res = await updateProfileBackend({
       full_name: form.name,
@@ -239,9 +285,10 @@ export default function ProfileScreen() {
     if (error) {
       toast(error.message, "error");
     } else {
-      toast("Profile credentials updated", "success");
+      setSavedForm(form);
+      toast("Profile updated", "success");
     }
-  }, [user, form, toast]);
+  }, [user, form, toast, dobInvalid]);
 
   if (authLoading || loading) {
     return (
@@ -255,7 +302,7 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.loading}>
           <ActivityIndicator size="small" color={colors.olive[700]} />
-          <Text style={styles.loadingText}>Loading credentials…</Text>
+          <Text style={styles.loadingText}>Loading profile…</Text>
         </View>
       </SafeAreaView>
     );
@@ -263,9 +310,15 @@ export default function ProfileScreen() {
 
   if (!user) return null;
 
+  const wardrobeSub =
+    wardrobeCount == null
+      ? "Your personal closet & outfits"
+      : wardrobeCount > 0
+        ? `${wardrobeCount} piece${wardrobeCount === 1 ? "" : "s"} in your closet`
+        : "Pieces from delivered orders appear here";
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Top Luxury Navigation Bar */}
       <View style={styles.topBar}>
         <TouchableOpacity
           style={styles.navBtn}
@@ -275,24 +328,8 @@ export default function ProfileScreen() {
         >
           <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
         </TouchableOpacity>
-
-        <View style={styles.titleBlock}>
-          <Text style={styles.topBarKicker}>MEMBERSHIP</Text>
-          <Text style={styles.topBarTitle}>Profile</Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.headerSaveBtn, saving && styles.headerSaveBtnDisabled]}
-          onPress={handleSave}
-          disabled={saving}
-          activeOpacity={0.75}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <Text style={styles.headerSaveText}>Save</Text>
-          )}
-        </TouchableOpacity>
+        <Text style={styles.topBarTitle}>Profile</Text>
+        <View style={styles.navBtnPlaceholder} />
       </View>
 
       <KeyboardAvoidingView
@@ -300,663 +337,586 @@ export default function ProfileScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, dirty && { paddingBottom: 120 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Luxury Portrait Hero Header */}
-          <View style={styles.heroSection}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handlePhotoSelect}
-              disabled={updatingPhoto}
-              style={styles.avatarTouchable}
-            >
-              {/* Double Bezel Fluted Frame */}
-              <View style={styles.avatarOuterBezel}>
-                <View style={styles.avatarInnerBezel}>
-                  {showAvatar ? (
-                    <Image
-                      source={{ uri: avatarUrl! }}
-                      style={styles.avatarImg}
-                      contentFit="cover"
-                      transition={200}
-                      onError={() => setAvatarError(true)}
-                    />
-                  ) : (
-                    <LinearGradient
-                      colors={["#272e18", "#15180f"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.avatarFallback}
-                    >
-                      <Ionicons name="sparkles" size={12} color="#E8CF8F" style={styles.crownSparkle} />
-                      <Text style={styles.avatarInitialsText}>{initials}</Text>
-                    </LinearGradient>
-                  )}
-
-                  {updatingPhoto ? (
-                    <View style={styles.avatarLoadingScrim}>
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-
-              {/* Camera Action Badge */}
-              <View style={styles.cameraPillBadge}>
-                <Ionicons name="camera" size={13} color="#16190e" />
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.heroInfoBlock}>
-              <Text style={styles.heroNameText} numberOfLines={1}>
-                {displayName}
-              </Text>
-              <View style={styles.heroRolePill}>
-                <Ionicons
-                  name={role === "admin" ? "shield-checkmark" : "diamond-outline"}
-                  size={11}
-                  color="#947629"
-                />
-                <Text style={styles.heroRolePillText}>
-                  {role === "admin" ? "PLATFORM EXECUTIVE" : "LUXE PRIVILEGE MEMBER"}
-                </Text>
-              </View>
-
+          {/* ── Identity hero ───────────────────────────────── */}
+          <View style={styles.heroCard}>
+            <View style={styles.heroRow}>
               <TouchableOpacity
+                activeOpacity={0.85}
                 onPress={handlePhotoSelect}
                 disabled={updatingPhoto}
-                activeOpacity={0.7}
-                style={styles.changePhotoBtn}
+                accessibilityLabel="Change profile photo"
               >
-                <Ionicons name="image-outline" size={13} color={colors.olive[800]} />
-                <Text style={styles.changePhotoBtnText}>
-                  {updatingPhoto ? "Uploading photo…" : "Change portrait"}
-                </Text>
+                <View style={styles.avatarRing}>
+                  <View style={styles.avatarInner}>
+                    {showAvatar ? (
+                      <Image
+                        source={{ uri: avatarUrl! }}
+                        style={styles.avatarImg}
+                        contentFit="cover"
+                        transition={200}
+                        onError={() => setAvatarError(true)}
+                      />
+                    ) : (
+                      <LinearGradient
+                        colors={[colors.olive[600], colors.olive[800]]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.avatarFallback}
+                      >
+                        <Text style={styles.avatarInitialsText}>{initials}</Text>
+                      </LinearGradient>
+                    )}
+                    {updatingPhoto ? (
+                      <View style={styles.avatarLoadingScrim}>
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.cameraBadge}>
+                  <Ionicons name="camera" size={12} color={colors.olive[950]} />
+                </View>
               </TouchableOpacity>
+
+              <View style={styles.heroInfo}>
+                <Text style={styles.heroName} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                <Text style={styles.heroEmail} numberOfLines={1}>
+                  {form.email}
+                </Text>
+                <View style={styles.heroRolePill}>
+                  <Ionicons
+                    name={role === "admin" ? "shield-checkmark" : "diamond-outline"}
+                    size={10}
+                    color={colors.accent2.ochre}
+                  />
+                  <Text style={styles.heroRolePillText}>
+                    {role === "admin" ? "PLATFORM EXECUTIVE" : "LUXE MEMBER"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.heroDivider} />
+
+            <View style={styles.heroStats}>
+              <View style={{ flex: 1, gap: 6 }}>
+                <View style={styles.heroStatHead}>
+                  <Text style={styles.heroStatKey}>PROFILE</Text>
+                  <Text style={styles.heroStatVal}>{completenessPct}% complete</Text>
+                </View>
+                <View style={styles.meterTrack}>
+                  <View style={[styles.meterFill, { width: `${completenessPct}%` }]} />
+                </View>
+              </View>
+              {memberSince ? (
+                <View style={styles.heroSince}>
+                  <Text style={styles.heroStatKey}>MEMBER SINCE</Text>
+                  <Text style={styles.heroStatVal}>{memberSince}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
 
-          {/* Wardrobe Showcase Card */}
+          {/* ── Wardrobe shortcut ───────────────────────────── */}
           <TouchableOpacity
-            activeOpacity={0.88}
+            activeOpacity={0.85}
             onPress={() => router.push("/(main)/account/wardrobe" as never)}
-            style={styles.wardrobeCard}
+            style={styles.linkCard}
           >
-            <View style={styles.wardrobeIconWrap}>
-              <Ionicons name="shirt-outline" size={22} color={colors.olive[700]} />
+            <View style={styles.linkIcon}>
+              <Ionicons name="shirt-outline" size={20} color={colors.olive[700]} />
             </View>
-            <View style={styles.wardrobeContent}>
-              <Text style={styles.wardrobeKicker}>DIGITAL ATELIER</Text>
-              <Text style={styles.wardrobeTitle}>Wardrobe & Outfits</Text>
-              <Text style={styles.wardrobeSub}>
-                {wardrobeCount == null
-                  ? "Your personal closet & style curation"
-                  : wardrobeCount > 0
-                    ? `${wardrobeCount} piece${wardrobeCount === 1 ? "" : "s"} cataloged · Tap to view`
-                    : "Empty — sync pieces from delivered purchases"}
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.linkTitle}>Wardrobe & outfits</Text>
+              <Text style={styles.linkSub} numberOfLines={1}>
+                {wardrobeSub}
               </Text>
             </View>
-            <View style={styles.wardrobeArrowWrap}>
-              <Ionicons name="arrow-forward" size={15} color={colors.light.mutedForeground} />
-            </View>
+            {wardrobeCount ? (
+              <View style={styles.countPill}>
+                <Text style={styles.countPillText}>{wardrobeCount}</Text>
+              </View>
+            ) : null}
+            <Ionicons name="chevron-forward" size={18} color={colors.light.mutedForeground} />
           </TouchableOpacity>
 
-          {/* Credentials Form Section */}
-          <View style={styles.formContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionKicker}>CREDENTIALS</Text>
-              <Text style={styles.sectionHeading}>Personal details</Text>
-            </View>
+          {/* ── Personal details ────────────────────────────── */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionKicker}>PERSONAL DETAILS</Text>
+          </View>
 
-            <View style={styles.formCard}>
-              <LuxuryField
-                icon="person-outline"
-                label="Full name"
-                value={form.name}
-                onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
-                placeholder="Enter full name"
-              />
-
-              <View style={styles.fieldSeparator} />
-
-              <LuxuryField
-                icon="mail-outline"
-                label="Email address"
-                value={form.email}
-                editable={false}
-                badge="VERIFIED"
-              />
-
-              <View style={styles.fieldSeparator} />
-
-              <LuxuryField
-                icon="call-outline"
-                label="Phone number"
-                value={form.phone}
-                onChangeText={(v) => setForm((f) => ({ ...f, phone: v }))}
-                keyboardType="phone-pad"
-                placeholder="+1 (555) 000-0000"
-              />
-
-              <View style={styles.fieldSeparator} />
-
-              <LuxuryField
-                icon="calendar-outline"
-                label="Date of birth"
-                value={form.dob}
-                onChangeText={(v) => setForm((f) => ({ ...f, dob: v }))}
-                placeholder="YYYY-MM-DD"
-              />
-            </View>
-
-            {/* Editorial Bio Section */}
-            <View style={[styles.sectionHeader, { marginTop: spacing[5] }]}>
-              <Text style={styles.sectionKicker}>ABOUT YOU</Text>
-              <Text style={styles.sectionHeading}>Editorial bio</Text>
-            </View>
-
-            <View style={styles.formCard}>
-              <View style={styles.bioWrap}>
-                <View style={styles.bioHeader}>
-                  <View style={styles.bioIconBox}>
-                    <Ionicons name="create-outline" size={16} color={colors.olive[700]} />
+          <View style={styles.formCard}>
+            <Field
+              icon="person-outline"
+              label="Full name"
+              value={form.name}
+              onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
+              placeholder="Your full name"
+              autoCapitalize="words"
+              textContentType="name"
+            />
+            <View style={styles.fieldSeparator} />
+            <Field
+              icon="mail-outline"
+              label="Email"
+              value={form.email}
+              editable={false}
+              trailing={
+                emailVerified ? (
+                  <View style={styles.verifiedPill}>
+                    <Ionicons name="checkmark-circle" size={11} color={colors.olive[600]} />
+                    <Text style={styles.verifiedText}>Verified</Text>
                   </View>
-                  <Text style={styles.fieldLabel}>Style Notes & Bio</Text>
-                </View>
-                <TextInput
-                  style={styles.bioTextArea}
-                  value={form.bio}
-                  onChangeText={(v) => setForm((f) => ({ ...f, bio: v }))}
-                  multiline
-                  numberOfLines={4}
-                  placeholder="Share your aesthetic preferences, style philosophy, or personal notes…"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
-            </View>
+                ) : (
+                  <Ionicons name="lock-closed-outline" size={14} color={colors.light.mutedForeground} />
+                )
+              }
+            />
+            <View style={styles.fieldSeparator} />
+            <Field
+              icon="call-outline"
+              label="Phone"
+              value={form.phone}
+              onChangeText={(v) => setForm((f) => ({ ...f, phone: v }))}
+              keyboardType="phone-pad"
+              placeholder="+94 7X XXX XXXX"
+              textContentType="telephoneNumber"
+            />
+            <View style={styles.fieldSeparator} />
+            <Field
+              icon="calendar-outline"
+              label="Date of birth"
+              value={form.dob}
+              onChangeText={(v) => setForm((f) => ({ ...f, dob: formatDobInput(v) }))}
+              keyboardType="number-pad"
+              placeholder="YYYY-MM-DD"
+              maxLength={10}
+              error={form.dob.length === 10 && dobInvalid ? "Enter a valid past date" : undefined}
+            />
+          </View>
+          <Text style={styles.helperText}>
+            Your email is used to sign in and can't be changed here.
+          </Text>
 
-            {/* Save Button */}
+          {/* ── Bio ─────────────────────────────────────────── */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionKicker}>STYLE NOTES</Text>
+          </View>
+
+          <View style={[styles.formCard, styles.bioCard]}>
+            <TextInput
+              style={styles.bioTextArea}
+              value={form.bio}
+              onChangeText={(v) => setForm((f) => ({ ...f, bio: v.slice(0, BIO_MAX) }))}
+              multiline
+              placeholder="Favourite brands, fits, colours — anything that helps us recommend better."
+              placeholderTextColor={colors.light.mutedForeground + "99"}
+            />
+            <Text style={styles.bioCounter}>
+              {form.bio.length}/{BIO_MAX}
+            </Text>
+          </View>
+        </ScrollView>
+
+        {/* ── Sticky save bar (only when there are unsaved edits) ── */}
+        {dirty ? (
+          <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, spacing[3]) }]}>
             <TouchableOpacity
-              style={[styles.mainSaveBtn, saving && styles.mainSaveBtnDisabled]}
+              style={styles.discardBtn}
+              onPress={() => setForm(savedForm)}
+              disabled={saving}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.discardText}>Discard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveBtn, saving && { opacity: 0.7 }]}
               onPress={handleSave}
               disabled={saving}
               activeOpacity={0.85}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={colors.light.primaryForeground} />
               ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={18} color="#faf8f1" />
-                  <Text style={styles.mainSaveBtnText}>Save profile changes</Text>
-                </>
+                <Text style={styles.saveBtnText}>Save changes</Text>
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        ) : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-function LuxuryField({
+function Field({
   icon,
   label,
   value,
   onChangeText,
   editable = true,
-  keyboardType,
-  placeholder,
-  badge,
+  trailing,
+  error,
+  ...inputProps
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string;
   onChangeText?: (v: string) => void;
   editable?: boolean;
-  keyboardType?: "default" | "phone-pad";
-  placeholder?: string;
-  badge?: string;
-}) {
+  trailing?: React.ReactNode;
+  error?: string;
+} & Pick<
+  React.ComponentProps<typeof TextInput>,
+  "keyboardType" | "placeholder" | "autoCapitalize" | "textContentType" | "maxLength"
+>) {
+  const [focused, setFocused] = useState(false);
   return (
-    <View style={styles.fieldRow}>
-      <View style={styles.fieldIconBox}>
-        <Ionicons name={icon} size={17} color={colors.olive[700]} />
-      </View>
-
+    <View style={[styles.fieldRow, focused && styles.fieldRowFocused]}>
+      <Ionicons
+        name={icon}
+        size={18}
+        color={error ? colors.light.destructive : focused ? colors.olive[700] : colors.light.mutedForeground}
+      />
       <View style={styles.fieldContent}>
-        <View style={styles.fieldLabelRow}>
-          <Text style={styles.fieldLabel}>{label}</Text>
-          {badge ? (
-            <View style={styles.badgePill}>
-              <Ionicons name="lock-closed" size={9} color={colors.olive[700]} />
-              <Text style={styles.badgeText}>{badge}</Text>
-            </View>
-          ) : null}
-        </View>
-
+        <Text style={[styles.fieldLabel, focused && { color: colors.olive[700] }]}>{label}</Text>
         <TextInput
           style={[styles.fieldInput, !editable && styles.fieldInputDisabled]}
           value={value}
           onChangeText={onChangeText}
           editable={editable}
-          keyboardType={keyboardType}
-          placeholder={placeholder}
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.light.mutedForeground + "80"}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          {...inputProps}
         />
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
       </View>
+      {trailing}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8f7f2",
-  },
+  container: { flex: 1, backgroundColor: colors.light.background },
   flex: { flex: 1 },
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[2],
-  },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing[2] },
   loadingText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     color: colors.light.mutedForeground,
   },
 
-  /* Top Navigation Bar */
+  /* Top bar */
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
     paddingVertical: spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
-    backgroundColor: "#f8f7f2",
+    backgroundColor: colors.light.background,
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.light.card,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
+    borderColor: colors.light.border + "99",
   },
-  navBtnPlaceholder: {
-    width: 38,
-    height: 38,
-  },
-  titleBlock: {
-    alignItems: "center",
-    gap: 1,
-  },
-  topBarKicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: colors.olive[700],
-    textTransform: "uppercase",
-  },
+  navBtnPlaceholder: { width: 40, height: 40 },
   topBarTitle: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 19,
     color: colors.light.foreground,
     letterSpacing: -0.3,
   },
-  headerSaveBtn: {
-    backgroundColor: colors.olive[700],
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    minWidth: 54,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerSaveBtnDisabled: {
-    opacity: 0.6,
-  },
-  headerSaveText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#faf8f1",
-  },
 
   scroll: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
+    paddingTop: spacing[3],
     paddingBottom: spacing[10],
+    gap: spacing[3],
   },
 
-  /* Hero Section */
-  heroSection: {
-    alignItems: "center",
-    marginBottom: spacing[5],
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    paddingVertical: spacing[5],
-    paddingHorizontal: spacing[4],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
+  /* Hero */
+  heroCard: {
+    backgroundColor: colors.olive[900],
+    borderRadius: radii["3xl"],
+    padding: spacing[5],
+    gap: spacing[4],
   },
-  avatarTouchable: {
-    position: "relative",
-    marginBottom: spacing[3],
-  },
-  avatarOuterBezel: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 2,
-    borderColor: "#C8A44A",
+  heroRow: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
+  avatarRing: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 1.5,
+    borderColor: colors.accent2.ochre,
     padding: 3,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
   },
-  avatarInnerBezel: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 43,
-    overflow: "hidden",
-    backgroundColor: "#1c2012",
-  },
-  avatarImg: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarFallback: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  crownSparkle: {
-    position: "absolute",
-    top: 8,
-  },
+  avatarInner: { flex: 1, borderRadius: 40, overflow: "hidden" },
+  avatarImg: { width: "100%", height: "100%" },
+  avatarFallback: { flex: 1, alignItems: "center", justifyContent: "center" },
   avatarInitialsText: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 28,
     color: "#F4E2B2",
-    marginTop: 8,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   avatarLoadingScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
     justifyContent: "center",
   },
-  cameraPillBadge: {
+  cameraBadge: {
     position: "absolute",
     bottom: 0,
     right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#C8A44A",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.accent2.ochre,
     borderWidth: 2,
-    borderColor: "#ffffff",
+    borderColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.soft,
   },
-  heroInfoBlock: {
-    alignItems: "center",
-    gap: 6,
-  },
-  heroNameText: {
+  heroInfo: { flex: 1, gap: 4 },
+  heroName: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: colors.light.foreground,
+    fontSize: 24,
+    color: colors.paper.cream,
     letterSpacing: -0.4,
   },
+  heroEmail: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: colors.olive[200],
+  },
   heroRolePill: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    borderRadius: radii.full,
-    paddingHorizontal: 10,
+    marginTop: 4,
+    paddingHorizontal: 8,
     paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200,164,74,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.25)",
+    borderColor: "rgba(200,164,74,0.3)",
   },
   heroRolePillText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
+    fontSize: 9,
     letterSpacing: 1.2,
-    color: "#85651b",
-    textTransform: "uppercase",
+    color: colors.accent2.ochre,
   },
-  changePhotoBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: spacing[2],
-    backgroundColor: colors.olive[50],
-    borderRadius: radii.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: colors.olive[200],
+  heroDivider: { height: 1, backgroundColor: "rgba(250,248,241,0.1)" },
+  heroStats: { flexDirection: "row", alignItems: "flex-end", gap: spacing[5] },
+  heroStatHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
+  heroStatKey: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: colors.olive[300],
   },
-  changePhotoBtnText: {
+  heroStatVal: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.olive[800],
+    fontSize: 13,
+    color: colors.paper.cream,
   },
+  heroSince: { gap: 6, alignItems: "flex-end" },
+  meterTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(250,248,241,0.14)",
+    overflow: "hidden",
+  },
+  meterFill: { height: "100%", borderRadius: 2, backgroundColor: colors.accent2.ochre },
 
-  /* Wardrobe Card */
-  wardrobeCard: {
+  /* Link card */
+  linkCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.light.card,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
+    borderColor: colors.light.border + "99",
     borderRadius: radii["2xl"],
     padding: spacing[4],
-    marginBottom: spacing[5],
-    ...shadows.soft,
   },
-  wardrobeIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  linkIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.olive[100],
   },
-  wardrobeContent: {
-    flex: 1,
-    gap: 2,
-  },
-  wardrobeKicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[700],
-    letterSpacing: 1.2,
-  },
-  wardrobeTitle: {
+  linkTitle: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
     color: colors.light.foreground,
-    letterSpacing: -0.2,
   },
-  wardrobeSub: {
+  linkSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
     color: colors.light.mutedForeground,
   },
-  wardrobeArrowWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#f5f4ef",
+  countPill: {
+    minWidth: 24,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[100],
     alignItems: "center",
-    justifyContent: "center",
+  },
+  countPillText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    color: colors.olive[800],
   },
 
-  /* Form Sections */
-  formContainer: {
-    gap: spacing[2],
-  },
-  sectionHeader: {
-    gap: 1,
-    paddingHorizontal: spacing[1],
-    marginBottom: spacing[2],
-  },
+  /* Sections */
+  sectionHeader: { paddingHorizontal: spacing[1], marginTop: spacing[3] },
   sectionKicker: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[700],
+    fontSize: 10,
+    color: colors.light.mutedForeground,
     letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  sectionHeading: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
   },
   formCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.light.card,
     borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
+    borderColor: colors.light.border + "99",
     overflow: "hidden",
-    ...shadows.soft,
   },
+  helperText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
+    paddingHorizontal: spacing[1],
+    marginTop: -spacing[1],
+  },
+
+  /* Fields */
   fieldRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3] + 2,
+    paddingVertical: spacing[3],
   },
-  fieldIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#f7f6f0",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(83, 94, 44, 0.1)",
-  },
-  fieldContent: {
-    flex: 1,
-    gap: 2,
-  },
-  fieldLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  fieldRowFocused: { backgroundColor: colors.olive[50] },
+  fieldContent: { flex: 1, gap: 1 },
   fieldLabel: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  badgePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: colors.olive[50],
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.olive[100],
-  },
-  badgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: colors.olive[800],
-    letterSpacing: 0.5,
   },
   fieldInput: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14.5,
+    fontSize: 15,
     color: colors.light.foreground,
     paddingVertical: 2,
-    letterSpacing: -0.2,
   },
-  fieldInputDisabled: {
-    color: "#6b7280",
+  fieldInputDisabled: { color: colors.light.mutedForeground },
+  fieldError: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: colors.light.destructive,
   },
   fieldSeparator: {
-    height: 1,
-    backgroundColor: "#f3f2eb",
-    marginLeft: spacing[4] + 36 + spacing[3],
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.light.border,
+    marginLeft: spacing[4] + 18 + spacing[3],
   },
-
-  /* Bio Textarea */
-  bioWrap: {
-    padding: spacing[4],
-    gap: spacing[2],
-  },
-  bioHeader: {
+  verifiedPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[100],
   },
-  bioIconBox: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    backgroundColor: "#f7f6f0",
-    alignItems: "center",
-    justifyContent: "center",
+  verifiedText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.olive[700],
   },
+
+  /* Bio */
+  bioCard: { padding: spacing[4], gap: spacing[2] },
   bioTextArea: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
+    fontSize: 14.5,
     color: colors.light.foreground,
-    minHeight: 88,
-    lineHeight: 20,
+    minHeight: 96,
+    lineHeight: 21,
     textAlignVertical: "top",
-    backgroundColor: "#faf9f4",
-    borderRadius: radii.lg,
-    padding: spacing[3],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.06)",
+    padding: 0,
+  },
+  bioCounter: {
+    alignSelf: "flex-end",
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
   },
 
-  /* Save CTA */
-  mainSaveBtn: {
+  /* Sticky save bar */
+  saveBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: colors.olive[700],
-    borderRadius: radii.full,
-    paddingVertical: spacing[4],
-    marginTop: spacing[4],
+    gap: spacing[3],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    backgroundColor: colors.light.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
     ...shadows.soft,
   },
-  mainSaveBtnDisabled: {
-    opacity: 0.7,
+  discardBtn: {
+    paddingHorizontal: spacing[5],
+    height: 50,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.light.border,
   },
-  mainSaveBtnText: {
-    fontFamily: fontFamilies.sans.bold,
+  discardText: {
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 14,
-    color: "#faf8f1",
-    letterSpacing: 0.4,
+    color: colors.light.foreground,
+  },
+  saveBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[700],
+  },
+  saveBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14.5,
+    color: colors.light.primaryForeground,
   },
 });

@@ -19,13 +19,15 @@ export function TrustStrip() {
         <View style={styles.line} />
       </View>
       <View style={styles.wrap}>
-        {ITEMS.map((item) => (
-          <View key={item.label} style={styles.item}>
+        {ITEMS.map((item, i) => (
+          <View key={item.label} style={[styles.item, i > 0 && styles.itemDivider]}>
             <View style={styles.iconWrap}>
-              <Ionicons name={item.icon} size={18} color={colors.olive[600]} />
+              <Ionicons name={item.icon} size={17} color={colors.olive[700]} />
             </View>
-            <Text style={styles.label}>{item.label}</Text>
-            <Text style={styles.sub}>{item.sub}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>{item.label}</Text>
+              <Text style={styles.sub}>{item.sub}</Text>
+            </View>
           </View>
         ))}
       </View>
@@ -57,39 +59,39 @@ const styles = StyleSheet.create({
     color: colors.olive[600],
   },
   wrap: {
-    flexDirection: "row",
-    paddingVertical: spacing[4],
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: spacing[4],
     borderRadius: radii["2xl"],
     backgroundColor: colors.light.card,
     borderWidth: 1,
     borderColor: `${colors.light.primary}12`,
-    gap: spacing[2],
   },
   item: {
-    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: spacing[3],
+    paddingVertical: spacing[3],
+  },
+  itemDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: `${colors.olive[500]}12`,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
   },
   label: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
+    fontSize: 13,
     color: colors.light.foreground,
-    textAlign: "center",
   },
   sub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
-    textAlign: "center",
+    marginTop: 1,
   },
 });

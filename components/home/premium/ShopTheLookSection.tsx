@@ -7,9 +7,11 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { Display, Label, Body, Price } from "@/components/ui/Typography";
+import { Display, Label, Body } from "@/components/ui/Typography";
+import { HomeSectionHeader } from "./HomeSectionHeader";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -102,8 +104,10 @@ function chunkProductsIntoLooks(products: import("@/lib/types").Product[]): Cura
     looks.push({
       id: `look-${i / 3 + 1}`,
       lookNumber: `LOOK ${String(i / 3 + 1).padStart(2, "0")}`,
-      title: slice[0]?.name ?? "Curated look",
-      subtitle: slice.map((p) => p.category?.name ?? p.name).slice(0, 2).join(" · "),
+      // Title the look by what's in it rather than repeating the first
+      // piece's name (which is already listed in "Pieces in this look").
+      title: lookTitle(slice),
+      subtitle: `${slice.length} pieces, styled together`,
       heroImage: hero,
       items: slice.map((p) => ({
         id: p.id,
@@ -116,6 +120,15 @@ function chunkProductsIntoLooks(products: import("@/lib/types").Product[]): Cura
     });
   }
   return looks.length > 0 ? looks : CURATED_LOOKS;
+}
+
+function lookTitle(slice: import("@/lib/types").Product[]): string {
+  const cats = Array.from(
+    new Set(slice.map((p) => p.category?.name).filter((c): c is string => Boolean(c)))
+  );
+  if (cats.length >= 2) return `${cats[0]} & ${cats[1]}`;
+  if (cats.length === 1) return `The ${cats[0].toLowerCase()} edit`;
+  return "A curated ensemble";
 }
 
 export function ShopTheLookSection({ products = [] }: { products?: import("@/lib/types").Product[] }) {
@@ -133,35 +146,29 @@ export function ShopTheLookSection({ products = [] }: { products?: import("@/lib
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Label style={styles.kicker}>THE ATELIER LOOKBOOK</Label>
-          <Display size="2xl" style={styles.title}>Shop the Look</Display>
-        </View>
-        <TouchableOpacity
-          onPress={() => router.push("/(main)/products?sort=newest")}
-          activeOpacity={0.7}
-        >
-          <Label style={styles.viewAll}>VIEW EDIT →</Label>
-        </TouchableOpacity>
-      </View>
+      <HomeSectionHeader
+        kicker="The atelier lookbook"
+        title="Shop the look"
+        onPress={() => router.push("/(main)/products?sort=newest")}
+      />
 
-      {/* Look Selector Tabs */}
-      <View style={styles.lookTabs}>
-        {looks.map((look, i) => (
-          <TouchableOpacity
-            key={look.id}
-            style={[styles.lookTab, i === activeLookIndex && styles.lookTabActive]}
-            onPress={() => setActiveLookIndex(i)}
-            activeOpacity={0.8}
-          >
-            <Label style={[styles.lookTabText, i === activeLookIndex && styles.lookTabTextActive]}>
-              {look.lookNumber}
-            </Label>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Look Selector Tabs — only worth showing when there's a choice */}
+      {looks.length > 1 ? (
+        <View style={styles.lookTabs}>
+          {looks.map((look, i) => (
+            <TouchableOpacity
+              key={look.id}
+              style={[styles.lookTab, i === activeLookIndex && styles.lookTabActive]}
+              onPress={() => setActiveLookIndex(i)}
+              activeOpacity={0.8}
+            >
+              <Label style={[styles.lookTabText, i === activeLookIndex && styles.lookTabTextActive]}>
+                {look.lookNumber}
+              </Label>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
 
       {/* Main Look Card */}
       <View style={[styles.card, { width: CARD_WIDTH }]}>
@@ -171,6 +178,11 @@ export function ShopTheLookSection({ products = [] }: { products?: import("@/lib
             style={styles.heroImage}
             contentFit="cover"
             transition={300}
+          />
+          <LinearGradient
+            colors={["transparent", "rgba(16,17,10,0.35)", "rgba(16,17,10,0.85)"]}
+            locations={[0.4, 0.65, 1]}
+            style={StyleSheet.absoluteFill}
           />
           <View style={styles.heroOverlay}>
             <Label style={styles.heroKicker}>{activeLook.lookNumber}</Label>
@@ -200,7 +212,7 @@ export function ShopTheLookSection({ products = [] }: { products?: import("@/lib
                 <View style={styles.itemInfo}>
                   <Label style={styles.itemCategory}>{item.category}</Label>
                   <Body size="xs" numberOfLines={1} style={styles.itemName}>{item.name}</Body>
-                  <Price size="xs" style={styles.itemPrice}>{formatPrice(item.price)}</Price>
+                  <Body size="xs" style={styles.itemPrice}>{formatPrice(item.price)}</Body>
                 </View>
                 <View style={styles.arrowIcon}>
                   <Ionicons name="arrow-forward" size={12} color={colors.olive[600]} />
@@ -216,29 +228,7 @@ export function ShopTheLookSection({ products = [] }: { products?: import("@/lib
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: spacing[6],
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[3],
-  },
-  kicker: {
-    color: colors.olive[600],
-    fontSize: 10,
-    letterSpacing: 2,
-    marginBottom: 2,
-  },
-  title: {
-    color: colors.light.foreground,
-  },
-  viewAll: {
-    fontSize: 10.5,
-    letterSpacing: 1.5,
-    color: colors.olive[600],
-    fontFamily: fontFamilies.mono.semibold,
+    marginBottom: spacing[8],
   },
   lookTabs: {
     flexDirection: "row",
@@ -290,11 +280,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     padding: spacing[4],
-    backgroundColor: "rgba(22, 23, 15, 0.65)",
-    gap: 2,
+    gap: 4,
   },
   heroKicker: {
-    color: colors.accent2.rust,
+    color: colors.accent2.ochre,
     fontSize: 9.5,
     letterSpacing: 1.5,
   },
@@ -350,6 +339,7 @@ const styles = StyleSheet.create({
   },
   itemPrice: {
     color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.bold,
   },
   arrowIcon: {
     width: 20,

@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo } from "react";
-import { RefreshControl, StyleSheet, View, Text } from "react-native";
+import { RefreshControl, StyleSheet, TouchableOpacity, View, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useSharedValue } from "react-native-reanimated";
+import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader, PaperBackground } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import {
   CategoryScroller,
-  CategoryGrid,
   PromoCarousel,
   ProductRail,
   MasonryProductRail,
@@ -22,11 +23,16 @@ import {
   TrustStrip,
 } from "@/components/home/premium";
 import { PinnedDrop } from "@/components/home/sections/PinnedDrop";
+import { createSeenSet } from "@/components/home/premium/dedupe";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { useAuth } from "@/lib/supabase/auth";
-import { useWishlist } from "@/lib/stores";
+import { useCart, useUI, useWishlist } from "@/lib/stores";
 import { useHomeScreenData } from "@/lib/hooks/useHomeScreen";
+import type { Product } from "@/lib/types";
+
+/** Rails with fewer items than this are hidden rather than shown half-empty. */
+const MIN_RAIL_ITEMS = 3;
 
 /* ---------------------------------------------------------------------------
  * SHOP GRID SECTION — disabled for now (kept for easy re-enabling later).
@@ -50,10 +56,12 @@ import { useHomeScreenData } from "@/lib/hooks/useHomeScreen";
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const tabBarScrollHandler = useHideTabBarOnScroll();
+  const scrollY = useSharedValue(0);
+  const tabBarScrollHandler = useHideTabBarOnScroll(scrollY);
   const { user } = useAuth();
   const wishlistIdsKey = useWishlist((s) => Object.keys(s.items).sort().join(","));
   const wishlistCount = useWishlist((s) => Object.keys(s.items).length);
+  const cartCount = useCart((s) => s.itemCount());
 
   const {
     catalog,
@@ -94,6 +102,33 @@ export default function HomeScreen() {
     [forYou.data?.products?.length, forYou.isLoading],
   );
 
+  // De-duplicate the generic catalog rails top-to-bottom so the same piece
+  // doesn't appear in four rails on a small catalog. Purpose-specific rails
+  // (flash sale, personalised feed) keep their full list
+  // but still count as "seen" so later generic rails skip those pieces.
+  // Sponsored is paid placement and is never filtered.
+  const rails = useMemo(() => {
+    const seen = createSeenSet();
+    const take = (list: Product[] | undefined) => seen.take(list, MIN_RAIL_ITEMS);
+
+    seen.mark(forYou.data?.products ?? []);
+    const flash = catalogData?.saleProducts ?? [];
+    seen.mark(flash);
+    const newArrivals = take(catalogData?.newArrivals);
+    const trending = take(catalogData?.trending);
+    const editorsPicks = take(catalogData?.editorsPicks);
+    const todaysEdit = take(catalogData?.todaysEdit);
+    const mostLoved = take(catalogData?.mostLoved);
+    return {
+      flash,
+      newArrivals,
+      trending,
+      editorsPicks,
+      todaysEdit,
+      mostLoved,
+    };
+  }, [catalogData, forYou.data?.products]);
+
   /* const [filterOpen, setFilterOpen] = useState(false);
   const {
     products,
@@ -126,7 +161,7 @@ export default function HomeScreen() {
 
   return (
     <PaperBackground>
-      <AppHeader showSearch />
+      <AppHeader showSearch scrollY={scrollY} />
       <AnimatedScrollView
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
@@ -143,13 +178,13 @@ export default function HomeScreen() {
         <CategoryScroller categories={catalogData?.categories ?? []} />
 
         {user ? (
-          <View style={styles.memberGreeting}>
-            <View style={styles.greetingDot} />
-            <Text style={styles.greetingText}>
-              Welcome back, <Text style={styles.greetingName}>{user.user_metadata?.full_name?.split(" ")[0] || "Member"}</Text>
-              {wishlistCount > 0 ? ` · ${wishlistCount} saved in your wardrobe` : " · Discover the new seasonal edit"}
-            </Text>
-          </View>
+          <MemberGreeting
+            firstName={user.user_metadata?.full_name?.split(" ")[0] || "Member"}
+            cartCount={cartCount}
+            wishlistCount={wishlistCount}
+            onOpenBag={() => useUI.getState().setCartDrawer(true)}
+            onOpenWishlist={() => router.push("/(main)/wishlist")}
+          />
         ) : null}
 
         <PromoCarousel banners={catalogData?.banners ?? []} />
@@ -170,7 +205,7 @@ export default function HomeScreen() {
         <ContinueBrowsingRow />
 
         {/* Zone 2 — the core catalog: deals, new stock, saved items */}
-        <View style={[styles.zone, styles.zoneWarm]}>
+        <View style={styles.zone}>
           {wishlistRailData.wishlist.length > 0 ? (
             <>
               <ProductRail
@@ -193,13 +228,12 @@ export default function HomeScreen() {
           ) : null}
 
           <PinnedDrop
-            products={catalogData?.saleProducts ?? []}
+            products={rails.flash}
             endsAt={catalogData?.flashEndsAt}
           />
           <ProductRail
             title="New arrivals"
-            products={catalogData?.newArrivals ?? []}
-            showSaleBadge={false}
+            products={rails.newArrivals}
             onSeeAll={() => router.push("/(main)/products?sort=newest")}
           />
           {(recentlyViewed.data?.length ?? 0) > 0 ? (
@@ -207,13 +241,10 @@ export default function HomeScreen() {
               kicker="Pick up where you left off"
               title="Recently viewed"
               products={recentlyViewed.data ?? []}
-              showSaleBadge={false}
               onSeeAll={() => router.push("/(main)/products?sort=newest")}
             />
           ) : null}
         </View>
-
-        <CategoryGrid categories={catalogData?.categories ?? []} />
 
         {/* Lookbook Feature */}
         <ShopTheLookSection products={[...(catalogData?.newArrivals ?? []), ...(catalogData?.saleProducts ?? [])]} />
@@ -225,7 +256,7 @@ export default function HomeScreen() {
             <MasonryProductRail
               kicker="Live right now"
               title="Trending now"
-              products={catalogData?.trending ?? []}
+              products={rails.trending}
               onSeeAll={() => router.push("/(main)/products?sort=rating")}
             />
             <FeaturedBrandsRow brands={catalogData?.brands ?? []} />
@@ -236,44 +267,38 @@ export default function HomeScreen() {
             />
 
             {/* Zone 4 — the editorial desk: curated picks, the journal */}
-            <View style={[styles.zone, styles.zoneTint]}>
+            <View style={styles.zone}>
               <ProductRail
                 kicker="Curated by our stylists"
                 title="Editor's picks"
-                products={catalogData?.editorsPicks ?? []}
-                showSaleBadge={false}
+                products={rails.editorsPicks}
                 variant="feature"
                 onSeeAll={() => router.push("/(main)/products?sort=price_desc")}
               />
               <ProductRail
                 kicker="Updated daily"
                 title="Today's edit"
-                products={catalogData?.todaysEdit ?? []}
-                showSaleBadge={false}
+                products={rails.todaysEdit}
                 variant="feature"
                 onSeeAll={() => router.push("/(main)/products?sort=newest")}
               />
               <ProductRail
                 kicker="Trending today"
                 title="Most loved right now"
-                products={catalogData?.mostLoved ?? []}
-                showSaleBadge={false}
+                products={rails.mostLoved}
                 onSeeAll={() => router.push("/(main)/products?sort=rating")}
               />
 
-              <View style={styles.sponsoredWrap}>
-                <Text style={styles.sponsoredLabel}>Sponsored</Text>
-                <ProductRail
-                  title="Featured from our partners"
-                  products={catalogData?.sponsored ?? []}
-                  showSaleBadge={false}
-                  badgeLabel="Sponsored"
-                />
-              </View>
-
-              <TrustStrip />
+              {/* Paid placement: labelled at section level and on every card. */}
+              <ProductRail
+                kicker="Sponsored"
+                title="Featured from our partners"
+                products={catalogData?.sponsored ?? []}
+                badgeLabel="Sponsored"
+              />
 
               <HomeJournalRail
+                kicker="Stories & guides"
                 title="From the journal"
                 posts={catalogData?.journalPosts ?? []}
                 tabs={[
@@ -284,6 +309,21 @@ export default function HomeScreen() {
             </View>
           </>
         ) : null}
+
+        {/* Close the page deliberately instead of trailing off into empty space. */}
+        <TrustStrip />
+        <View style={styles.endCap}>
+          <Text style={styles.endKicker}>You've seen the edit</Text>
+          <Text style={styles.endTitle}>Still looking for something?</Text>
+          <TouchableOpacity
+            style={styles.endBtn}
+            onPress={() => router.push("/(main)/products")}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.endBtnText}>Browse all pieces</Text>
+            <Ionicons name="arrow-forward" size={15} color={colors.light.primaryForeground} />
+          </TouchableOpacity>
+        </View>
 
         {/* --- Shop grid section (disabled for now) ---
         <View style={styles.gridSectionHeader}>
@@ -316,6 +356,50 @@ export default function HomeScreen() {
   );
 }
 
+/**
+ * Greeting pill that doubles as a shortcut: bag first (closest to checkout),
+ * then saved pieces, otherwise just a greeting.
+ */
+function MemberGreeting({
+  firstName,
+  cartCount,
+  wishlistCount,
+  onOpenBag,
+  onOpenWishlist,
+}: {
+  firstName: string;
+  cartCount: number;
+  wishlistCount: number;
+  onOpenBag: () => void;
+  onOpenWishlist: () => void;
+}) {
+  const action =
+    cartCount > 0
+      ? { text: `${cartCount} item${cartCount === 1 ? "" : "s"} in your bag`, onPress: onOpenBag }
+      : wishlistCount > 0
+        ? { text: `${wishlistCount} saved piece${wishlistCount === 1 ? "" : "s"}`, onPress: onOpenWishlist }
+        : null;
+
+  const body = (
+    <>
+      <View style={styles.greetingDot} />
+      <Text style={styles.greetingText} numberOfLines={1}>
+        Welcome back, <Text style={styles.greetingName}>{firstName}</Text>
+        {action ? ` · ${action.text}` : " · Discover the new seasonal edit"}
+      </Text>
+      {action ? <Ionicons name="chevron-forward" size={12} color={colors.olive[700]} /> : null}
+    </>
+  );
+
+  return action ? (
+    <TouchableOpacity style={styles.memberGreeting} onPress={action.onPress} activeOpacity={0.75}>
+      {body}
+    </TouchableOpacity>
+  ) : (
+    <View style={styles.memberGreeting}>{body}</View>
+  );
+}
+
 const styles = StyleSheet.create({
   scroll: {
     paddingTop: 4,
@@ -342,6 +426,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.olive[600],
   },
   greetingText: {
+    flexShrink: 1,
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11.5,
     color: colors.light.foreground,
@@ -351,33 +436,42 @@ const styles = StyleSheet.create({
     color: colors.olive[700],
   },
   zone: {
-    paddingTop: spacing[6],
-    paddingBottom: spacing[2],
-    marginBottom: spacing[6],
+    paddingTop: spacing[2],
   },
-  zoneWarm: {
-    backgroundColor: colors.paper.warm,
-  },
-  zoneTint: {
-    backgroundColor: colors.olive[50],
-  },
-  sponsoredWrap: {
-    marginHorizontal: spacing[4],
-    marginBottom: spacing[8],
-    paddingTop: spacing[4],
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.light.border,
-  },
-  sponsoredLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  endCap: {
+    alignItems: "center",
+    gap: spacing[1.5],
     paddingHorizontal: spacing[5],
-    marginBottom: spacing[2],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[6],
+  },
+  endKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: colors.light.primary,
+  },
+  endTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    color: colors.light.foreground,
+    textAlign: "center",
+  },
+  endBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: spacing[3],
+    paddingHorizontal: spacing[6],
+    height: 48,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.primary,
+  },
+  endBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.light.primaryForeground,
   },
   /* gridSectionHeader: {
     marginTop: spacing[6],

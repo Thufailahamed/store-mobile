@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground } from "@/components/layout";
@@ -62,6 +62,10 @@ export default function AddressesScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Address | null>(null);
   const [saving, setSaving] = useState(false);
+  // Deep-link intents (e.g. from the header's address sheet):
+  // ?action=add opens a blank form, ?edit=<id> opens that address.
+  const params = useLocalSearchParams<{ action?: string; edit?: string }>();
+  const [intentHandled, setIntentHandled] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -76,6 +80,21 @@ export default function AddressesScreen() {
       cancelled = true;
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (intentHandled || loading) return;
+    if (params.action === "add") {
+      setEditing(null);
+      setSheetOpen(true);
+    } else if (params.edit) {
+      const target = addresses.find((a) => a.id === params.edit);
+      if (target) {
+        setEditing(target);
+        setSheetOpen(true);
+      }
+    }
+    setIntentHandled(true);
+  }, [intentHandled, loading, params.action, params.edit, addresses]);
 
   const refresh = async () => {
     if (!user?.id) return;

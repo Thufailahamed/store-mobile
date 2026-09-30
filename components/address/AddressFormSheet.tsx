@@ -17,12 +17,12 @@ import * as Location from "expo-location";
 import { useToast } from "@/components/ui";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { Body, Display, Label } from "@/components/ui/Typography";
+import { Display } from "@/components/ui/Typography";
 import { Button } from "@/components/ui/Button";
 import { AddressMapPicker } from "./AddressMapPicker";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { reverseGeocode, type GeocodeResult } from "@/lib/maps";
-import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
 import {
@@ -62,10 +62,10 @@ interface AddressFormSheetProps {
   hideDefault?: boolean;
 }
 
-const TYPE_META: Record<AddressType, { label: string; icon: keyof typeof Ionicons.glyphMap; copy: string }> = {
-  home: { label: "Home", icon: "home-outline", copy: "Where you live, where things get tried on." },
-  work: { label: "Work", icon: "briefcase-outline", copy: "Office or studio — for daytime deliveries." },
-  other: { label: "Other", icon: "location-outline", copy: "A second home, a friend's, a hotel…" },
+const TYPE_META: Record<AddressType, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  home: { label: "Home", icon: "home-outline" },
+  work: { label: "Work", icon: "briefcase-outline" },
+  other: { label: "Other", icon: "location-outline" },
 };
 
 function payloadFromAddress(a: Partial<Address> | null | undefined, fallback: Partial<AddressFormPayload> = {}): AddressFormPayload {
@@ -271,11 +271,10 @@ export function AddressFormSheet({
           <View style={styles.handle} />
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Label style={styles.kicker}>{isEdit ? "Edit" : "New"}</Label>
               <Display size="xl">{title ?? (isEdit ? "Edit address" : "Add address")}</Display>
-              {subtitle ? <Body muted size="xs" style={{ marginTop: 2 }}>{subtitle}</Body> : null}
+              <Text style={styles.headerSub}>{subtitle ?? "Where should we deliver?"}</Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityLabel="Close">
               <Ionicons name="close" size={18} color={colors.light.foreground} />
             </Pressable>
           </View>
@@ -287,175 +286,189 @@ export function AddressFormSheet({
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
           >
-            <View style={styles.mapSection}>
-              <View style={styles.typeBlock}>
-                <Label style={styles.sectionLabel}>Type</Label>
-                <View style={styles.typeRow}>
-                  {(["home", "work", "other"] as AddressType[]).map((t) => {
-                    const meta = TYPE_META[t];
-                    const active = form.type === t;
-                    return (
-                      <Pressable
-                        key={t}
-                        onPress={() => set("type", t)}
-                        style={[styles.typeChip, active && styles.typeChipActive]}
-                      >
-                        <Ionicons
-                          name={meta.icon}
-                          size={14}
-                          color={active ? colors.light.primaryForeground : colors.light.foreground}
-                        />
-                        <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
-                          {meta.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Body muted size="xs" style={styles.typeCopy}>{TYPE_META[form.type].copy}</Body>
-              </View>
-
+            {/* ── Location: fills the address fields below ───────────── */}
+            <Section title="Location">
               <TouchableOpacity
                 onPress={handleAutoFetch}
                 disabled={fetchingLoc}
-                style={[styles.autoDetectBtn, { borderColor: colors.light.primary }]}
+                style={styles.locateBtn}
                 activeOpacity={0.75}
               >
-                {fetchingLoc ? (
-                  <ActivityIndicator size="small" color={colors.light.primary} />
-                ) : (
-                  <Ionicons name="location-outline" size={16} color={colors.light.primary} />
-                )}
-                <Label style={[styles.autoDetectBtnText, { color: colors.light.primary }]}>
-                  {fetchingLoc ? "Detecting location…" : "Auto-detect current address"}
-                </Label>
+                <View style={styles.locateIcon}>
+                  {fetchingLoc ? (
+                    <ActivityIndicator size="small" color={colors.light.primary} />
+                  ) : (
+                    <Ionicons name="navigate" size={16} color={colors.light.primary} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.locateTitle}>
+                    {fetchingLoc ? "Finding you…" : "Use my current location"}
+                  </Text>
+                  <Text style={styles.locateSub}>We'll fill in the address for you</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
               </TouchableOpacity>
 
-              <Label style={styles.sectionLabel}>Pin location</Label>
               <AddressMapPicker
                 latitude={form.latitude}
                 longitude={form.longitude}
                 onLocationChange={handleMapChange}
+                showCoords={false}
+                height={200}
               />
               {geoBusy ? (
                 <View style={styles.geoStatus}>
                   <ActivityIndicator size="small" color={colors.light.primary} />
-                  <Text style={styles.geoStatusText}>Resolving address…</Text>
+                  <Text style={styles.geoStatusText}>Looking up this spot…</Text>
+                </View>
+              ) : form.latitude != null && (form.line1 || form.city) ? (
+                <View style={styles.geoStatus}>
+                  <Ionicons name="checkmark-circle" size={15} color={colors.light.primary} />
+                  <Text style={styles.geoResolvedText} numberOfLines={1}>
+                    Pinned near {[form.line1, form.city].filter(Boolean).join(", ")}
+                  </Text>
                 </View>
               ) : (
-                <Body muted size="xs" style={styles.helper}>
-                  Drag the pin, tap the map, or hit the locate button to refine.
-                </Body>
+                <Text style={styles.helper}>Tap the map or drag the pin to mark the exact spot.</Text>
               )}
-            </View>
+            </Section>
 
-            {/* Manual fields */}
-            <View style={styles.fieldRow}>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Full name"
-                  required
-                  value={form.full_name}
-                  onChangeText={(v) => set("full_name", v)}
-                  error={errors.full_name}
-                  autoCapitalize="words"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Phone"
-                  required
-                  value={form.phone}
-                  onChangeText={(v) => set("phone", v)}
-                  keyboardType="phone-pad"
-                  error={errors.phone}
-                  placeholder="+94 77 …"
-                />
-              </View>
-            </View>
+            {/* ── Contact ────────────────────────────────────────────── */}
+            <Section title="Contact">
+              <Field
+                label="Full name"
+                value={form.full_name}
+                onChangeText={(v) => set("full_name", v)}
+                error={errors.full_name}
+                autoCapitalize="words"
+                textContentType="name"
+              />
+              <Field
+                label="Phone"
+                value={form.phone}
+                onChangeText={(v) => set("phone", v)}
+                keyboardType="phone-pad"
+                error={errors.phone}
+                placeholder="07X XXX XXXX"
+                textContentType="telephoneNumber"
+                hint="The courier calls this number on delivery day"
+              />
+            </Section>
 
-            <Field
-              label="Address line 1"
-              required
-              value={form.line1}
-              onChangeText={(v) => set("line1", v)}
-              error={errors.line1}
-              placeholder="Street address, P.O. box, company name"
-            />
-
-            <Field
-              label="Address line 2"
-              value={form.line2}
-              onChangeText={(v) => set("line2", v)}
-              placeholder="Apt, suite, floor (optional)"
-            />
-
-            <View style={styles.fieldRow}>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="City"
-                  required
-                  value={form.city}
-                  onChangeText={(v) => set("city", v)}
-                  error={errors.city}
-                  autoCapitalize="words"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="State / province"
-                  required
-                  value={form.state}
-                  onChangeText={(v) => set("state", v)}
-                  error={errors.state}
-                  autoCapitalize="words"
-                />
-              </View>
-            </View>
-
-            <View style={styles.fieldRow}>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Postal code"
-                  required
-                  value={form.postal_code}
-                  onChangeText={(v) => set("postal_code", v)}
-                  keyboardType="number-pad"
-                  error={errors.postal_code}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Country"
-                  value={form.country}
-                  onChangeText={(v) => set("country", v)}
-                  autoCapitalize="words"
-                />
-              </View>
-            </View>
-
-            {!hideDefault && (
-              <View style={styles.defaultRow}>
+            {/* ── Address ────────────────────────────────────────────── */}
+            <Section title="Address">
+              <Field
+                label="Street address"
+                value={form.line1}
+                onChangeText={(v) => set("line1", v)}
+                error={errors.line1}
+                placeholder="House no., street"
+                textContentType="streetAddressLine1"
+              />
+              <Field
+                label="Apartment, floor, landmark"
+                optional
+                value={form.line2}
+                onChangeText={(v) => set("line2", v)}
+                placeholder="e.g. Flat 3B, near the temple"
+                textContentType="streetAddressLine2"
+              />
+              <View style={styles.fieldRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.defaultTitle}>Set as default</Text>
-                  <Text style={styles.defaultSubtitle}>Use this for quick checkout</Text>
+                  <Field
+                    label="City"
+                    value={form.city}
+                    onChangeText={(v) => set("city", v)}
+                    error={errors.city}
+                    autoCapitalize="words"
+                    textContentType="addressCity"
+                  />
                 </View>
-                <Switch
-                  value={form.is_default}
-                  onValueChange={(v) => set("is_default", v)}
-                  trackColor={{ false: colors.light.border, true: colors.light.primary }}
-                  thumbColor={colors.paper.cream}
-                />
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Postal code"
+                    value={form.postal_code}
+                    onChangeText={(v) => set("postal_code", v)}
+                    keyboardType="number-pad"
+                    error={errors.postal_code}
+                    textContentType="postalCode"
+                  />
+                </View>
               </View>
-            )}
+              <View style={styles.fieldRow}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Province"
+                    value={form.state}
+                    onChangeText={(v) => set("state", v)}
+                    error={errors.state}
+                    autoCapitalize="words"
+                    textContentType="addressState"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Country"
+                    value={form.country}
+                    onChangeText={(v) => set("country", v)}
+                    autoCapitalize="words"
+                    textContentType="countryName"
+                  />
+                </View>
+              </View>
+            </Section>
+
+            {/* ── Label + default ────────────────────────────────────── */}
+            <Section title="Save as">
+              <View style={styles.typeRow}>
+                {(["home", "work", "other"] as AddressType[]).map((t) => {
+                  const meta = TYPE_META[t];
+                  const active = form.type === t;
+                  return (
+                    <Pressable
+                      key={t}
+                      onPress={() => set("type", t)}
+                      style={[styles.typeChip, active && styles.typeChipActive]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Ionicons
+                        name={meta.icon}
+                        size={15}
+                        color={active ? colors.light.primary : colors.light.mutedForeground}
+                      />
+                      <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
+                        {meta.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {!hideDefault && (
+                <Pressable style={styles.defaultRow} onPress={() => set("is_default", !form.is_default)}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.defaultTitle}>Make this my default address</Text>
+                    <Text style={styles.defaultSubtitle}>Pre-selected at checkout</Text>
+                  </View>
+                  <Switch
+                    value={form.is_default}
+                    onValueChange={(v) => set("is_default", v)}
+                    trackColor={{ false: colors.light.border, true: colors.light.primary }}
+                    thumbColor={colors.paper.cream}
+                  />
+                </Pressable>
+              )}
+            </Section>
           </ScrollView>
 
           <View style={styles.footer}>
-            <Button variant="outline" onPress={onClose} style={{ flex: 1 }}>
+            <Button variant="outline" onPress={onClose} style={{ flex: 1 }} textStyle={styles.footerBtnText}>
               Cancel
             </Button>
-            <Button loading={saving} onPress={handleSave} style={{ flex: 2 }}>
-              {primaryLabel ?? (isEdit ? "Save changes" : "Add address")}
+            <Button loading={saving} onPress={handleSave} style={{ flex: 2 }} textStyle={styles.footerBtnText}>
+              {primaryLabel ?? (isEdit ? "Save changes" : "Save address")}
             </Button>
           </View>
         </SafeAreaView>
@@ -464,29 +477,46 @@ export function AddressFormSheet({
   );
 }
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
 function Field({
   label,
   value,
   onChangeText,
-  required,
+  optional,
   keyboardType,
   error,
   placeholder,
   autoCapitalize,
+  textContentType,
+  hint,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
-  required?: boolean;
+  /** Everything is required unless marked optional — shown as a quiet "(optional)" tag. */
+  optional?: boolean;
   keyboardType?: "default" | "phone-pad" | "number-pad";
   error?: string;
   placeholder?: string;
   autoCapitalize?: "none" | "words" | "sentences" | "characters";
+  textContentType?: React.ComponentProps<typeof TextInput>["textContentType"];
+  hint?: string;
 }) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}{required ? " *" : ""}</Text>
+      <Text style={styles.fieldLabel}>
+        {label}
+        {optional ? <Text style={styles.fieldOptional}> (optional)</Text> : null}
+      </Text>
       <View
         style={[
           styles.input,
@@ -500,13 +530,18 @@ function Field({
           onChangeText={onChangeText}
           keyboardType={keyboardType}
           placeholder={placeholder}
-          placeholderTextColor={colors.light.mutedForeground}
+          placeholderTextColor={colors.light.mutedForeground + "99"}
           autoCapitalize={autoCapitalize ?? (keyboardType === "default" ? "words" : "none")}
+          textContentType={textContentType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
       </View>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {error ? (
+        <Text style={styles.errorText}>{error}</Text>
+      ) : hint ? (
+        <Text style={styles.hintText}>{hint}</Text>
+      ) : null}
     </View>
   );
 }
@@ -538,10 +573,15 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],
-    paddingBottom: spacing[4],
+    paddingBottom: spacing[3],
     gap: spacing[3],
   },
-  kicker: { color: colors.light.primary, marginBottom: 2 },
+  headerSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 2,
+  },
   closeBtn: {
     width: 34,
     height: 34,
@@ -552,23 +592,46 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[6],
-    gap: spacing[4],
+    paddingTop: spacing[1],
+    paddingBottom: spacing[8],
+    gap: spacing[6],
   },
-  mapSection: {
-    paddingBottom: spacing[3],
+  section: {
     gap: spacing[3],
   },
-  typeBlock: {
-    gap: 0,
-  },
-  sectionLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.xs,
+  sectionTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
     color: colors.light.foreground,
-    letterSpacing: typography.letterSpacing.editorial,
-    textTransform: "uppercase",
-    marginBottom: spacing[2],
+  },
+  locateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    padding: spacing[3],
+    borderRadius: radii.xl,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[100],
+  },
+  locateIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.light.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  locateTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.light.primary,
+  },
+  locateSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+    marginTop: 1,
   },
   typeRow: { flexDirection: "row", gap: 8 },
   typeChip: {
@@ -577,29 +640,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 10,
-    borderRadius: radii.lg,
-    backgroundColor: colors.olive[50],
+    height: 42,
+    borderRadius: radii.full,
+    backgroundColor: colors.paper.cream,
     borderWidth: 1,
     borderColor: colors.light.border,
   },
-  typeChipActive: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
+  typeChipActive: {
+    backgroundColor: colors.olive[50],
+    borderColor: colors.light.primary,
+    borderWidth: 1.5,
+  },
   typeChipText: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 14,
     color: colors.light.foreground,
   },
-  typeChipTextActive: { color: colors.light.primaryForeground },
-  typeCopy: { marginTop: 6 },
+  typeChipTextActive: { color: colors.light.primary, fontFamily: fontFamilies.sans.semibold },
   field: { gap: 6 },
   fieldRow: { flexDirection: "row", gap: spacing[3] },
-  helper: { color: colors.light.mutedForeground, marginTop: 4 },
+  helper: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+    marginTop: -4,
+  },
   fieldLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.xs,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
     color: colors.light.foreground,
-    letterSpacing: typography.letterSpacing.editorial,
-    textTransform: "uppercase",
+  },
+  fieldOptional: {
+    fontFamily: fontFamilies.sans.regular,
+    color: colors.light.mutedForeground,
   },
   input: {
     flexDirection: "row",
@@ -608,8 +681,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.light.border,
     borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    height: 46,
+    paddingHorizontal: 14,
+    height: 48,
   },
   inputFocused: {
     borderColor: colors.light.ring,
@@ -619,44 +692,56 @@ const styles = StyleSheet.create({
   inputText: {
     flex: 1,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.base,
+    fontSize: 15,
     color: colors.light.foreground,
     height: "100%",
   },
   errorText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
     color: colors.light.destructive,
+  },
+  hintText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
   geoStatus: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    marginTop: 6,
+    marginTop: -4,
   },
   geoStatusText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 12,
     color: colors.light.mutedForeground,
+  },
+  geoResolvedText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12.5,
+    color: colors.light.foreground,
   },
   defaultRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[4],
-    backgroundColor: colors.olive[50],
-    borderRadius: radii.lg,
+    backgroundColor: colors.paper.cream,
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radii.xl,
     gap: spacing[3],
-    marginTop: spacing[2],
   },
   defaultTitle: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 14,
     color: colors.light.foreground,
   },
   defaultSubtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 12,
     color: colors.light.mutedForeground,
     marginTop: 2,
   },
@@ -664,27 +749,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing[3],
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[4],
-    borderTopWidth: 1,
+    paddingTop: spacing[3],
+    paddingBottom: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.light.border,
     backgroundColor: colors.light.background,
-    ...shadows.soft,
   },
-  autoDetectBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: radii.lg,
-    height: 44,
-    backgroundColor: colors.olive[50],
-    marginBottom: spacing[2],
-  },
-  autoDetectBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontWeight: "700",
-    fontSize: 13,
+  footerBtnText: {
+    textTransform: "none",
+    letterSpacing: 0,
+    fontSize: 15,
   },
 });
