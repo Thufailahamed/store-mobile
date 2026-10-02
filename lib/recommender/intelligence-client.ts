@@ -84,3 +84,17 @@ export async function fetchSimilarById(
   if (!res.ok) return fail((res as { ok: false; error: string }).error);
   return ok(res.data);
 }
+
+/** Attr-based outfit companions (GLM vision occasion/style). */
+export async function fetchCompanionsById(
+  productId: string,
+  limit = 6,
+): Promise<Result<{ products: Array<Product & { match_reason?: string | null }>; match_reasons?: Record<string, string> }>> {
+  if (!hasStoreApi()) return fail("api_base_unset");
+  const res = await fetchJson<{ products: Array<Product & { match_reason?: string | null }>; match_reasons?: Record<string, string> }>(
+    `/api/catalog/products/${productId}/companions`,
+    { query: { limit: String(Math.min(limit, 24)) } },
+  );
+  if (!res.ok) return fail((res as { ok: false; error: string }).error);
+  return ok(res.data);
+}

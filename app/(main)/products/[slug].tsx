@@ -535,7 +535,14 @@ export default function ProductDetailScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.relatedList}
-              renderItem={({ item }) => <ProductCard product={item} horizontal />}
+              renderItem={({ item }) => (
+                <View>
+                  <ProductCard product={item} horizontal />
+                  {(item as Product & { match_reason?: string | null }).match_reason ? (
+                    <Body size="xs" style={styles.matchReason} numberOfLines={1}>{(item as Product & { match_reason?: string | null }).match_reason}</Body>
+                  ) : null}
+                </View>
+              )}
             />
           </View>
         )}
@@ -803,6 +810,13 @@ const styles = StyleSheet.create({
   },
   relatedList: {
     paddingHorizontal: spacing[5],
+  },
+  matchReason: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: colors.olive[700],
+    marginTop: 2,
+    maxWidth: 160,
   },
   /* Fixed bottom purchase bar */
   stickyBottomBar: {

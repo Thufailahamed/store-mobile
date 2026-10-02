@@ -36,7 +36,7 @@ import { cacheGet, cacheSet, cacheKey as makeKey, cacheBustPrefix } from "./cach
 import { useWishlist } from "@/lib/stores";
 import { isProductInStock } from "./inventory";
 import { pullPersonalizedCandidates } from "./personalized-candidates";
-import { fetchRecommendations, fetchSimilarById, fetchTrending } from "./intelligence-client";
+import { fetchRecommendations, fetchSimilarById, fetchTrending, fetchCompanionsById } from "./intelligence-client";
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const fail = (e: string): Result<never> => ({ ok: false, error: e });
@@ -297,9 +297,26 @@ export async function getPairsWellWithRail(
   const key = makeKey("pairs", userId ?? "guest", product.id, limit);
   const cached = cacheGet<Result<Product[]>>(key);
   if (cached) return cached;
-  const res = await getPairsWellWith(userId, product, limit);
-  if (res.ok) cacheSet(key, res, TTL_SIMILAR);
-  return res;
+  // Attr companions first (cold-start friendly); behavior pairs merge after.
+  try {
+    const comp = await fetchCompanionsById(product.id, limit);
+    if (comp.ok && (comp.data.products?.length ?? 0) >= 3) {
+      const out: Result<Product[]> = ok(comp.data.products.slice(0, limit));
+      cacheSet(key, out, TTL_SIMILAR);
+      return out;
+    }
+    const companions = comp.ok ? comp.data.products ?? [] : [];
+    const fallback = await getPairsWellWith(userId, product, limit);
+    const seen = new Set(companions.map((p) => p.id));
+    const merged = [...companions, ...(fallback.ok ? fallback.data.filter((p) => !seen.has(p.id)) : [])].slice(0, limit);
+    const out: Result<Product[]> = ok(merged);
+    cacheSet(key, out, TTL_SIMILAR);
+    return out;
+  } catch {
+    const res = await getPairsWellWith(userId, product, limit);
+    if (res.ok) cacheSet(key, res, TTL_SIMILAR);
+    return res;
+  }
 }
 
 export async function getRecentlyViewedRail(
