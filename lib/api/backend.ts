@@ -195,7 +195,7 @@ export async function getHomepageBackend(): Promise<ApiResult<HomepagePayload>> 
   return homepagePromise;
 }
 
-export type ImageSearchMatch = { id: string; name: string; slug: string; price: number; score?: number; image_url?: string; images?: Array<{ url: string; is_primary?: boolean }> };
+export type ImageSearchMatch = { id: string; name: string; slug: string; price: number; score?: number; confidence?: number; matchType?: string; brand?: string; matched_attrs?: string[]; image?: string; image_url?: string; images?: Array<{ url: string; is_primary?: boolean }> };
 
 export async function imageSearchBackend(imageUrl: string, limit = 12): Promise<ApiResult<{ matches: ImageSearchMatch[]; fallback?: boolean }>> {
   return fetchJson("/api/catalog/image-search", {

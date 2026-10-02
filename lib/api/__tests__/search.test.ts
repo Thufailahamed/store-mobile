@@ -4,6 +4,7 @@ const backendMocks = vi.hoisted(() => ({
   searchProductsBackend: vi.fn(),
   getProductsByIdsBackend: vi.fn(),
   getProductsBackend: vi.fn(),
+  imageSearchBackend: vi.fn(),
 }));
 
 const catalogVisibilityMocks = vi.hoisted(() => ({
@@ -21,7 +22,7 @@ vi.mock("@/lib/api/backend", async (importOriginal) => {
 
 vi.mock("@/lib/catalog-visibility", () => catalogVisibilityMocks);
 
-import { searchProducts } from "@/lib/api";
+import { searchProducts, reverseImageSearch } from "@/lib/api";
 
 describe("searchProducts", () => {
   beforeEach(() => {
@@ -108,5 +109,39 @@ describe("searchProducts", () => {
       expect(res.data.length).toBe(0);
     }
     expect(backendMocks.getProductsByIdsBackend).not.toHaveBeenCalled();
+  });
+});
+
+describe("reverseImageSearch", () => {
+  beforeEach(() => {
+    backendMocks.imageSearchBackend.mockReset();
+  });
+
+  it("maps backend image + preserves GLM confidence/brand", async () => {
+    backendMocks.imageSearchBackend.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        matches: [
+          { id: "p-9", name: "Velvet Gown", slug: "velvet-gown", price: 12000, image: "https://cdn/gown.jpg", brand: "Atelier", confidence: 0.91, matchType: "Color & Texture Match" },
+        ],
+        fallback: false,
+      },
+    });
+    const res = await reverseImageSearch("https://x.com/q.jpg", 12);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.length).toBe(1);
+      expect(res.data[0].images?.[0]?.url).toContain("gown.jpg");
+      const visual = (res.data[0] as unknown as { _visual?: { confidence?: number; brand?: string } })._visual;
+      expect(visual?.confidence).toBe(0.91);
+      expect(visual?.brand).toBe("Atelier");
+    }
+    expect(backendMocks.imageSearchBackend).toHaveBeenCalledWith("https://x.com/q.jpg", 12);
+  });
+
+  it("propagates backend failure", async () => {
+    backendMocks.imageSearchBackend.mockResolvedValueOnce({ ok: false, error: "boom" });
+    const res = await reverseImageSearch("https://x.com/q.jpg", 12);
+    expect(res.ok).toBe(false);
   });
 });

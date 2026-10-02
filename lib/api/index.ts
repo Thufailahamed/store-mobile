@@ -4038,20 +4038,28 @@ export async function reverseImageMatch(path: string): Promise<Result<ScanMatch>
 }
 
 /** Full catalogue grid for camera / gallery image search (batch C). */
-export async function reverseImageSearch(imageUrl: string, limit = 12): Promise<Result<Product[]>> {
+export type VisualMatchMeta = { confidence: number; matchType: string; brand: string | null; matched_attrs: string[] };
+export type VisualProduct = Product & { _visual?: VisualMatchMeta };
+export async function reverseImageSearch(imageUrl: string, limit = 12): Promise<Result<VisualProduct[]>> {
   const res = await B.imageSearchBackend(imageUrl, limit);
   if (!res.ok) return fail(res.error);
   const matches = res.data.matches ?? [];
   return ok(
-    matches.map((m) =>
-      mapFlatProductRow({
+    matches.map((m) => ({
+      ...mapFlatProductRow({
         id: m.id,
         name: m.name,
         slug: m.slug,
         price: m.price,
-        image_url: m.image_url ?? m.images?.find((i) => i.is_primary)?.url ?? m.images?.[0]?.url,
+        image_url: m.image ?? m.image_url ?? m.images?.find((i) => i.is_primary)?.url ?? m.images?.[0]?.url,
       }),
-    ),
+      _visual: {
+        confidence: m.confidence ?? m.score ?? 0.62,
+        matchType: m.matchType ?? "Catalogue Popular",
+        brand: m.brand ?? null,
+        matched_attrs: m.matched_attrs ?? [],
+      } satisfies VisualMatchMeta,
+    })),
   );
 }
 
