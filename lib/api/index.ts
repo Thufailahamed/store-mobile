@@ -425,10 +425,31 @@ export async function searchProducts(
   limit = 20,
   opts?: { gender?: "men" | "women" | "kids" | "unisex" },
 ): Promise<Result<Product[]>> {
+  const r = await searchProductsWithMeta(query, limit, opts);
+  if (!r.ok) return fail(r.error);
+  return ok(r.data.products);
+}
+
+/** Same as searchProducts plus backend smart-search metadata (additive). */
+export async function searchProductsWithMeta(
+  query: string,
+  limit = 20,
+  opts?: { gender?: "men" | "women" | "kids" | "unisex" },
+): Promise<Result<{ products: Product[]; parsed_attrs: B.SearchParsedAttrs | null }>> {
   const term = query.trim();
-  if (!term) return ok([]);
+  if (!term) return ok({ products: [], parsed_attrs: null });
   const words = tokenizeQuery(term);
-  if (words.length === 0) return ok([]);
+  if (words.length === 0) return ok({ products: [], parsed_attrs: null });
+  // Backend attr-boost reasons by product id (for display + local re-rank).
+  const reasonById = new Map<string, string>();
+  let parsedAttrs: B.SearchParsedAttrs | null = null;
+  const ingestSearchRes = (res: Awaited<ReturnType<typeof B.searchProductsBackend>>) => {
+    if (!res.ok) return;
+    if (!parsedAttrs && res.data.parsed_attrs) parsedAttrs = res.data.parsed_attrs;
+    for (const p of res.data.products ?? []) {
+      if (p?.id && p.match_reason && !reasonById.has(p.id)) reasonById.set(p.id, p.match_reason);
+    }
+  };
 
   // Infer gender intent from the query itself ("womans dress" → women) so
   // gender-tagged products rank correctly even when the caller didn't pass
@@ -448,6 +469,7 @@ export async function searchProducts(
 
   let rawProducts: Array<{ id: string }> = [];
   if (res.ok) {
+    ingestSearchRes(res);
     rawProducts = res.data.products ?? [];
   }
 
@@ -470,6 +492,7 @@ export async function searchProducts(
         limit: Math.max(limit * 2, 40),
       });
       if (wordRes.ok) {
+        ingestSearchRes(wordRes);
         for (const p of (wordRes.data.products ?? [])) {
           if (!seen.has(p.id)) {
             seen.add(p.id);
@@ -484,7 +507,7 @@ export async function searchProducts(
     // Fuzzy fallback via /api/catalog/products with text search.
     const fallback = await B.getProductsBackend({ search: term, limit });
     if (!fallback.ok) return fail(fallback.error);
-    return ok(mapProducts(fallback.data.products) ?? []);
+    return ok({ products: mapProducts(fallback.data.products) ?? [], parsed_attrs: parsedAttrs });
   }
 
   const matchedIds = rawProducts.map((p) => p.id);
@@ -545,11 +568,21 @@ export async function searchProducts(
     }
   }
 
-  // Rank locally by scoring utility, then cap to limit.
+  // Rank locally by scoring utility, then cap to limit. Backend attr-boosted
+  // ids get +50 so the server-side smart-search order survives local rank.
   const combined = [...backendProducts, ...colorHits];
-  const scored = combined.map((p) => ({ product: p, score: scoreProduct(p, words, term.toLowerCase()) }));
+  const scored = combined.map((p) => ({
+    product: p,
+    score: scoreProduct(p, words, term.toLowerCase()) + (reasonById.has(p.id) ? 50 : 0),
+  }));
   const ranked = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).map((s) => s.product);
-  return ok(ranked.slice(0, limit));
+  return ok({
+    products: ranked.slice(0, limit).map((p) => {
+      const reason = reasonById.get(p.id);
+      return reason ? { ...p, match_reason: reason } : p;
+    }),
+    parsed_attrs: parsedAttrs,
+  });
 
 }
 

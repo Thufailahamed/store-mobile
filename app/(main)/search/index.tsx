@@ -80,6 +80,7 @@ export default function SearchScreen() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [results, setResults] = useState<Product[]>([]);
+  const [parsedAttrs, setParsedAttrs] = useState<import("@/lib/api/backend").SearchParsedAttrs | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -165,14 +166,17 @@ export default function SearchScreen() {
     saveRecent(q);
 
     const [productRes, brandRes, storeRes, catRes] = await Promise.all([
-      api.searchProducts(q),
+      api.searchProductsWithMeta(q),
       api.getBrands({ search: q }),
       api.getFeaturedStores(20),
       api.getCategories(20),
     ]);
 
-    const productCount = productRes.ok ? productRes.data.length : 0;
-    if (productRes.ok) setResults(productRes.data);
+    const productCount = productRes.ok ? productRes.data.products.length : 0;
+    if (productRes.ok) {
+      setResults(productRes.data.products);
+      setParsedAttrs(productRes.data.parsed_attrs);
+    }
     if (brandRes.ok) setBrands(brandRes.data.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())));
     if (storeRes.ok) setStores(storeRes.data.filter((s) => s.name.toLowerCase().includes(q.toLowerCase())));
     if (catRes.ok) setCategories(catRes.data.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())));
@@ -181,6 +185,15 @@ export default function SearchScreen() {
     // Track the search for personalization.
     tracker.search(q, tokenizeQuery(q), productCount);
   }, [saveRecent, tracker]);
+
+  const removeAttrToken = useCallback((token: string) => {
+    const next = query
+      .split(/\s+/)
+      .filter((w) => w.toLowerCase() !== token.toLowerCase())
+      .join(" ")
+      .trim();
+    if (next) void doSearch(next);
+  }, [query, doSearch]);
 
   const handleResultPress = useCallback(
     (p: Product) => {
@@ -794,6 +807,30 @@ export default function SearchScreen() {
                 </View>
               )}
 
+              {/* Smart-search attr pills */}
+              {parsedAttrs && (parsedAttrs.colors.length > 0 || parsedAttrs.garment || parsedAttrs.material) && (
+                <View style={styles.attrPills}>
+                  {parsedAttrs.colors.map((c) => (
+                    <TouchableOpacity key={`color-${c}`} style={styles.attrPill} onPress={() => removeAttrToken(c)} activeOpacity={0.8}>
+                      <Body size="xs">{c}</Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ))}
+                  {parsedAttrs.garment ? (
+                    <TouchableOpacity style={styles.attrPill} onPress={() => removeAttrToken(parsedAttrs.garment!)} activeOpacity={0.8}>
+                      <Body size="xs">{parsedAttrs.garment}</Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                  {parsedAttrs.material ? (
+                    <TouchableOpacity style={styles.attrPill} onPress={() => removeAttrToken(parsedAttrs.material!)} activeOpacity={0.8}>
+                      <Body size="xs">{parsedAttrs.material}</Body>
+                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              )}
+
               {/* Products */}
               {(tab === "all" || tab === "products") && productCount > 0 && (
                 <View style={styles.productSection}>
@@ -825,6 +862,9 @@ export default function SearchScreen() {
                         <View style={styles.listInfo}>
                           {p.brand && <Label style={styles.listBrand}>{p.brand.name}</Label>}
                           <Body size="sm" numberOfLines={1}>{p.name}</Body>
+                          {(p as Product & { match_reason?: string | null }).match_reason ? (
+                            <Text style={styles.matchReason} numberOfLines={1}>{(p as Product & { match_reason?: string | null }).match_reason}</Text>
+                          ) : null}
                           <Body size="xs" muted numberOfLines={1}>{p.short_description}</Body>
                           <View style={styles.listMeta}>
                             {p.rating > 0 && (
@@ -853,6 +893,9 @@ export default function SearchScreen() {
                       {filtered.map((p) => (
                         <View key={p.id} style={[styles.gridItem, { width: cardWidth }]}>
                           <ProductCard product={p} />
+                          {(p as Product & { match_reason?: string | null }).match_reason ? (
+                            <Text style={[styles.matchReason, { paddingHorizontal: 2 }]} numberOfLines={1}>{(p as Product & { match_reason?: string | null }).match_reason}</Text>
+                          ) : null}
                         </View>
                       ))}
                     </View>
@@ -1358,6 +1401,31 @@ const styles = StyleSheet.create({
   clearChipLabel: {
     color: INK,
     textDecorationLine: "underline",
+  },
+  attrPills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2],
+    alignItems: "center",
+    paddingHorizontal: spacing[4],
+    marginBottom: spacing[1],
+  },
+  attrPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[100],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
+  matchReason: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: colors.olive[700],
+    marginTop: 2,
   },
 
   /* Product section */

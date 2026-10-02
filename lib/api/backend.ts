@@ -70,6 +70,10 @@ export async function getProductsByIdsBackend(ids: string[], includeInactive?: b
   });
 }
 
+export type SearchParsedAttrs = {
+  colors: string[]; garment: string | null; material: string | null; occasion: string | null; leftover: string;
+};
+
 export type SearchResultRow = {
   id: string;
   name: string;
@@ -82,6 +86,7 @@ export type SearchResultRow = {
   storeId: string;
   brandId: string;
   image: string | null;
+  match_reason?: string | null;
 };
 
 export async function searchProductsBackend(opts: {
@@ -97,7 +102,7 @@ export async function searchProductsBackend(opts: {
   sort?: "relevance" | "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
   limit?: number;
   offset?: number;
-} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
+} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; parsed_attrs?: SearchParsedAttrs | null; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
   return fetchJson("/api/catalog/search", { requireAuth: false, query: { ...opts } });
 }
 
