@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   StyleSheet,
-  Modal,
+
   ScrollView,
   TouchableOpacity,
   TextInput,
   useWindowDimensions,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Body } from "@/components/ui/Typography";
@@ -24,7 +25,8 @@ import {
   EMPTY_FILTERS,
   activeFilterCount,
 } from "@/lib/api/facets";
-import type { ProductFilters } from "@/lib/api/facets";
+import type { ProductFilters, OCCASIONS, MATERIALS } from "@/lib/api/facets";
+import { OCCASIONS as OCCASION_CHIPS, MATERIALS as MATERIAL_CHIPS } from "@/lib/api/facets";
 import { applySearchFilters } from "@/lib/search-filters";
 import type { Product } from "@/lib/types";
 
@@ -312,6 +314,42 @@ export function SearchFilterSheet({
                 {SIZES.map((s) => (
                   <Chip key={s} label={s} active={!!draft.sizes?.includes(s)} onPress={() => toggleIn("sizes", s)} />
                 ))}
+              </View>
+            </Section>
+
+            <Section title="Occasion">
+              <View style={styles.chipWrap}>
+                {OCCASION_CHIPS.map((o) => {
+                  // Reveal-if-present: chip shows when ≥1 loaded product carries it,
+                  // or while it is the active selection.
+                  const present = products.some((p) => p.ai_attrs?.occasion?.toLowerCase() === o.toLowerCase());
+                  if (!present && draft.occasion !== o) return null;
+                  return (
+                    <Chip
+                      key={o}
+                      label={o}
+                      active={draft.occasion === o}
+                      onPress={() => setDraft({ ...draft, occasion: draft.occasion === o ? undefined : o })}
+                    />
+                  );
+                })}
+              </View>
+            </Section>
+
+            <Section title="Material">
+              <View style={styles.chipWrap}>
+                {MATERIAL_CHIPS.map((m) => {
+                  const present = products.some((p) => p.ai_attrs?.material?.toLowerCase() === m.toLowerCase());
+                  if (!present && draft.material !== m) return null;
+                  return (
+                    <Chip
+                      key={m}
+                      label={m}
+                      active={draft.material === m}
+                      onPress={() => setDraft({ ...draft, material: draft.material === m ? undefined : m })}
+                    />
+                  );
+                })}
               </View>
             </Section>
 
