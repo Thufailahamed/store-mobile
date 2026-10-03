@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   FlatList,
@@ -30,6 +30,8 @@ export default function ImageSearchResults() {
   const [loading, setLoading] = useState(!!params.url);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [companions, setCompanions] = useState<Product[]>([]);
+  const companionsForRef = useRef<string | null>(null);
 
   const runSearch = useCallback(async (url: string) => {
     setLoading(true);
@@ -47,6 +49,22 @@ export default function ImageSearchResults() {
   useEffect(() => {
     if (params.url) void runSearch(params.url);
   }, [params.url, runSearch]);
+
+  // Complete-the-look: companions for the TOP visual match. Confidence
+  // guardrail: weak match → outfit guess is noise, skip the section.
+  useEffect(() => {
+    const top = products[0];
+    const conf = Number((top as unknown as { _visual?: { confidence?: number } })?._visual?.confidence ?? 1);
+    if (!top?.id || conf < 0.55) { setCompanions([]); companionsForRef.current = null; return; }
+    if (companionsForRef.current === top.id) return;
+    companionsForRef.current = top.id;
+    let cancelled = false;
+    void api.fetchCompanionsForImageSearch(top.id, 6).then((res) => {
+      if (cancelled || companionsForRef.current !== top.id) return;
+      setCompanions(res.ok ? (res.data as unknown as Product[]) : []);
+    });
+    return () => { cancelled = true; };
+  }, [products]);
 
   const capture = async (source: "library" | "camera") => {
     if (busy) return;
@@ -217,6 +235,29 @@ export default function ImageSearchResults() {
                   <Ionicons name="camera" size={15} color={colors.paper.cream} />
                   <Text style={styles.emptyRetryBtnText}>Try Another Photo</Text>
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Complete the look — companions for the TOP visual match */}
+            {companions.length > 0 && products.length > 0 && !loading && (
+              <View style={styles.companionsSection}>
+                <Text style={styles.companionsKicker}>COMPLETE THE LOOK</Text>
+                <FlatList
+                  data={companions}
+                  horizontal
+                  keyExtractor={(c) => c.id}
+                  showsHorizontalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                    <View style={styles.companionCell}>
+                      <ProductCard product={item} />
+                      {(item as Product & { match_reason?: string | null }).match_reason ? (
+                        <Text style={styles.companionReason} numberOfLines={1}>
+                          {(item as Product & { match_reason?: string | null }).match_reason}
+                        </Text>
+                      ) : null}
+                    </View>
+                  )}
+                />
               </View>
             )}
 
@@ -498,6 +539,28 @@ const styles = StyleSheet.create({
   },
 
   /* Results Header */
+  /* Complete the look companions rail */
+  companionsSection: {
+    marginTop: spacing[3],
+    gap: spacing[2],
+  },
+  companionsKicker: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.olive[700],
+  },
+  companionCell: {
+    width: 150,
+    marginRight: spacing[3],
+  },
+  companionReason: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 9,
+    color: colors.olive[700],
+    marginTop: 4,
+  },
+
   resultsHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
