@@ -4,6 +4,7 @@ import {
   getDepartmentIntentChips,
   matchCategories,
   matchBrands,
+  attrChipForPartial,
 } from "@/lib/search/suggestion-engine";
 
 describe("suggestion-engine", () => {
@@ -80,6 +81,18 @@ describe("suggestion-engine", () => {
       expect(res[0].label).toBe("Ralph Lauren");
       expect(res[0].followers).toBe(5000);
       expect(res[0].is_verified).toBe(true);
+    });
+  });
+
+  describe("attrChipForPartial", () => {
+    it("'red dr' → red · dress", () => {
+      expect(attrChipForPartial("red dr")).toEqual({ label: "red · dress", query: "red dress" });
+    });
+    it("garment-only partial", () => {
+      expect(attrChipForPartial("watch")).toEqual({ label: "watch", query: "watch" });
+    });
+    it("no attrs → null", () => {
+      expect(attrChipForPartial("xyz")).toBeNull();
     });
   });
 });

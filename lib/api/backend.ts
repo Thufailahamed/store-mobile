@@ -102,7 +102,7 @@ export async function searchProductsBackend(opts: {
   sort?: "relevance" | "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
   limit?: number;
   offset?: number;
-} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; parsed_attrs?: SearchParsedAttrs | null; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
+} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; parsed_attrs?: SearchParsedAttrs | null; rescued?: boolean; dropped_attrs?: string[]; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
   return fetchJson("/api/catalog/search", { requireAuth: false, query: { ...opts } });
 }
 

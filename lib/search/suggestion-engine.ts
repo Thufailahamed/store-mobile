@@ -382,3 +382,56 @@ export function matchBrands(
     is_verified: b.is_verified,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Smart-search attr chips — mirrors backend attr-parse dictionaries so a
+// partial draft like "red dr" offers a `red · dress` chip that submits the
+// boosted full query. Pure local logic, no network.
+// ---------------------------------------------------------------------------
+
+const CHIP_COLORS = new Set([
+  "navy blue", "rose gold", "off-white", "light blue", "dark blue",
+  "light green", "dark green", "light pink", "hot pink", "baby pink",
+  "red", "blue", "green", "black", "white", "gray", "grey", "pink", "yellow",
+  "orange", "purple", "brown", "beige", "cream", "ivory", "gold", "silver",
+  "maroon", "burgundy", "teal", "turquoise", "olive", "khaki", "mustard",
+  "coral", "peach", "lavender", "mint", "charcoal", "taupe", "nude", "multicolor",
+]);
+const CHIP_ALIAS: Record<string, string> = { grey: "gray" };
+
+const CHIP_GARMENTS = new Set([
+  "dress", "gown", "frock", "shirt", "tshirt", "t-shirt", "tee", "blouse",
+  "watch", "shoes", "sneakers", "heels", "sandals", "bag", "handbag",
+  "backpack", "saree", "sari", "abaya", "kurta", "jeans", "denim",
+  "trousers", "pants", "skirt", "jacket", "blazer", "coat", "perfume",
+]);
+
+export function attrChipForPartial(rawQuery: string): { label: string; query: string } | null {
+  let rest = ` ${rawQuery.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, " ").replace(/\s+/g, " ")} `;
+  const take = (phrase: string): boolean => {
+    const n = ` ${phrase} `;
+    if (rest.includes(n)) { rest = rest.replace(n, " "); return true; }
+    return false;
+  };
+  const colors: string[] = [];
+  for (const c of [...CHIP_COLORS].sort((a, b) => b.length - a.length)) {
+    if (take(c)) { const canon = CHIP_ALIAS[c] ?? c; if (!colors.includes(canon)) colors.push(canon); }
+  }
+  let garment: string | null = null;
+  for (const g of [...CHIP_GARMENTS].sort((a, b) => b.length - a.length)) {
+    if (take(g)) { garment = g === "gown" ? "dress" : g; break; }
+  }
+  // Partial draft: a leftover token that is a prefix of a garment
+  // ("red dr") completes to the shortest matching garment.
+  if (!garment) {
+    const restTokens = rest.trim().split(/\s+/).filter(Boolean);
+    for (const t of restTokens) {
+      if (t.length < 2) continue;
+      const hit = [...CHIP_GARMENTS].filter((g) => g.startsWith(t) && g !== t).sort((a, b) => a.length - b.length)[0];
+      if (hit) { garment = hit === "gown" ? "dress" : hit; rest = rest.replace(` ${t} `, " "); break; }
+    }
+  }
+  if (colors.length === 0 && !garment) return null;
+  const parts = [...colors, garment ?? ""].filter(Boolean);
+  return { label: parts.join(" · "), query: parts.join(" ") };
+}

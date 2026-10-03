@@ -18,6 +18,7 @@ import { formatPrice, discountPct } from "@/lib/utils";
 import { expandQueryTerms } from "@/lib/utils/search-utils";
 import {
   getDepartmentIntentChips,
+  attrChipForPartial,
   POPULAR_SEARCH_TAGS,
   POPULAR_DEPARTMENTS,
   type DepartmentChip,
@@ -103,6 +104,8 @@ export function SearchSuggestions({
   // Demographic & garment intent mapping
   const expanded = useMemo(() => expandQueryTerms(term), [term]);
   const departmentChips = useMemo(() => getDepartmentIntentChips(term), [term]);
+  // Smart-search attr chip (e.g. "red dr" → `red · dress`)
+  const attrChip = useMemo(() => attrChipForPartial(term), [term]);
 
   if (term.length < 1) return null;
 
@@ -116,6 +119,15 @@ export function SearchSuggestions({
     // 2. Department quick filter chips (All, Men's, Women's, Sale)
     if (departmentChips.length > 0) {
       list.push({ type: "chips", chips: departmentChips });
+    }
+
+    // 2b. Smart-search attr chip — boosted color/garment query
+    if (attrChip) {
+      list.push({
+        type: "intent",
+        label: `Shop · ${attrChip.label}`,
+        canonical: attrChip.query,
+      });
     }
 
     // 3. Smart intent if detected from query expansion

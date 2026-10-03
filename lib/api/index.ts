@@ -435,17 +435,20 @@ export async function searchProductsWithMeta(
   query: string,
   limit = 20,
   opts?: { gender?: "men" | "women" | "kids" | "unisex" },
-): Promise<Result<{ products: Product[]; parsed_attrs: B.SearchParsedAttrs | null }>> {
+): Promise<Result<{ products: Product[]; parsed_attrs: B.SearchParsedAttrs | null; rescued: boolean; dropped_attrs: string[] }>> {
   const term = query.trim();
-  if (!term) return ok({ products: [], parsed_attrs: null });
+  if (!term) return ok({ products: [], parsed_attrs: null, rescued: false, dropped_attrs: [] });
   const words = tokenizeQuery(term);
-  if (words.length === 0) return ok({ products: [], parsed_attrs: null });
+  if (words.length === 0) return ok({ products: [], parsed_attrs: null, rescued: false, dropped_attrs: [] });
   // Backend attr-boost reasons by product id (for display + local re-rank).
   const reasonById = new Map<string, string>();
   let parsedAttrs: B.SearchParsedAttrs | null = null;
+  let rescued = false;
+  let droppedAttrs: string[] = [];
   const ingestSearchRes = (res: Awaited<ReturnType<typeof B.searchProductsBackend>>) => {
     if (!res.ok) return;
     if (!parsedAttrs && res.data.parsed_attrs) parsedAttrs = res.data.parsed_attrs;
+    if (!rescued && res.data.rescued) { rescued = res.data.rescued; droppedAttrs = res.data.dropped_attrs ?? []; }
     for (const p of res.data.products ?? []) {
       if (p?.id && p.match_reason && !reasonById.has(p.id)) reasonById.set(p.id, p.match_reason);
     }
@@ -507,7 +510,7 @@ export async function searchProductsWithMeta(
     // Fuzzy fallback via /api/catalog/products with text search.
     const fallback = await B.getProductsBackend({ search: term, limit });
     if (!fallback.ok) return fail(fallback.error);
-    return ok({ products: mapProducts(fallback.data.products) ?? [], parsed_attrs: parsedAttrs });
+    return ok({ products: mapProducts(fallback.data.products) ?? [], parsed_attrs: parsedAttrs, rescued, dropped_attrs: droppedAttrs });
   }
 
   const matchedIds = rawProducts.map((p) => p.id);
@@ -582,6 +585,8 @@ export async function searchProductsWithMeta(
       return reason ? { ...p, match_reason: reason } : p;
     }),
     parsed_attrs: parsedAttrs,
+    rescued,
+    dropped_attrs: droppedAttrs,
   });
 
 }

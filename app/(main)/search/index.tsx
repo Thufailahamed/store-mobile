@@ -81,6 +81,8 @@ export default function SearchScreen() {
   const [draft, setDraft] = useState("");
   const [results, setResults] = useState<Product[]>([]);
   const [parsedAttrs, setParsedAttrs] = useState<import("@/lib/api/backend").SearchParsedAttrs | null>(null);
+  const [rescued, setRescued] = useState(false);
+  const [droppedAttrs, setDroppedAttrs] = useState<string[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -176,6 +178,8 @@ export default function SearchScreen() {
     if (productRes.ok) {
       setResults(productRes.data.products);
       setParsedAttrs(productRes.data.parsed_attrs);
+      setRescued(productRes.data.rescued);
+      setDroppedAttrs(productRes.data.dropped_attrs);
     }
     if (brandRes.ok) setBrands(brandRes.data.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())));
     if (storeRes.ok) setStores(storeRes.data.filter((s) => s.name.toLowerCase().includes(q.toLowerCase())));
@@ -807,14 +811,32 @@ export default function SearchScreen() {
                 </View>
               )}
 
+              {/* Rescue banner — results were found after relaxing attrs */}
+              {rescued && parsedAttrs && (
+                <View style={styles.rescueBanner}>
+                  <Ionicons name="sparkles-outline" size={13} color={colors.olive[700]} />
+                  <Body size="xs" muted numberOfLines={2}>
+                    No exact matches — showing closest matches
+                    {parsedAttrs.garment ? ` for ${[...parsedAttrs.colors.filter((c) => !droppedAttrs.includes(c)), parsedAttrs.garment].filter(Boolean).join(" ")}` : ""}
+                  </Body>
+                </View>
+              )}
+
               {/* Smart-search attr pills */}
               {parsedAttrs && (parsedAttrs.colors.length > 0 || parsedAttrs.garment || parsedAttrs.material) && (
                 <View style={styles.attrPills}>
                   {parsedAttrs.colors.map((c) => (
-                    <TouchableOpacity key={`color-${c}`} style={styles.attrPill} onPress={() => removeAttrToken(c)} activeOpacity={0.8}>
-                      <Body size="xs">{c}</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
+                    droppedAttrs.includes(c) ? (
+                      <View key={`dropped-${c}`} style={[styles.attrPill, styles.attrPillDropped]}>
+                        <Body size="xs" muted>{c}</Body>
+                        <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                      </View>
+                    ) : (
+                      <TouchableOpacity key={`color-${c}`} style={styles.attrPill} onPress={() => removeAttrToken(c)} activeOpacity={0.8}>
+                        <Body size="xs">{c}</Body>
+                        <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+                      </TouchableOpacity>
+                    )
                   ))}
                   {parsedAttrs.garment ? (
                     <TouchableOpacity style={styles.attrPill} onPress={() => removeAttrToken(parsedAttrs.garment!)} activeOpacity={0.8}>
@@ -1409,6 +1431,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing[4],
     marginBottom: spacing[1],
+  },
+  attrPillDropped: {
+    backgroundColor: colors.light.muted,
+    borderColor: colors.light.border,
+  },
+  rescueBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: spacing[4],
+    marginBottom: spacing[1],
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+    alignSelf: "flex-start",
   },
   attrPill: {
     flexDirection: "row",
