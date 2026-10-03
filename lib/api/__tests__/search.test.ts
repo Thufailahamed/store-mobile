@@ -22,7 +22,7 @@ vi.mock("@/lib/api/backend", async (importOriginal) => {
 
 vi.mock("@/lib/catalog-visibility", () => catalogVisibilityMocks);
 
-import { searchProducts, reverseImageSearch } from "@/lib/api";
+import { searchProducts, reverseImageSearch, fetchCompanionsForImageSearch } from "@/lib/api";
 
 describe("searchProducts", () => {
   beforeEach(() => {
@@ -143,5 +143,35 @@ describe("reverseImageSearch", () => {
     backendMocks.imageSearchBackend.mockResolvedValueOnce({ ok: false, error: "boom" });
     const res = await reverseImageSearch("https://x.com/q.jpg", 12);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe("fetchCompanionsForImageSearch", () => {
+  it("wraps fetchCompanionsById and preserves match_reason", async () => {
+    const mock = await import("@/lib/recommender/intelligence-client");
+    const spy = vi.spyOn(mock, "fetchCompanionsById").mockResolvedValueOnce({
+      ok: true,
+      data: {
+        products: [
+          { id: "c-1", name: "Party Heels", slug: "party-heels", match_reason: "Same occasion · party" } as never,
+        ],
+      },
+    } as never);
+    const res = await fetchCompanionsForImageSearch("11111111-1111-1111-1111-111111111111", 6);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.length).toBe(1);
+      expect((res.data[0] as unknown as { match_reason?: string }).match_reason).toBe("Same occasion · party");
+    }
+    expect(spy).toHaveBeenCalledWith("11111111-1111-1111-1111-111111111111", 6);
+    spy.mockRestore();
+  });
+
+  it("propagates failure", async () => {
+    const mock = await import("@/lib/recommender/intelligence-client");
+    const spy = vi.spyOn(mock, "fetchCompanionsById").mockResolvedValueOnce({ ok: false, error: "boom" } as never);
+    const res = await fetchCompanionsForImageSearch("11111111-1111-1111-1111-111111111111", 6);
+    expect(res.ok).toBe(false);
+    spy.mockRestore();
   });
 });

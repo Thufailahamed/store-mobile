@@ -4105,3 +4105,16 @@ export async function reverseImageSearch(imageUrl: string, limit = 12): Promise<
 export { getAccessToken, fetchJson };
 export { searchProductsBackend } from "@/lib/api/backend";
 export type { SearchResultRow } from "@/lib/api/backend";
+import { fetchCompanionsById } from "@/lib/recommender/intelligence-client";
+
+/** Outfit companions for the TOP image-search match ("Complete the look"). */
+export async function fetchCompanionsForImageSearch(productId: string, limit = 6): Promise<Result<(Product & { match_reason?: string | null })[]>> {
+  const res = await fetchCompanionsById(productId, limit);
+  if (!res.ok) return fail(res.error);
+  return ok(
+    (res.data.products ?? []).map((p) => ({
+      ...mapProduct(p),
+      match_reason: p.match_reason ?? null,
+    })),
+  );
+}
