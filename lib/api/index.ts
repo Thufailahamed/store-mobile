@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/backend";
 export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } from "@/lib/api/backend";
 import * as B from "@/lib/api/backend";
+import { uploadSellerProductPhoto } from "@/lib/upload";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
 import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows, mapFlatProductRow } from "@/lib/api/product-mapper";
@@ -1089,6 +1090,16 @@ export async function checkSellerSkuUnique(skus: string[]): Promise<Result<Recor
   const res = await B.checkSellerSkuBackend(skus);
   if (!res.ok) return fail(res.error);
   return ok((res.data as { results: Record<string, boolean> }).results);
+}
+
+/** Live single-SKU availability check; excludes the product being edited. */
+export async function checkSellerSkuAvailability(
+  sku: string,
+  excludeProductId?: string,
+): Promise<Result<{ conflict: boolean; message?: string }>> {
+  const res = await B.checkSellerSkuAvailabilityBackend(sku, excludeProductId);
+  if (!res.ok) return fail(res.error);
+  return ok({ conflict: Boolean(res.data.conflict), message: res.data.message });
 }
 
 export async function bulkCreateSellerProducts(
@@ -4103,6 +4114,29 @@ export async function reverseImageSearch(imageUrl: string, limit = 12): Promise<
 
 // Re-export helper for call-sites needing direct access.
 export { getAccessToken, fetchJson };
+export type { QuickCreateResult } from "@/lib/api/backend";
+
+export interface QuickProductInput {
+  uri: string;
+  price: number;
+  mrp?: number;
+  name?: string;
+  mimeType?: string | null;
+}
+
+/** Quick product upload — upload photo, then POST {image_url, price}. */
+export async function quickCreateProduct(input: QuickProductInput): Promise<Result<B.QuickCreateResult>> {
+  const up = await uploadSellerProductPhoto(input.uri, { mimeType: input.mimeType ?? null });
+  if (!up.url) return fail(up.error ?? "Upload failed");
+  const res = await B.quickCreateProductBackend({
+    image_url: up.url,
+    price: input.price,
+    ...(input.mrp ? { mrp: input.mrp } : {}),
+    ...(input.name ? { name: input.name } : {}),
+  });
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
+}
 export { searchProductsBackend } from "@/lib/api/backend";
 export type { SearchResultRow } from "@/lib/api/backend";
 import { fetchCompanionsById } from "@/lib/recommender/intelligence-client";

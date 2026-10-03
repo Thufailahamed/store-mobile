@@ -1223,6 +1223,22 @@ export async function createSellerProductBackend(input: Partial<CatalogProduct> 
   return fetchJson("/api/seller/products", { method: "POST", body: input });
 }
 
+export interface QuickCreateResult {
+  product: Record<string, unknown> & { id: string; name: string };
+  extraction: { name_source: string; category_match: string; tags_added: number; description_source: string };
+}
+
+/** Quick product upload — one photo + price; GLM fills the rest server-side. */
+export async function quickCreateProductBackend(input: {
+  image_url: string;
+  price: number;
+  mrp?: number;
+  name?: string;
+  category_hint?: string;
+}): Promise<ApiResult<QuickCreateResult>> {
+  return fetchJson("/api/seller/products/quick", { method: "POST", body: input });
+}
+
 export async function updateSellerProductBackend(id: string, patch: Partial<CatalogProduct>): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
   return fetchJson(`/api/seller/products/${id}`, { method: "PATCH", body: patch });
 }
@@ -1346,6 +1362,15 @@ export async function bulkSellerProductsBackend(
 
 export async function checkSellerSkuBackend(skus: string[]): Promise<ApiResult<{ results: Record<string, boolean> }>> {
   return fetchJson("/api/seller/products/sku-check", { method: "POST", body: { skus } });
+}
+
+export async function checkSellerSkuAvailabilityBackend(
+  sku: string,
+  excludeProductId?: string,
+): Promise<ApiResult<{ taken: string[]; available: string[]; conflict: boolean; message?: string }>> {
+  return fetchJson("/api/seller/products/sku-check", {
+    query: excludeProductId ? { sku, excludeProductId } : { sku },
+  });
 }
 
 export async function preflightModerationBackend(input: {

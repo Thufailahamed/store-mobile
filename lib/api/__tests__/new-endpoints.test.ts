@@ -16,6 +16,8 @@ const backendMocks = vi.hoisted(() => ({
   getStoresBackend: vi.fn(),
   getCategoriesBackend: vi.fn(),
   getOrderTrackingBackend: vi.fn(),
+  quickCreateProductBackend: vi.fn(),
+  uploadSellerProductPhoto: vi.fn(),
 }));
 
 vi.mock("@/lib/api/backend", async (importOriginal) => {
@@ -26,11 +28,16 @@ vi.mock("@/lib/api/backend", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/upload", () => ({
+  uploadSellerProductPhoto: backendMocks.uploadSellerProductPhoto,
+}));
+
 import {
   createReturnRequest,
   getStores,
   getAllCategories,
   getOrderTracking,
+  quickCreateProduct,
 } from "@/lib/api";
 
 beforeEach(() => {
@@ -200,5 +207,39 @@ describe("getOrderTracking", () => {
       expect(r.data.rider?.name).toBe("Kavi");
     }
     expect(backendMocks.getOrderTrackingBackend).toHaveBeenCalledWith("o-1");
+  });
+});
+
+// ── quick product upload wrapper ────────────────────────────────────────────
+describe("quickCreateProduct", () => {
+  beforeEach(() => {
+    backendMocks.quickCreateProductBackend.mockReset();
+    backendMocks.uploadSellerProductPhoto.mockReset();
+  });
+
+  it("uploads the photo then posts image_url + price", async () => {
+    backendMocks.uploadSellerProductPhoto.mockResolvedValueOnce({ url: "https://cdn/p.png" });
+    backendMocks.quickCreateProductBackend.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        product: { id: "p-1", name: "White Low-top Shoes" },
+        extraction: { name_source: "ai", category_match: "none", tags_added: 4, description_source: "ai" },
+      },
+    } as never);
+
+    const r = await quickCreateProduct({ uri: "file:///cam.jpg", price: 3000 });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.data.product.id).toBe("p-1");
+      expect(r.data.extraction.name_source).toBe("ai");
+    }
+    expect(backendMocks.quickCreateProductBackend).toHaveBeenCalledWith({ image_url: "https://cdn/p.png", price: 3000 });
+  });
+
+  it("propagates upload failure without calling the endpoint", async () => {
+    backendMocks.uploadSellerProductPhoto.mockResolvedValueOnce({ url: "", error: "upload denied" });
+    const r = await quickCreateProduct({ uri: "file:///cam.jpg", price: 3000 });
+    expect(r.ok).toBe(false);
+    expect(backendMocks.quickCreateProductBackend).not.toHaveBeenCalled();
   });
 });

@@ -287,6 +287,23 @@ export async function pickImage(options?: {
   });
 }
 
+/** Multi-select from the library (returns up to `limit` assets). */
+export async function pickImages(options?: {
+  limit?: number;
+  quality?: number;
+}): Promise<ImagePicker.ImagePickerResult | null> {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== "granted") return null;
+
+  return ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ["images"],
+    allowsMultipleSelection: true,
+    selectionLimit: Math.max(1, options?.limit ?? 10),
+    allowsEditing: false,
+    quality: options?.quality ?? 0.85,
+  });
+}
+
 export async function takePhoto(options?: {
   allowsEditing?: boolean;
   aspect?: [number, number];
@@ -382,6 +399,19 @@ export async function uploadStorefrontImage(
     options?.fileName?.split(".").pop() ?? uri.split(".").pop(),
     options?.mimeType,
   );
+  const path = `storefront/${Date.now()}.${ext}`;
+  return uploadImageToBucket("product-images", path, uri, {
+    mimeType: options?.mimeType,
+    prefix: "storefront",
+  });
+}
+
+/** Quick-upload photo — presign straight to the product-images bucket. */
+export async function uploadSellerProductPhoto(
+  uri: string,
+  options?: { mimeType?: string | null },
+): Promise<UploadResult> {
+  const ext = normalizeExtension(uri.split(".").pop(), options?.mimeType);
   const path = `storefront/${Date.now()}.${ext}`;
   return uploadImageToBucket("product-images", path, uri, {
     mimeType: options?.mimeType,
