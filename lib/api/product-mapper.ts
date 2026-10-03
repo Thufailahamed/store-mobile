@@ -46,6 +46,7 @@ export function mapProduct(p: any): Product {
     ...p,
     images,
     variants,
+    ai_attrs: p.ai_attrs ?? null,
     store: mapStore(p.store),
     brand: mapBrand(p.brand),
   };

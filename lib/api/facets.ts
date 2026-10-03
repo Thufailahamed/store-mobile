@@ -85,9 +85,21 @@ export interface ProductFilters {
   categories?: string[];
   colors?: string[];
   sizes?: string[];
+  occasion?: string;
+  material?: string;
   minRating?: number;
   minDiscount?: number;
 }
+
+/* ------------------------------------------------------------------------- */
+/*  AI-extracted attr facets (GLM vision ingest)                             */
+/* ------------------------------------------------------------------------- */
+
+/** Curated occasion chips — reveal-if-present over the loaded page. */
+export const OCCASIONS = ["Party", "Casual", "Formal", "Office", "Wedding", "Evening", "Sport"] as const;
+
+/** Curated material chips — reveal-if-present over the loaded page. */
+export const MATERIALS = ["Cotton", "Silk", "Leather", "Velvet", "Chiffon", "Linen", "Denim", "Wool"] as const;
 
 export const EMPTY_FILTERS: ProductFilters = {
   price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max],

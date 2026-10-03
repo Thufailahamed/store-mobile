@@ -124,6 +124,8 @@ export interface Product {
   images?: ProductImage[];
   variants?: ProductVariant[];
   brand?: Brand;
+  /** GLM vision attrs (occasions/material) — populated via backend ai_attrs join. */
+  ai_attrs?: { material?: string | null; occasion?: string | null } | null;
   store?: Store;
   category?: Category;
 }

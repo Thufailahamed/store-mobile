@@ -54,6 +54,16 @@ export function applySearchFilters(products: Product[], filters: ProductFilters)
     );
   }
 
+  if (filters.occasion) {
+    const want = filters.occasion.toLowerCase();
+    list = list.filter((p) => (p as { ai_attrs?: { occasion?: string | null } }).ai_attrs?.occasion?.toLowerCase() === want);
+  }
+
+  if (filters.material) {
+    const want = filters.material.toLowerCase();
+    list = list.filter((p) => (p as { ai_attrs?: { material?: string | null } }).ai_attrs?.material?.toLowerCase() === want);
+  }
+
   if (filters.minRating && filters.minRating > 0) {
     list = list.filter((p) => p.rating >= filters.minRating!);
   }
