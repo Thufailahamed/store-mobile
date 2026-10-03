@@ -15,7 +15,6 @@ import {
 } from "@/lib/api/backend";
 export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } from "@/lib/api/backend";
 import * as B from "@/lib/api/backend";
-import { uploadSellerProductPhoto } from "@/lib/upload";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
 import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows, mapFlatProductRow } from "@/lib/api/product-mapper";
@@ -4126,6 +4125,9 @@ export interface QuickProductInput {
 
 /** Quick product upload — upload photo, then POST {image_url, price}. */
 export async function quickCreateProduct(input: QuickProductInput): Promise<Result<B.QuickCreateResult>> {
+  // Lazy import — @/lib/upload pulls expo-file-system, which must never
+  // enter the static graph of this barrel (it breaks node-side vitest).
+  const { uploadSellerProductPhoto } = await import("@/lib/upload");
   const up = await uploadSellerProductPhoto(input.uri, { mimeType: input.mimeType ?? null });
   if (!up.url) return fail(up.error ?? "Upload failed");
   const res = await B.quickCreateProductBackend({
