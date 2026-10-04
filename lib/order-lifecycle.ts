@@ -43,7 +43,6 @@ export const ORDER_STATUS_EDGES: ReadonlyArray<readonly [OrderStatus, OrderStatu
   ["out_for_delivery", "delivered"],
   ["out_for_delivery", "returned"],
   ["out_for_delivery", "cancelled"],
-  ["out_for_delivery", "shipped"],
   ["delivered", "returned"],
   ["delivered", "refunded"],
   ["returned", "refunded"],
@@ -65,6 +64,10 @@ const ADMIN_OVERRIDE_EDGES = new Set([
   "shipped->returned",
   "processing->confirmed",
   "confirmed->pending",
+  // 0123: failed_attempt rescue paths, so an admin can recover a soft-failed
+  // delivery without a manual DB edit.
+  "failed_attempt->shipped",
+  "failed_attempt->delivered",
 ]);
 
 export function isValidOrderStatusTransition(
