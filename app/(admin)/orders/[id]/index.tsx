@@ -289,7 +289,7 @@ export default function AdminOrderDetail() {
               <SummaryRow label="Discount" value={`-${formatPrice(order.discount, order.currency)}`} />
             ) : null}
             <SummaryRow label="Shipping" value={formatPrice(order.shipping_fee, order.currency)} />
-            <SummaryRow label="Tax" value={formatPrice(order.tax, order.currency)} />
+            <SummaryRow label="Platform fee" value={formatPrice(order.tax, order.currency)} />
             <View style={styles.totalRule} />
             <SummaryRow label="Total" value={formatPrice(order.total, order.currency)} bold />
             <SummaryRow

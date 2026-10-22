@@ -1,7 +1,6 @@
 import {
-  FREE_SHIPPING_THRESHOLD,
-  SHIPPING_OPTIONS,
-  TAX_RATE,
+  DEFAULT_CHECKOUT_PRICING,
+  type CheckoutPricing,
   type ShippingKey,
 } from "@/lib/utils";
 
@@ -11,33 +10,32 @@ export type CartPricingLine = {
   unitPrice: number;
 };
 
-/** Per-store shipping when the order-wide subtotal is below the free-shipping threshold. */
+/** Delivery fee for one store sub-order with the chosen speed. */
+export function shippingFeeFor(
+  shippingKey: ShippingKey,
+  pricing: CheckoutPricing = DEFAULT_CHECKOUT_PRICING,
+): number {
+  if (shippingKey === "express") return pricing.express_fee;
+  if (shippingKey === "overnight") return pricing.overnight_fee;
+  return pricing.delivery_fee;
+}
+
+/** Platform fee on an already-discounted amount. */
+export function platformFeeFor(
+  amount: number,
+  pricing: CheckoutPricing = DEFAULT_CHECKOUT_PRICING,
+): number {
+  return Math.max(0, amount) * pricing.platform_fee_pct / 100;
+}
+
+/** Delivery is charged once per store in the cart; a free-shipping coupon waives it. */
 export function computeOrderShipping(
   lines: CartPricingLine[],
   shippingKey: ShippingKey = "standard",
-  options?: { freeShippingCoupon?: boolean },
+  options?: { freeShippingCoupon?: boolean; pricing?: CheckoutPricing },
 ): number {
-  const fee = SHIPPING_OPTIONS.find((o) => o.key === shippingKey)?.fee ?? 0;
-  if (options?.freeShippingCoupon || fee === 0 || lines.length === 0) return 0;
-
-  const orderSub = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
-  if (orderSub >= FREE_SHIPPING_THRESHOLD) return 0;
-
-  const subtotalByStore = new Map<string, number>();
-  for (const line of lines) {
-    subtotalByStore.set(
-      line.storeId,
-      (subtotalByStore.get(line.storeId) ?? 0) + line.quantity * line.unitPrice,
-    );
-  }
-
-  let shippingTotal = 0;
-  for (const storeSub of subtotalByStore.values()) {
-    if (storeSub < FREE_SHIPPING_THRESHOLD) {
-      shippingTotal += fee;
-    }
-  }
-  return shippingTotal;
+  if (options?.freeShippingCoupon || lines.length === 0) return 0;
+  return countStoresInCart(lines) * shippingFeeFor(shippingKey, options?.pricing);
 }
 
 /** LKR surcharge per gift-wrapped line, matching web cart-store. */
@@ -51,19 +49,20 @@ export function computeCartTotals(params: {
   freeShippingCoupon?: boolean;
   giftCardCredit?: number;
   giftWrapCount?: number;
+  pricing?: CheckoutPricing;
 }) {
   const merchandise = params.lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
   const giftWrap = Math.max(0, params.giftWrapCount ?? 0) * GIFT_WRAP_FEE;
   const sub = merchandise + giftWrap;
   const shipping = computeOrderShipping(params.lines, params.shippingKey ?? "standard", {
     freeShippingCoupon: params.freeShippingCoupon,
+    pricing: params.pricing,
   });
   const afterCoupon = Math.max(0, sub - (params.couponDiscount ?? 0));
   const afterPoints = Math.max(0, afterCoupon - (params.pointsValue ?? 0));
-  // Not rounded — matches store/src/lib/utils.ts so mobile and web show
-  // the same pre-checkout total (the backend computes the authoritative
-  // final total either way).
-  const tax = afterPoints * TAX_RATE;
+  // Platform fee (lands in orders.tax). Not rounded — matches
+  // store/src/lib/utils.ts; the backend re-prices each sub-order anyway.
+  const tax = platformFeeFor(afterPoints, params.pricing);
   const due = afterPoints + shipping + tax;
   const giftApplied = Math.min(Math.max(0, params.giftCardCredit ?? 0), Math.max(0, due));
   const total = Math.max(0, due - giftApplied);

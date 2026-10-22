@@ -861,6 +861,16 @@ export async function getInfluencerProfileBackend(): Promise<
   return fetchJson("/api/influencers/me");
 }
 
+/** Admin-set buyer fees (platform fee % + delivery fees). Public. */
+export async function getCheckoutPricingBackend(): Promise<ApiResult<{
+  platform_fee_pct: number;
+  delivery_fee: number;
+  express_fee: number;
+  overnight_fee: number;
+}>> {
+  return fetchJson("/api/checkout/pricing", { requireAuth: false });
+}
+
 export async function getCheckoutOptionsBackend(
   storeIds: string[],
 ): Promise<ApiResult<{

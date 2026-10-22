@@ -10,6 +10,7 @@ import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, colors, radii, shadows } from "@/lib/theme/tokens";
 import { computeCartTotals, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
+import { useCheckoutPricing } from "@/lib/hooks/useCheckoutPricing";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { CartItemCard } from "@/components/cart/CartItemCard";
@@ -359,13 +360,15 @@ export default function CartScreen() {
       })),
     [selectedCartItems],
   );
+  const pricing = useCheckoutPricing();
   const cartTotals = useMemo(
     () =>
       computeCartTotals({
         lines: selectedPricingLines,
         giftWrapCount: selectedCartItems.filter(([, item]) => item.is_gift).length,
+        pricing,
       }),
-    [selectedPricingLines, selectedCartItems],
+    [selectedPricingLines, selectedCartItems, pricing],
   );
   const shippingFee = cartTotals.shipping;
   const tax = cartTotals.tax;
@@ -656,7 +659,7 @@ export default function CartScreen() {
                   </View>
 
                   <View style={styles.pdRow}>
-                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Shipping</Body>
+                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Delivery</Body>
                     <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>
                       {shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
                     </Body>
@@ -670,7 +673,7 @@ export default function CartScreen() {
                   ) : null}
 
                   <View style={styles.pdRow}>
-                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Tax</Body>
+                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>{`Platform fee · ${pricing.platform_fee_pct}%`}</Body>
                     <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(tax)}</Body>
                   </View>
                 </>

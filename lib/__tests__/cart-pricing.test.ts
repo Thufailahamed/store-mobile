@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { computeCartTotals, computeOrderShipping } from "@/lib/cart-pricing";
 
 describe("cart-pricing", () => {
-  it("charges shipping per store below the free-shipping threshold", () => {
+  it("charges shipping once per store", () => {
     const lines = [
       { storeId: "s1", quantity: 1, unitPrice: 5000 },
       { storeId: "s2", quantity: 1, unitPrice: 4000 },
@@ -10,9 +10,27 @@ describe("cart-pricing", () => {
     expect(computeOrderShipping(lines, "express")).toBe(3000);
   });
 
-  it("waives shipping when the order subtotal qualifies", () => {
+  it("still charges delivery on high-value orders (no free threshold)", () => {
     const lines = [{ storeId: "s1", quantity: 1, unitPrice: 20000 }];
-    expect(computeOrderShipping(lines, "express")).toBe(0);
+    expect(computeOrderShipping(lines, "standard")).toBe(500);
+  });
+
+  it("waives delivery with a free-shipping coupon", () => {
+    const lines = [{ storeId: "s1", quantity: 1, unitPrice: 20000 }];
+    expect(computeOrderShipping(lines, "express", { freeShippingCoupon: true })).toBe(0);
+  });
+
+  it("applies admin-set platform fee and delivery fee", () => {
+    const totals = computeCartTotals({
+      lines: [
+        { storeId: "s1", quantity: 1, unitPrice: 10000 },
+        { storeId: "s2", quantity: 1, unitPrice: 10000 },
+      ],
+      pricing: { platform_fee_pct: 5, delivery_fee: 700, express_fee: 1500, overnight_fee: 3500 },
+    });
+    expect(totals.shipping).toBe(1400);
+    expect(totals.tax).toBe(1000);
+    expect(totals.total).toBe(22400);
   });
 
   it("matches checkout-style totals", () => {
@@ -21,9 +39,9 @@ describe("cart-pricing", () => {
       shippingKey: "standard",
     });
     expect(totals.sub).toBe(5000);
-    expect(totals.shipping).toBe(0);
+    expect(totals.shipping).toBe(500);
     expect(totals.tax).toBe(400);
-    expect(totals.total).toBe(5400);
+    expect(totals.total).toBe(5900);
     expect(totals.giftApplied).toBe(0);
   });
 
@@ -34,7 +52,7 @@ describe("cart-pricing", () => {
       giftCardCredit: 1000,
     });
     expect(totals.giftApplied).toBe(1000);
-    expect(totals.total).toBe(4400);
+    expect(totals.total).toBe(4900);
   });
 
   it("adds LKR 250 per gift-wrapped line to the subtotal", () => {
@@ -45,6 +63,6 @@ describe("cart-pricing", () => {
     });
     expect(totals.sub).toBe(5250);
     expect(totals.tax).toBe(420);
-    expect(totals.total).toBe(5670);
+    expect(totals.total).toBe(6170);
   });
 });

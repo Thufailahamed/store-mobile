@@ -428,7 +428,7 @@ export default function SellerOrderDetail() {
           <View style={styles.cardDivider} />
           <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
           <SummaryRow label="Shipping" value={order.shipping_fee > 0 ? formatPrice(order.shipping_fee) : "Free"} />
-          {order.tax > 0 ? <SummaryRow label="Tax" value={formatPrice(order.tax)} /> : null}
+          {order.tax > 0 ? <SummaryRow label="Platform fee" value={formatPrice(order.tax)} /> : null}
           {order.discount > 0 ? <SummaryRow label="Discount" value={`−${formatPrice(order.discount)}`} accent /> : null}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>

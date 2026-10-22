@@ -10,7 +10,8 @@ import {
   type AddressFormPayload,
 } from "@/components/address/AddressFormSheet";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
-import { FREE_SHIPPING_THRESHOLD } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCheckoutPricing, CHECKOUT_PRICING_QUERY_KEY } from "@/lib/hooks/useCheckoutPricing";
 import { useCart } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { useLoyalty } from "@/lib/hooks/useLoyalty";
@@ -39,7 +40,7 @@ import {
   SHIPPING_OPTIONS,
   type ShippingKey,
 } from "@/lib/utils";
-import { computeCartTotals, computeOrderShipping, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
+import { computeCartTotals, computeOrderShipping, platformFeeFor, shippingFeeFor, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
@@ -122,6 +123,8 @@ export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const pricing = useCheckoutPricing();
+  const queryClient = useQueryClient();
   const loyalty = useLoyalty();
   const { items, subtotal, couponCode, setCoupon, clear, addItem } = useCart();
   const [step, setStep] = useState(1);
@@ -195,8 +198,9 @@ export default function CheckoutScreen() {
         freeShippingCoupon,
         giftCardCredit: giftCardBalance,
         giftWrapCount: cartItems.filter((i) => i.is_gift).length,
+        pricing,
       }),
-    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance, cartItems],
+    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance, cartItems, pricing],
   );
   const sub = checkoutTotals.sub;
   const shippingFee = checkoutTotals.shipping;
@@ -665,6 +669,7 @@ export default function CheckoutScreen() {
           pointsValue: 0,
           freeShippingCoupon,
           giftWrapCount: items.filter((i) => i.is_gift).length,
+          pricing,
         });
         return { storeId, items, totals };
       });
@@ -678,9 +683,11 @@ export default function CheckoutScreen() {
       const ordersPayload = perStoreTotals.map((g) => {
         const share =
           totalSubForProportion > 0 ? g.totals.sub / totalSubForProportion : 0;
-        const shippingFee = round2(g.totals.shipping * share);
-        const tax = round2(g.totals.tax * share);
-        const discount = round2((couponDiscount + freshPointsToUse) * share);
+        // Each store pays its own delivery fee; the platform fee is charged
+        // on the store's discounted subtotal. The backend re-prices both.
+        const shippingFee = freeShippingCoupon ? 0 : shippingFeeFor(shippingKey, pricing);
+        const discount = Math.min(g.totals.sub, round2((couponDiscount + freshPointsToUse) * share));
+        const tax = round2(platformFeeFor(g.totals.sub - discount, pricing));
         const total = Math.max(0, g.totals.sub + shippingFee + tax - discount);
         return {
           store_id: g.storeId,
@@ -732,6 +739,8 @@ export default function CheckoutScreen() {
       })();
 
       if (groupErr) {
+        // Fees may have been changed by an admin mid-checkout — refresh them.
+        void queryClient.invalidateQueries({ queryKey: CHECKOUT_PRICING_QUERY_KEY });
         throw new Error(groupErr.message);
       }
       if (isGuest) {
@@ -1241,6 +1250,7 @@ export default function CheckoutScreen() {
                     : "cube-outline";
               const cost = computeOrderShipping(pricingLines, opt.key, {
                 freeShippingCoupon,
+                pricing,
               });
               const arrivalFmt = (d: Date) =>
                 d.toLocaleDateString("en-LK", { month: "short", day: "numeric" });
@@ -1308,10 +1318,6 @@ export default function CheckoutScreen() {
             })}
 
             {(() => {
-              const merchSub = pricingLines.reduce(
-                (sum, l) => sum + l.quantity * l.unitPrice,
-                0,
-              );
               if (freeShippingCoupon) {
                 return (
                   <View style={[styles.shippingBanner, styles.shippingBannerUnlocked]}>
@@ -1324,25 +1330,15 @@ export default function CheckoutScreen() {
                   </View>
                 );
               }
-              if (merchSub >= FREE_SHIPPING_THRESHOLD) {
-                return (
-                  <View style={[styles.shippingBanner, styles.shippingBannerUnlocked]}>
-                    <View style={[styles.shippingBannerIcon, styles.shippingBannerIconUnlocked]}>
-                      <Ionicons name="checkmark-circle" size={14} color={colors.olive[800]} />
-                    </View>
-                    <Text style={styles.shippingBannerTextUnlocked}>
-                      Free delivery unlocked — every shipping option ships free.
-                    </Text>
-                  </View>
-                );
-              }
+              const storeCount = new Set(pricingLines.map((l) => l.storeId)).size;
               return (
                 <View style={styles.shippingBanner}>
                   <View style={styles.shippingBannerIcon}>
-                    <Ionicons name="sparkles" size={13} color={colors.accent2.ochre} />
+                    <Ionicons name="cube-outline" size={13} color={colors.accent2.ochre} />
                   </View>
                   <Text style={styles.shippingBannerText}>
-                    Add <Text style={styles.shippingBannerHighlight}>{formatPrice(FREE_SHIPPING_THRESHOLD - merchSub)}</Text> more to unlock free delivery on every option.
+                    Delivery is charged per store
+                    {storeCount > 1 ? <> — your bag ships from <Text style={styles.shippingBannerHighlight}>{storeCount} stores</Text></> : null}.
                   </Text>
                 </View>
               );
@@ -1825,7 +1821,7 @@ export default function CheckoutScreen() {
                 value={shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
                 accent={shippingFee === 0}
               />
-              <SummaryLine label="Tax · 8%" value={formatPrice(tax)} muted />
+              <SummaryLine label={`Platform fee · ${pricing.platform_fee_pct}%`} value={formatPrice(tax)} muted />
               <View style={styles.receiptRule} />
               <View style={styles.totalRow}>
                 <View>
@@ -1882,7 +1878,7 @@ export default function CheckoutScreen() {
             <View style={styles.reviewFooterTotal}>
               <Text style={styles.reviewFooterLabel}>TOTAL PAYABLE</Text>
               <Text style={styles.reviewFooterPrice}>{formatPrice(total)}</Text>
-              <Text style={styles.reviewFooterSub}>All taxes & delivery included</Text>
+              <Text style={styles.reviewFooterSub}>Platform fee & delivery included</Text>
             </View>
             <TouchableOpacity
               style={[styles.placeOrderBtn, loading && { opacity: 0.7 }]}

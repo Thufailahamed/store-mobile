@@ -40,14 +40,39 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
+/**
+ * @deprecated Delivery is now always charged (only free-shipping coupons
+ * waive it). Kept for legacy callers; do not use for pricing.
+ */
 export const FREE_SHIPPING_THRESHOLD = 15000;
-export const TAX_RATE = 0.08;
-export const DEFAULT_SHIPPING_FEE = 350;
+
+/**
+ * Buyer fees, admin-editable on web /admin/settings and served by
+ * GET /api/checkout/pricing (see useCheckoutPricing). These defaults only
+ * apply until it loads. The platform fee is stored in `orders.tax`.
+ */
+export type CheckoutPricing = {
+  platform_fee_pct: number;
+  delivery_fee: number;
+  express_fee: number;
+  overnight_fee: number;
+};
+
+export const DEFAULT_CHECKOUT_PRICING: CheckoutPricing = {
+  platform_fee_pct: 8,
+  delivery_fee: 500,
+  express_fee: 1500,
+  overnight_fee: 3500,
+};
+
+/** @deprecated Use `pricing.platform_fee_pct / 100`. */
+export const TAX_RATE = DEFAULT_CHECKOUT_PRICING.platform_fee_pct / 100;
+export const DEFAULT_SHIPPING_FEE = DEFAULT_CHECKOUT_PRICING.delivery_fee;
 
 export const SHIPPING_OPTIONS = [
-  { key: "standard" as const, label: "Standard", desc: "5–7 business days", fee: 0, minDays: 5, maxDays: 7 },
-  { key: "express" as const, label: "Express", desc: "1–2 business days", fee: 1500, minDays: 1, maxDays: 2 },
-  { key: "overnight" as const, label: "Overnight", desc: "Next business day", fee: 3500, minDays: 1, maxDays: 1 },
+  { key: "standard" as const, label: "Standard", desc: "5–7 business days", fee: DEFAULT_CHECKOUT_PRICING.delivery_fee, minDays: 5, maxDays: 7 },
+  { key: "express" as const, label: "Express", desc: "1–2 business days", fee: DEFAULT_CHECKOUT_PRICING.express_fee, minDays: 1, maxDays: 2 },
+  { key: "overnight" as const, label: "Overnight", desc: "Next business day", fee: DEFAULT_CHECKOUT_PRICING.overnight_fee, minDays: 1, maxDays: 1 },
 ];
 
 export type ShippingKey = (typeof SHIPPING_OPTIONS)[number]["key"];

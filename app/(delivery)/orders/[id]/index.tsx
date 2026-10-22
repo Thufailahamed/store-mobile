@@ -534,7 +534,7 @@ export default function DeliveryDetail() {
             <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
             {order.discount > 0 && <SummaryRow label="Discount" value={`-${formatPrice(order.discount)}`} />}
             <SummaryRow label="Shipping" value={formatPrice(order.shipping_fee)} />
-            {order.tax > 0 && <SummaryRow label="Tax" value={formatPrice(order.tax)} />}
+            {order.tax > 0 && <SummaryRow label="Platform fee" value={formatPrice(order.tax)} />}
             <View style={styles.summaryDivider} />
             <SummaryRow label="Total" value={formatPrice(order.total)} bold />
           </View>
