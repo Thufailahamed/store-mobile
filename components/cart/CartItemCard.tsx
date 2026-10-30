@@ -11,7 +11,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import { colors, radii } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import type { CartItem } from "@/lib/stores/cart-store";
 import type { Product } from "@/lib/types";
@@ -21,10 +21,8 @@ import {
   getVariantStock,
 } from "@/components/cart/variant-utils";
 
-const ACCENT = colors.olive[900];
 const INK = colors.light.foreground;
 const MUTED = colors.light.mutedForeground;
-const PILL_BG = colors.paper.warm;
 const DEAL_BG = `${colors.accent2.rust}12`;
 const DEAL_TEXT = colors.accent2.rust;
 
@@ -124,7 +122,7 @@ export function CartItemCard({
     <View style={[styles.card, selected && styles.cardSelected, isUnavailable && styles.cardUnavailable, style]}>
       {unavailableMessage ? (
         <View style={styles.unavailableBanner}>
-          <Ionicons name="alert-circle" size={14} color="#B45309" />
+          <Ionicons name="alert-circle" size={14} color={colors.accent2.rust} />
           <Text style={styles.unavailableText}>{unavailableMessage}</Text>
         </View>
       ) : null}
@@ -146,7 +144,7 @@ export function CartItemCard({
                 ]}
               >
                 {selected ? (
-                  <Ionicons name="checkmark" size={14} color="#fff" />
+                  <Ionicons name="checkmark" size={13} color="#c8e08a" />
                 ) : null}
               </View>
             </TouchableOpacity>
@@ -199,7 +197,7 @@ export function CartItemCard({
             <Text style={styles.variantText} numberOfLines={1}>
               {variantDisplay}
             </Text>
-            <Ionicons name="chevron-down" size={12} color={INK} />
+            <Ionicons name="chevron-down" size={12} color={colors.olive[800]} />
           </TouchableOpacity>
 
           <View style={styles.badgeRow}>
@@ -306,46 +304,53 @@ export function CartItemCard({
   );
 }
 
+const LINE = "rgba(22,23,15,0.07)";
+const SOFT = colors.olive[50];
+const IMG_BG = "#f0ede2";
+
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.paper.cream,
-    padding: 14,
-    marginHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    marginHorizontal: 20,
     marginBottom: 12,
-    borderRadius: radii["2xl"],
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
+    borderColor: LINE,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 2,
   },
   cardSelected: {
-    borderColor: `${colors.olive[700]}38`,
+    borderColor: `${colors.olive[600]}33`,
   },
   cardUnavailable: {
-    opacity: 0.72,
-    borderColor: "#FCD34D",
-    backgroundColor: "#FFFBEB",
+    opacity: 0.75,
+    borderColor: `${colors.accent2.rust}55`,
   },
   unavailableBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     marginBottom: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: "#FEF3C7",
+    borderRadius: 14,
+    backgroundColor: `${colors.accent2.rust}12`,
   },
   unavailableText: {
     flex: 1,
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 12,
     lineHeight: 16,
-    color: "#92400E",
+    color: colors.accent2.rust,
   },
   topRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    gap: 14,
   },
   mediaRow: {
     position: "relative",
@@ -372,21 +377,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   checkboxSelected: {
-    backgroundColor: ACCENT,
+    backgroundColor: INK,
     borderWidth: 2,
-    borderColor: colors.paper.cream,
+    borderColor: "#FFFFFF",
   },
   checkboxUnselected: {
-    backgroundColor: `${colors.paper.cream}EE`,
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1.5,
-    borderColor: colors.light.mutedForeground,
+    borderColor: "rgba(22,23,15,0.25)",
   },
   imageWrap: {
     width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
-    borderRadius: radii.xl,
+    height: IMAGE_SIZE * 1.18,
+    borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: PILL_BG,
+    backgroundColor: IMG_BG,
   },
   image: {
     width: "100%",
@@ -400,13 +405,14 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     minWidth: 0,
-    paddingTop: 2,
-    gap: 6,
+    paddingTop: 4,
+    gap: 7,
   },
   title: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    lineHeight: 19,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.2,
     color: INK,
   },
   soldByRow: {
@@ -415,10 +421,11 @@ const styles = StyleSheet.create({
     gap: 2,
     alignSelf: "flex-start",
     maxWidth: "100%",
+    marginTop: -3,
   },
   soldByText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 16,
     color: MUTED,
     flexShrink: 1,
@@ -427,18 +434,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: 4,
-    backgroundColor: PILL_BG,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    gap: 5,
+    backgroundColor: SOFT,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    height: 26,
     maxWidth: "100%",
   },
   variantText: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 12,
     lineHeight: 16,
-    color: INK,
+    color: colors.olive[800],
     flexShrink: 1,
   },
   badgeRow: {
@@ -450,13 +457,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: PILL_BG,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    backgroundColor: "#f5f3ec",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    height: 22,
   },
   badgeText: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 11,
     lineHeight: 14,
     color: INK,
@@ -466,13 +473,13 @@ const styles = StyleSheet.create({
   },
   dealBadgeText: {
     color: DEAL_TEXT,
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
   },
   urgencyRed: {
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 12,
     lineHeight: 16,
-    color: ACCENT,
+    color: colors.accent2.rust,
   },
   urgencyMuted: {
     fontFamily: fontFamilies.sans.regular,
@@ -484,77 +491,88 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: 6,
-    marginTop: 2,
+    gap: 7,
+    marginTop: 1,
   },
   priceCurrent: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 16,
-    lineHeight: 20,
-    color: colors.olive[800],
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.3,
+    color: INK,
+    fontVariant: ["tabular-nums"],
   },
   priceOriginal: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
+    fontSize: 12.5,
     lineHeight: 17,
     color: MUTED,
     textDecorationLine: "line-through",
   },
   priceDiscount: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
     lineHeight: 17,
-    color: ACCENT,
+    color: colors.olive[600],
   },
   bottomRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 14,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: LINE,
     gap: 12,
   },
   stepperSlot: {
-    width: 112,
+    width: 116,
   },
   qtyStepper: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: PILL_BG,
+    backgroundColor: "#f5f3ec",
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    height: 36,
-    paddingHorizontal: 3,
+    height: 38,
+    paddingHorizontal: 4,
   },
   qtyBtn: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 1,
   },
   qtyValue: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
     lineHeight: 18,
     color: INK,
-    minWidth: 20,
+    minWidth: 22,
     textAlign: "center",
+    fontVariant: ["tabular-nums"],
   },
   deleteBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: `${colors.accent2.rust}0D`,
+    backgroundColor: `${colors.accent2.rust}10`,
     borderRadius: radii.full,
-    paddingHorizontal: 13,
-    height: 36,
+    paddingHorizontal: 14,
+    height: 38,
     justifyContent: "center",
     flexShrink: 0,
   },
   deleteText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
     color: colors.accent2.rust,
   },

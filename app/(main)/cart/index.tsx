@@ -1,12 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { View, FlatList, StyleSheet, TouchableOpacity, Share, ScrollView } from "react-native";
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import { C } from "@/components/orders/parcel-track";
 import { navigateHome } from "@/lib/navigation";
 import { useRouter, useFocusEffect } from "expo-router";
-import { PaperBackground } from "@/components/layout";
-import { useTheme } from "@/lib/hooks/useTheme";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
-import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, colors, radii, shadows } from "@/lib/theme/tokens";
 import { computeCartTotals } from "@/lib/cart-pricing";
@@ -41,7 +39,6 @@ import { LinearGradient } from "expo-linear-gradient";
 
 export default function CartScreen() {
   const router = useRouter();
-  const theme = useTheme();
   const { user } = useAuth();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
@@ -220,50 +217,6 @@ export default function CartScreen() {
     });
   }, [cartItems, allSelected]);
 
-  // Share selection
-  const handleShareBag = useCallback(async () => {
-    if (selectedCartItems.length === 0) {
-      toast("Please select at least one item to share", "info");
-      return;
-    }
-    const message = `Check out my bag on Luxe Boutique:\n` +
-      selectedCartItems.map(([_, it]) => `- ${it.name} (${formatPrice(it.price)})`).join("\n");
-    try {
-      await Share.share({ message });
-    } catch (error) {
-      console.log(error);
-    }
-  }, [selectedCartItems, toast]);
-
-  // Remove selected items
-  const handleRemoveSelected = useCallback(() => {
-    if (selectedCartItems.length === 0) {
-      toast("No items selected to remove", "info");
-      return;
-    }
-    selectedCartItems.forEach(([key]) => {
-      removeItem(key);
-    });
-    toast(`${selectedCartItems.length} items removed from bag`, "info");
-  }, [selectedCartItems, removeItem, toast]);
-
-  // Save selected to wishlist
-  const handleWishlistSelected = useCallback(() => {
-    if (selectedCartItems.length === 0) {
-      toast("No items selected to save", "info");
-      return;
-    }
-    selectedCartItems.forEach(([key, item]) => {
-      const product = productDetails[item.productId];
-      if (product) tracker.removeFromCart(product);
-      if (!wishlist.has(item.productId)) {
-        wishlist.toggle(item.productId);
-      }
-      removeItem(key);
-    });
-    toast(`Moved ${selectedCartItems.length} items to wishlist`, "success");
-  }, [selectedCartItems, wishlist, removeItem, toast, productDetails, tracker]);
-
   // Update product variant inside cart store
   const handleUpdateVariant = useCallback(
     (oldKey: string, newVariantId: string, newVariantLabel: string) => {
@@ -371,10 +324,6 @@ export default function CartScreen() {
   const shippingFee = cartTotals.shipping;
   const tax = cartTotals.tax;
   const totalAmount = cartTotals.total;
-  const count = useMemo(() => {
-    return selectedCartItems.reduce((sum, [_, item]) => sum + item.quantity, 0);
-  }, [selectedCartItems]);
-
   const wishlistCount = wishlist.count();
 
   const handleRemove = useCallback(
@@ -465,68 +414,37 @@ export default function CartScreen() {
     void navigateToCheckout(true);
   };
 
+  const disabledCheckout = selectedCount === 0 || hasUnavailableItems;
+
+  const header = (
+    <BagHeader
+      topInset={insets.top}
+      onClose={() => navigateHome(router)}
+      onWishlist={() => router.push("/(main)/wishlist")}
+      wishlistCount={wishlistCount}
+    />
+  );
+
   if (cartItems.length === 0) {
     return (
-      <PaperBackground style={{ flex: 1 }}>
-        {/* Custom Header for Empty state */}
-        <View style={[styles.customHeader, {
-          height: 56 + insets.top,
-          paddingTop: insets.top,
-          backgroundColor: theme.colors.card,
-          borderColor: theme.colors.border
-        }]}>
-          <TouchableOpacity
-            onPress={() => navigateHome(router)}
-            style={[styles.headerLeftBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
-          >
-            <Ionicons name="close" size={20} color={theme.colors.foreground} />
-          </TouchableOpacity>
-          <Display size="xl" style={[styles.headerTitle, { color: theme.colors.foreground }]}>My Bag</Display>
-          <TouchableOpacity
-            onPress={() => router.push("/(main)/wishlist")}
-            style={[styles.headerRightBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
-          >
-            <Ionicons name="heart-outline" size={20} color={theme.colors.foreground} />
-          </TouchableOpacity>
-        </View>
+      <View style={bs.root}>
+        <LinearGradient pointerEvents="none" colors={[C.glow, C.glowSoft, C.paper]} locations={[0, 0.55, 1]} style={bs.glow} />
         <ScrollView
           style={styles.emptyWrap}
-          contentContainerStyle={styles.emptyScrollContent}
+          contentContainerStyle={[styles.emptyScrollContent, { paddingTop: 0 }]}
           showsVerticalScrollIndicator={false}
         >
+          {header}
           <BagEmptyState hasWishlistItems={wishlistCount > 0} />
           <EmptyCartSuggestions userId={user?.id ?? null} onSeeAll={() => router.push("/(main)/products?sort=newest")} />
         </ScrollView>
-      </PaperBackground>
+      </View>
     );
   }
 
   return (
-    <PaperBackground style={{ flex: 1 }}>
-      {/* Custom Header */}
-      <View style={[styles.customHeader, { 
-        height: 56 + insets.top, 
-        paddingTop: insets.top,
-        backgroundColor: theme.colors.card, 
-        borderColor: theme.colors.border 
-      }]}>
-        <TouchableOpacity 
-          onPress={() => navigateHome(router)} 
-          style={[styles.headerLeftBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
-        >
-          <Ionicons name="close" size={20} color={theme.colors.foreground} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Display size="xl" style={[styles.headerTitle, { color: theme.colors.foreground }]}>My Bag</Display>
-          <Body size="xs" muted>{count} {count === 1 ? "piece" : "pieces"}</Body>
-        </View>
-        <TouchableOpacity 
-          onPress={() => router.push("/(main)/wishlist")} 
-          style={[styles.headerRightBtn, { backgroundColor: theme.isDark ? "rgba(240, 237, 223, 0.08)" : "rgba(22, 23, 15, 0.06)" }]}
-        >
-          <Ionicons name="heart-outline" size={20} color={theme.colors.foreground} />
-        </TouchableOpacity>
-      </View>
+    <View style={bs.root}>
+      <LinearGradient pointerEvents="none" colors={[C.glow, C.glowSoft, C.paper]} locations={[0, 0.55, 1]} style={bs.glow} />
 
       <FlatList
         data={cartRows}
@@ -537,86 +455,50 @@ export default function CartScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View>
-            {/* Delivery address banner */}
-            <TouchableOpacity
-              style={[styles.deliveryBanner, { borderColor: theme.colors.border }]}
-              activeOpacity={0.7}
-              onPress={handleAddressPress}
-            >
-              <View style={styles.deliveryLeft}>
-                <View style={[styles.deliveryIconBg, { backgroundColor: theme.colors.secondary }]}>
-                  <Ionicons name="location-outline" size={19} color={theme.colors.primary} />
-                </View>
-                <View style={styles.deliveryTextWrap}>
-                  <Label style={styles.deliveryEyebrow}>DELIVER TO</Label>
-                  <Body style={[styles.deliveryTitle, { color: theme.colors.foreground }]} numberOfLines={1}>
-                    {addressText}
-                  </Body>
-                  <Body size="xs" muted>
-                    {hasSavedAddress ? "Change delivery address" : "Add an address for delivery estimates"}
-                  </Body>
-                </View>
+            {header}
+
+            {/* Delivery */}
+            <SectionHead kicker="DELIVER TO" title="Delivery" />
+            <TouchableOpacity style={[bs.deliveryCard, bs.gutter]} activeOpacity={0.85} onPress={handleAddressPress}>
+              <View style={bs.deliveryIcon}>
+                <Ionicons name="location" size={18} color={C.accent} />
               </View>
-              <View style={styles.deliveryArrow}>
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={bs.deliveryTitle} numberOfLines={1}>
+                  {addressText}
+                </Text>
+                <Text style={bs.deliverySub} numberOfLines={1}>
+                  {hasSavedAddress ? "Tap to change the delivery address" : "Add an address for delivery estimates"}
+                </Text>
+              </View>
+              <View style={bs.chevCircle}>
+                <Ionicons name="chevron-forward" size={15} color={C.text} />
               </View>
             </TouchableOpacity>
 
-            {/* Your Bag Title & Selection Bar */}
-            <View style={styles.yourBagContainer}>
-              <Display size="xl" style={[styles.yourBagTitle, { color: theme.colors.foreground }]}>
-                Your Bag
-              </Display>
-              {!user ? (
-                <Body size="sm" muted style={styles.guestStockNote}>
-                  Sign in to reserve stock while you shop. Guest bags are not held at checkout.
-                </Body>
-              ) : null}
-
-              <View style={styles.selectionBar}>
-                <TouchableOpacity onPress={handleToggleSelectAll} style={styles.selectionLeft} activeOpacity={0.7}>
-                  <View style={[
-                    styles.checkbox,
-                    allSelected ? styles.checkboxSelected : styles.checkboxUnselected,
-                  ]}>
-                    {allSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
-                  </View>
-                  <Body style={[styles.selectedCountText, { color: theme.colors.foreground }]}>
-                    {selectedCount}/{cartItems.length} Items Selected
-                  </Body>
-                </TouchableOpacity>
-
-                <View style={styles.selectionActions}>
-                  <TouchableOpacity onPress={handleShareBag} style={styles.actionIconBtn} activeOpacity={0.7}>
-                    <Ionicons name="share-social-outline" size={20} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleRemoveSelected} style={styles.actionIconBtn} activeOpacity={0.7}>
-                    <Ionicons name="trash-outline" size={20} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleWishlistSelected} style={styles.actionIconBtn} activeOpacity={0.7}>
-                    <Ionicons name="heart-outline" size={20} color={theme.colors.foreground} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
+            <SectionHead
+              kicker={`${selectedCount} OF ${cartItems.length} SELECTED`}
+              title="Your pieces"
+              action={allSelected ? "Deselect all" : "Select all"}
+              onAction={handleToggleSelectAll}
+            />
           </View>
         }
         renderItem={({ item: row }) => {
           if (row.type === "header") {
             return (
-              <View style={styles.storeGroupHeader}>
-                <View style={styles.storeGroupHeaderLeft}>
-                  <Ionicons name="storefront-outline" size={16} color={theme.colors.primary} />
-                  <Label style={[styles.storeGroupName, { color: theme.colors.foreground }]}>
-                    {row.storeName}
-                  </Label>
-                  <Body size="sm" muted style={styles.storeGroupCount}>
-                    {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
-                  </Body>
+              <View style={bs.storeHead}>
+                <View style={bs.storeIcon}>
+                  <Ionicons name="storefront" size={13} color={C.accent} />
                 </View>
-                <Body size="sm" style={[styles.storeGroupSubtotal, { color: theme.colors.foreground }]}>
-                  {formatPrice(row.subtotal)}
-                </Body>
+                <Text style={bs.storeName} numberOfLines={1}>
+                  {row.storeName}
+                </Text>
+                <Text style={bs.storeCount}>
+                  · {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={bs.storeSubtotal}>{formatPrice(row.subtotal)}</Text>
               </View>
             );
           }
@@ -643,92 +525,56 @@ export default function CartScreen() {
         }}
         ListFooterComponent={
           <View style={{ paddingBottom: 24 }}>
+            <SectionHead kicker="ORDER SUMMARY" title="Price details" />
+            <View style={[bs.cardShadow, bs.gutter]}>
+              <View style={bs.priceCard}>
+                <PriceRow label="Total MRP" value={formatPrice(selectedCount === 0 ? 0 : totalMrp)} />
+                {selectedCount > 0 && (
+                  <>
+                    <PriceRow label="Discount on MRP" value={`– ${formatPrice(discountOnMrp)}`} accent />
+                    <PriceRow label="Delivery" value={shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)} />
+                    <PriceRow label={`Platform fee · ${pricing.platform_fee_pct}%`} value={formatPrice(tax)} />
+                  </>
+                )}
+                <View style={bs.priceDivider} />
+                <View style={bs.priceTotalRow}>
+                  <Text style={bs.priceTotalLabel}>Total amount</Text>
+                  <Text style={bs.priceTotalValue}>{formatPrice(selectedCount === 0 ? 0 : totalAmount)}</Text>
+                </View>
 
-            {/* Price Details Card */}
-            <View style={[styles.priceCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-              <View style={styles.priceCardHeader}>
-                <View style={styles.priceCardIcon}>
-                  <Ionicons name="receipt-outline" size={18} color={theme.colors.primary} />
-                </View>
-                <View style={styles.priceCardHeaderText}>
-                  <Label style={styles.priceCardEyebrow}>ORDER SUMMARY</Label>
-                  <Body style={[styles.priceCardTitle, { color: theme.colors.foreground }]}>Price details</Body>
-                </View>
-                <View style={styles.priceItemPill}>
-                  <Label style={styles.priceItemPillText}>{count} {count === 1 ? "item" : "items"}</Label>
-                </View>
+                {selectedCount > 0 && discountOnMrp > 0 && (
+                  <View style={bs.saveStrip}>
+                    <View style={bs.saveIcon}>
+                      <Ionicons name="sparkles" size={14} color={C.ink} />
+                    </View>
+                    <Text style={bs.saveText}>
+                      You're saving <Text style={bs.saveBold}>{formatPrice(discountOnMrp)}</Text> on this order
+                    </Text>
+                  </View>
+                )}
               </View>
-
-              <View style={styles.pdRow}>
-                <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Total MRP</Body>
-                <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(selectedCount === 0 ? 0 : totalMrp)}</Body>
-              </View>
-
-              {selectedCount > 0 && (
-                <>
-                  <View style={styles.pdRow}>
-                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Discount on MRP</Body>
-                    <Body style={[styles.priceRowValue, { color: "#16a34a" }]}>- {formatPrice(discountOnMrp)}</Body>
-                  </View>
-
-                  <View style={styles.pdRow}>
-                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Delivery</Body>
-                    <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>
-                      {shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
-                    </Body>
-                  </View>
-
-                  <View style={styles.pdRow}>
-                    <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>{`Platform fee · ${pricing.platform_fee_pct}%`}</Body>
-                    <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(tax)}</Body>
-                  </View>
-                </>
-              )}
-
-              <View style={[styles.priceDivider, { backgroundColor: theme.colors.border }]} />
-
-              <View style={styles.pdRow}>
-                <Body style={[styles.totalAmountLabel, { color: theme.colors.foreground }]}>Total Amount</Body>
-                <Body style={[styles.totalAmountValue, { color: theme.colors.foreground }]}>{formatPrice(selectedCount === 0 ? 0 : totalAmount)}</Body>
-              </View>
-
-              {/* Savings pill */}
-              {selectedCount > 0 && (
-                <View style={styles.savingsPill}>
-                  <View style={styles.savingsIcon}>
-                    <Ionicons name="sparkles" size={15} color={colors.olive[700]} />
-                  </View>
-                  <Body style={styles.savingsPillText}>
-                    You're saving <Body style={styles.savingsPillBold}>{formatPrice(discountOnMrp)}</Body> on this order
-                  </Body>
-                </View>
-              )}
             </View>
 
-            {/* Trust Badges */}
-            <View style={[styles.trustRow, { marginBottom: 12 }]}>
+            {/* Trust tiles */}
+            <View style={[bs.quickRow, bs.gutter, { marginTop: 12 }]}>
               {[
-                { icon: "shield-checkmark-outline" as const, label: "Genuine\nProducts" },
-                { icon: "people-outline" as const, label: "Contactless\nDelivery" },
-                { icon: "lock-closed-outline" as const, label: "Secure\nPayments" },
-              ].map((badge, i) => (
-                <View key={badge.label} style={styles.trustBadge}>
-                  {i > 0 && <View style={[styles.trustDot, { backgroundColor: theme.colors.mutedForeground }]} />}
-                  <Ionicons name={badge.icon} size={22} color={theme.colors.mutedForeground} />
-                  <Body style={[styles.trustLabel, { color: theme.colors.mutedForeground }]}>{badge.label}</Body>
+                { icon: "shield-checkmark-outline" as const, label: "Genuine pieces" },
+                { icon: "cube-outline" as const, label: "Contactless" },
+                { icon: "lock-closed-outline" as const, label: "Secure pay" },
+              ].map((b) => (
+                <View key={b.label} style={[bs.quick, { paddingVertical: 12 }]}>
+                  <View style={[bs.quickIcon, { width: 36, height: 36, borderRadius: 18 }]}>
+                    <Ionicons name={b.icon} size={16} color={C.accent} />
+                  </View>
+                  <Text style={[bs.quickLabel, { fontSize: 11.5 }]}>{b.label}</Text>
                 </View>
               ))}
             </View>
 
-            {/* Terms */}
-            <View style={[styles.termsRow, { marginHorizontal: 16 }]}>
-              <Body style={[styles.termsText, { color: theme.colors.mutedForeground }]}>
-                By placing the order, you agree to Luxe's{" "}
-                <Body style={[styles.termsLink, { color: theme.colors.primary }]}>Terms of Use</Body>
-                {" "}and{" "}
-                <Body style={[styles.termsLink, { color: theme.colors.primary }]}>Privacy Policy</Body>
-              </Body>
-            </View>
+            <Text style={bs.terms}>
+              By placing the order, you agree to Luxe's <Text style={bs.termsLink}>Terms of Use</Text> and{" "}
+              <Text style={bs.termsLink}>Privacy Policy</Text>
+            </Text>
 
             {/* Discovery rails: complete the look, for you, wishlist, recent */}
             <View style={styles.buyAgainSection}>
@@ -750,99 +596,363 @@ export default function CartScreen() {
               />
             </View>
 
-            <View style={{ height: 100 }} />
+            <View style={{ height: 120 }} />
           </View>
         }
       />
 
-      {/* Pinned Checkout Footer */}
-      <View
-        style={[
-          styles.checkoutContainer,
-          {
-            paddingBottom: Math.max(insets.bottom, spacing[4]),
-            backgroundColor: theme.colors.card,
-            borderColor: theme.colors.border,
-          },
-        ]}
-      >
-        <View style={styles.checkoutSummary}>
+      {/* Fades scrolled content out under the status bar, as on Account. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, "rgba(235,229,204,0)"]}
+        locations={[0.7, 1]}
+        style={[bs.statusMask, { height: insets.top + 14 }]}
+      />
+
+      {/* Pinned checkout bar */}
+      <View style={[bs.footer, { paddingBottom: Math.max(insets.bottom, 14) + 4 }]}>
+        <View style={bs.footerTop}>
           <View>
-            <Label style={styles.checkoutSummaryLabel}>ORDER TOTAL</Label>
-            <Price size="md" style={[styles.checkoutSummaryPrice, { color: theme.colors.foreground }]}>
-              {formatPrice(selectedCount === 0 ? 0 : totalAmount)}
-            </Price>
+            <Text style={bs.footerKicker}>ORDER TOTAL</Text>
+            <Text style={bs.footerTotal}>{formatPrice(selectedCount === 0 ? 0 : totalAmount)}</Text>
           </View>
-          <View style={styles.checkoutSelectionPill}>
-            <Ionicons name="checkmark-circle" size={14} color={theme.colors.primary} />
-            <Body size="xs" style={[styles.checkoutSelectionText, { color: theme.colors.primary }]}>
+          <View style={bs.footerPill}>
+            <Ionicons name="checkmark-circle" size={13} color={C.accent} />
+            <Text style={bs.footerPillText}>
               {selectedCount} of {cartItems.length} selected
-            </Body>
+            </Text>
           </View>
         </View>
 
         {selectedCount === 0 && (
-          <View
-            style={[
-              styles.warningBanner,
-              {
-                backgroundColor: theme.isDark
-                  ? "rgba(151, 168, 94, 0.1)"
-                  : "rgba(83, 94, 44, 0.08)",
-                borderColor: theme.isDark
-                  ? "rgba(151, 168, 94, 0.25)"
-                  : "rgba(83, 94, 44, 0.2)",
-              },
-            ]}
-          >
-            <Body style={[styles.warningText, { color: theme.colors.primary }]}>
-              No items selected — pick at least one to place your order.
-            </Body>
-          </View>
+          <Text style={bs.footerWarn}>No items selected — pick at least one to place your order.</Text>
         )}
 
-        <View style={styles.checkoutAction}>
-          <TouchableOpacity
-            style={[
-              styles.checkoutBtn,
-              {
-                shadowColor: theme.colors.primary,
-                overflow: "hidden",
-              },
-              (selectedCount === 0 || hasUnavailableItems) && styles.checkoutBtnDisabled,
-            ]}
-            disabled={selectedCount === 0 || hasUnavailableItems}
-            onPress={handlePlaceOrder}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: selectedCount === 0 || hasUnavailableItems }}
-          >
-            {selectedCount > 0 && !hasUnavailableItems ? (
-              <LinearGradient
-                colors={
-                  theme.isDark
-                    ? [theme.olive[400], theme.olive[600]]
-                    : [theme.olive[500], theme.olive[700]]
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-            ) : (
-              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.muted, opacity: 0.5 }]} />
-            )}
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Body style={[styles.checkoutBtnText, { color: selectedCount === 0 || hasUnavailableItems ? theme.colors.mutedForeground : "#FFFFFF" }]}>
-                {hasUnavailableItems ? "Remove out of stock items" : "Continue to checkout"}
-              </Body>
-              {selectedCount > 0 && !hasUnavailableItems && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
+        <TouchableOpacity
+          style={[bs.checkoutBtn, disabledCheckout && bs.checkoutBtnOff]}
+          disabled={disabledCheckout}
+          onPress={handlePlaceOrder}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: disabledCheckout }}
+        >
+          <Text style={[bs.checkoutText, disabledCheckout && { color: C.muted }]}>
+            {hasUnavailableItems ? "Remove out of stock items" : "Continue to checkout"}
+          </Text>
+          {!disabledCheckout && (
+            <View style={bs.checkoutArrow}>
+              <Ionicons name="arrow-forward" size={18} color={C.ink} />
             </View>
-          </TouchableOpacity>
-        </View>
+          )}
+        </TouchableOpacity>
       </View>
-    </PaperBackground>
+    </View>
   );
 }
+
+/* ---------------------------------------------------------------- pieces */
+
+function BagHeader({
+  topInset,
+  onClose,
+  onWishlist,
+  wishlistCount,
+}: {
+  topInset: number;
+  onClose: () => void;
+  onWishlist: () => void;
+  wishlistCount: number;
+}) {
+  return (
+    <View style={[bs.header, bs.gutter, { paddingTop: topInset + 8 }]}>
+      <TouchableOpacity style={bs.circleBtn} onPress={onClose} activeOpacity={0.8} accessibilityLabel="Close bag">
+        <Ionicons name="close" size={20} color={C.text} />
+      </TouchableOpacity>
+      <Text style={bs.title} accessibilityRole="header">
+        My Bag
+      </Text>
+      <TouchableOpacity style={bs.circleBtn} onPress={onWishlist} activeOpacity={0.8} accessibilityLabel="Wishlist">
+        <Ionicons name="heart-outline" size={19} color={C.text} />
+        {wishlistCount > 0 ? (
+          <View style={bs.badge}>
+            <Text style={bs.badgeText}>{wishlistCount > 9 ? "9+" : wishlistCount}</Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function SectionHead({
+  kicker,
+  title,
+  action,
+  onAction,
+}: {
+  kicker: string;
+  title: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={[bs.sectionHead, bs.gutter]}>
+      <View style={{ flex: 1 }}>
+        <Text style={bs.sectionKicker}>{kicker}</Text>
+        <Text style={bs.sectionTitle}>{title}</Text>
+      </View>
+      {action && onAction ? (
+        <TouchableOpacity onPress={onAction} hitSlop={8} activeOpacity={0.75} style={bs.sectionAction}>
+          <Text style={bs.sectionActionText}>{action}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+function PriceRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <View style={bs.priceRow}>
+      <Text style={bs.priceLabel}>{label}</Text>
+      <Text style={[bs.priceValue, accent && { color: C.accent }]}>{value}</Text>
+    </View>
+  );
+}
+
+const bs = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.paper },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 380 },
+  gutter: { marginHorizontal: 20 },
+  statusMask: { position: "absolute", top: 0, left: 0, right: 0 },
+
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 16 },
+  title: {
+    flex: 1,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
+    letterSpacing: -0.8,
+    color: C.text,
+  },
+  circleBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  badge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: C.ink,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  badgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 9.5, color: C.lime },
+
+  cardShadow: {
+    borderRadius: 26,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  quickRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  quick: {
+    flex: 1,
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  quickIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.text },
+
+  sectionHead: { flexDirection: "row", alignItems: "flex-end", marginTop: 28, marginBottom: 12, paddingHorizontal: 2 },
+  sectionAction: { paddingBottom: 2 },
+  sectionActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.accent },
+  sectionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
+  sectionTitle: { marginTop: 3, fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+
+  deliveryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  deliveryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deliveryTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 15, letterSpacing: -0.2, color: C.text },
+  deliverySub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, marginTop: 2 },
+  chevCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f5f3ec",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  storeHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 22,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  storeIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  storeName: { fontFamily: fontFamilies.sans.bold, fontSize: 13.5, letterSpacing: 0.2, color: C.text, flexShrink: 1 },
+  storeCount: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted },
+  storeSubtotal: { fontFamily: fontFamilies.sans.bold, fontSize: 13.5, color: C.text, fontVariant: ["tabular-nums"] },
+
+  priceCard: { borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: C.line, padding: 18, gap: 12 },
+  priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  priceLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 14, color: C.muted },
+  priceValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text, fontVariant: ["tabular-nums"] },
+  priceDivider: { height: 1, backgroundColor: C.line, marginVertical: 2 },
+  priceTotalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  priceTotalLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.text },
+  priceTotalValue: { fontFamily: fontFamilies.sans.bold, fontSize: 20, letterSpacing: -0.4, color: C.text, fontVariant: ["tabular-nums"] },
+  saveStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: C.ink,
+  },
+  saveIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13, color: "rgba(250,248,241,0.75)" },
+  saveBold: { fontFamily: fontFamilies.sans.bold, color: C.lime },
+
+  terms: {
+    marginTop: 16,
+    marginHorizontal: 28,
+    textAlign: "center",
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    lineHeight: 17,
+    color: C.muted,
+  },
+  termsLink: { fontFamily: fontFamilies.sans.semibold, color: C.accent },
+
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 14,
+    paddingHorizontal: 20,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: C.line,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 12,
+    gap: 12,
+  },
+  footerTop: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
+  footerKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
+  footerTotal: {
+    marginTop: 2,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 26,
+    letterSpacing: -0.6,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
+  },
+  footerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: C.accentSoft,
+    marginBottom: 4,
+  },
+  footerPillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
+  footerWarn: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.accent },
+  checkoutBtn: {
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: C.ink,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: 24,
+    paddingRight: 8,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  checkoutBtnOff: { backgroundColor: "#ecebe3", shadowOpacity: 0 },
+  checkoutText: { flex: 1, fontFamily: fontFamilies.sans.bold, fontSize: 16.5, color: C.cream, letterSpacing: 0.1 },
+  checkoutArrow: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 const styles = StyleSheet.create({
   listContent: {

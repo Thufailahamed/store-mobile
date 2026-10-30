@@ -6,6 +6,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -13,15 +14,23 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
-import { AppHeader, PaperBackground } from "@/components/layout";
-import { Body, Display, Label } from "@/components/ui/Typography";
+import {
+  EmptyCard,
+  HeaderButton,
+  SectionHead,
+  UserPageFrame,
+  userTheme,
+} from "@/components/user/user-page";
+import { C } from "@/components/orders/parcel-track";
 import { getAllCategories } from "@/lib/api";
 import { useTrackEvent } from "@/lib/recommender";
 import type { Category } from "@/lib/types";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
-import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { radii } from "@/lib/theme/tokens";
 import { Skeleton } from "@/components/ui/Skeleton";
+
+const BANNER_HEIGHT = 208;
 
 export default function CategoriesDirectoryScreen() {
   const router = useRouter();
@@ -72,61 +81,74 @@ export default function CategoriesDirectoryScreen() {
     [parents],
   );
 
+  const collectionCount = useMemo(
+    () => sortedParents.reduce((sum, p) => sum + (childrenByParent.get(p.id)?.length ?? 0), 0),
+    [sortedParents, childrenByParent],
+  );
+
   return (
-    <PaperBackground>
-      <AppHeader showSearch showBackToHome />
+    <UserPageFrame
+      title="Departments"
+      right={
+        <HeaderButton
+          icon="search"
+          label="Search"
+          onPress={() => router.push("/(main)/search" as never)}
+        />
+      }
+    >
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+            tintColor={C.accent}
+          />
         }
       >
-        <View style={styles.hero}>
-          <View style={styles.kickerRow}>
-            <View style={styles.kickerRule} />
-            <Label style={styles.kicker}>
-              BROWSE{!loading && sortedParents.length > 0
-                ? ` · ${String(sortedParents.length).padStart(2, "0")} DEPARTMENTS`
-                : ""}
-            </Label>
-            <View style={{ flex: 1 }} />
-            <Label style={styles.kickerMeta}>THE INDEX</Label>
-          </View>
-          <Display size="5xl" style={styles.title}>
-            Shop by
-          </Display>
-          <Display size="5xl" italic style={[styles.title, styles.titleAccent]}>
-            department.
-          </Display>
-          <Body muted size="sm" style={styles.subtitle}>
-            Tap a department to see everything, or jump straight into a collection.
-          </Body>
+        {/* Summary strip, same dark block as the profile stats */}
+        <View style={styles.statsStrip}>
+          <Stat
+            value={loading ? "–" : String(sortedParents.length).padStart(2, "0")}
+            label="Departments"
+          />
+          <View style={styles.statDivider} />
+          <Stat
+            value={loading ? "–" : String(collectionCount).padStart(2, "0")}
+            label="Collections"
+          />
+          <View style={styles.statDivider} />
+          <Stat value="Weekly" label="Curated" small />
         </View>
 
+        <Text style={styles.intro}>
+          Tap a department to see everything, or jump straight into a collection.
+        </Text>
+
+        <SectionHead kicker="The index" title="Shop by department" />
+
         {sortedParents.length === 0 && !loading ? (
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="grid-outline" size={24} color={colors.olive[700]} />
-            </View>
-            <Display size="lg" style={styles.emptyTitle}>
-              No categories yet
-            </Display>
-            <Body muted size="sm" style={styles.emptyCopy}>
-              Admins can add categories from the catalogue manager.
-            </Body>
-          </View>
+          <EmptyCard
+            icon="grid-outline"
+            title="No departments yet"
+            sub="Admins can add categories from the catalogue manager."
+          />
         ) : null}
 
         {loading ? (
           <View style={styles.grid}>
             {[0, 1, 2].map((i) => (
-              <View key={i} style={styles.card}>
+              <View key={i} style={[userTheme.card, styles.card]}>
                 <Skeleton width="100%" height={BANNER_HEIGHT} borderRadius={0} />
                 <View style={styles.skeletonLinks}>
-                  <Skeleton width={92} height={12} borderRadius={radii.full} />
-                  <Skeleton width={70} height={12} borderRadius={radii.full} />
-                  <Skeleton width={80} height={12} borderRadius={radii.full} />
+                  <Skeleton width={92} height={14} borderRadius={radii.full} />
+                  <Skeleton width={70} height={14} borderRadius={radii.full} />
+                  <Skeleton width={80} height={14} borderRadius={radii.full} />
                 </View>
               </View>
             ))}
@@ -148,12 +170,21 @@ export default function CategoriesDirectoryScreen() {
         {!loading && sortedParents.length > 0 ? (
           <View style={styles.endmark}>
             <View style={styles.endmarkRule} />
-            <Label style={styles.endmarkLabel}>END OF INDEX</Label>
+            <Text style={styles.endmarkLabel}>END OF INDEX</Text>
             <View style={styles.endmarkRule} />
           </View>
         ) : null}
       </ScrollView>
-    </PaperBackground>
+    </UserPageFrame>
+  );
+}
+
+function Stat({ value, label, small }: { value: string; label: string; small?: boolean }) {
+  return (
+    <View style={styles.statCell}>
+      <Text style={[styles.statNum, small && styles.statNumSmall]}>{value}</Text>
+      <Text style={styles.statLabel}>{label.toUpperCase()}</Text>
+    </View>
   );
 }
 
@@ -184,12 +215,12 @@ function DepartmentCard({
   const imageUri = cat.image_url ? resolveImageUrl(cat.image_url) ?? cat.image_url : null;
 
   return (
-    <Animated.View style={[styles.card, { opacity: anim, transform: [{ translateY }] }]}>
+    <Animated.View style={[userTheme.card, styles.card, { opacity: anim, transform: [{ translateY }] }]}>
       <Pressable
         onPress={() => onNavigate(cat.slug)}
         accessibilityRole="button"
         accessibilityLabel={`Shop ${cat.name}`}
-        style={({ pressed }) => [styles.banner, pressed && styles.bannerPressed]}
+        style={({ pressed }) => [styles.banner, pressed && styles.pressed]}
       >
         {imageUri ? (
           <Image
@@ -200,7 +231,7 @@ function DepartmentCard({
           />
         ) : (
           <LinearGradient
-            colors={[colors.olive[500], colors.olive[800]]}
+            colors={[C.accent, C.ink]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[StyleSheet.absoluteFill, styles.bannerFallback]}
@@ -209,241 +240,210 @@ function DepartmentCard({
           </LinearGradient>
         )}
         <LinearGradient
-          colors={["rgba(13,14,10,0.22)", "rgba(13,14,10,0)", "rgba(13,14,10,0.55)", "rgba(13,14,10,0.88)"]}
+          colors={["rgba(22,23,15,0.18)", "rgba(22,23,15,0)", "rgba(22,23,15,0.6)", "rgba(22,23,15,0.9)"]}
           locations={[0, 0.35, 0.68, 1]}
           style={StyleSheet.absoluteFill}
         />
+
         <View style={styles.bannerTop}>
           <View style={styles.indexBadge}>
-            <Label style={styles.indexText}>Nº {String(index + 1).padStart(2, "0")}</Label>
+            <Text style={styles.indexText}>Nº {String(index + 1).padStart(2, "0")}</Text>
           </View>
           {collections.length > 0 ? (
-            <Label style={styles.bannerCount}>
-              {String(collections.length).padStart(2, "0")} {collections.length === 1 ? "LINE" : "LINES"}
-            </Label>
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>
+                {String(collections.length).padStart(2, "0")} {collections.length === 1 ? "LINE" : "LINES"}
+              </Text>
+            </View>
           ) : null}
         </View>
+
         <View style={styles.bannerFooter}>
-          <View style={{ flex: 1, gap: 6 }}>
-            <Display size="4xl" style={styles.bannerTitle} numberOfLines={1}>
+          <View style={styles.bannerTextWrap}>
+            <Text style={styles.bannerTitle} numberOfLines={1}>
               {cat.name}
-            </Display>
-            <View style={styles.bannerMetaRow}>
-              <View style={styles.bannerMetaRule} />
-              <Label style={styles.bannerMeta} numberOfLines={1}>
-                {cat.description
-                  ? cat.description
-                  : collections.length > 0
-                    ? `${collections.length} ${collections.length === 1 ? "COLLECTION" : "COLLECTIONS"}`
-                    : "SHOP THE EDIT"}
-              </Label>
-            </View>
+            </Text>
+            <Text style={styles.bannerMeta} numberOfLines={1}>
+              {cat.description
+                ? cat.description
+                : collections.length > 0
+                  ? `${collections.length} ${collections.length === 1 ? "collection" : "collections"}`
+                  : "Shop the edit"}
+            </Text>
           </View>
           <View style={styles.arrowButton}>
-            <Ionicons name="arrow-forward" size={18} color={colors.ink.DEFAULT} />
+            <Ionicons name="arrow-forward" size={18} color={C.ink} />
           </View>
         </View>
       </Pressable>
 
       {collections.length > 0 ? (
-        <View style={styles.linkStrip}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.linkRow}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.linkRow}
+          style={styles.linkStrip}
+        >
+          <Pressable
+            onPress={() => onNavigate(cat.slug)}
+            style={({ pressed }) => [styles.shopAll, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Shop all ${cat.name}`}
           >
+            <Text style={styles.shopAllText}>Shop all</Text>
+            <Ionicons name="arrow-forward" size={12} color={C.lime} />
+          </Pressable>
+          {collections.map((ch) => (
             <Pressable
-              onPress={() => onNavigate(cat.slug)}
-              style={({ pressed }) => [styles.shopAll, pressed && styles.linkPressed]}
+              key={ch.id}
+              onPress={() => onNavigate(ch.slug)}
+              accessibilityRole="button"
+              accessibilityLabel={`Shop ${cat.name} ${ch.name}`}
+              style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
             >
-              <Label style={styles.shopAllText}>SHOP ALL</Label>
-              <Ionicons name="arrow-forward" size={11} color={colors.ink.DEFAULT} />
+              <Text style={styles.chipText}>{ch.name}</Text>
             </Pressable>
-            {collections.map((ch) => (
-              <React.Fragment key={ch.id}>
-                <View style={styles.linkDivider} />
-                <Pressable
-                  onPress={() => onNavigate(ch.slug)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Shop ${cat.name} ${ch.name}`}
-                  style={({ pressed }) => [pressed && styles.linkPressed]}
-                >
-                  <Label style={styles.linkText}>{ch.name}</Label>
-                </Pressable>
-              </React.Fragment>
-            ))}
-          </ScrollView>
-        </View>
+          ))}
+        </ScrollView>
       ) : null}
     </Animated.View>
   );
 }
 
-const BANNER_HEIGHT = 216;
-
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: 20, paddingTop: spacing[4] },
-  hero: { gap: spacing[2], paddingBottom: spacing[7] },
-  kickerRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  kickerRule: { width: 20, height: 1, backgroundColor: colors.light.primary },
-  kicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: colors.light.primary,
-    letterSpacing: 1.6,
+  scroll: { paddingHorizontal: 20, paddingTop: 4 },
+
+  statsStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 22,
+    backgroundColor: C.ink,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
   },
-  kickerMeta: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.ink.mute,
-    letterSpacing: 1.6,
+  statCell: { flex: 1, alignItems: "center", gap: 4 },
+  statNum: { fontFamily: fontFamilies.sans.bold, fontSize: 24, letterSpacing: -0.6, color: C.cream },
+  statNumSmall: { fontSize: 18, color: C.lime },
+  statLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9.5, letterSpacing: 1.4, color: "rgba(250,248,241,0.55)" },
+  statDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
+
+  intro: {
+    marginTop: 14,
+    paddingHorizontal: 2,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: C.muted,
   },
-  title: { lineHeight: 52, color: colors.ink.DEFAULT },
-  titleAccent: { color: colors.olive[600] },
-  subtitle: { maxWidth: 300, lineHeight: 20, marginTop: spacing[1] },
-  grid: { gap: spacing[6] },
-  card: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["3xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    overflow: "hidden",
-    ...shadows.editorial,
-  },
+
+  grid: { gap: 16 },
+  card: { borderRadius: 26, overflow: "hidden" },
+  pressed: { opacity: 0.85 },
+
   banner: {
     height: BANNER_HEIGHT,
-    justifyContent: "flex-end",
-    backgroundColor: colors.olive[100],
+    justifyContent: "space-between",
+    backgroundColor: C.glow,
   },
-  bannerPressed: { opacity: 0.94 },
   bannerFallback: { alignItems: "center", justifyContent: "center" },
   bannerTop: {
-    position: "absolute",
-    top: spacing[3],
-    left: spacing[3],
-    right: spacing[3],
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    padding: 14,
   },
   indexBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(250,248,241,0.9)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: "rgba(250,248,241,0.94)",
   },
-  indexText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1,
-    color: colors.ink.DEFAULT,
+  indexText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1, color: C.ink },
+  countBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: C.ink,
   },
-  bannerCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: "rgba(250,248,241,0.9)",
-  },
+  countText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.2, color: C.lime },
+
   bannerFooter: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing[3],
-    padding: spacing[4],
+    gap: 12,
+    padding: 16,
   },
+  bannerTextWrap: { flex: 1, gap: 4 },
   bannerTitle: {
-    color: colors.paper.cream,
-    lineHeight: 40,
-  },
-  bannerMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  bannerMetaRule: {
-    width: 14,
-    height: 1,
-    backgroundColor: "rgba(250,248,241,0.55)",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 30,
+    letterSpacing: -0.8,
+    color: C.cream,
   },
   bannerMeta: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: "rgba(250,248,241,0.85)",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12.5,
+    color: "rgba(250,248,241,0.8)",
   },
   arrowButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.paper.cream,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.soft,
   },
+
   linkStrip: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
   linkRow: {
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3] + 2,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   shopAll: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: C.ink,
   },
-  shopAllText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: colors.ink.DEFAULT,
+  shopAllText: { fontFamily: fontFamilies.sans.bold, fontSize: 12.5, color: C.cream },
+  chip: {
+    height: 36,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
   },
-  linkDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: colors.light.border,
-  },
-  linkText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: colors.ink.mute,
-  },
-  linkPressed: { opacity: 0.55 },
+  chipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.text },
+
   skeletonLinks: {
     flexDirection: "row",
-    gap: 12,
-    padding: spacing[4],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
+    gap: 8,
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
+
   endmark: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    marginTop: spacing[8],
+    gap: 12,
+    marginTop: 28,
   },
-  endmarkRule: { flex: 1, height: 1, backgroundColor: colors.light.border },
+  endmarkRule: { flex: 1, height: 1, backgroundColor: C.line },
   endmarkLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
     letterSpacing: 2,
-    color: colors.ink.mute,
+    color: C.muted,
   },
-  empty: {
-    alignItems: "center",
-    gap: spacing[2],
-    padding: spacing[8],
-  },
-  emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: colors.olive[100],
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing[1],
-  },
-  emptyTitle: { fontSize: typography.fontSizes.lg },
-  emptyCopy: { textAlign: "center" },
 });
