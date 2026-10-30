@@ -11,7 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
@@ -19,10 +22,15 @@ import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listPriceAlerts, updatePriceAlert, unsubscribePriceAlert } from "@/lib/api";
+import {
+  listPriceAlerts,
+  updatePriceAlert,
+  unsubscribePriceAlert,
+} from "@/lib/api";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 export type PriceAlert = {
   id: string;
@@ -207,7 +215,8 @@ export default function PriceAlertsScreen() {
             <View style={styles.dropBadge}>
               <Ionicons name="trending-down" size={12} color={GREEN} />
               <Text style={styles.dropBadgeText}>
-                Down {percentDrop}% · save {formatPrice(priceDiff, item.currency)}
+                Down {percentDrop}% · save{" "}
+                {formatPrice(priceDiff, item.currency)}
               </Text>
             </View>
           ) : (
@@ -224,7 +233,11 @@ export default function PriceAlertsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Remove price alert"
           >
-            <Ionicons name="trash-outline" size={16} color={colors.light.mutedForeground} />
+            <Ionicons
+              name="trash-outline"
+              size={16}
+              color={colors.light.mutedForeground}
+            />
           </TouchableOpacity>
         </View>
 
@@ -232,7 +245,10 @@ export default function PriceAlertsScreen() {
         <View style={styles.productRow}>
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => item.product?.slug && router.push(`/(main)/products/${item.product.slug}`)}
+            onPress={() =>
+              item.product?.slug &&
+              router.push(`/(main)/products/${item.product.slug}`)
+            }
             style={styles.thumb}
           >
             {imageUrl ? (
@@ -244,7 +260,11 @@ export default function PriceAlertsScreen() {
               />
             ) : (
               <View style={styles.thumbFallback}>
-                <Ionicons name="shirt-outline" size={22} color={colors.olive[700]} />
+                <Ionicons
+                  name="shirt-outline"
+                  size={22}
+                  color={colors.olive[700]}
+                />
               </View>
             )}
           </TouchableOpacity>
@@ -252,7 +272,10 @@ export default function PriceAlertsScreen() {
           <View style={styles.productInfo}>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => item.product?.slug && router.push(`/(main)/products/${item.product.slug}`)}
+              onPress={() =>
+                item.product?.slug &&
+                router.push(`/(main)/products/${item.product.slug}`)
+              }
             >
               <Text style={styles.productName} numberOfLines={2}>
                 {item.product?.name ?? "Product"}
@@ -287,7 +310,11 @@ export default function PriceAlertsScreen() {
             <View style={styles.editorHeader}>
               <Text style={styles.editorTitle}>Set target price</Text>
               <TouchableOpacity onPress={() => setEditingId(null)} hitSlop={8}>
-                <Ionicons name="close" size={18} color={colors.light.mutedForeground} />
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color={colors.light.mutedForeground}
+                />
               </TouchableOpacity>
             </View>
 
@@ -358,11 +385,18 @@ export default function PriceAlertsScreen() {
 
             <TouchableOpacity
               style={styles.footerAction}
-              onPress={() => item.product?.slug && router.push(`/(main)/products/${item.product.slug}`)}
+              onPress={() =>
+                item.product?.slug &&
+                router.push(`/(main)/products/${item.product.slug}`)
+              }
               hitSlop={6}
             >
               <Text style={styles.footerActionTextDark}>View piece</Text>
-              <Ionicons name="arrow-forward" size={12} color={colors.light.foreground} />
+              <Ionicons
+                name="arrow-forward"
+                size={12}
+                color={colors.light.foreground}
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -371,23 +405,10 @@ export default function PriceAlertsScreen() {
   };
 
   return (
-    <PaperBackground>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Navigation */}
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.navBtn}
-            activeOpacity={0.7}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-          </TouchableOpacity>
-
-          <Text style={styles.navTitle}>Price alerts</Text>
-
+    <UserPageFrame
+      title="Price alerts"
+      right={
+        <>
           <TouchableOpacity
             onPress={() => q.refetch()}
             disabled={q.isFetching}
@@ -400,11 +421,17 @@ export default function PriceAlertsScreen() {
             {q.isFetching && !q.isLoading ? (
               <ActivityIndicator size="small" color={GOLD} />
             ) : (
-              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+              <Ionicons
+                name="refresh-outline"
+                size={18}
+                color={colors.light.foreground}
+              />
             )}
           </TouchableOpacity>
-        </View>
-
+        </>
+      }
+    >
+      <SafeAreaView style={styles.container} edges={[]}>
         <FlatList
           data={filteredAlerts}
           keyExtractor={(item) => item.id}
@@ -440,7 +467,12 @@ export default function PriceAlertsScreen() {
               {/* Stat strip */}
               <View style={styles.statsStrip}>
                 <View style={styles.statCell}>
-                  <Text style={[styles.statNum, metrics.total === 0 && styles.statNumMuted]}>
+                  <Text
+                    style={[
+                      styles.statNum,
+                      metrics.total === 0 && styles.statNumMuted,
+                    ]}
+                  >
                     {metrics.total}
                   </Text>
                   <Text style={styles.statLabel}>Watching</Text>
@@ -460,7 +492,12 @@ export default function PriceAlertsScreen() {
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statCell}>
-                  <Text style={[styles.statNum, metrics.active === 0 && styles.statNumMuted]}>
+                  <Text
+                    style={[
+                      styles.statNum,
+                      metrics.active === 0 && styles.statNumMuted,
+                    ]}
+                  >
                     {metrics.active}
                   </Text>
                   <Text style={styles.statLabel}>Active</Text>
@@ -481,12 +518,18 @@ export default function PriceAlertsScreen() {
                     return (
                       <TouchableOpacity
                         key={tab.key}
-                        style={[styles.segment, isActive && styles.segmentActive]}
+                        style={[
+                          styles.segment,
+                          isActive && styles.segmentActive,
+                        ]}
                         onPress={() => setActiveTab(tab.key)}
                         activeOpacity={0.8}
                       >
                         <Text
-                          style={[styles.segmentText, isActive && styles.segmentTextActive]}
+                          style={[
+                            styles.segmentText,
+                            isActive && styles.segmentTextActive,
+                          ]}
                         >
                           {tab.label}
                           {count > 0 ? ` ${count}` : ""}
@@ -508,10 +551,16 @@ export default function PriceAlertsScreen() {
               <View style={styles.emptyWrap}>
                 <View style={styles.emptyCard}>
                   <View style={styles.emptyIcon}>
-                    <Ionicons name="notifications-outline" size={26} color={colors.olive[700]} />
+                    <Ionicons
+                      name="notifications-outline"
+                      size={26}
+                      color={colors.olive[700]}
+                    />
                   </View>
                   <Text style={styles.emptyTitle}>
-                    {alerts.length > 0 ? "No matching alerts" : "No price alerts yet"}
+                    {alerts.length > 0
+                      ? "No matching alerts"
+                      : "No price alerts yet"}
                   </Text>
                   <Text style={styles.emptySub}>
                     {alerts.length > 0
@@ -524,9 +573,15 @@ export default function PriceAlertsScreen() {
                     onPress={() => router.push("/(main)")}
                     accessibilityRole="button"
                   >
-                    <Text style={styles.primaryBtnText}>Browse collections</Text>
+                    <Text style={styles.primaryBtnText}>
+                      Browse collections
+                    </Text>
                     <View style={styles.primaryBtnArrow}>
-                      <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                      <Ionicons
+                        name="arrow-forward"
+                        size={14}
+                        color={colors.olive[900]}
+                      />
                     </View>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -543,7 +598,10 @@ export default function PriceAlertsScreen() {
                 <View style={styles.howCard}>
                   <Text style={styles.eyebrow}>How it works</Text>
                   {HOW_IT_WORKS.map((s, i) => (
-                    <View key={s.n} style={[styles.howRow, i > 0 && styles.rowDivider]}>
+                    <View
+                      key={s.n}
+                      style={[styles.howRow, i > 0 && styles.rowDivider]}
+                    >
                       <Text style={styles.howNum}>{s.n}</Text>
                       <View style={styles.howBody}>
                         <Text style={styles.howTitle}>{s.title}</Text>
@@ -557,490 +615,492 @@ export default function PriceAlertsScreen() {
           }
         />
       </SafeAreaView>
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+const styles = withUserTheme(
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
 
-  /* Nav */
-  navBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  navTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
+    /* Nav */
+    navBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing[5],
+      paddingVertical: spacing[2.5],
+    },
+    navBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    navTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 15,
+      color: colors.light.foreground,
+    },
 
-  listContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-  },
-  headerSection: {
-    gap: 14,
-    marginBottom: 14,
-  },
+    listContent: {
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[2],
+    },
+    headerSection: {
+      gap: 14,
+      marginBottom: 14,
+    },
 
-  /* Heading */
-  pageHead: {
-    marginBottom: spacing[2],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-    marginBottom: 4,
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    letterSpacing: -0.6,
-    lineHeight: 38,
-    color: colors.light.foreground,
-  },
-  pageTitleAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: GOLD_DEEP,
-  },
-  pageSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    marginTop: 6,
-    maxWidth: 300,
-  },
+    /* Heading */
+    pageHead: {
+      marginBottom: spacing[2],
+    },
+    eyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: GOLD_DEEP,
+      marginBottom: 4,
+    },
+    pageTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 32,
+      letterSpacing: -0.6,
+      lineHeight: 38,
+      color: colors.light.foreground,
+    },
+    pageTitleAccent: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
+    pageSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+      marginTop: 6,
+      maxWidth: 300,
+    },
 
-  /* Stat strip */
-  statsStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.paper.cream,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingVertical: 14,
-    ...shadows.soft,
-  },
-  statCell: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-  },
-  statNum: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
-  },
-  statNumMuted: {
-    color: "rgba(22, 23, 15, 0.35)",
-  },
-  statLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 28,
-    backgroundColor: colors.light.border,
-  },
+    /* Stat strip */
+    statsStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.paper.cream,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingVertical: 14,
+      ...shadows.soft,
+    },
+    statCell: {
+      flex: 1,
+      alignItems: "center",
+      gap: 2,
+    },
+    statNum: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 20,
+      letterSpacing: -0.3,
+      color: colors.light.foreground,
+    },
+    statNumMuted: {
+      color: "rgba(22, 23, 15, 0.35)",
+    },
+    statLabel: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 9.5,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: colors.light.mutedForeground,
+    },
+    statDivider: {
+      width: StyleSheet.hairlineWidth,
+      height: 28,
+      backgroundColor: colors.light.border,
+    },
 
-  /* Segmented tabs */
-  segmented: {
-    flexDirection: "row",
-    gap: 4,
-    backgroundColor: colors.paper.warm,
-    borderRadius: radii.full,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  segment: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 9,
-    borderRadius: radii.full,
-  },
-  segmentActive: {
-    backgroundColor: colors.paper.cream,
-    ...shadows.soft,
-  },
-  segmentText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.mutedForeground,
-  },
-  segmentTextActive: {
-    color: colors.light.foreground,
-  },
+    /* Segmented tabs */
+    segmented: {
+      flexDirection: "row",
+      gap: 4,
+      backgroundColor: colors.paper.warm,
+      borderRadius: radii.full,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    segment: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 9,
+      borderRadius: radii.full,
+    },
+    segmentActive: {
+      backgroundColor: colors.paper.cream,
+      ...shadows.soft,
+    },
+    segmentText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13,
+      color: colors.light.mutedForeground,
+    },
+    segmentTextActive: {
+      color: colors.light.foreground,
+    },
 
-  /* Alert card */
-  alertCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    padding: spacing[4],
-    marginBottom: 12,
-    gap: spacing[3],
-    ...shadows.soft,
-  },
-  cardStatusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  dropBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(21, 128, 61, 0.1)",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  dropBadgeText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11.5,
-    color: GREEN,
-  },
-  watchBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  watchDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: GOLD_DEEP,
-  },
-  watchBadgeText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11.5,
-    color: GOLD_DEEP,
-  },
-  trashBtn: {
-    padding: 4,
-  },
+    /* Alert card */
+    alertCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      padding: spacing[4],
+      marginBottom: 12,
+      gap: spacing[3],
+      ...shadows.soft,
+    },
+    cardStatusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    dropBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: "rgba(21, 128, 61, 0.1)",
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: radii.full,
+    },
+    dropBadgeText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 11.5,
+      color: GREEN,
+    },
+    watchBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: "rgba(200, 164, 74, 0.12)",
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: radii.full,
+    },
+    watchDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: GOLD_DEEP,
+    },
+    watchBadgeText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 11.5,
+      color: GOLD_DEEP,
+    },
+    trashBtn: {
+      padding: 4,
+    },
 
-  productRow: {
-    flexDirection: "row",
-    gap: spacing[3],
-  },
-  thumb: {
-    width: 76,
-    height: 96,
-    borderRadius: 14,
-    backgroundColor: colors.paper.warm,
-    overflow: "hidden",
-  },
-  thumbFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  productInfo: {
-    flex: 1,
-    gap: 4,
-    justifyContent: "center",
-  },
-  productName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16.5,
-    lineHeight: 21,
-    letterSpacing: -0.2,
-    color: colors.light.foreground,
-  },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 8,
-  },
-  priceCurrent: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
-  },
-  priceWas: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: colors.light.mutedForeground,
-    textDecorationLine: "line-through",
-  },
-  targetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  targetText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: GOLD_DEEP,
-  },
+    productRow: {
+      flexDirection: "row",
+      gap: spacing[3],
+    },
+    thumb: {
+      width: 76,
+      height: 96,
+      borderRadius: 14,
+      backgroundColor: colors.paper.warm,
+      overflow: "hidden",
+    },
+    thumbFallback: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    productInfo: {
+      flex: 1,
+      gap: 4,
+      justifyContent: "center",
+    },
+    productName: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 16.5,
+      lineHeight: 21,
+      letterSpacing: -0.2,
+      color: colors.light.foreground,
+    },
+    priceRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 8,
+    },
+    priceCurrent: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 17,
+      color: colors.light.foreground,
+    },
+    priceWas: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12.5,
+      color: colors.light.mutedForeground,
+      textDecorationLine: "line-through",
+    },
+    targetRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+    targetText: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 12,
+      color: GOLD_DEEP,
+    },
 
-  /* Editor */
-  editor: {
-    backgroundColor: colors.paper.warm,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    padding: spacing[3.5],
-    gap: 10,
-  },
-  editorHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  editorTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  presetRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  presetChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.cream,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  presetChipText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11.5,
-    color: colors.light.foreground,
-  },
-  editorInputRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  editorInputWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.paper.cream,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingHorizontal: 14,
-  },
-  currencyPrefix: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 12.5,
-    color: colors.light.mutedForeground,
-    marginRight: 6,
-  },
-  editorInput: {
-    flex: 1,
-    height: 42,
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  editorSave: {
-    height: 42,
-    paddingHorizontal: 18,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  editorSaveText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: colors.paper.cream,
-  },
-  editError: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.accent2.rust,
-  },
+    /* Editor */
+    editor: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      padding: spacing[3.5],
+      gap: 10,
+    },
+    editorHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    editorTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13.5,
+      color: colors.light.foreground,
+    },
+    presetRow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    presetChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: radii.full,
+      backgroundColor: colors.paper.cream,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    presetChipText: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 11.5,
+      color: colors.light.foreground,
+    },
+    editorInputRow: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+    },
+    editorInputWrap: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.paper.cream,
+      borderRadius: radii.full,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingHorizontal: 14,
+    },
+    currencyPrefix: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 12.5,
+      color: colors.light.mutedForeground,
+      marginRight: 6,
+    },
+    editorInput: {
+      flex: 1,
+      height: 42,
+      fontFamily: fontFamilies.mono.semibold,
+      fontSize: 14,
+      color: colors.light.foreground,
+    },
+    editorSave: {
+      height: 42,
+      paddingHorizontal: 18,
+      borderRadius: radii.full,
+      backgroundColor: "#15160f",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    editorSaveText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 13,
+      color: colors.paper.cream,
+    },
+    editError: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 11.5,
+      color: colors.accent2.rust,
+    },
 
-  /* Card footer */
-  cardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: spacing[2.5],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  footerAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingVertical: 2,
-  },
-  footerActionText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: GOLD_DEEP,
-  },
-  footerActionTextDark: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: colors.light.foreground,
-  },
+    /* Card footer */
+    cardFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingTop: spacing[2.5],
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.light.border,
+    },
+    footerAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 2,
+    },
+    footerActionText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 12.5,
+      color: GOLD_DEEP,
+    },
+    footerActionTextDark: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 12.5,
+      color: colors.light.foreground,
+    },
 
-  /* Loading */
-  loadingWrap: {
-    paddingVertical: 50,
-    alignItems: "center",
-    gap: 10,
-  },
-  loadingText: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 13.5,
-    color: colors.light.mutedForeground,
-  },
+    /* Loading */
+    loadingWrap: {
+      paddingVertical: 50,
+      alignItems: "center",
+      gap: 10,
+    },
+    loadingText: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 13.5,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Empty */
-  emptyWrap: {
-    gap: 14,
-  },
-  emptyCard: {
-    alignItems: "center",
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingVertical: spacing[8],
-    paddingHorizontal: spacing[6],
-  },
-  emptyIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.paper.warm,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing[4],
-  },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
-    textAlign: "center",
-  },
-  emptySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    marginTop: 6,
-    maxWidth: 280,
-  },
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    height: 50,
-    paddingLeft: 22,
-    paddingRight: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    marginTop: spacing[5],
-  },
-  primaryBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.paper.cream,
-  },
-  primaryBtnArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  textLink: {
-    marginTop: spacing[3],
-    paddingVertical: 4,
-  },
-  textLinkText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-    textDecorationLine: "underline",
-  },
+    /* Empty */
+    emptyWrap: {
+      gap: 14,
+    },
+    emptyCard: {
+      alignItems: "center",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingVertical: spacing[8],
+      paddingHorizontal: spacing[6],
+    },
+    emptyIcon: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: colors.paper.warm,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: spacing[4],
+    },
+    emptyTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 22,
+      letterSpacing: -0.3,
+      color: colors.light.foreground,
+      textAlign: "center",
+    },
+    emptySub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+      textAlign: "center",
+      marginTop: 6,
+      maxWidth: 280,
+    },
+    primaryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      height: 50,
+      paddingLeft: 22,
+      paddingRight: 6,
+      borderRadius: radii.full,
+      backgroundColor: "#15160f",
+      marginTop: spacing[5],
+    },
+    primaryBtnText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 14,
+      color: colors.paper.cream,
+    },
+    primaryBtnArrow: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    textLink: {
+      marginTop: spacing[3],
+      paddingVertical: 4,
+    },
+    textLinkText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13,
+      color: colors.light.foreground,
+      textDecorationLine: "underline",
+    },
 
-  /* How it works */
-  howCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[2],
-  },
-  howRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing[4],
-    paddingVertical: spacing[3.5],
-  },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  howNum: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 16,
-    color: GOLD_DEEP,
-    width: 24,
-  },
-  howBody: {
-    flex: 1,
-    gap: 3,
-  },
-  howTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  howDesc: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.light.mutedForeground,
-  },
-});
+    /* How it works */
+    howCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[5],
+      paddingBottom: spacing[2],
+    },
+    howRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing[4],
+      paddingVertical: spacing[3.5],
+    },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.light.border,
+    },
+    howNum: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 16,
+      color: GOLD_DEEP,
+      width: 24,
+    },
+    howBody: {
+      flex: 1,
+      gap: 3,
+    },
+    howTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13.5,
+      color: colors.light.foreground,
+    },
+    howDesc: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.light.mutedForeground,
+    },
+  }),
+);

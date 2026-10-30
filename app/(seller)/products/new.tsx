@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router, Stack } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
+import { SellerGlow } from "@/components/seller/chrome";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { pickImage, takePhoto } from "@/lib/upload";
 import { quickAnalyzeProduct } from "@/lib/api";
@@ -149,6 +150,7 @@ export default function QuickCreateScreen() {
         style={styles.root}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <SellerGlow />
         <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
           <TouchableOpacity
             style={styles.backBtn}
@@ -159,8 +161,7 @@ export default function QuickCreateScreen() {
             <Ionicons name="chevron-back" size={20} color={INK} />
           </TouchableOpacity>
           <View style={styles.topBarCenter}>
-            <Text style={styles.topKicker}>New product</Text>
-            <Text style={styles.topTitle}>Quick upload</Text>
+            <Text style={styles.topTitle} accessibilityRole="header">Quick upload</Text>
           </View>
           <View style={styles.aiBadge}>
             <Ionicons name="sparkles" size={11} color={GOLD} />
@@ -419,7 +420,7 @@ const CARD_SHADOW = {
 } as const;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  root: { flex: 1, backgroundColor: "#f8f7f2" },
 
   topBar: {
     flexDirection: "row",
@@ -429,13 +430,17 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    ...CARD_SHADOW,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   topBarCenter: { flex: 1, alignItems: "center" },
   topKicker: {
@@ -445,7 +450,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: colors.ink.mute,
   },
-  topTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK, marginTop: 1 },
+  topTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 20, color: INK, letterSpacing: -0.3 },
   aiBadge: {
     width: 40,
     height: 40,
@@ -550,7 +555,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dropTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 20,
     letterSpacing: -0.3,
     color: INK,

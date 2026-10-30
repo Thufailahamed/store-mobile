@@ -9,7 +9,9 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground, AppHeader } from "@/components/layout";
+import { LinearGradient } from "expo-linear-gradient";
+import { AppHeader } from "@/components/layout";
+import { C } from "@/components/orders/parcel-track";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedFlatList, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { FilterSheet } from "@/components/search/FilterSheet";
@@ -150,19 +152,25 @@ export default function ProductsScreen() {
 
   const renderGridItem = ({ item }: { item: Product }) => (
     <View style={[styles.gridItem, { width: cardWidth }]}>
-      <ProductCard product={item} />
+      <ProductCard product={item} tone="atelier" />
     </View>
   );
 
   const renderListItem = ({ item }: { item: Product }) => (
     <View style={styles.listItemWrap}>
-      <ProductCard product={item} listMode />
+      <ProductCard product={item} listMode tone="atelier" />
     </View>
   );
 
   return (
-    <PaperBackground>
-      <AppHeader compact showTicker={false} showBackToHome />
+    <View style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.5, 1]}
+        style={styles.glow}
+      />
+      <AppHeader compact showTicker={false} showBackToHome tone="atelier" />
       <CategoryViewTracker id={categoryId} />
       <AnimatedFlatList
         key={view}
@@ -231,7 +239,7 @@ export default function ProductsScreen() {
         onSortChange={handleSortChange}
         resultCount={refined.length}
       />
-    </PaperBackground>
+    </View>
   );
 }
 
@@ -355,6 +363,17 @@ function ProductsListHeader({
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: C.paper,
+  },
+  glow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 460,
+  },
   listContent: {
     paddingBottom: spacing[24],
   },
@@ -364,8 +383,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[4],
   },
   eyebrow: {
-    color: colors.olive[600],
+    color: C.accent,
     fontSize: 10,
+    letterSpacing: 1.8,
     marginBottom: spacing[1.5],
   },
   heroSub: {

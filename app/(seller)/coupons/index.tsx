@@ -32,7 +32,7 @@ import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, pluralize } from "@/lib/utils";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import { SellerStateView } from "@/components/seller/chrome";
+import { SellerStateView, SellerGlow } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui";
 import * as Clipboard from "expo-clipboard";
@@ -382,12 +382,11 @@ export default function SellerCoupons() {
       >
         {/* Header */}
         <View style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-          <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
+          <SellerGlow />
           <View style={s.headerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.kicker}>Atelier · Promotions</Text>
-              <Text style={s.title}>Coupons</Text>
-              <Text style={s.subtitle}>{headerSubtitle}</Text>
+            <SellerBackButton label="More" fallbackHref="/(seller)/more" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.title} accessibilityRole="header">Coupons</Text>
             </View>
             <TouchableOpacity
               style={s.addBtn}
@@ -399,6 +398,7 @@ export default function SellerCoupons() {
               <Text style={s.addBtnText}>New</Text>
             </TouchableOpacity>
           </View>
+          <Text style={s.subtitle}>{headerSubtitle}</Text>
         </View>
 
         {loading ? (
@@ -878,7 +878,7 @@ export default function SellerCoupons() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingBottom: 20 },
   body: { paddingHorizontal: spacing[5] },
 
@@ -886,12 +886,7 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing[5],
     paddingBottom: spacing[3],
   },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: 12,
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
@@ -901,27 +896,27 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
+    flex: 1,
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.ink.mute,
-    marginTop: 3,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 8,
   },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    height: 40,
-    paddingLeft: 12,
-    paddingRight: 16,
+    height: 46,
+    paddingLeft: 14,
+    paddingRight: 18,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    marginBottom: 4,
+    backgroundColor: "#15160f",
     shadowColor: INK,
     shadowOpacity: 0.2,
     shadowRadius: 10,
@@ -975,7 +970,7 @@ const s = StyleSheet.create({
     color: GOLD,
   },
   perf: { width: 14, alignItems: "center", marginLeft: -7, zIndex: 1 },
-  notch: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.paper.DEFAULT },
+  notch: { width: 14, height: 14, borderRadius: 7, backgroundColor: "#f8f7f2" },
   notchTop: { marginTop: -7 },
   notchBottom: { marginBottom: -7 },
   perfLine: {
@@ -1068,7 +1063,7 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(184,92,58,0.08)",
   },
 
-  modalContainer: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  modalContainer: { flex: 1, backgroundColor: "#f8f7f2" },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1085,7 +1080,7 @@ const s = StyleSheet.create({
     color: colors.ink.mute,
   },
   modalTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: typography.fontSizes.md,
     color: INK,
   },
@@ -1113,7 +1108,7 @@ const s = StyleSheet.create({
   },
   fieldRow: { flexDirection: "row", gap: 12 },
   input: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.18)",
     borderRadius: radii.lg,
@@ -1131,7 +1126,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: radii.full,
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.18)",
   },
@@ -1147,7 +1142,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.18)",
     borderRadius: radii.lg,
@@ -1173,7 +1168,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radii.lg,
     marginTop: 6,
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.1)",
   },
@@ -1194,7 +1189,7 @@ const s = StyleSheet.create({
   },
 
   skelCard: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     padding: 16,
     borderWidth: 1,

@@ -21,7 +21,7 @@ import { getSellerStore, updateSellerStore } from "@/lib/api";
 import { getDevicePosition, LocationError } from "@/lib/location";
 import { hasPickupAddress } from "@/lib/seller-pickup-address";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import { SellerStateView } from "@/components/seller/chrome";
+import { SellerStateView, SellerGlow } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { colors, spacing, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -133,9 +133,11 @@ export default function PickupAddressScreen() {
 
   const header = (
     <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-      <SellerBackButton label="Settings" fallbackHref="/(seller)/settings" style={{ marginBottom: 14 }} />
-      <Text style={styles.kicker}>Logistics</Text>
-      <Text style={styles.title}>Product pickup address</Text>
+      <SellerGlow />
+      <View style={styles.headerRow}>
+        <SellerBackButton label="Settings" fallbackHref="/(seller)/settings" />
+        <Text style={styles.title} numberOfLines={2} accessibilityRole="header">Pickup address</Text>
+      </View>
       <Text style={styles.subtitle}>
         Where couriers collect your orders. Never shown to shoppers.
       </Text>
@@ -303,7 +305,8 @@ function Field({ label, optional, ...props }: TextInputProps & { label: string; 
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingBottom: 40 },
   header: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
   kicker: {
@@ -315,16 +318,17 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
+    flex: 1,
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.ink.mute,
-    marginTop: 3,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 8,
   },
   notice: {
     flexDirection: "row",
@@ -346,7 +350,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing[5],
     padding: spacing[4],
     borderRadius: radii.xl,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(22,23,15,0.12)",
   },

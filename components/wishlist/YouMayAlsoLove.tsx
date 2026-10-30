@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { View, FlatList, Pressable, StyleSheet, Text, type ViewStyle } from "react-native";
+import {
+  View,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  type ViewStyle,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -17,7 +24,10 @@ interface YouMayAlsoLoveProps {
   style?: ViewStyle;
 }
 
-export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) {
+export function YouMayAlsoLove({
+  excludeIds = [],
+  style,
+}: YouMayAlsoLoveProps) {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +40,7 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
         if (cancelled) return;
         if (res.ok) {
           const filtered = (res.data.products || []).filter(
-            (p) => !excludeIds.includes(p.id)
+            (p) => !excludeIds.includes(p.id),
           );
           setProducts(filtered.slice(0, 8));
         }
@@ -68,8 +78,13 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
         ItemSeparatorComponent={() => <View style={{ width: spacing[3] }} />}
         renderItem={({ item }) => {
           const img =
-            item.images?.find((i) => i.is_primary)?.url || item.images?.[0]?.url;
-          const brandLabel = (item.store?.name || item.brand?.name || "").toUpperCase();
+            item.images?.find((i) => i.is_primary)?.url ||
+            item.images?.[0]?.url;
+          const brandLabel = (
+            item.store?.name ||
+            item.brand?.name ||
+            ""
+          ).toUpperCase();
 
           return (
             <Pressable
@@ -79,11 +94,19 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
                   params: { slug: item.slug || item.id },
                 })
               }
-              style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
+              style={({ pressed }) => [
+                styles.card,
+                pressed && { opacity: 0.9 },
+              ]}
             >
               <View style={styles.imgWrap}>
                 {img ? (
-                  <Image source={{ uri: img }} style={styles.img} contentFit="cover" transition={250} />
+                  <Image
+                    source={{ uri: img }}
+                    style={styles.img}
+                    contentFit="cover"
+                    transition={250}
+                  />
                 ) : null}
               </View>
               <View style={styles.cardInfo}>
@@ -95,7 +118,9 @@ export function YouMayAlsoLove({ excludeIds = [], style }: YouMayAlsoLoveProps) 
                 <Text style={styles.name} numberOfLines={2}>
                   {item.name}
                 </Text>
-                <Text style={styles.price}>{formatPrice(item.price, item.currency)}</Text>
+                <Text style={styles.price}>
+                  {formatPrice(item.price, item.currency)}
+                </Text>
               </View>
             </Pressable>
           );
@@ -127,7 +152,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 22,
     color: INK,
     letterSpacing: -0.3,
@@ -169,7 +194,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
   name: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
     color: INK,
     lineHeight: 16,

@@ -5,7 +5,8 @@ import { useRouter } from "expo-router";
 import { useSharedValue } from "react-native-reanimated";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppHeader, PaperBackground } from "@/components/layout";
+import { LinearGradient } from "expo-linear-gradient";
+import { AppHeader } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import {
@@ -25,7 +26,9 @@ import {
   OffersRail,
   ShopByPrice,
   ShopByOccasion,
+  HomeSectionHeader,
 } from "@/components/home/premium";
+import { C } from "@/components/orders/parcel-track";
 import { createSeenSet } from "@/components/home/premium/dedupe";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -164,8 +167,15 @@ export default function HomeScreen() {
   ); */
 
   return (
-    <PaperBackground>
-      <AppHeader showSearch scrollY={scrollY} />
+    <View style={styles.root}>
+      {/* Same warm glow as Account, fading into paper below the fold. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.5, 1]}
+        style={styles.glow}
+      />
+      <AppHeader showSearch scrollY={scrollY} tone="atelier" />
       <AnimatedScrollView
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
@@ -179,6 +189,7 @@ export default function HomeScreen() {
         ]}
       >
         {/* Zone 1 — discovery: browse entry points + the personalised feed */}
+        <HomeSectionHeader kicker="Browse" title="Shop by category" onPress={() => router.push("/(main)/categories")} />
         <CategoryScroller categories={catalogData?.categories ?? []} />
 
         <PromoCarousel banners={catalogData?.banners ?? []} />
@@ -323,7 +334,7 @@ export default function HomeScreen() {
             activeOpacity={0.85}
           >
             <Text style={styles.endBtnText}>Browse all pieces</Text>
-            <Ionicons name="arrow-forward" size={15} color={colors.light.primaryForeground} />
+            <Ionicons name="arrow-forward" size={15} color={C.lime} />
           </TouchableOpacity>
         </View>
 
@@ -354,13 +365,24 @@ export default function HomeScreen() {
         onSortChange={setSort}
         resultCount={refined.length}
       /> */}
-    </PaperBackground>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: C.paper,
+  },
+  glow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 520,
+  },
   scroll: {
-    paddingTop: 4,
+    paddingTop: 16,
   },
   zone: {
     paddingTop: spacing[2],
@@ -380,8 +402,9 @@ const styles = StyleSheet.create({
     color: colors.light.primary,
   },
   endTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 20,
+    letterSpacing: -0.4,
     color: colors.light.foreground,
     textAlign: "center",
   },
@@ -393,12 +416,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[6],
     height: 48,
     borderRadius: radii.full,
-    backgroundColor: colors.light.primary,
+    backgroundColor: C.ink,
   },
   endBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 14,
-    color: colors.light.primaryForeground,
+    color: C.cream,
   },
   /* gridSectionHeader: {
     marginTop: spacing[6],

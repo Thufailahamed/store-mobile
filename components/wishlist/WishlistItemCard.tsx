@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import type { Product } from "@/lib/types";
 import { useWishlistLayout } from "@/components/wishlist/layout";
 import { subscribeStockAlertBackend } from "@/lib/api/backend";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 const INK = colors.ink.DEFAULT;
 const MUTED = colors.ink.mute;
@@ -31,6 +32,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const { imageHeight } = useWishlistLayout();
   const { addItem } = useCart();
   const { toggle } = useWishlist();
+  const toggleWishlist = useWishlistToggle();
   const { toast } = useToast();
   const [adding, setAdding] = useState(false);
 
@@ -115,13 +117,20 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
-            toggle(product.id);
+            toggleWishlist(product, primary);
           }}
           hitSlop={10}
           accessibilityLabel="Remove from wishlist"
-          style={({ pressed }) => [styles.heartBtn, pressed && { transform: [{ scale: 0.9 }] }]}
+          style={({ pressed }) => [
+            styles.heartBtn,
+            pressed && { transform: [{ scale: 0.9 }] },
+          ]}
         >
-          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView
+            intensity={40}
+            tint="light"
+            style={StyleSheet.absoluteFill}
+          />
           <Ionicons name="heart" size={15} color={colors.accent2.rust} />
         </Pressable>
 
@@ -133,7 +142,11 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 
         {isOutOfStock ? (
           <View style={styles.soldOutPill}>
-            <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+            <BlurView
+              intensity={30}
+              tint="dark"
+              style={StyleSheet.absoluteFill}
+            />
             <Text style={styles.soldOutText}>SOLD OUT</Text>
           </View>
         ) : null}
@@ -152,7 +165,9 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
             {formatPrice(product.price, product.currency)}
           </Text>
           {discount > 0 && product.mrp ? (
-            <Text style={styles.mrp}>{formatPrice(product.mrp, product.currency)}</Text>
+            <Text style={styles.mrp}>
+              {formatPrice(product.mrp, product.currency)}
+            </Text>
           ) : null}
         </View>
 
@@ -195,7 +210,9 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
             size={14}
             color={isOutOfStock ? colors.olive[800] : colors.paper.cream}
           />
-          <Text style={[styles.actionText, isOutOfStock && styles.actionTextGhost]}>
+          <Text
+            style={[styles.actionText, isOutOfStock && styles.actionTextGhost]}
+          >
             {isOutOfStock ? "Notify me" : adding ? "Adding…" : "Move to bag"}
           </Text>
         </Pressable>
@@ -207,7 +224,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["3xl"],
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: `${colors.olive[700]}26`,
@@ -220,7 +237,7 @@ const styles = StyleSheet.create({
   imageWrap: {
     width: "100%",
     position: "relative",
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
   },
   image: {
     width: "100%",
@@ -262,7 +279,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
+    backgroundColor: "#15160f",
   },
   discountText: {
     fontFamily: fontFamilies.mono.semibold,
@@ -300,7 +317,7 @@ const styles = StyleSheet.create({
   },
   productName: {
     marginTop: 5,
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 15,
     lineHeight: 19,
     // Reserve two lines so cards in the same row line up.
@@ -371,7 +388,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 7,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
+    backgroundColor: "#15160f",
   },
   actionBtnGhost: {
     backgroundColor: "transparent",

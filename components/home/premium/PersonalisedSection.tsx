@@ -30,6 +30,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Product, ProductImage } from "@/lib/types";
 import { createSeenSet } from "./dedupe";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 function productImage(product: Product) {
   return product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
@@ -37,14 +38,14 @@ function productImage(product: Product) {
 
 function WishlistHeart({ product, size = 14 }: { product: Product; size?: number }) {
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
-  const toggle = useWishlist((s) => s.toggle);
+  const toggleWishlist = useWishlistToggle();
   const tracker = useTrackEvent();
   return (
     <TouchableOpacity
       style={styles.heartBtn}
       onPress={() => {
         tracker.wishlist(product, isWishlisted ? "remove" : "add");
-        toggle(product.id);
+        toggleWishlist(product);
       }}
       activeOpacity={0.75}
       hitSlop={8}
@@ -417,7 +418,7 @@ const styles = StyleSheet.create({
   heroCard: {
     flex: 1.15,
     height: 300,
-    borderRadius: radii.xl,
+    borderRadius: 22,
     overflow: "hidden",
     backgroundColor: colors.olive[100],
   },
@@ -453,7 +454,7 @@ const styles = StyleSheet.create({
   },
   smallCard: {
     flex: 1,
-    borderRadius: radii.xl,
+    borderRadius: 22,
     overflow: "hidden",
     backgroundColor: colors.olive[100],
   },
@@ -482,23 +483,21 @@ const styles = StyleSheet.create({
   },
   seeAllText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
+    fontSize: 13.5,
     color: colors.light.primary,
   },
   subRail: {
     marginTop: spacing[4],
   },
   subRailDivider: {
-    paddingTop: spacing[4],
-    marginTop: spacing[4],
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
+    marginTop: spacing[6],
   },
   subLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 16,
+    letterSpacing: -0.3,
     color: colors.light.foreground,
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[2],
+    paddingHorizontal: spacing[5] + 2,
+    marginBottom: 10,
   },
 });

@@ -386,7 +386,7 @@ function MoreShortcut({ item, onPress }: { item: Shortcut; onPress: () => void }
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingHorizontal: spacing[5], paddingTop: spacing[3] },
 
   // Hero
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   monogram: { width: 42, height: 42, borderRadius: 13, backgroundColor: colors.olive[950], alignItems: "center", justifyContent: "center" },
   monogramText: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: SELLER_CREAM },
   heroIdentity: { flex: 1, minWidth: 0, gap: 4 },
-  heroName: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: HERO.ink, letterSpacing: -0.2 },
+  heroName: { fontFamily: fontFamilies.sans.bold, fontSize: 19, color: HERO.ink, letterSpacing: -0.2 },
   heroMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   statusPill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radii.full, paddingHorizontal: 7, paddingVertical: 3, borderWidth: StyleSheet.hairlineWidth },
   statusLive: { backgroundColor: "rgba(106,118,57,0.10)", borderColor: "rgba(106,118,57,0.3)" },
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   attentionIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: SELLER_RUST, alignItems: "center", justifyContent: "center" },
   attentionCopy: { flex: 1, minWidth: 0, gap: 2 },
   attentionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.3, color: SELLER_RUST },
-  attentionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 17, color: SELLER_INK },
+  attentionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: SELLER_INK },
   attentionAction: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: radii.full, backgroundColor: SELLER_INK },
   attentionActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: WHITE },
   attentionChips: { flexDirection: "row", gap: 8, marginTop: 13 },
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
   sectionEyebrowRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   sectionRule: { width: 14, height: 1.5, borderRadius: 1, backgroundColor: SELLER_GOLD },
   sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8.5, letterSpacing: 1.4, color: colors.olive[600] },
-  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: SELLER_INK, letterSpacing: -0.2 },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 22, color: SELLER_INK, letterSpacing: -0.2 },
 
   // Shortcuts
   shortcutGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },

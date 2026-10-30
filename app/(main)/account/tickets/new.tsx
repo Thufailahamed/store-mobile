@@ -11,20 +11,36 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api/backend";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 const CATEGORIES = [
   { id: "order_issue", label: "Orders", icon: "cube-outline" as const },
   { id: "bespoke_sizing", label: "Sizing", icon: "cut-outline" as const },
-  { id: "freight_logistics", label: "Delivery", icon: "airplane-outline" as const },
-  { id: "invoice_tax", label: "Invoices & tax", icon: "receipt-outline" as const },
-  { id: "general_inquiry", label: "Other", icon: "chatbubble-ellipses-outline" as const },
+  {
+    id: "freight_logistics",
+    label: "Delivery",
+    icon: "airplane-outline" as const,
+  },
+  {
+    id: "invoice_tax",
+    label: "Invoices & tax",
+    icon: "receipt-outline" as const,
+  },
+  {
+    id: "general_inquiry",
+    label: "Other",
+    icon: "chatbubble-ellipses-outline" as const,
+  },
 ];
 
 const GOLD_DEEP = "#85651b";
@@ -73,26 +89,8 @@ export default function NewTicketScreen() {
   const canSubmit = !!subject.trim() && !!body.trim() && !saving;
 
   return (
-    <PaperBackground>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Navigation */}
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.navBtn}
-            activeOpacity={0.7}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-          </TouchableOpacity>
-
-          <Text style={styles.navTitle}>New inquiry</Text>
-
-          <View style={{ width: 40 }} />
-        </View>
-
+    <UserPageFrame title="New inquiry">
+      <SafeAreaView style={styles.container} edges={[]}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -140,7 +138,10 @@ export default function NewTicketScreen() {
                   return (
                     <TouchableOpacity
                       key={cat.id}
-                      style={[styles.topicChip, active && styles.topicChipActive]}
+                      style={[
+                        styles.topicChip,
+                        active && styles.topicChipActive,
+                      ]}
                       onPress={() => setSelectedCategory(cat.id)}
                       activeOpacity={0.8}
                       accessibilityRole="button"
@@ -207,7 +208,11 @@ export default function NewTicketScreen() {
                   <>
                     <Text style={styles.primaryBtnText}>Send inquiry</Text>
                     <View style={styles.primaryBtnArrow}>
-                      <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                      <Ionicons
+                        name="arrow-forward"
+                        size={14}
+                        color={colors.olive[900]}
+                      />
                     </View>
                   </>
                 )}
@@ -216,7 +221,11 @@ export default function NewTicketScreen() {
 
             {/* Footnote */}
             <View style={styles.footnote}>
-              <Ionicons name="shield-checkmark-outline" size={13} color={GOLD_DEEP} />
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={13}
+                color={GOLD_DEEP}
+              />
               <Text style={styles.footnoteText}>
                 Inquiries are handled by our support team — you'll get in-app
                 updates and an email reply within 2 hours.
@@ -225,217 +234,219 @@ export default function NewTicketScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
+const styles = withUserTheme(
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    flex: {
+      flex: 1,
+    },
 
-  /* Nav */
-  navBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  navTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
+    /* Nav */
+    navBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing[5],
+      paddingVertical: spacing[2.5],
+    },
+    navBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    navTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 15,
+      color: colors.light.foreground,
+    },
 
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-    gap: 14,
-  },
+    scrollContent: {
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[2],
+      gap: 14,
+    },
 
-  /* Heading */
-  pageHead: {
-    marginBottom: spacing[2],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-    marginBottom: 4,
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    letterSpacing: -0.6,
-    lineHeight: 38,
-    color: colors.light.foreground,
-  },
-  pageTitleAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: GOLD_DEEP,
-  },
-  pageSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    marginTop: 6,
-    maxWidth: 300,
-  },
+    /* Heading */
+    pageHead: {
+      marginBottom: spacing[2],
+    },
+    eyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: GOLD_DEEP,
+      marginBottom: 4,
+    },
+    pageTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 32,
+      letterSpacing: -0.6,
+      lineHeight: 38,
+      color: colors.light.foreground,
+    },
+    pageTitleAccent: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
+    pageSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+      marginTop: 6,
+      maxWidth: 300,
+    },
 
-  /* Linked order */
-  orderChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-  },
-  orderChipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: GOLD_DEEP,
-  },
+    /* Linked order */
+    orderChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      alignSelf: "flex-start",
+      backgroundColor: "rgba(200, 164, 74, 0.12)",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: radii.full,
+    },
+    orderChipText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 12,
+      color: GOLD_DEEP,
+    },
 
-  /* Topics */
-  topicsSection: {
-    gap: 10,
-  },
-  sectionLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  topicsScroll: {
-    marginHorizontal: -spacing[5],
-  },
-  topicsRow: {
-    paddingHorizontal: spacing[5],
-    gap: 8,
-  },
-  topicChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.cream,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  topicChipActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-  },
-  topicChipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  topicChipTextActive: {
-    color: colors.paper.cream,
-  },
+    /* Topics */
+    topicsSection: {
+      gap: 10,
+    },
+    sectionLabel: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13.5,
+      color: colors.light.foreground,
+    },
+    topicsScroll: {
+      marginHorizontal: -spacing[5],
+    },
+    topicsRow: {
+      paddingHorizontal: spacing[5],
+      gap: 8,
+    },
+    topicChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: radii.full,
+      backgroundColor: colors.paper.cream,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    topicChipActive: {
+      backgroundColor: "#15160f",
+      borderColor: colors.olive[900],
+    },
+    topicChipText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13,
+      color: colors.light.foreground,
+    },
+    topicChipTextActive: {
+      color: colors.paper.cream,
+    },
 
-  /* Form */
-  formCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    padding: spacing[5],
-    gap: spacing[4],
-    ...shadows.soft,
-  },
-  field: {
-    gap: 6,
-  },
-  fieldLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-    paddingHorizontal: 4,
-  },
-  inputWrap: {
-    backgroundColor: colors.paper.warm,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingHorizontal: 14,
-  },
-  input: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    color: colors.light.foreground,
-    paddingVertical: Platform.OS === "ios" ? 12 : 9,
-  },
-  textArea: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    lineHeight: 20,
-    minHeight: 130,
-    color: colors.light.foreground,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    height: 50,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    paddingRight: 6,
-    marginTop: 2,
-  },
-  primaryBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.paper.cream,
-  },
-  primaryBtnArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+    /* Form */
+    formCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      padding: spacing[5],
+      gap: spacing[4],
+      ...shadows.soft,
+    },
+    field: {
+      gap: 6,
+    },
+    fieldLabel: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      color: colors.light.mutedForeground,
+      paddingHorizontal: 4,
+    },
+    inputWrap: {
+      backgroundColor: colors.paper.warm,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingHorizontal: 14,
+    },
+    input: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 14,
+      color: colors.light.foreground,
+      paddingVertical: Platform.OS === "ios" ? 12 : 9,
+    },
+    textArea: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 14,
+      lineHeight: 20,
+      minHeight: 130,
+      color: colors.light.foreground,
+      paddingTop: 12,
+      paddingBottom: 12,
+    },
+    primaryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      height: 50,
+      borderRadius: radii.full,
+      backgroundColor: "#15160f",
+      paddingRight: 6,
+      marginTop: 2,
+    },
+    primaryBtnText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 14,
+      color: colors.paper.cream,
+    },
+    primaryBtnArrow: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
-  /* Footnote */
-  footnote: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    paddingHorizontal: spacing[2],
-  },
-  footnoteText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: colors.light.mutedForeground,
-  },
-});
+    /* Footnote */
+    footnote: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 8,
+      paddingHorizontal: spacing[2],
+    },
+    footnoteText: {
+      flex: 1,
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 11.5,
+      lineHeight: 16,
+      color: colors.light.mutedForeground,
+    },
+  }),
+);

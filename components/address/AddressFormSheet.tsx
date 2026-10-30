@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-
   Platform,
   Pressable,
   ScrollView,
@@ -64,13 +63,19 @@ interface AddressFormSheetProps {
 const GOLD = "#E8CF8F";
 const INK = "#16170f";
 
-const TYPE_META: Record<AddressType, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
+const TYPE_META: Record<
+  AddressType,
+  { label: string; icon: keyof typeof Ionicons.glyphMap }
+> = {
   home: { label: "Home", icon: "home-outline" },
   work: { label: "Work", icon: "briefcase-outline" },
   other: { label: "Other", icon: "location-outline" },
 };
 
-function payloadFromAddress(a: Partial<Address> | null | undefined, fallback: Partial<AddressFormPayload> = {}): AddressFormPayload {
+function payloadFromAddress(
+  a: Partial<Address> | null | undefined,
+  fallback: Partial<AddressFormPayload> = {},
+): AddressFormPayload {
   return {
     type: (a?.type as AddressType) ?? fallback.type ?? "home",
     full_name: a?.full_name ?? fallback.full_name ?? "",
@@ -105,7 +110,10 @@ export function AddressFormSheet({
   hideDefault = false,
 }: AddressFormSheetProps) {
   const [form, setForm] = useState<AddressFormPayload>(
-    payloadFromAddress(initial, { full_name: defaultName, phone: defaultPhone })
+    payloadFromAddress(initial, {
+      full_name: defaultName,
+      phone: defaultPhone,
+    }),
   );
   const [saving, setSaving] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
@@ -113,7 +121,7 @@ export function AddressFormSheet({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const debouncedLatLng = useDebounce(
     { lat: form.latitude, lng: form.longitude },
-    500
+    500,
   );
   const lastReverseKey = useRef<string | null>(null);
   const hasAutoFetchedRef = useRef(false);
@@ -144,17 +152,22 @@ export function AddressFormSheet({
       setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
 
       setGeoBusy(true);
-      const res = await reverseGeocode(lat, lng).finally(() => setGeoBusy(false));
+      const res = await reverseGeocode(lat, lng).finally(() =>
+        setGeoBusy(false),
+      );
 
       if (!res) {
-        toast("Pinned your location — please type the street address below.", "info");
+        toast(
+          "Pinned your location — please type the street address below.",
+          "info",
+        );
       } else {
         applyGeocodeResult(res);
         toast(
           res.components.line1
             ? "Address filled in — check the house number."
             : "Pinned your location — add your house number and street.",
-          "success"
+          "success",
         );
       }
     } catch (err: unknown) {
@@ -171,7 +184,12 @@ export function AddressFormSheet({
   // Reset form when sheet opens with a new initial value.
   useEffect(() => {
     if (visible) {
-      setForm(payloadFromAddress(initial, { full_name: defaultName, phone: defaultPhone }));
+      setForm(
+        payloadFromAddress(initial, {
+          full_name: defaultName,
+          phone: defaultPhone,
+        }),
+      );
       setErrors({});
       lastReverseKey.current = null;
     }
@@ -180,7 +198,11 @@ export function AddressFormSheet({
   // Automatically autofetch device location when opening for a new address without coordinates
   useEffect(() => {
     if (visible) {
-      if (!initial?.id && initial?.latitude == null && !hasAutoFetchedRef.current) {
+      if (
+        !initial?.id &&
+        initial?.latitude == null &&
+        !hasAutoFetchedRef.current
+      ) {
         hasAutoFetchedRef.current = true;
         handleAutoFetch();
       }
@@ -209,26 +231,41 @@ export function AddressFormSheet({
     };
   }, [debouncedLatLng.lat, debouncedLatLng.lng, applyGeocodeResult]);
 
-  const handlePlaceSelect = useCallback((res: { lat: number; lng: number; components: { line1: string; city: string; state: string; postal_code: string; country: string } }) => {
-    setForm((prev) => ({
-      ...prev,
-      line1: res.components.line1 || prev.line1,
-      city: res.components.city || prev.city,
-      state: res.components.state || prev.state,
-      postal_code: res.components.postal_code || prev.postal_code,
-      country: res.components.country || prev.country,
-      latitude: res.lat,
-      longitude: res.lng,
-    }));
-    lastReverseKey.current = `${res.lat.toFixed(5)}|${res.lng.toFixed(5)}`;
-  }, []);
+  const handlePlaceSelect = useCallback(
+    (res: {
+      lat: number;
+      lng: number;
+      components: {
+        line1: string;
+        city: string;
+        state: string;
+        postal_code: string;
+        country: string;
+      };
+    }) => {
+      setForm((prev) => ({
+        ...prev,
+        line1: res.components.line1 || prev.line1,
+        city: res.components.city || prev.city,
+        state: res.components.state || prev.state,
+        postal_code: res.components.postal_code || prev.postal_code,
+        country: res.components.country || prev.country,
+        latitude: res.lat,
+        longitude: res.lng,
+      }));
+      lastReverseKey.current = `${res.lat.toFixed(5)}|${res.lng.toFixed(5)}`;
+    },
+    [],
+  );
 
   const handleMapChange = useCallback((lat: number, lng: number) => {
     setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
   }, []);
 
-  const set = <K extends keyof AddressFormPayload>(key: K, value: AddressFormPayload[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const set = <K extends keyof AddressFormPayload>(
+    key: K,
+    value: AddressFormPayload[K],
+  ) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const validate = (): boolean => {
     // Delegate to the shared checkout validator so the form, the checkout
@@ -275,7 +312,12 @@ export function AddressFormSheet({
       : "";
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.backdrop}
@@ -289,11 +331,24 @@ export function AddressFormSheet({
                 <View style={styles.kickerRule} />
                 <Text style={styles.kicker}>DELIVERY DETAILS</Text>
               </View>
-              <HeaderTitle text={title ?? (isEdit ? "Edit address" : "Add address")} />
-              <Text style={styles.headerSub}>{subtitle ?? "Where should we deliver?"}</Text>
+              <HeaderTitle
+                text={title ?? (isEdit ? "Edit address" : "Add address")}
+              />
+              <Text style={styles.headerSub}>
+                {subtitle ?? "Where should we deliver?"}
+              </Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityLabel="Close">
-              <Ionicons name="close" size={18} color={colors.light.foreground} />
+            <Pressable
+              onPress={onClose}
+              hitSlop={10}
+              style={styles.closeBtn}
+              accessibilityLabel="Close"
+            >
+              <Ionicons
+                name="close"
+                size={18}
+                color={colors.light.foreground}
+              />
             </Pressable>
           </View>
 
@@ -338,8 +393,8 @@ export function AddressFormSheet({
                       {fetchingLoc
                         ? "Finding you…"
                         : form.latitude != null
-                        ? "My location"
-                        : "Use my current location"}
+                          ? "My location"
+                          : "Use my current location"}
                     </Text>
                   </Pressable>
                 }
@@ -361,7 +416,8 @@ export function AddressFormSheet({
                   <Text style={styles.deliverText} numberOfLines={2}>
                     {geoBusy
                       ? "Looking up this spot…"
-                      : resolvedLine || "Tap the map or use your location to drop a pin"}
+                      : resolvedLine ||
+                        "Tap the map or use your location to drop a pin"}
                   </Text>
                 </View>
                 {form.latitude != null && !geoBusy ? (
@@ -374,7 +430,11 @@ export function AddressFormSheet({
             </View>
 
             {/* ── Contact ────────────────────────────────────────────── */}
-            <Section index="01" title="Recipient" caption="Who receives the parcel">
+            <Section
+              index="01"
+              title="Recipient"
+              caption="Who receives the parcel"
+            >
               <Field
                 label="Full name"
                 icon="person-outline"
@@ -398,7 +458,11 @@ export function AddressFormSheet({
             </Section>
 
             {/* ── Address ────────────────────────────────────────────── */}
-            <Section index="02" title="Address" caption="Auto-filled from your pin — edit anything">
+            <Section
+              index="02"
+              title="Address"
+              caption="Auto-filled from your pin — edit anything"
+            >
               <Field
                 label="Street address"
                 icon="navigate-circle-outline"
@@ -463,7 +527,11 @@ export function AddressFormSheet({
             </Section>
 
             {/* ── Label + default ────────────────────────────────────── */}
-            <Section index="03" title="Save as" caption="A label to find it quickly at checkout">
+            <Section
+              index="03"
+              title="Save as"
+              caption="A label to find it quickly at checkout"
+            >
               <View style={styles.typeRow}>
                 {(["home", "work", "other"] as AddressType[]).map((t) => {
                   const meta = TYPE_META[t];
@@ -481,7 +549,12 @@ export function AddressFormSheet({
                         size={15}
                         color={active ? GOLD : colors.olive[700]}
                       />
-                      <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
+                      <Text
+                        style={[
+                          styles.typeChipText,
+                          active && styles.typeChipTextActive,
+                        ]}
+                      >
                         {meta.label}
                       </Text>
                     </Pressable>
@@ -490,15 +563,25 @@ export function AddressFormSheet({
               </View>
 
               {!hideDefault && (
-                <Pressable style={styles.defaultRow} onPress={() => set("is_default", !form.is_default)}>
+                <Pressable
+                  style={styles.defaultRow}
+                  onPress={() => set("is_default", !form.is_default)}
+                >
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.defaultTitle}>Make this my default address</Text>
-                    <Text style={styles.defaultSubtitle}>Pre-selected at checkout</Text>
+                    <Text style={styles.defaultTitle}>
+                      Make this my default address
+                    </Text>
+                    <Text style={styles.defaultSubtitle}>
+                      Pre-selected at checkout
+                    </Text>
                   </View>
                   <Switch
                     value={form.is_default}
                     onValueChange={(v) => set("is_default", v)}
-                    trackColor={{ false: colors.light.border, true: colors.light.primary }}
+                    trackColor={{
+                      false: colors.light.border,
+                      true: colors.light.primary,
+                    }}
                     thumbColor={colors.paper.cream}
                   />
                 </Pressable>
@@ -510,7 +593,10 @@ export function AddressFormSheet({
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.cancelBtn,
+                pressed && { opacity: 0.7 },
+              ]}
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
@@ -518,7 +604,10 @@ export function AddressFormSheet({
               onPress={handleSave}
               disabled={saving}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.saveBtn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.saveBtn,
+                pressed && styles.pressed,
+              ]}
             >
               <LinearGradient
                 colors={["#2a2c1f", INK]}
@@ -531,7 +620,8 @@ export function AddressFormSheet({
                 ) : (
                   <>
                     <Text style={styles.saveText}>
-                      {primaryLabel ?? (isEdit ? "Save changes" : "Save address")}
+                      {primaryLabel ??
+                        (isEdit ? "Save changes" : "Save address")}
                     </Text>
                     <View style={styles.saveArrow}>
                       <Ionicons name="checkmark" size={16} color={INK} />
@@ -577,7 +667,9 @@ function Section({
         <View style={styles.sectionRule} />
         <View style={{ flex: 1 }}>
           <Text style={styles.sectionTitle}>{title}</Text>
-          {caption ? <Text style={styles.sectionCaption}>{caption}</Text> : null}
+          {caption ? (
+            <Text style={styles.sectionCaption}>{caption}</Text>
+          ) : null}
         </View>
       </View>
       {children}
@@ -615,7 +707,11 @@ function Field({
   return (
     <View style={styles.field}>
       <View style={styles.fieldLabelRow}>
-        <Text style={[styles.fieldLabel, focused && { color: colors.olive[700] }]}>{label.toUpperCase()}</Text>
+        <Text
+          style={[styles.fieldLabel, focused && { color: colors.olive[700] }]}
+        >
+          {label.toUpperCase()}
+        </Text>
         {optional ? <Text style={styles.fieldOptional}>Optional</Text> : null}
       </View>
       <View
@@ -629,7 +725,13 @@ function Field({
           <Ionicons
             name={icon}
             size={17}
-            color={error ? colors.light.destructive : focused ? colors.olive[700] : colors.ink.mute}
+            color={
+              error
+                ? colors.light.destructive
+                : focused
+                  ? colors.olive[700]
+                  : colors.ink.mute
+            }
             style={{ marginRight: 10 }}
           />
         ) : null}
@@ -640,7 +742,9 @@ function Field({
           keyboardType={keyboardType}
           placeholder={placeholder}
           placeholderTextColor={colors.light.mutedForeground + "99"}
-          autoCapitalize={autoCapitalize ?? (keyboardType === "default" ? "words" : "none")}
+          autoCapitalize={
+            autoCapitalize ?? (keyboardType === "default" ? "words" : "none")
+          }
           textContentType={textContentType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -694,7 +798,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[4],
     gap: spacing[3],
   },
-  kickerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  kickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
   kickerRule: { width: 18, height: 1, backgroundColor: colors.accent2.ochre },
   kicker: {
     fontFamily: fontFamilies.mono.semibold,
@@ -703,13 +812,16 @@ const styles = StyleSheet.create({
     color: colors.olive[600],
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 32,
     lineHeight: 36,
     letterSpacing: -0.9,
     color: INK,
   },
-  titleItalic: { fontFamily: fontFamilies.display.italic, color: colors.olive[700] },
+  titleItalic: {
+    fontFamily: fontFamilies.sans.medium,
+    color: colors.olive[700],
+  },
   headerSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
@@ -801,7 +913,7 @@ const styles = StyleSheet.create({
     color: GOLD,
   },
   deliverText: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 16,
     lineHeight: 21,
     color: colors.paper.cream,
@@ -847,7 +959,7 @@ const styles = StyleSheet.create({
   },
   sectionRule: { width: 14, height: 1, backgroundColor: "rgba(22,23,15,0.18)" },
   sectionTitle: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 20,
     letterSpacing: -0.4,
     color: INK,
@@ -883,7 +995,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: INK,
   },
-  typeChipTextActive: { color: colors.paper.cream, fontFamily: fontFamilies.sans.semibold },
+  typeChipTextActive: {
+    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.semibold,
+  },
 
   // Fields
   field: { gap: 7 },

@@ -12,6 +12,8 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
+import { SellerGlow } from "@/components/seller/chrome";
+import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { PayoutRow } from "@/components/payouts/PayoutRow";
 import { getPayoutBalanceBackend, getPayoutsBackend } from "@/lib/api/backend";
 import { formatPrice, pluralize } from "@/lib/utils";
@@ -110,10 +112,11 @@ export default function PayoutsIndex() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <SellerGlow />
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.kicker}>Atelier</Text>
-          <Text style={styles.title}>Payouts</Text>
+        <SellerBackButton label="More" fallbackHref="/(seller)/more" />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.title} accessibilityRole="header">Payouts</Text>
           <Text style={styles.subtitle}>{headerSubtitle}</Text>
         </View>
         <TouchableOpacity
@@ -122,7 +125,7 @@ export default function PayoutsIndex() {
           accessibilityRole="button"
           accessibilityLabel="Payout settings"
         >
-          <Ionicons name="settings-outline" size={17} color={colors.olive[800]} />
+          <Ionicons name="settings-outline" size={19} color={INK} />
         </TouchableOpacity>
       </View>
 
@@ -283,13 +286,12 @@ export default function PayoutsIndex() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "center",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
+    paddingBottom: 16,
     gap: 12,
   },
   kicker: {
@@ -302,26 +304,28 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.ink.mute,
-    marginTop: 3,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 4,
   },
   settingsBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.16)",
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   listContent: { paddingHorizontal: spacing[5], paddingBottom: 140 },
 
@@ -395,7 +399,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: GOLD,
+    backgroundColor: "#c8e08a",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -459,7 +463,7 @@ const styles = StyleSheet.create({
   },
   emptyHead: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 18 },
   emptyBadge: { width: 40, height: 40, borderRadius: 14, backgroundColor: colors.olive[50], borderWidth: 1, borderColor: "rgba(83,94,44,0.14)", alignItems: "center", justifyContent: "center" },
-  emptyTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: INK },
+  emptyTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, color: INK },
   emptyLead: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: colors.ink.mute },
   step: { flexDirection: "row", gap: 12 },
   stepRail: { alignItems: "center", width: 32 },

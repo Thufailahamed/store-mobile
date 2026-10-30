@@ -9,8 +9,10 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, discountPct } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
-const INK = "#141414";
-const MUTED = "#6b6b6b";
+import { C } from "@/components/orders/parcel-track";
+
+const INK = C.ink;
+const MUTED = C.muted;
 
 interface ProductInfoProps {
   product: Product;
@@ -107,14 +109,14 @@ export function ProductInfo({
           <View style={styles.metaRow}>
             {pct > 0 && (
               <View style={styles.saveChip}>
-                <Ionicons name="pricetag-outline" size={11} color={INK} />
+                <Ionicons name="pricetag-outline" size={11} color={C.ink} />
                 <Body size="xs" style={styles.saveText}>
                   You save {formatPrice(product.mrp - unitPrice, product.currency)}
                 </Body>
               </View>
             )}
             <View style={styles.taxRow}>
-              <Ionicons name="shield-checkmark-outline" size={12} color={MUTED} />
+              <Ionicons name="shield-checkmark-outline" size={12} color={C.accent} />
               <Body size="xs" style={styles.taxNote}>
                 Inclusive of all taxes
               </Body>
@@ -139,20 +141,20 @@ const styles = StyleSheet.create({
   brandLine: {
     width: 16,
     height: 1,
-    backgroundColor: colors.olive[600],
+    backgroundColor: C.accent,
   },
   brandName: {
-    color: colors.olive[600],
+    color: C.accent,
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
     letterSpacing: 2,
     textTransform: "uppercase",
   },
   name: {
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
     lineHeight: 36,
     fontFamily: fontFamilies.display.semibold,
-    color: colors.light.foreground,
+    color: C.text,
   },
   shortDesc: {
     lineHeight: 22,
@@ -170,17 +172,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: `${colors.olive[600]}10`,
-    borderWidth: 1,
-    borderColor: `${colors.olive[600]}25`,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.md,
+    backgroundColor: C.ink,
+    paddingHorizontal: 9,
+    height: 24,
+    borderRadius: 12,
   },
   ratingNum: {
-    color: colors.olive[800],
-    fontSize: 11,
-    fontWeight: "700",
+    color: C.cream,
+    fontSize: 11.5,
+    fontFamily: fontFamilies.sans.bold,
   },
   starsRow: {
     flexDirection: "row",
@@ -202,20 +202,21 @@ const styles = StyleSheet.create({
   },
   priceShadow: {
     marginTop: spacing[2],
-    borderRadius: 24,
-    shadowColor: "#000000",
+    borderRadius: 26,
+    backgroundColor: "#ffffff",
+    shadowColor: C.ink,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 22,
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
     elevation: 3,
   },
   priceCard: {
-    borderRadius: 24,
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[4],
+    borderRadius: 26,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    borderColor: C.line,
     backgroundColor: "#ffffff",
     gap: spacing[2.5],
   },
@@ -230,27 +231,27 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   eyebrowDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: INK,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.lime,
   },
   priceEyebrow: {
-    color: MUTED,
+    color: C.accent,
     fontSize: 10,
-    letterSpacing: 2.4,
-    fontFamily: fontFamilies.sans.bold,
+    letterSpacing: 1.8,
+    fontFamily: fontFamilies.mono.semibold,
   },
   discountBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    height: 26,
+    justifyContent: "center",
+    paddingHorizontal: 11,
     borderRadius: radii.full,
-    backgroundColor: INK,
+    backgroundColor: C.ink,
   },
   discountText: {
-    color: "#ffffff",
-    fontSize: 11,
-    letterSpacing: 0.4,
+    color: C.lime,
+    fontSize: 11.5,
     fontFamily: fontFamilies.sans.bold,
   },
   priceRow: {
@@ -260,21 +261,21 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   activePrice: {
-    fontFamily: fontFamilies.display.semibold,
-    color: INK,
-    fontSize: 36,
-    lineHeight: 42,
-    letterSpacing: -0.8,
+    fontFamily: fontFamilies.sans.bold,
+    color: C.text,
+    fontSize: 32,
+    lineHeight: 38,
+    letterSpacing: -1,
   },
   mrp: {
     textDecorationLine: "line-through",
     fontFamily: fontFamilies.sans.regular,
     fontSize: 15,
-    color: "#9a9a9a",
+    color: C.muted,
   },
   priceRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(0,0,0,0.1)",
+    height: 1,
+    backgroundColor: C.line,
     marginVertical: 4,
   },
   metaRow: {
@@ -289,15 +290,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     paddingHorizontal: 11,
-    paddingVertical: 6,
+    height: 28,
     borderRadius: radii.full,
-    backgroundColor: "#f4f4f4",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    backgroundColor: C.lime,
   },
   saveText: {
-    color: INK,
-    fontFamily: fontFamilies.sans.semibold,
+    color: C.ink,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 12,
   },
   taxRow: {

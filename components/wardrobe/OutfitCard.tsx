@@ -22,7 +22,11 @@ export function OutfitCard({ outfit, onPress, items }: Props) {
   const byId = new Map((items ?? []).map((i) => [i.id, i.image_url]));
   const thumbs = links
     .slice(0, 5)
-    .map((l) => (l as { item?: { image_url?: string | null } }).item?.image_url ?? byId.get(l.wardrobe_item_id))
+    .map(
+      (l) =>
+        (l as { item?: { image_url?: string | null } }).item?.image_url ??
+        byId.get(l.wardrobe_item_id),
+    )
     .filter(Boolean) as string[];
 
   return (
@@ -33,7 +37,9 @@ export function OutfitCard({ outfit, onPress, items }: Props) {
     >
       <View style={styles.head}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>{outfit.name}</Text>
+          <Text style={styles.name} numberOfLines={1}>
+            {outfit.name}
+          </Text>
           <Text style={styles.meta} numberOfLines={1}>
             {links.length} item{links.length === 1 ? "" : "s"}
             {outfit.occasion ? ` · ${outfit.occasion}` : ""}
@@ -95,7 +101,7 @@ const styles: Record<string, any> = StyleSheet.create({
     gap: 10,
   },
   name: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 16,
     color: INK,
     fontWeight: "600",

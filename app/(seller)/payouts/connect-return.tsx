@@ -73,7 +73,7 @@ export default function ConnectReturn() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   body: { flex: 1, padding: spacing[5], alignItems: "center", justifyContent: "center", gap: spacing[3] },
   heading: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.lg, color: colors.light.foreground },
   sub: { fontFamily: fontFamilies.sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, textAlign: "center" },

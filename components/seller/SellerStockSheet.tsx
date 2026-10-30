@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 20,
     lineHeight: 25,
     color: SELLER_INK,

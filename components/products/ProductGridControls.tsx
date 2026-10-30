@@ -5,6 +5,7 @@ import { QuickRefine } from "@/components/search/QuickRefine";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { C } from "@/components/orders/parcel-track";
 import {
   VIEW_MODES,
   PRICE_BOUNDS,
@@ -109,7 +110,9 @@ export function ProductGridControls({
           activeOpacity={0.85}
           accessibilityLabel={hasFilters ? `Filters, ${filterCount} active` : "Filters"}
         >
-          <Ionicons name="options-outline" size={15} color={colors.paper.cream} />
+          <View style={styles.filterIcon}>
+            <Ionicons name="options-outline" size={15} color={C.ink} />
+          </View>
           <Text style={styles.filterText}>Filters</Text>
           {hasFilters ? (
             <View style={styles.filterCount}>
@@ -138,7 +141,7 @@ export function ProductGridControls({
                   <Ionicons
                     name="sparkles"
                     size={11}
-                    color={colors.accent2.ochre}
+                    color={active ? C.lime : colors.accent2.ochre}
                   />
                 ) : null}
                 <Text style={[styles.sortText, active && styles.sortTextActive]}>{opt.label}</Text>
@@ -217,7 +220,7 @@ export function ProductGridControls({
                 <Ionicons
                   name={m.icon as any}
                   size={15}
-                  color={active ? colors.light.foreground : colors.light.mutedForeground}
+                  color={active ? C.lime : C.muted}
                 />
               </TouchableOpacity>
             );
@@ -243,44 +246,54 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    height: 42,
-    paddingLeft: 14,
+    height: 44,
+    paddingLeft: 6,
     paddingRight: 16,
     borderRadius: radii.full,
-    backgroundColor: colors.ink.DEFAULT,
-    shadowColor: colors.ink.DEFAULT,
+    backgroundColor: C.ink,
+    shadowColor: C.ink,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
     elevation: 3,
   },
+  filterIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   filterBtnActive: {
-    backgroundColor: colors.olive[900],
+    backgroundColor: colors.olive[800],
   },
   filterText: {
-    color: colors.paper.cream,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    color: C.cream,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13.5,
   },
   filterCount: {
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: colors.accent2.ochre,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 5,
   },
   filterCountText: {
-    color: colors.olive[950],
+    color: C.ink,
     fontFamily: fontFamilies.sans.bold,
     fontSize: 10,
   },
   sortTrack: {
     flex: 1,
-    height: 42,
+    height: 44,
     borderRadius: radii.full,
-    backgroundColor: `${colors.olive[900]}0D`,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
     overflow: "hidden",
   },
   sortBar: {
@@ -297,20 +310,15 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
   },
   sortChipActive: {
-    backgroundColor: "#ffffff",
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 2,
+    backgroundColor: C.ink,
   },
   sortText: {
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.sans.medium,
+    color: C.muted,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
   },
   sortTextActive: {
-    color: colors.ink.DEFAULT,
+    color: C.cream,
     fontFamily: fontFamilies.sans.bold,
   },
   facetRow: {
@@ -326,7 +334,9 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 9,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[100],
+    backgroundColor: C.accentSoft,
+    borderWidth: 1,
+    borderColor: C.line,
   },
   facetText: {
     fontFamily: fontFamilies.sans.semibold,
@@ -354,32 +364,29 @@ const styles = StyleSheet.create({
   },
   summary: {
     flex: 1,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10.5,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
-    color: colors.light.mutedForeground,
+    color: C.accent,
   },
   viewToggle: {
     flexDirection: "row",
-    backgroundColor: `${colors.olive[900]}0D`,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
     borderRadius: radii.full,
     padding: 3,
     gap: 2,
   },
   viewBtn: {
-    width: 34,
-    height: 28,
+    width: 36,
+    height: 30,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
   },
   viewBtnActive: {
-    backgroundColor: colors.light.card,
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 1,
+    backgroundColor: C.ink,
   },
 });

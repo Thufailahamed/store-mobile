@@ -60,7 +60,7 @@ export function useProductActions(product: Product) {
       quantity: 1,
     });
     tracker.cartAdd(product);
-    toast(`Added size ${variant.size} to basket`, "success");
+    toast(`Added size ${variant.size} to basket`, "success", { image: primaryImage || undefined, subtitle: product.name });
   };
 
   const handleAdd = () => {
@@ -92,12 +92,17 @@ export function useProductActions(product: Product) {
       quantity: 1,
     });
     tracker.cartAdd(product);
-    toast("Added to basket", "success");
+    toast("Added to basket", "success", { image: primaryImage || undefined, subtitle: product.name });
   };
 
   const handleWishlist = () => {
     tracker.wishlist(product, isWishlisted ? "remove" : "add");
     toggle(product.id);
+    if (isWishlisted) {
+      toast("Removed from wishlist", "info", { image: primaryImage || undefined, subtitle: product.name });
+    } else {
+      toast("Saved to wishlist", "success", { image: primaryImage || undefined, subtitle: product.name });
+    }
   };
 
   return {

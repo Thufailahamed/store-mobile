@@ -45,6 +45,12 @@ import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
 import { useTrackCheckoutStarted } from "@/lib/recommender";
+import {
+  OrderPlacingOverlay,
+  ORDER_OVERLAY_MIN_PLACING_MS,
+  ORDER_OVERLAY_SUCCESS_HOLD_MS,
+  type OrderOverlayPhase,
+} from "@/components/checkout/OrderPlacingOverlay";
 
 const STEPS = [
   { key: 1, label: "Address" },
@@ -130,7 +136,14 @@ export default function CheckoutScreen() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
-  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  // Full-screen placing → success animation (see OrderPlacingOverlay).
+  const [overlayPhase, setOverlayPhase] = useState<OrderOverlayPhase>("idle");
+  const [overlayOrigin, setOverlayOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [overlayOrderNumber, setOverlayOrderNumber] = useState<string | null>(null);
+  // Snapshot at tap time — the bag is cleared before the success beat plays.
+  const [overlaySnapshot, setOverlaySnapshot] = useState({ thumbnails: [] as string[], storeCount: 1, total: "" });
+  const placingStartedAt = useRef(0);
+  const placeOrderBtnRef = useRef<View>(null);
   const pendingLoyaltyPointsRef = useRef(0);
   /** Synchronous re-entrancy guard for handlePlaceOrder — set before any
    *  `await` so a second tap during the pre-`setLoading` validation phase
@@ -294,17 +307,6 @@ export default function CheckoutScreen() {
     };
   }, [user, storeIds]);
 
-  useEffect(() => {
-    if (codAllowed === false && paymentMethod === "cod") {
-      const fallback = PAYMENTS_LK_ENABLED
-        ? "paymentslk"
-        : STRIPE_ENABLED && !isGuest
-          ? "stripe"
-          : null;
-      if (fallback) setPaymentMethod(fallback);
-    }
-  }, [codAllowed, paymentMethod, isGuest]);
-
   // (main) is a Tabs navigator, so this screen stays mounted after an order
   // completes. When the buyer starts a new checkout, reset to a fresh flow and
   // re-run the bag guard the finished flag suppressed while we were blurred.
@@ -312,6 +314,7 @@ export default function CheckoutScreen() {
     useCallback(() => {
       if (!checkoutFinishedRef.current) return;
       checkoutFinishedRef.current = false;
+      setOverlayPhase("idle");
       setStep(1);
       void isCheckoutPrepared().then((prepared) => {
         if (!prepared || Object.keys(useCart.getState().items).length === 0) {
@@ -539,6 +542,18 @@ export default function CheckoutScreen() {
     // `sub` is the trigger — re-validate whenever the cart subtotal shifts.
   }, [user, couponId, couponCode, sub, items, clearCoupon, toast]);
 
+  /** Hold the placing stage for its minimum, then play the success beat. */
+  const celebrateOrder = async (orderNumber: string | null) => {
+    const wait = ORDER_OVERLAY_MIN_PLACING_MS - (Date.now() - placingStartedAt.current);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    setOverlayOrderNumber(orderNumber);
+    setOverlayPhase("success");
+    await new Promise((r) => setTimeout(r, ORDER_OVERLAY_SUCCESS_HOLD_MS));
+  };
+  // (main) is a Tabs navigator, so this screen stays mounted behind the
+  // success screen — drop the overlay once we've navigated away.
+  const dismissOverlaySoon = () => setTimeout(() => setOverlayPhase("idle"), 450);
+
   const handlePlaceOrder = async () => {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
@@ -618,8 +633,20 @@ export default function CheckoutScreen() {
       return;
     }
 
+    placingStartedAt.current = Date.now();
+    setOverlaySnapshot({
+      thumbnails: cartItems
+        .map((item) => item.image || thumbs[item.productId])
+        .filter((u): u is string => !!u),
+      storeCount: new Set(cartItems.map((item) => item.storeId)).size || 1,
+      total: formatPrice(total),
+    });
+    setOverlayOrderNumber(null);
+    setOverlayPhase("placing");
+
     const checkoutValidation = await validateCartForCheckout();
     if (!checkoutValidation.ok) {
+      setOverlayPhase("idle");
       toast(checkoutValidation.error, "error");
       router.replace("/(main)/cart");
       return;
@@ -627,6 +654,7 @@ export default function CheckoutScreen() {
 
     const freshCartItems = Object.values(useCart.getState().items);
     if (freshCartItems.length === 0) {
+      setOverlayPhase("idle");
       toast("Your bag is empty", "error");
       router.replace("/(main)/cart");
       return;
@@ -643,6 +671,7 @@ export default function CheckoutScreen() {
         ),
       );
       if (!hold.ok) {
+        setOverlayPhase("idle");
         toast(hold.error, "error");
         router.replace("/(main)/cart");
         return;
@@ -785,6 +814,7 @@ export default function CheckoutScreen() {
           if (!session.ok) {
             throw new Error(session.error);
           }
+          setOverlayPhase("idle");
           const result = await runPaymentsLkCheckout(session.data.url);
           await releaseCartReservations();
           reservationsHeld = false;
@@ -800,14 +830,16 @@ export default function CheckoutScreen() {
           );
           return;
         }
+        const celebrated = celebrateOrder(null);
         await releaseCartReservations();
         reservationsHeld = false;
         checkoutFinishedRef.current = true;
         clear();
-        toast("Order placed", "success");
+        await celebrated;
         router.replace(
           `/(main)/orders/guest-lookup?token=${encodeURIComponent(token ?? "")}&email=${encodeURIComponent(guestEmail.trim())}` as never,
         );
+        dismissOverlaySoon();
         return;
       }
       const parsedGroup = parseGroupOrders(groupData);
@@ -820,6 +852,9 @@ export default function CheckoutScreen() {
       orderPlaced = true;
       const firstOrderId = subOrders[0].id;
       const placed = subOrders;
+      const firstNumber = subOrders[0].order_number ?? null;
+      const overlayNumber =
+        firstNumber && subOrders.length > 1 ? `${firstNumber} +${subOrders.length - 1}` : firstNumber;
 
       // Shared tails for hosted card checkouts (Payments.lk + Stripe):
       // on a confirmed payment redeem loyalty + clear + go to success;
@@ -836,16 +871,18 @@ export default function CheckoutScreen() {
         const allIds = pendingOrderIdsRef.current;
         pendingOrderIdsRef.current = [];
         pendingOrderIdsFirstRef.current = null;
+        const celebrated = celebrateOrder(overlayNumber);
         await releaseCartReservations();
         reservationsHeld = false;
         checkoutFinishedRef.current = true;
         clear();
         await loyalty.reload();
-        toast("Payment complete", "success");
+        await celebrated;
         const orderIdsParam = allIds.length > 0 ? allIds.join(",") : firstOrderId;
         router.replace(
           `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIdsParam)}` as never,
         );
+        dismissOverlaySoon();
       };
 
       const abandonCardCheckout = async (dismissed: boolean) => {
@@ -888,12 +925,13 @@ export default function CheckoutScreen() {
         pendingOrderIdsFirstRef.current = firstOrderId;
         await loyalty.reload();
 
+        setOverlayPhase("idle");
         const result = await runPaymentsLkCheckout(session.data.url);
         if (result.status === "succeeded") {
-          setConfirmingPayment(true);
+          setOverlayPhase("confirming");
           const poll = await pollOrderPaymentStatus(firstOrderId);
-          setConfirmingPayment(false);
           if (!poll.ok) {
+            setOverlayPhase("idle");
             toast(poll.error, "error");
             router.replace(`/(main)/account/orders/${firstOrderId}` as never);
             return;
@@ -922,21 +960,24 @@ export default function CheckoutScreen() {
         // Stripe's hosted page can't deep-link back into the app, so it
         // opens in a browser sheet; once the buyer returns, the
         // webhook-backed status poll decides success vs. abandonment.
+        setOverlayPhase("idle");
         await WebBrowser.openBrowserAsync(session.data.url);
-        setConfirmingPayment(true);
+        setOverlayPhase("confirming");
         const poll = await pollOrderPaymentStatus(firstOrderId, {
           maxAttempts: 25,
           intervalMs: 3000,
         });
-        setConfirmingPayment(false);
         if (poll.ok) {
           await finalizePaidCheckout();
           return;
         }
+        setOverlayPhase("idle");
         await abandonCardCheckout(true);
         return;
       }
 
+      // Let the success beat play while the bag is cleaned up underneath.
+      const celebrated = celebrateOrder(overlayNumber);
       if (freshPointsToUse > 0) {
         await loyalty.redeem(freshPointsToUse, firstOrderId);
       }
@@ -945,12 +986,14 @@ export default function CheckoutScreen() {
       reservationsHeld = false;
       checkoutFinishedRef.current = true;
       clear();
-      toast("Order placed", "success");
+      await celebrated;
       const orderIds = placed.map((o) => o.id).join(",");
       router.replace(
         `/(main)/checkout/success?orderIds=${encodeURIComponent(orderIds)}` as never,
       );
+      dismissOverlaySoon();
     } catch (e: any) {
+      setOverlayPhase("idle");
       if (reservationsHeld && !orderPlaced) {
         await releaseCartReservations();
       }
@@ -1502,34 +1545,7 @@ export default function CheckoutScreen() {
                 icon: "cash-outline" as const,
                 brands: [],
               },
-              ...(PAYMENTS_LK_ENABLED
-                ? [
-                    {
-                      key: "paymentslk" as const,
-                      label: "Card via Payments.lk",
-                      desc: "Instant & encrypted card checkout",
-                      badge: "100% SECURE",
-                      badgeType: "ochre" as const,
-                      icon: "card-outline" as const,
-                      brands: ["VISA", "MASTERCARD", "AMEX", "LANKAQR"],
-                    },
-                  ]
-                : []),
-              // Stripe is sign-in only — the hosted session is bound to
-              // the authenticated user's orders (no guest token flow).
-              ...(STRIPE_ENABLED && !isGuest
-                ? [
-                    {
-                      key: "stripe" as const,
-                      label: "Card via Stripe",
-                      desc: "Global cards & wallets, 3-D Secure protected",
-                      badge: "3D SECURE",
-                      badgeType: "olive" as const,
-                      icon: "lock-closed-outline" as const,
-                      brands: ["VISA", "MASTERCARD", "AMEX"],
-                    },
-                  ]
-                : []),
+              // Cash on delivery is the only payment method offered for now.
             ] as const)
               .filter((m) => !(m.key === "cod" && codAllowed === false))
               .map((m) => {
@@ -1557,17 +1573,13 @@ export default function CheckoutScreen() {
                         <View
                           style={[
                             styles.paymentBadge,
-                            m.badgeType === "ochre"
-                              ? styles.paymentBadgeOchre
-                              : styles.paymentBadgeOlive,
+                            styles.paymentBadgeOlive,
                           ]}
                         >
                           <Text
                             style={[
                               styles.paymentBadgeText,
-                              m.badgeType === "ochre"
-                                ? styles.paymentBadgeTextOchre
-                                : styles.paymentBadgeTextOlive,
+                              styles.paymentBadgeTextOlive,
                             ]}
                           >
                             {m.badge}
@@ -1914,6 +1926,7 @@ export default function CheckoutScreen() {
             </Text>
           </View>
           <TouchableOpacity
+            ref={placeOrderBtnRef}
             style={[styles.placeOrderBtn, loading && { opacity: 0.7 }]}
             onPress={
               step === 1
@@ -1922,7 +1935,13 @@ export default function CheckoutScreen() {
                   ? () => setStep(3)
                   : step === 3
                     ? () => setStep(4)
-                    : handlePlaceOrder
+                    : () => {
+                        // The glow rises from the button the buyer pressed.
+                        placeOrderBtnRef.current?.measureInWindow((x, y, w, h) =>
+                          setOverlayOrigin({ x: x + w / 2, y: y + h / 2 }),
+                        );
+                        void handlePlaceOrder();
+                      }
             }
             disabled={loading}
             activeOpacity={0.88}
@@ -1944,12 +1963,14 @@ export default function CheckoutScreen() {
         </View>
       </View>
 
-      {confirmingPayment && (
-        <View style={styles.confirmOverlay}>
-          <ActivityIndicator size="large" color={colors.light.primary} />
-          <Body muted>Confirming payment…</Body>
-        </View>
-      )}
+      <OrderPlacingOverlay
+        phase={overlayPhase}
+        origin={overlayOrigin}
+        total={overlaySnapshot.total}
+        orderNumber={overlayOrderNumber}
+        thumbnails={overlaySnapshot.thumbnails}
+        storeCount={overlaySnapshot.storeCount}
+      />
 
       <AddressFormSheet
         visible={addressSheetOpen || !!editingAddress}
@@ -3366,13 +3387,5 @@ const styles = StyleSheet.create({
     fontSize: 15.5,
     color: CREAM,
     letterSpacing: 0.2,
-  },
-  confirmOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[3],
-    zIndex: 20,
   },
 });

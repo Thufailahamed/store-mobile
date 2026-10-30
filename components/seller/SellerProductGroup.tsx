@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   thumbBadgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9.5, color: "#FFFFFF" },
   headInfo: { flex: 1, minWidth: 0 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { flex: 1, fontFamily: fontFamilies.display.semibold, fontSize: 18, lineHeight: 23, color: colors.light.foreground, letterSpacing: -0.2 },
+  title: { flex: 1, fontFamily: fontFamilies.sans.bold, fontSize: 18, lineHeight: 23, color: colors.light.foreground, letterSpacing: -0.2 },
   openBtn: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
   count: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
   countStrong: { fontFamily: fontFamilies.sans.semibold, color: colors.light.foreground },

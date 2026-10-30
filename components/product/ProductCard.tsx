@@ -10,6 +10,7 @@ import { formatPrice } from "@/lib/utils";
 import { QuickSizeModal } from "./QuickSizeModal";
 import { useProductActions } from "./useProductActions";
 import type { Product } from "@/lib/types";
+import { C } from "@/components/orders/parcel-track";
 
 interface ProductCardProps {
   product: Product;
@@ -19,15 +20,18 @@ interface ProductCardProps {
   listMode?: boolean;
   /** Rounded surface treatment for editorial grids such as search results. */
   surface?: boolean;
+  /** "atelier" = Account/Home language: white framed card, ink badges, lime accents. */
+  tone?: "default" | "atelier";
 }
 
-export function ProductCard({ product, horizontal, listMode, surface }: ProductCardProps) {
+export function ProductCard({ product, horizontal, listMode, surface, tone = "default" }: ProductCardProps) {
+  const atelier = tone === "atelier";
   const router = useRouter();
   // Align with products/index.tsx grid (GRID_PADDING = 16, GRID_COL_GAP = 12); reactive
   // via useWindowDimensions so it stays correct on window resize (Android split-screen, foldables).
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = (screenWidth - 32 - 12) / 2;
-  const imageHeight = cardWidth * (4 / 3);
+  const imageHeight = (atelier ? cardWidth - ATELIER_PAD * 2 : cardWidth) * (4 / 3);
   const {
     primaryImage,
     discount,
@@ -51,7 +55,7 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
       return (
         <Link href={`/(main)/brands/${brandSlug}` as never} asChild>
           <TouchableOpacity onPress={(e) => e.stopPropagation()} hitSlop={4}>
-            <Text style={styles.storeName} numberOfLines={1}>
+            <Text style={[styles.storeName, atelier && styles.storeNameAtelier]} numberOfLines={1}>
               {storeOrBrandName}
             </Text>
           </TouchableOpacity>
@@ -59,7 +63,7 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
       );
     }
     return (
-      <Text style={styles.storeName} numberOfLines={1}>
+      <Text style={[styles.storeName, atelier && styles.storeNameAtelier]} numberOfLines={1}>
         {storeOrBrandName}
       </Text>
     );
@@ -69,9 +73,15 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
 
   const renderPrice = (size: "sm" | "base" = "base") => (
     <View style={styles.priceRow}>
-      <Price size={size} style={styles.price} numberOfLines={1}>
-        {priceLabel}
-      </Price>
+      {atelier ? (
+        <Text style={styles.priceAtelier} numberOfLines={1}>
+          {priceLabel}
+        </Text>
+      ) : (
+        <Price size={size} style={styles.price} numberOfLines={1}>
+          {priceLabel}
+        </Price>
+      )}
       {discount > 0 ? (
         <Text style={styles.mrp} numberOfLines={1}>
           {formatPrice(product.mrp)}
@@ -108,8 +118,8 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
 
   const renderDiscountTag = () =>
     discount > 0 ? (
-      <View style={styles.discountTag}>
-        <Text style={styles.discountText}>−{discount}%</Text>
+      <View style={[styles.discountTag, atelier && styles.discountTagAtelier]}>
+        <Text style={[styles.discountText, atelier && styles.discountTextAtelier]}>−{discount}%</Text>
       </View>
     ) : null;
 
@@ -150,8 +160,8 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
   if (listMode) {
     return (
       <>
-      <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={styles.listCard}>
-        <View style={styles.listImageWrap}>
+      <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={[styles.listCard, atelier && styles.listCardAtelier]}>
+        <View style={[styles.listImageWrap, atelier && styles.listImageWrapAtelier]}>
           {renderImage(24)}
           {renderDiscountTag()}
           {renderSoldOut()}
@@ -161,7 +171,7 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
             {storeOrBrandName ? (
               <View style={styles.storeRow}>{renderBrandLabel()}</View>
             ) : null}
-            <Text numberOfLines={2} style={styles.listName}>
+            <Text numberOfLines={2} style={[styles.listName, atelier && styles.nameAtelier]}>
               {product.name || "Untitled Piece"}
             </Text>
             {product.short_description ? (
@@ -175,7 +185,7 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
             <View style={{ flex: 1 }}>{renderPrice("base")}</View>
             <View style={styles.listActions}>
               <TouchableOpacity
-                style={styles.listActionBtn}
+                style={[styles.listActionBtn, atelier && styles.listActionBtnAtelier]}
                 onPress={handleWishlist}
                 activeOpacity={0.7}
                 accessibilityLabel={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
@@ -187,13 +197,13 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
                 />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.listAddBtn, isSoldOut && styles.addBtnDisabled]}
+                style={[styles.listAddBtn, atelier && styles.inkBtn, isSoldOut && styles.addBtnDisabled]}
                 onPress={handleAdd}
                 activeOpacity={0.8}
                 disabled={isSoldOut}
                 accessibilityLabel="Add to basket"
               >
-                <Ionicons name="bag-add-outline" size={16} color={colors.light.primaryForeground} />
+                <Ionicons name="bag-add-outline" size={16} color={atelier ? C.lime : colors.light.primaryForeground} />
               </TouchableOpacity>
             </View>
           </View>
@@ -232,29 +242,29 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
 
   return (
     <>
-    <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={[styles.card, surface && styles.cardSurface]}>
-      <View style={[styles.imageWrap, { height: imageHeight }]}>
+    <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={[styles.card, surface && styles.cardSurface, atelier && styles.cardAtelier]}>
+      <View style={[styles.imageWrap, atelier && styles.imageWrapAtelier, { height: imageHeight }]}>
         {renderImage()}
         {renderDiscountTag()}
         {renderSoldOut()}
         {renderWishlist()}
         {!isSoldOut ? (
           <TouchableOpacity
-            style={styles.addBtn}
+            style={[styles.addBtn, atelier && styles.addBtnAtelier]}
             onPress={handleAdd}
             activeOpacity={0.8}
             hitSlop={6}
             accessibilityLabel="Add to basket"
           >
-            <Ionicons name="bag-add-outline" size={15} color={colors.light.primaryForeground} />
+            <Ionicons name="bag-add-outline" size={15} color={atelier ? C.lime : colors.light.primaryForeground} />
           </TouchableOpacity>
         ) : null}
       </View>
-      <View style={styles.info}>
+      <View style={[styles.info, atelier && styles.infoAtelier]}>
         {storeOrBrandName ? (
           <View style={styles.storeRow}>{renderBrandLabel()}</View>
         ) : null}
-        <Text numberOfLines={1} style={styles.productName}>
+        <Text numberOfLines={1} style={[styles.productName, atelier && styles.nameAtelier]}>
           {product.name || "Untitled Piece"}
         </Text>
         {renderPrice()}
@@ -270,6 +280,7 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
 }
 
 const IMAGE_BG = "#efede4";
+const ATELIER_PAD = 7;
 
 const styles = StyleSheet.create({
   card: {
@@ -504,6 +515,76 @@ const styles = StyleSheet.create({
   storeRow: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  cardAtelier: {
+    marginBottom: 12,
+    padding: ATELIER_PAD,
+    paddingBottom: 12,
+    borderRadius: 24,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  imageWrapAtelier: {
+    borderRadius: 18,
+    backgroundColor: "#f0ede2",
+    marginBottom: 10,
+  },
+  infoAtelier: {
+    paddingHorizontal: 4,
+  },
+  nameAtelier: {
+    fontFamily: fontFamilies.sans.bold,
+    letterSpacing: -0.2,
+    color: C.text,
+  },
+  priceAtelier: {
+    flexShrink: 1,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14.5,
+    letterSpacing: -0.2,
+    color: C.text,
+  },
+  discountTagAtelier: {
+    top: 8,
+    left: 8,
+    height: 22,
+    paddingVertical: 0,
+    paddingHorizontal: 8,
+    borderRadius: 11,
+    justifyContent: "center",
+    backgroundColor: C.ink,
+  },
+  discountTextAtelier: {
+    color: C.lime,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10.5,
+    letterSpacing: 0,
+  },
+  addBtnAtelier: {
+    backgroundColor: C.ink,
+    borderColor: "#FFFFFF",
+  },
+  inkBtn: {
+    backgroundColor: C.ink,
+  },
+  listCardAtelier: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: C.line,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  listImageWrapAtelier: {
+    borderRadius: 18,
+  },
+  listActionBtnAtelier: {
+    backgroundColor: C.accentSoft,
+    borderColor: C.line,
+  },
+  storeNameAtelier: {
+    fontFamily: fontFamilies.mono.semibold,
+    color: C.accent,
   },
   storeName: {
     fontFamily: fontFamilies.mono.medium,

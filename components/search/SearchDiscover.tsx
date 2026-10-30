@@ -16,8 +16,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { C } from "@/components/orders/parcel-track";
 
-const GOLD = colors.accent2.ochre;
 const CREAM = colors.paper.cream;
 const INK = colors.ink.DEFAULT;
 
@@ -162,7 +162,7 @@ function DeptTile({
         <View style={styles.deptTopRow}>
           <Text style={styles.deptIndex}>{String(index + 1).padStart(2, "0")}</Text>
           <View style={styles.deptGlassArrow}>
-            <Ionicons name="arrow-forward" size={14} color={CREAM} />
+            <Ionicons name="arrow-forward" size={14} color={C.ink} />
           </View>
         </View>
 
@@ -305,7 +305,7 @@ export function SearchDiscover({
                 accessibilityLabel={`Search ${term}`}
               >
                 <View style={styles.recentChipIcon}>
-                  <Ionicons name="time-outline" size={12} color={colors.olive[700]} />
+                  <Ionicons name="time-outline" size={13} color={C.text} />
                 </View>
                 <Text style={styles.recentChipText} numberOfLines={1}>{term}</Text>
                 <Ionicons name="arrow-up-outline" size={13} color={colors.light.mutedForeground} style={styles.recentChipArrow} />
@@ -338,20 +338,22 @@ export function SearchDiscover({
                 accessibilityRole="button"
                 accessibilityLabel={`Search ${item.term}`}
               >
-                <Text style={[styles.trendRank, hot && styles.trendRankHot]}>
-                  {String(index + 1).padStart(2, "0")}
-                </Text>
+                <View style={[styles.trendRankBadge, hot && styles.trendRankBadgeHot]}>
+                  <Text style={[styles.trendRank, hot && styles.trendRankHot]}>
+                    {String(index + 1).padStart(2, "0")}
+                  </Text>
+                </View>
                 <View style={styles.trendBody}>
                   <Text style={styles.trendTerm} numberOfLines={1}>{item.term}</Text>
                   {hot ? (
                     <View style={styles.hotPill}>
-                      <Ionicons name="flame" size={10} color={colors.accent2.rust} />
+                      <Ionicons name="flame" size={10} color={C.ink} />
                       <Text style={styles.hotText}>Hot</Text>
                     </View>
                   ) : null}
                 </View>
                 <View style={styles.trendDelta}>
-                  <Ionicons name="trending-up" size={12} color={colors.olive[600]} />
+                  <Ionicons name="trending-up" size={12} color={C.accent} />
                   <Text style={styles.trendDeltaText}>{item.delta}</Text>
                 </View>
               </PressableScale>
@@ -367,7 +369,7 @@ export function SearchDiscover({
 
       <View style={styles.aiShadow}>
         <LinearGradient
-          colors={["#22271a", colors.olive[950], "#0b0c07"]}
+          colors={["#22241a", C.ink, "#0b0c07"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.aiPanel}
@@ -377,14 +379,9 @@ export function SearchDiscover({
 
           <View style={styles.aiHeader}>
             <View style={styles.aiBrandRow}>
-              <LinearGradient
-                colors={["#e6c873", GOLD, "#9c7a2c"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.aiBadge}
-              >
-                <Ionicons name="sparkles" size={14} color={colors.olive[950]} />
-              </LinearGradient>
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles" size={14} color={C.ink} />
+              </View>
               <Text style={styles.aiBrand}>LUXE AI</Text>
               <View style={styles.aiNewPill}>
                 <Text style={styles.aiNewText}>NEW</Text>
@@ -404,7 +401,7 @@ export function SearchDiscover({
               accessibilityLabel={`${featuredTool.label}. ${featuredTool.description}`}
             >
               <View style={styles.aiFeaturedIcon}>
-                <Ionicons name={featuredTool.icon} size={20} color={colors.olive[950]} />
+                <Ionicons name={featuredTool.icon} size={20} color={C.ink} />
               </View>
               <View style={styles.aiRowText}>
                 <Text style={styles.aiFeaturedTitle}>{featuredTool.label}</Text>
@@ -412,7 +409,7 @@ export function SearchDiscover({
               </View>
               <View style={styles.aiFeaturedCta}>
                 <Text style={styles.aiFeaturedCtaText}>Start</Text>
-                <Ionicons name="arrow-forward" size={13} color={colors.olive[950]} />
+                <Ionicons name="arrow-forward" size={13} color={C.lime} />
               </View>
             </PressableScale>
           ) : null}
@@ -428,7 +425,7 @@ export function SearchDiscover({
               >
                 <View style={styles.aiTileTop}>
                   <View style={styles.aiIcon}>
-                    <Ionicons name={item.icon} size={17} color={GOLD} />
+                    <Ionicons name={item.icon} size={17} color={C.lime} />
                   </View>
                   <Ionicons name="arrow-forward" size={14} color={`${CREAM}59`} style={styles.aiTileArrow} />
                 </View>
@@ -454,21 +451,21 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   heroEyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    letterSpacing: 2.4,
-    color: colors.olive[600],
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10.5,
+    letterSpacing: 2,
+    color: C.accent,
   },
   heroTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 30,
-    lineHeight: 36,
-    letterSpacing: -0.6,
-    color: INK,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
+    lineHeight: 37,
+    letterSpacing: -0.8,
+    color: C.text,
   },
   heroTitleItalic: {
     fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
+    color: C.accent,
   },
   section: {
     gap: spacing[4],
@@ -485,28 +482,31 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   eyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10.5,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
     letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: colors.light.mutedForeground,
+    color: C.accent,
   },
   sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    letterSpacing: -0.3,
-    color: INK,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: C.text,
   },
   clearBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    height: 32,
+    justifyContent: "center",
     borderRadius: radii.full,
-    backgroundColor: `${colors.olive[600]}12`,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: C.line,
   },
   clearText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.olive[700],
+    fontSize: 12.5,
+    color: C.accent,
   },
   chipRow: {
     gap: spacing[2],
@@ -517,32 +517,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    height: 40,
+    height: 42,
     maxWidth: 230,
     paddingLeft: 6,
-    paddingRight: 12,
+    paddingRight: 14,
     borderRadius: radii.full,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: `${INK}0F`,
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
+    borderColor: C.line,
   },
   recentChipIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
+    backgroundColor: C.accentSoft,
   },
   recentChipText: {
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 14,
-    color: INK,
+    color: C.text,
     flexShrink: 1,
   },
   recentChipArrow: {
@@ -552,53 +547,63 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    height: 28,
+    paddingHorizontal: 11,
     borderRadius: radii.full,
-    backgroundColor: `${colors.accent2.rust}12`,
+    backgroundColor: C.ink,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.accent2.rust,
+    backgroundColor: C.lime,
   },
   liveText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    letterSpacing: 0.4,
-    color: colors.accent2.rust,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11.5,
+    color: C.cream,
   },
   trendCard: {
-    borderRadius: radii["3xl"],
+    borderRadius: 26,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: `${INK}0D`,
-    paddingHorizontal: spacing[4],
-    shadowColor: INK,
+    borderColor: C.line,
+    paddingHorizontal: 14,
+    shadowColor: C.ink,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 24,
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
     elevation: 3,
   },
   trendRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingVertical: 14,
+    gap: 12,
+    paddingVertical: 12,
   },
   trendRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: `${INK}1A`,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
   trendRank: {
-    width: 30,
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 20,
-    color: `${INK}40`,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
+  },
+  trendRankBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  trendRankBadgeHot: {
+    backgroundColor: C.ink,
   },
   trendRankHot: {
-    color: colors.accent2.rust,
+    color: C.lime,
   },
   trendBody: {
     flex: 1,
@@ -607,39 +612,39 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   trendTerm: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 15,
-    color: INK,
+    letterSpacing: -0.2,
+    color: C.text,
     flexShrink: 1,
   },
   hotPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
+    height: 20,
     paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: `${colors.accent2.rust}14`,
+    borderRadius: 10,
+    backgroundColor: C.lime,
   },
   hotText: {
     fontFamily: fontFamilies.sans.bold,
     fontSize: 10,
-    letterSpacing: 0.3,
-    color: colors.accent2.rust,
+    color: C.ink,
   },
   trendDelta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
+    height: 26,
+    paddingHorizontal: 9,
+    borderRadius: 13,
+    backgroundColor: C.accentSoft,
   },
   trendDeltaText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.olive[700],
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11.5,
+    color: C.accent,
   },
   deptBento: {
     gap: spacing[3],
@@ -698,22 +703,20 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 10.5,
     letterSpacing: 1.4,
-    color: CREAM,
-    paddingHorizontal: 8,
+    color: C.goldSoft,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: radii.full,
     overflow: "hidden",
-    backgroundColor: "rgba(13,14,10,0.32)",
+    backgroundColor: "rgba(22,23,15,0.72)",
   },
   deptGlassArrow: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(13,14,10,0.32)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(250,248,241,0.4)",
+    backgroundColor: "#FFFFFF",
   },
   deptCopyWide: {
     maxWidth: "62%",
@@ -746,18 +749,18 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: GOLD,
+    color: C.lime,
   },
   deptCtaRule: {
     width: 22,
     height: 1,
-    backgroundColor: GOLD,
+    backgroundColor: C.lime,
   },
   aiShadow: {
     borderRadius: 28,
-    shadowColor: colors.olive[950],
+    shadowColor: C.ink,
     shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 10,
   },
@@ -766,8 +769,6 @@ const styles = StyleSheet.create({
     gap: spacing[4],
     borderRadius: 28,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: `${GOLD}26`,
   },
   aiGlowA: {
     position: "absolute",
@@ -776,7 +777,7 @@ const styles = StyleSheet.create({
     borderRadius: 110,
     top: -110,
     right: -70,
-    backgroundColor: `${GOLD}1A`,
+    backgroundColor: "rgba(200,224,138,0.08)",
   },
   aiGlowB: {
     position: "absolute",
@@ -802,25 +803,26 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.lime,
   },
   aiBrand: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
     letterSpacing: 2,
-    color: GOLD,
+    color: C.goldSoft,
   },
   aiNewPill: {
     paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: `${GOLD}59`,
+    height: 18,
+    justifyContent: "center",
+    borderRadius: 9,
+    backgroundColor: C.lime,
   },
   aiNewText: {
     fontFamily: fontFamilies.sans.bold,
     fontSize: 9,
-    letterSpacing: 1,
-    color: GOLD,
+    letterSpacing: 0.8,
+    color: C.ink,
   },
   aiTitle: {
     fontFamily: fontFamilies.display.regular,
@@ -831,7 +833,7 @@ const styles = StyleSheet.create({
   },
   aiTitleItalic: {
     fontFamily: fontFamilies.display.italic,
-    color: GOLD,
+    color: C.lime,
   },
   aiSubtitle: {
     fontFamily: fontFamilies.sans.regular,
@@ -842,17 +844,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    padding: spacing[3],
-    borderRadius: radii["2xl"],
-    backgroundColor: CREAM,
+    padding: 12,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
   },
   aiFeaturedIcon: {
     width: 44,
     height: 44,
-    borderRadius: radii.xl,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: GOLD,
+    backgroundColor: C.lime,
   },
   aiRowText: {
     flex: 1,
@@ -871,16 +873,16 @@ const styles = StyleSheet.create({
   aiFeaturedCta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 5,
+    height: 34,
+    paddingHorizontal: 14,
     borderRadius: radii.full,
-    backgroundColor: `${colors.olive[950]}0F`,
+    backgroundColor: C.ink,
   },
   aiFeaturedCtaText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.olive[950],
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12.5,
+    color: C.cream,
   },
   aiGrid: {
     flexDirection: "row",
@@ -892,10 +894,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: spacing[3.5],
     gap: 4,
-    borderRadius: radii["2xl"],
-    backgroundColor: `${CREAM}0A`,
+    borderRadius: 22,
+    backgroundColor: "rgba(250,248,241,0.05)",
     borderWidth: 1,
-    borderColor: `${CREAM}17`,
+    borderColor: "rgba(250,248,241,0.09)",
   },
   aiTileTop: {
     flexDirection: "row",
@@ -907,14 +909,12 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "-45deg" }],
   },
   aiIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.lg,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${GOLD}1F`,
-    borderWidth: 1,
-    borderColor: `${GOLD}2E`,
+    backgroundColor: "rgba(200,224,138,0.12)",
   },
   aiCardTitle: {
     fontFamily: fontFamilies.sans.semibold,

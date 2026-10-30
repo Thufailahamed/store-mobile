@@ -1,5 +1,11 @@
 import React from "react";
-import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -13,7 +19,11 @@ interface Props {
 
 const GOLD_DEEP = "#85651b";
 
-const FEATURES: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }[] = [
+const FEATURES: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  desc: string;
+}[] = [
   {
     icon: "cube-outline",
     title: "Automatic order intake",
@@ -43,8 +53,8 @@ export function WardrobeEmptyState({ onSync, syncing, onExplore }: Props) {
 
         <Text style={styles.title}>Your closet is empty</Text>
         <Text style={styles.sub}>
-          Pieces from delivered orders appear here automatically. Sync to pull in any recent
-          deliveries.
+          Pieces from delivered orders appear here automatically. Sync to pull
+          in any recent deliveries.
         </Text>
 
         <TouchableOpacity
@@ -68,7 +78,9 @@ export function WardrobeEmptyState({ onSync, syncing, onExplore }: Props) {
 
         <TouchableOpacity
           style={styles.ctaSecondary}
-          onPress={onExplore ?? (() => router.push("/(main)/account/orders" as any))}
+          onPress={
+            onExplore ?? (() => router.push("/(main)/account/orders" as any))
+          }
           activeOpacity={0.7}
           hitSlop={6}
         >
@@ -79,7 +91,10 @@ export function WardrobeEmptyState({ onSync, syncing, onExplore }: Props) {
       <View style={styles.features}>
         <Text style={styles.eyebrow}>What you get</Text>
         {FEATURES.map((f, i) => (
-          <View key={f.title} style={[styles.featureRow, i > 0 && styles.featureDivider]}>
+          <View
+            key={f.title}
+            style={[styles.featureRow, i > 0 && styles.featureDivider]}
+          >
             <View style={styles.featureIcon}>
               <Ionicons name={f.icon} size={16} color={GOLD_DEEP} />
             </View>
@@ -104,7 +119,7 @@ const styles = StyleSheet.create({
   },
   card: {
     alignItems: "center",
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
     borderColor: HAIRLINE,
@@ -115,13 +130,13 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing[4],
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     letterSpacing: -0.3,
     color: colors.light.foreground,
@@ -144,7 +159,7 @@ const styles = StyleSheet.create({
     paddingLeft: 22,
     paddingRight: 6,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
+    backgroundColor: "#15160f",
     marginTop: spacing[5],
   },
   ctaDisabled: {
@@ -159,7 +174,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -175,7 +190,7 @@ const styles = StyleSheet.create({
   },
 
   features: {
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     borderWidth: 1,
     borderColor: HAIRLINE,

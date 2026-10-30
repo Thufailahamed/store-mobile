@@ -251,6 +251,7 @@ export interface Order {
   notes?: string;
   delivered_at?: string | null;
   placed_at: string;
+  updated_at?: string | null;
   items?: OrderItem[];
   address?: Address;
   route_id?: string | null;

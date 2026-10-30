@@ -5,6 +5,7 @@ import { Ionicons } from "@/components/ui/Icon";
 import { Label } from "@/components/ui/Typography";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
 import { discountPct } from "@/lib/utils";
 import type { ProductImage } from "@/lib/types";
 import { ImageZoomModal } from "./ImageZoomModal";
@@ -204,16 +205,17 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 16,
     left: 32,
-    backgroundColor: colors.accent2.rust,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    height: 28,
+    justifyContent: "center",
+    backgroundColor: C.ink,
+    paddingHorizontal: 12,
     borderRadius: radii.full,
   },
   stampText: {
-    color: "#ffffff",
-    fontSize: 10,
-    fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.8,
+    color: C.lime,
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.bold,
+    letterSpacing: 0.4,
   },
   zoomHintBtn: {
     position: "absolute",

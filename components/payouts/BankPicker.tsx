@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   grabber: { alignSelf: "center", width: 38, height: 4, borderRadius: 2, backgroundColor: "rgba(83,94,44,0.18)", marginTop: 8 },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 10, paddingBottom: 12 },
   sheetKicker: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.5, color: colors.olive[700] },
-  sheetTitle: { marginTop: 2, fontFamily: fontFamilies.display.semibold, fontSize: 21, color: INK, letterSpacing: -0.2 },
+  sheetTitle: { marginTop: 2, fontFamily: fontFamilies.sans.bold, fontSize: 21, color: INK, letterSpacing: -0.2 },
   closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.paper.DEFAULT, alignItems: "center", justifyContent: "center" },
   search: {
     flexDirection: "row",

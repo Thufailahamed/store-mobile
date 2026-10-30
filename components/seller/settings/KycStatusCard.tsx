@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     color: INK,
     letterSpacing: -0.3,

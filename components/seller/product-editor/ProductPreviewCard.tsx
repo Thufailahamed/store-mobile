@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   addBagText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, letterSpacing: 1.4, color: INK },
   info: { padding: 12, gap: 3 },
   brand: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, letterSpacing: 1.4, color: colors.ink.mute },
-  name: { fontFamily: fontFamilies.display.semibold, fontSize: 15, lineHeight: 19, color: INK },
+  name: { fontFamily: fontFamilies.sans.bold, fontSize: 15, lineHeight: 19, color: INK },
   nameEmpty: { color: "rgba(22,23,15,0.3)" },
   short: { fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.ink.mute },
   priceRow: { flexDirection: "row", alignItems: "baseline", gap: 7, marginTop: 4 },

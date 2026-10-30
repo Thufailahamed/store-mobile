@@ -128,8 +128,8 @@ export function CategoryScroller({ categories }: CategoryScrollerProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: spacing[3],
-    marginBottom: spacing[4],
+    marginTop: 2,
+    marginBottom: spacing[6],
   },
   scroll: {
     paddingHorizontal: spacing[5],
@@ -141,10 +141,10 @@ const styles = StyleSheet.create({
   },
   ring: {
     padding: RING - 1,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.14)",
+    borderWidth: 1.5,
+    borderColor: "rgba(200, 164, 74, 0.55)",
     borderRadius: 999,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     shadowColor: colors.ink.DEFAULT,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.07,
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   ringDark: {
-    borderColor: "rgba(200, 164, 74, 0.45)",
+    borderColor: colors.ink.DEFAULT,
   },
   arch: {
     width: TILE_W,

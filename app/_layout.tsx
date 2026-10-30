@@ -45,6 +45,7 @@ import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 import { completeAuthCallback } from "@/lib/supabase/oauth";
 import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush, mapWebPathToMobileRoute } from "@/lib/utils/safe-route";
 import { BiometricGate } from "@/components/auth/BiometricGate";
+import { useAuthRedirectHeld } from "@/lib/auth-redirect-hold";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -86,6 +87,7 @@ function RootLayoutNav() {
   const notifListenerRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const redirectHeld = useAuthRedirectHeld();
 
   useEffect(() => {
     hasCompletedOnboarding().then((complete) => {
@@ -98,6 +100,8 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading || !onboardingChecked) return;
     if (session && roleLoading) return;
+    // A screen (the OTP "Verified" animation) is finishing before we leave.
+    if (redirectHeld) return;
 
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboardingGroup = segments[0] === "(onboarding)";
@@ -152,7 +156,7 @@ function RootLayoutNav() {
       }
       return;
     }
-  }, [session, user?.id, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete]);
+  }, [session, user?.id, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete, redirectHeld]);
 
   // Hide splash once onboarding + auth bootstrap finish. Role lookup continues in background.
   useEffect(() => {

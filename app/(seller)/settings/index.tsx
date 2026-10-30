@@ -36,6 +36,7 @@ import {
 } from "@/lib/seller-access";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
+import { SellerGlow } from "@/components/seller/chrome";
 import type { Store } from "@/lib/types";
 import type { PayoutSettings } from "@/lib/api/backend";
 
@@ -245,7 +246,9 @@ export default function SellerSettings() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <SellerGlow />
       <View style={[styles.bar, { paddingTop: insets.top }]}>
+        <SellerGlow />
         <View style={styles.barRow}>
           <SellerBackButton label="More" fallbackHref="/(seller)/more" />
           <Animated.Text style={[styles.barTitle, { opacity: barTitleOpacity }]} numberOfLines={1}>
@@ -274,11 +277,7 @@ export default function SellerSettings() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
       >
         <View style={styles.header}>
-          <View style={styles.kickerRow}>
-            <View style={styles.kickerDot} />
-            <Text style={styles.kicker}>Account</Text>
-          </View>
-          <Text style={styles.title}>Store settings</Text>
+          <Text style={styles.title} accessibilityRole="header">Store settings</Text>
           <View style={styles.accountRow}>
             <Ionicons name="person-circle-outline" size={14} color={colors.ink.mute} />
             <Text style={styles.signedIn} numberOfLines={1}>
@@ -361,12 +360,12 @@ function SectionHead({ index, label }: { index: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  bar: { backgroundColor: colors.light.background, zIndex: 2 },
+  bar: { zIndex: 2, overflow: "hidden" },
   barRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    minHeight: 52,
+    minHeight: 62,
     paddingHorizontal: spacing[5],
   },
   barTitle: {
@@ -374,19 +373,22 @@ const styles = StyleSheet.create({
     left: 96,
     right: 96,
     textAlign: "center",
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 17,
     color: INK,
   },
   barAction: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(83,94,44,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   barBorder: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(200,164,74,0.55)" },
   group: {
@@ -403,7 +405,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
     alignItems: "center",
@@ -423,7 +425,7 @@ const styles = StyleSheet.create({
     color: INK,
   },
   sectionLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(200,164,74,0.5)", marginLeft: 4 },
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingHorizontal: spacing[5], gap: spacing[4], paddingTop: spacing[1] },
   centered: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 8 },
   header: { paddingBottom: spacing[1] },
@@ -452,8 +454,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 31,
     color: INK,
     letterSpacing: -0.8,
   },
@@ -471,7 +472,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     color: INK,
     textAlign: "center",

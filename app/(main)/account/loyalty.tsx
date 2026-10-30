@@ -12,7 +12,10 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -26,6 +29,7 @@ import {
 } from "@/lib/hooks/useLoyalty";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 interface LoyaltyTxn {
   id: string;
@@ -44,7 +48,11 @@ const TIER_DETAILS: Record<
   LoyaltyTier,
   {
     copy: string;
-    perks: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }[];
+    perks: {
+      icon: keyof typeof Ionicons.glyphMap;
+      title: string;
+      desc: string;
+    }[];
     tag: string;
   }
 > = {
@@ -164,7 +172,13 @@ const EARN_RATE: Record<LoyaltyTier, number> = {
 /** Metallic finish per tier — drives the membership card and tier swatches. */
 const TIER_FINISH: Record<
   LoyaltyTier,
-  { card: [string, string, string]; ink: string; inkSoft: string; accent: string; swatch: [string, string] }
+  {
+    card: [string, string, string];
+    ink: string;
+    inkSoft: string;
+    accent: string;
+    swatch: [string, string];
+  }
 > = {
   Bronze: {
     card: ["#5a3a22", "#2e1d10", "#1a110a"],
@@ -236,7 +250,8 @@ export default function LoyaltyScreen() {
   const tier = tierProgress(lifetime);
   const currentTier = tier.name as LoyaltyTier;
   const currentIndex = TIER_ORDER.indexOf(currentTier);
-  const nextTierName = currentIndex < TIER_ORDER.length - 1 ? TIER_ORDER[currentIndex + 1] : null;
+  const nextTierName =
+    currentIndex < TIER_ORDER.length - 1 ? TIER_ORDER[currentIndex + 1] : null;
   const pointsToNext = tier.next !== Infinity ? tier.next - lifetime : 0;
   const spendToNext = Math.ceil((pointsToNext / EARN_RATE[currentTier]) * 100);
   const finish = TIER_FINISH[currentTier];
@@ -249,8 +264,12 @@ export default function LoyaltyScreen() {
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
     user?.email?.split("@")[0] ||
     "LUXE Patron";
-  const memberSince = user?.created_at ? new Date(user.created_at).getFullYear() : null;
-  const memberNo = user?.id ? user.id.replace(/-/g, "").slice(0, 8).toUpperCase() : "--------";
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).getFullYear()
+    : null;
+  const memberNo = user?.id
+    ? user.id.replace(/-/g, "").slice(0, 8).toUpperCase()
+    : "--------";
 
   useEffect(() => {
     Animated.timing(progressAnim, {
@@ -265,23 +284,10 @@ export default function LoyaltyScreen() {
   const cardHeight = Math.round(cardWidth / 1.58);
 
   return (
-    <PaperBackground>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Navigation */}
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            style={styles.navBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-          </TouchableOpacity>
-
-          <Text style={styles.navTitle}>Rewards</Text>
-
+    <UserPageFrame
+      title="Rewards"
+      right={
+        <>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={onRefresh}
@@ -294,11 +300,17 @@ export default function LoyaltyScreen() {
             {refreshing ? (
               <ActivityIndicator size="small" color={GOLD} />
             ) : (
-              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+              <Ionicons
+                name="refresh-outline"
+                size={18}
+                color={colors.light.foreground}
+              />
             )}
           </TouchableOpacity>
-        </View>
-
+        </>
+      }
+    >
+      <SafeAreaView style={styles.container} edges={[]}>
         {loyalty.loading && !refreshing ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={GOLD} size="small" />
@@ -306,9 +318,18 @@ export default function LoyaltyScreen() {
           </View>
         ) : (
           <ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
             showsVerticalScrollIndicator={false}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} />}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={GOLD}
+              />
+            }
           >
             {/* Heading */}
             <View style={styles.pageHead}>
@@ -317,7 +338,8 @@ export default function LoyaltyScreen() {
                 <Text style={styles.eyebrow}>Patron program</Text>
               </View>
               <Text style={styles.pageTitle}>
-                Privilege &amp; <Text style={styles.pageTitleAccent}>rewards.</Text>
+                Privilege &amp;{" "}
+                <Text style={styles.pageTitleAccent}>rewards.</Text>
               </Text>
             </View>
 
@@ -330,9 +352,45 @@ export default function LoyaltyScreen() {
                 style={[styles.memberCard, { height: cardHeight }]}
               >
                 {/* Guilloché-style rings + sheen */}
-                <View style={[styles.ring, { borderColor: `${finish.accent}22`, width: cardWidth, height: cardWidth, borderRadius: cardWidth / 2, right: -cardWidth * 0.45, top: -cardWidth * 0.35 }]} />
-                <View style={[styles.ring, { borderColor: `${finish.accent}18`, width: cardWidth * 0.75, height: cardWidth * 0.75, borderRadius: cardWidth, right: -cardWidth * 0.3, top: -cardWidth * 0.22 }]} />
-                <View style={[styles.ring, { borderColor: `${finish.accent}12`, width: cardWidth * 0.5, height: cardWidth * 0.5, borderRadius: cardWidth, right: -cardWidth * 0.15, top: -cardWidth * 0.1 }]} />
+                <View
+                  style={[
+                    styles.ring,
+                    {
+                      borderColor: `${finish.accent}22`,
+                      width: cardWidth,
+                      height: cardWidth,
+                      borderRadius: cardWidth / 2,
+                      right: -cardWidth * 0.45,
+                      top: -cardWidth * 0.35,
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.ring,
+                    {
+                      borderColor: `${finish.accent}18`,
+                      width: cardWidth * 0.75,
+                      height: cardWidth * 0.75,
+                      borderRadius: cardWidth,
+                      right: -cardWidth * 0.3,
+                      top: -cardWidth * 0.22,
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.ring,
+                    {
+                      borderColor: `${finish.accent}12`,
+                      width: cardWidth * 0.5,
+                      height: cardWidth * 0.5,
+                      borderRadius: cardWidth,
+                      right: -cardWidth * 0.15,
+                      top: -cardWidth * 0.1,
+                    },
+                  ]}
+                />
                 <LinearGradient
                   colors={["rgba(255,255,255,0.14)", "rgba(255,255,255,0)"]}
                   start={{ x: 0, y: 0 }}
@@ -343,8 +401,12 @@ export default function LoyaltyScreen() {
 
                 <View style={styles.memberTop}>
                   <View>
-                    <Text style={[styles.wordmark, { color: finish.ink }]}>LUXE</Text>
-                    <Text style={[styles.memberTag, { color: finish.accent }]}>{shownTierLabel(currentTier)}</Text>
+                    <Text style={[styles.wordmark, { color: finish.ink }]}>
+                      LUXE
+                    </Text>
+                    <Text style={[styles.memberTag, { color: finish.accent }]}>
+                      {shownTierLabel(currentTier)}
+                    </Text>
                   </View>
                   <LinearGradient
                     colors={[finish.swatch[0], finish.swatch[1]]}
@@ -352,32 +414,66 @@ export default function LoyaltyScreen() {
                     end={{ x: 1, y: 1 }}
                     style={styles.emblem}
                   >
-                    <Ionicons name="diamond-outline" size={16} color={finish.card[2]} />
+                    <Ionicons
+                      name="diamond-outline"
+                      size={16}
+                      color={finish.card[2]}
+                    />
                   </LinearGradient>
                 </View>
 
                 <View style={{ flex: 1 }} />
 
-                <Text style={[styles.memberPointsLabel, { color: finish.inkSoft }]}>AVAILABLE POINTS</Text>
+                <Text
+                  style={[styles.memberPointsLabel, { color: finish.inkSoft }]}
+                >
+                  AVAILABLE POINTS
+                </Text>
                 <View style={styles.memberPointsRow}>
                   <Text style={[styles.memberPoints, { color: finish.ink }]}>
                     {loyalty.state.points.toLocaleString()}
                   </Text>
-                  <Text style={[styles.memberPts, { color: finish.accent }]}>pts</Text>
+                  <Text style={[styles.memberPts, { color: finish.accent }]}>
+                    pts
+                  </Text>
                 </View>
 
-                <View style={[styles.memberFoot, { borderTopColor: `${finish.accent}30` }]}>
+                <View
+                  style={[
+                    styles.memberFoot,
+                    { borderTopColor: `${finish.accent}30` },
+                  ]}
+                >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.memberFootLabel, { color: finish.inkSoft }]}>MEMBER</Text>
-                    <Text style={[styles.memberFootValue, { color: finish.ink }]} numberOfLines={1}>
+                    <Text
+                      style={[
+                        styles.memberFootLabel,
+                        { color: finish.inkSoft },
+                      ]}
+                    >
+                      MEMBER
+                    </Text>
+                    <Text
+                      style={[styles.memberFootValue, { color: finish.ink }]}
+                      numberOfLines={1}
+                    >
                       {memberName}
                     </Text>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={[styles.memberFootLabel, { color: finish.inkSoft }]}>
+                    <Text
+                      style={[
+                        styles.memberFootLabel,
+                        { color: finish.inkSoft },
+                      ]}
+                    >
                       {memberSince ? `SINCE ${memberSince}` : "NO."}
                     </Text>
-                    <Text style={[styles.memberFootMono, { color: finish.ink }]}>{memberNo}</Text>
+                    <Text
+                      style={[styles.memberFootMono, { color: finish.ink }]}
+                    >
+                      {memberNo}
+                    </Text>
                   </View>
                 </View>
               </LinearGradient>
@@ -387,26 +483,36 @@ export default function LoyaltyScreen() {
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text style={styles.eyebrow}>Your journey</Text>
-                <Text style={styles.cardCount}>{lifetime.toLocaleString()} lifetime pts</Text>
+                <Text style={styles.cardCount}>
+                  {lifetime.toLocaleString()} lifetime pts
+                </Text>
               </View>
 
               {nextTierName ? (
                 <>
                   <Text style={styles.progressHeadline}>
-                    <Text style={styles.progressHeadlineNum}>{pointsToNext.toLocaleString()}</Text>
-                    {" "}points to{" "}
-                    <Text style={styles.progressHeadlineTier}>{nextTierName}</Text>
+                    <Text style={styles.progressHeadlineNum}>
+                      {pointsToNext.toLocaleString()}
+                    </Text>{" "}
+                    points to{" "}
+                    <Text style={styles.progressHeadlineTier}>
+                      {nextTierName}
+                    </Text>
                   </Text>
                   <Text style={styles.cardCopy}>
-                    About LKR {spendToNext.toLocaleString()} in purchases at your current earning rate.
+                    About LKR {spendToNext.toLocaleString()} in purchases at
+                    your current earning rate.
                   </Text>
                 </>
               ) : (
                 <>
                   <Text style={styles.progressHeadline}>
-                    You've reached <Text style={styles.progressHeadlineTier}>Platinum</Text>
+                    You've reached{" "}
+                    <Text style={styles.progressHeadlineTier}>Platinum</Text>
                   </Text>
-                  <Text style={styles.cardCopy}>The highest tier of patronage — thank you.</Text>
+                  <Text style={styles.cardCopy}>
+                    The highest tier of patronage — thank you.
+                  </Text>
                 </>
               )}
 
@@ -415,7 +521,12 @@ export default function LoyaltyScreen() {
                   <Animated.View
                     style={[
                       styles.progressFillWrap,
-                      { width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }) },
+                      {
+                        width: progressAnim.interpolate({
+                          inputRange: [0, 100],
+                          outputRange: ["0%", "100%"],
+                        }),
+                      },
                     ]}
                   >
                     <LinearGradient
@@ -430,13 +541,15 @@ export default function LoyaltyScreen() {
                   <View style={styles.progressEnd}>
                     <TierDot tier={currentTier} size={10} />
                     <Text style={styles.progressEndText}>
-                      {currentTier} · {TIER_RANGES[currentTier].min.toLocaleString()}
+                      {currentTier} ·{" "}
+                      {TIER_RANGES[currentTier].min.toLocaleString()}
                     </Text>
                   </View>
                   {nextTierName ? (
                     <View style={styles.progressEnd}>
                       <Text style={styles.progressEndText}>
-                        {nextTierName} · {TIER_RANGES[nextTierName].min.toLocaleString()}
+                        {nextTierName} ·{" "}
+                        {TIER_RANGES[nextTierName].min.toLocaleString()}
                       </Text>
                       <TierDot tier={nextTierName} size={10} />
                     </View>
@@ -451,7 +564,8 @@ export default function LoyaltyScreen() {
                 <Text style={styles.eyebrow}>Tiers</Text>
                 <Text style={styles.sectionTitle}>Patron progression</Text>
                 <Text style={styles.sectionSub}>
-                  Lifetime points set your status. Tap a tier to preview its privileges.
+                  Lifetime points set your status. Tap a tier to preview its
+                  privileges.
                 </Text>
               </View>
               <ScrollView
@@ -469,7 +583,9 @@ export default function LoyaltyScreen() {
                   return (
                     <Pressable
                       key={t}
-                      onPress={() => setPreviewTier(t === currentTier ? null : t)}
+                      onPress={() =>
+                        setPreviewTier(t === currentTier ? null : t)
+                      }
                       style={({ pressed }) => [
                         styles.tierTile,
                         selected && styles.tierTileSelected,
@@ -485,7 +601,12 @@ export default function LoyaltyScreen() {
                         end={{ x: 1, y: 1 }}
                         style={styles.tierSwatch}
                       >
-                        <View style={[styles.tierSwatchRing, { borderColor: `${f.accent}30` }]} />
+                        <View
+                          style={[
+                            styles.tierSwatchRing,
+                            { borderColor: `${f.accent}30` },
+                          ]}
+                        />
                         <Ionicons
                           name={unlocked ? "diamond" : "lock-closed"}
                           size={15}
@@ -504,8 +625,15 @@ export default function LoyaltyScreen() {
                         {range.min.toLocaleString()}
                         {range.cap ? `–${range.cap.toLocaleString()}` : "+"} pts
                       </Text>
-                      <Text style={[styles.tierTileStatus, unlocked && { color: colors.olive[700] }]}>
-                        {unlocked ? "Unlocked" : `${(range.min - lifetime).toLocaleString()} to go`}
+                      <Text
+                        style={[
+                          styles.tierTileStatus,
+                          unlocked && { color: colors.olive[700] },
+                        ]}
+                      >
+                        {unlocked
+                          ? "Unlocked"
+                          : `${(range.min - lifetime).toLocaleString()} to go`}
                       </Text>
                     </Pressable>
                   );
@@ -516,7 +644,9 @@ export default function LoyaltyScreen() {
             {/* Tier perks */}
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Text style={styles.eyebrow}>{shownUnlocked ? "Your benefits" : "Preview"}</Text>
+                <Text style={styles.eyebrow}>
+                  {shownUnlocked ? "Your benefits" : "Preview"}
+                </Text>
                 {shownUnlocked ? (
                   <View style={styles.activePill}>
                     <View style={styles.activeDot} />
@@ -524,26 +654,54 @@ export default function LoyaltyScreen() {
                   </View>
                 ) : (
                   <View style={[styles.activePill, styles.lockedPill]}>
-                    <Ionicons name="lock-closed" size={10} color={colors.ink.mute} />
-                    <Text style={[styles.activePillText, { color: colors.ink.mute }]}>Locked</Text>
+                    <Ionicons
+                      name="lock-closed"
+                      size={10}
+                      color={colors.ink.mute}
+                    />
+                    <Text
+                      style={[
+                        styles.activePillText,
+                        { color: colors.ink.mute },
+                      ]}
+                    >
+                      Locked
+                    </Text>
                   </View>
                 )}
               </View>
               <Text style={styles.cardTitle}>
-                {shownTier} <Text style={styles.cardTitleItalic}>privileges</Text>
+                {shownTier}{" "}
+                <Text style={styles.cardTitleItalic}>privileges</Text>
               </Text>
               <Text style={styles.cardCopy}>{shownDetails.copy}</Text>
 
               <View style={styles.perkGrid}>
                 {shownDetails.perks.map((p, i) => (
-                  <View key={`${shownTier}-${i}`} style={[styles.perkTile, !shownUnlocked && { opacity: 0.72 }]}>
+                  <View
+                    key={`${shownTier}-${i}`}
+                    style={[
+                      styles.perkTile,
+                      !shownUnlocked && { opacity: 0.72 },
+                    ]}
+                  >
                     <LinearGradient
-                      colors={shownUnlocked ? [GOLD_SOFT, GOLD] : ["#e6e4da", "#cfccbf"]}
+                      colors={
+                        shownUnlocked
+                          ? [GOLD_SOFT, GOLD]
+                          : ["#e6e4da", "#cfccbf"]
+                      }
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={styles.perkIcon}
                     >
-                      <Ionicons name={p.icon} size={16} color={shownUnlocked ? colors.olive[950] : colors.ink.mute} />
+                      <Ionicons
+                        name={p.icon}
+                        size={16}
+                        color={
+                          shownUnlocked ? colors.olive[950] : colors.ink.mute
+                        }
+                      />
                     </LinearGradient>
                     <View style={styles.perkBody}>
                       <Text style={styles.perkTitle}>{p.title}</Text>
@@ -559,7 +717,8 @@ export default function LoyaltyScreen() {
               <View style={styles.cardHeader}>
                 <Text style={styles.eyebrow}>Ledger</Text>
                 <Text style={styles.cardCount}>
-                  {transactions.length} {transactions.length === 1 ? "entry" : "entries"}
+                  {transactions.length}{" "}
+                  {transactions.length === 1 ? "entry" : "entries"}
                 </Text>
               </View>
               <Text style={styles.cardTitle}>
@@ -569,7 +728,10 @@ export default function LoyaltyScreen() {
               {transactions.length === 0 ? (
                 <View style={styles.emptyHistory}>
                   <View style={styles.emptyHalo}>
-                    <LinearGradient colors={[colors.olive[800], colors.olive[950]]} style={styles.emptyHistoryIcon}>
+                    <LinearGradient
+                      colors={[colors.olive[800], colors.olive[950]]}
+                      style={styles.emptyHistoryIcon}
+                    >
                       <Ionicons name="receipt-outline" size={20} color={GOLD} />
                     </LinearGradient>
                   </View>
@@ -584,23 +746,41 @@ export default function LoyaltyScreen() {
                     const isEarn = t.points > 0;
                     const d = new Date(t.created_at);
                     return (
-                      <View key={t.id ?? i} style={[styles.histRow, i > 0 && styles.rowDivider]}>
+                      <View
+                        key={t.id ?? i}
+                        style={[styles.histRow, i > 0 && styles.rowDivider]}
+                      >
                         <View style={styles.histDate}>
                           <Text style={styles.histDay}>{d.getDate()}</Text>
                           <Text style={styles.histMonth}>
-                            {d.toLocaleDateString(undefined, { month: "short" }).toUpperCase()}
+                            {d
+                              .toLocaleDateString(undefined, { month: "short" })
+                              .toUpperCase()}
                           </Text>
                         </View>
                         <View style={styles.histBody}>
                           <Text style={styles.histReason} numberOfLines={1}>
-                            {t.reason || (isEarn ? "Points credited" : "Points redeemed")}
+                            {t.reason ||
+                              (isEarn ? "Points credited" : "Points redeemed")}
                           </Text>
                           <Text style={styles.histMeta}>
                             {isEarn ? "Earned" : "Redeemed"} · {d.getFullYear()}
                           </Text>
                         </View>
-                        <View style={[styles.histPtsPill, isEarn ? styles.histPtsPillEarn : styles.histPtsPillSpend]}>
-                          <Text style={[styles.histPts, isEarn ? styles.histPtsEarn : styles.histPtsSpend]}>
+                        <View
+                          style={[
+                            styles.histPtsPill,
+                            isEarn
+                              ? styles.histPtsPillEarn
+                              : styles.histPtsPillSpend,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.histPts,
+                              isEarn ? styles.histPtsEarn : styles.histPtsSpend,
+                            ]}
+                          >
                             {isEarn ? "+" : "−"}
                             {Math.abs(t.points).toLocaleString()}
                           </Text>
@@ -631,15 +811,22 @@ export default function LoyaltyScreen() {
                     {EARN_RATE[currentTier]} pt per LKR 100 at {currentTier}
                   </Text>
                 </View>
-                <LinearGradient colors={[GOLD_SOFT, GOLD]} style={styles.primaryBtnArrow}>
-                  <Ionicons name="arrow-forward" size={16} color={colors.olive[950]} />
+                <LinearGradient
+                  colors={[GOLD_SOFT, GOLD]}
+                  style={styles.primaryBtnArrow}
+                >
+                  <Ionicons
+                    name="arrow-forward"
+                    size={16}
+                    color={colors.olive[950]}
+                  />
                 </LinearGradient>
               </LinearGradient>
             </TouchableOpacity>
           </ScrollView>
         )}
       </SafeAreaView>
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
@@ -659,461 +846,509 @@ function TierDot({ tier, size }: { tier: LoyaltyTier; size: number }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loadingText: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 14,
-    color: colors.light.mutedForeground,
-  },
+const styles = withUserTheme(
+  StyleSheet.create({
+    container: { flex: 1 },
+    loadingWrap: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 12,
+    },
+    loadingText: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 14,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Nav */
-  navBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
-  },
-  navBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    ...shadows.soft,
-  },
-  navTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 18,
-    color: colors.light.foreground,
-  },
+    /* Nav */
+    navBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing[5],
+      paddingVertical: spacing[2.5],
+    },
+    navBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      ...shadows.soft,
+    },
+    navTitle: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 18,
+      color: colors.light.foreground,
+    },
 
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-    gap: spacing[5],
-  },
+    scrollContent: {
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[2],
+      gap: spacing[5],
+    },
 
-  /* Heading */
-  pageHead: {},
-  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
-  eyebrowRule: { width: 18, height: 1, backgroundColor: GOLD },
-  eyebrow: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
-    letterSpacing: -0.8,
-    lineHeight: 40,
-    color: colors.light.foreground,
-  },
-  pageTitleAccent: { fontFamily: fontFamilies.display.italic, color: GOLD_DEEP },
+    /* Heading */
+    pageHead: {},
+    eyebrowRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 4,
+    },
+    eyebrowRule: { width: 18, height: 1, backgroundColor: GOLD },
+    eyebrow: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 10,
+      letterSpacing: 2,
+      textTransform: "uppercase",
+      color: GOLD_DEEP,
+    },
+    pageTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 34,
+      letterSpacing: -0.8,
+      lineHeight: 40,
+      color: colors.light.foreground,
+    },
+    pageTitleAccent: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
 
-  /* Membership card */
-  cardShadow: {
-    borderRadius: 26,
-    shadowColor: "#16170f",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.28,
-    shadowRadius: 30,
-    elevation: 14,
-  },
-  memberCard: {
-    borderRadius: 26,
-    padding: spacing[5],
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  ring: { position: "absolute", borderWidth: 1 },
-  memberTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  wordmark: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    letterSpacing: 6,
-  },
-  memberTag: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9.5,
-    letterSpacing: 2,
-    marginTop: 4,
-  },
-  emblem: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  memberPointsLabel: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
-    letterSpacing: 1.8,
-  },
-  memberPointsRow: { flexDirection: "row", alignItems: "baseline", gap: 6 },
-  memberPoints: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 46,
-    lineHeight: 54,
-    letterSpacing: -1.4,
-  },
-  memberPts: { fontFamily: fontFamilies.display.italic, fontSize: 18 },
-  memberFoot: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing[3],
-    marginTop: spacing[3],
-    paddingTop: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  memberFootLabel: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8.5,
-    letterSpacing: 1.6,
-  },
-  memberFootValue: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    marginTop: 3,
-  },
-  memberFootMono: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 12,
-    letterSpacing: 2,
-    marginTop: 3,
-  },
+    /* Membership card */
+    cardShadow: {
+      borderRadius: 26,
+      shadowColor: "#16170f",
+      shadowOffset: { width: 0, height: 20 },
+      shadowOpacity: 0.28,
+      shadowRadius: 30,
+      elevation: 14,
+    },
+    memberCard: {
+      borderRadius: 26,
+      padding: spacing[5],
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.08)",
+    },
+    ring: { position: "absolute", borderWidth: 1 },
+    memberTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+    },
+    wordmark: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 20,
+      letterSpacing: 6,
+    },
+    memberTag: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 9.5,
+      letterSpacing: 2,
+      marginTop: 4,
+    },
+    emblem: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    memberPointsLabel: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 9,
+      letterSpacing: 1.8,
+    },
+    memberPointsRow: { flexDirection: "row", alignItems: "baseline", gap: 6 },
+    memberPoints: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 46,
+      lineHeight: 54,
+      letterSpacing: -1.4,
+    },
+    memberPts: { fontFamily: fontFamilies.sans.medium, fontSize: 18 },
+    memberFoot: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: spacing[3],
+      marginTop: spacing[3],
+      paddingTop: spacing[3],
+      borderTopWidth: StyleSheet.hairlineWidth,
+    },
+    memberFootLabel: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 8.5,
+      letterSpacing: 1.6,
+    },
+    memberFootValue: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 14,
+      marginTop: 3,
+    },
+    memberFootMono: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 12,
+      letterSpacing: 2,
+      marginTop: 3,
+    },
 
-  /* Cards */
-  card: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.22)",
-    padding: spacing[5],
-    shadowColor: "#16170f",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.07,
-    shadowRadius: 20,
-    elevation: 4,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  cardTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    letterSpacing: -0.4,
-    color: colors.light.foreground,
-    marginTop: 2,
-  },
-  cardTitleItalic: { fontFamily: fontFamilies.display.italic, color: GOLD_DEEP },
-  cardCopy: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    marginTop: 6,
-  },
-  cardCount: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  activePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(200, 164, 74, 0.14)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(200,164,74,0.4)",
-  },
-  lockedPill: {
-    backgroundColor: "rgba(22,23,15,0.05)",
-    borderColor: "rgba(22,23,15,0.12)",
-  },
-  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GOLD_DEEP },
-  activePillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: GOLD_DEEP,
-  },
+    /* Cards */
+    card: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 26,
+      borderWidth: 1,
+      borderColor: "rgba(200,164,74,0.22)",
+      padding: spacing[5],
+      shadowColor: "#16170f",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.07,
+      shadowRadius: 20,
+      elevation: 4,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 4,
+    },
+    cardTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 22,
+      letterSpacing: -0.4,
+      color: colors.light.foreground,
+      marginTop: 2,
+    },
+    cardTitleItalic: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
+    cardCopy: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+      marginTop: 6,
+    },
+    cardCount: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 10,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: colors.light.mutedForeground,
+    },
+    activePill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radii.full,
+      backgroundColor: "rgba(200, 164, 74, 0.14)",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: "rgba(200,164,74,0.4)",
+    },
+    lockedPill: {
+      backgroundColor: "rgba(22,23,15,0.05)",
+      borderColor: "rgba(22,23,15,0.12)",
+    },
+    activeDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: GOLD_DEEP,
+    },
+    activePillText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 11,
+      color: GOLD_DEEP,
+    },
 
-  /* Progress */
-  progressHeadline: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
-    marginTop: 4,
-  },
-  progressHeadlineNum: { fontFamily: fontFamilies.display.semibold },
-  progressHeadlineTier: { fontFamily: fontFamilies.display.italic, color: GOLD_DEEP },
-  progressBlock: { marginTop: spacing[4], gap: 10 },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.paper.warm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(22,23,15,0.1)",
-    overflow: "hidden",
-  },
-  progressFillWrap: { height: "100%", borderRadius: 5, overflow: "hidden" },
-  progressEnds: { flexDirection: "row", justifyContent: "space-between" },
-  progressEnd: { flexDirection: "row", alignItems: "center", gap: 6 },
-  progressEndText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
+    /* Progress */
+    progressHeadline: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 22,
+      lineHeight: 28,
+      letterSpacing: -0.3,
+      color: colors.light.foreground,
+      marginTop: 4,
+    },
+    progressHeadlineNum: { fontFamily: fontFamilies.sans.bold },
+    progressHeadlineTier: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
+    progressBlock: { marginTop: spacing[4], gap: 10 },
+    progressTrack: {
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.paper.warm,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: "rgba(22,23,15,0.1)",
+      overflow: "hidden",
+    },
+    progressFillWrap: { height: "100%", borderRadius: 5, overflow: "hidden" },
+    progressEnds: { flexDirection: "row", justifyContent: "space-between" },
+    progressEnd: { flexDirection: "row", alignItems: "center", gap: 6 },
+    progressEndText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 11,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Tier selector */
-  sectionHead: { marginBottom: spacing[3] },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    letterSpacing: -0.4,
-    color: colors.light.foreground,
-    marginTop: 4,
-  },
-  sectionSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  tierScroller: { marginHorizontal: -spacing[5] },
-  tierRow: { paddingHorizontal: spacing[5], gap: spacing[3], paddingVertical: 6 },
-  tierTile: {
-    width: 138,
-    padding: spacing[3],
-    borderRadius: 22,
-    backgroundColor: colors.paper.cream,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    ...shadows.soft,
-  },
-  tierTileSelected: {
-    borderColor: GOLD,
-    borderWidth: 1.5,
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-  },
-  tierSwatch: {
-    height: 64,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  tierSwatchRing: {
-    position: "absolute",
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 1,
-    right: -50,
-    top: -50,
-  },
-  tierTileNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing[3] },
-  tierTileName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
-  },
-  tierTileRange: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-  tierTileStatus: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    color: colors.ink.mute,
-    marginTop: 8,
-  },
-  youBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: colors.ink.DEFAULT,
-  },
-  youBadgeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9.5,
-    color: GOLD_SOFT,
-  },
+    /* Tier selector */
+    sectionHead: { marginBottom: spacing[3] },
+    sectionTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 24,
+      letterSpacing: -0.4,
+      color: colors.light.foreground,
+      marginTop: 4,
+    },
+    sectionSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+      marginTop: 4,
+    },
+    tierScroller: { marginHorizontal: -spacing[5] },
+    tierRow: {
+      paddingHorizontal: spacing[5],
+      gap: spacing[3],
+      paddingVertical: 6,
+    },
+    tierTile: {
+      width: 138,
+      padding: spacing[3],
+      borderRadius: 22,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      ...shadows.soft,
+    },
+    tierTileSelected: {
+      borderColor: GOLD,
+      borderWidth: 1.5,
+      shadowOpacity: 0.14,
+      shadowRadius: 14,
+    },
+    tierSwatch: {
+      height: 64,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    tierSwatchRing: {
+      position: "absolute",
+      width: 110,
+      height: 110,
+      borderRadius: 55,
+      borderWidth: 1,
+      right: -50,
+      top: -50,
+    },
+    tierTileNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: spacing[3],
+    },
+    tierTileName: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 17,
+      color: colors.light.foreground,
+    },
+    tierTileRange: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 11.5,
+      color: colors.light.mutedForeground,
+      marginTop: 2,
+    },
+    tierTileStatus: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 10,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: colors.ink.mute,
+      marginTop: 8,
+    },
+    youBadge: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: radii.full,
+      backgroundColor: colors.ink.DEFAULT,
+    },
+    youBadgeText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 9.5,
+      color: GOLD_SOFT,
+    },
 
-  /* Perks */
-  perkGrid: { marginTop: spacing[4], gap: spacing[2.5] },
-  perkTile: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing[3],
-    padding: spacing[3.5],
-    borderRadius: 18,
-    backgroundColor: colors.light.background,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(22,23,15,0.08)",
-  },
-  perkIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  perkBody: { flex: 1, gap: 3 },
-  perkTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  perkDesc: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: colors.light.mutedForeground,
-  },
+    /* Perks */
+    perkGrid: { marginTop: spacing[4], gap: spacing[2.5] },
+    perkTile: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing[3],
+      padding: spacing[3.5],
+      borderRadius: 18,
+      backgroundColor: "#FFFFFF",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: "rgba(22,23,15,0.08)",
+    },
+    perkIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    perkBody: { flex: 1, gap: 3 },
+    perkTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 14,
+      color: colors.light.foreground,
+    },
+    perkDesc: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12.5,
+      lineHeight: 18,
+      color: colors.light.mutedForeground,
+    },
 
-  /* History */
-  emptyHistory: { alignItems: "center", paddingTop: spacing[5], paddingBottom: spacing[2], gap: 4 },
-  emptyHalo: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(200,164,74,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.28)",
-    marginBottom: 10,
-  },
-  emptyHistoryIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyHistoryTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: colors.light.foreground,
-  },
-  emptyHistorySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    maxWidth: 250,
-  },
-  ledger: { marginTop: spacing[3] },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  histRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    paddingVertical: spacing[3],
-  },
-  histDate: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.paper.warm,
-  },
-  histDay: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    lineHeight: 18,
-    color: colors.light.foreground,
-  },
-  histMonth: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8.5,
-    letterSpacing: 1,
-    color: colors.ink.mute,
-  },
-  histBody: { flex: 1, gap: 2 },
-  histReason: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  histMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
-  },
-  histPtsPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radii.full },
-  histPtsPillEarn: { backgroundColor: "rgba(200, 164, 74, 0.14)" },
-  histPtsPillSpend: { backgroundColor: "rgba(184, 92, 58, 0.1)" },
-  histPts: { fontFamily: fontFamilies.display.semibold, fontSize: 14 },
-  histPtsEarn: { color: GOLD_DEEP },
-  histPtsSpend: { color: colors.accent2.rust },
+    /* History */
+    emptyHistory: {
+      alignItems: "center",
+      paddingTop: spacing[5],
+      paddingBottom: spacing[2],
+      gap: 4,
+    },
+    emptyHalo: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(200,164,74,0.08)",
+      borderWidth: 1,
+      borderColor: "rgba(200,164,74,0.28)",
+      marginBottom: 10,
+    },
+    emptyHistoryIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyHistoryTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 18,
+      color: colors.light.foreground,
+    },
+    emptyHistorySub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12.5,
+      lineHeight: 18,
+      color: colors.light.mutedForeground,
+      textAlign: "center",
+      maxWidth: 250,
+    },
+    ledger: { marginTop: spacing[3] },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.light.border,
+    },
+    histRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing[3],
+      paddingVertical: spacing[3],
+    },
+    histDate: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.paper.warm,
+    },
+    histDay: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 16,
+      lineHeight: 18,
+      color: colors.light.foreground,
+    },
+    histMonth: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 8.5,
+      letterSpacing: 1,
+      color: colors.ink.mute,
+    },
+    histBody: { flex: 1, gap: 2 },
+    histReason: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13.5,
+      color: colors.light.foreground,
+    },
+    histMeta: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 11.5,
+      color: colors.light.mutedForeground,
+    },
+    histPtsPill: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: radii.full,
+    },
+    histPtsPillEarn: { backgroundColor: "rgba(200, 164, 74, 0.14)" },
+    histPtsPillSpend: { backgroundColor: "rgba(184, 92, 58, 0.1)" },
+    histPts: { fontFamily: fontFamilies.sans.bold, fontSize: 14 },
+    histPtsEarn: { color: GOLD_DEEP },
+    histPtsSpend: { color: colors.accent2.rust },
 
-  /* CTA */
-  ctaShadow: {
-    borderRadius: 24,
-    shadowColor: "#16170f",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.22,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    borderRadius: 24,
-    paddingVertical: spacing[3.5],
-    paddingLeft: spacing[5],
-    paddingRight: spacing[3],
-  },
-  primaryBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.paper.cream,
-  },
-  primaryBtnSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: "rgba(250,248,241,0.6)",
-    marginTop: 2,
-  },
-  primaryBtnArrow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+    /* CTA */
+    ctaShadow: {
+      borderRadius: 24,
+      shadowColor: "#16170f",
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.22,
+      shadowRadius: 20,
+      elevation: 8,
+    },
+    primaryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing[3],
+      borderRadius: 24,
+      paddingVertical: spacing[3.5],
+      paddingLeft: spacing[5],
+      paddingRight: spacing[3],
+    },
+    primaryBtnText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 15,
+      color: colors.paper.cream,
+    },
+    primaryBtnSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 11.5,
+      color: "rgba(250,248,241,0.6)",
+      marginTop: 2,
+    },
+    primaryBtnArrow: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  }),
+);

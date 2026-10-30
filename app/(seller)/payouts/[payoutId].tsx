@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
+import { SellerGlow } from "@/components/seller/chrome";
 import { getPayoutDetailBackend } from "@/lib/api/backend";
 import { formatPayoutStatus, isPayoutId } from "@/lib/payouts/ledger";
 import { formatPrice } from "@/lib/utils";
@@ -51,6 +52,7 @@ export default function PayoutDetail() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <SellerGlow />
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -67,11 +69,10 @@ export default function PayoutDetail() {
             <Ionicons name="chevron-back" size={20} color={INK} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>Settlement</Text>
-            <Text style={styles.title}>{formatPayoutStatus(p.status)}</Text>
+            <Text style={styles.title} accessibilityRole="header">{formatPayoutStatus(p.status)}</Text>
+            <Text style={styles.headerSub}>Settlement</Text>
           </View>
         </View>
-        <View style={styles.goldRule} />
 
         <Text style={styles.amount}>{formatPrice(p.amount, p.currency ?? "LKR")}</Text>
 
@@ -109,7 +110,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   center: {
     flex: 1,
     alignItems: "center",
@@ -118,16 +119,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   content: { paddingHorizontal: spacing[5], gap: spacing[4] },
-  header: { flexDirection: "row", alignItems: "flex-end", gap: 8, paddingBottom: spacing[2] },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: spacing[2] },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: CREAM,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   kicker: {
     fontFamily: fontFamilies.sans.medium,
@@ -139,11 +143,12 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
     textTransform: "capitalize",
   },
+  headerSub: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: colors.light.mutedForeground, marginTop: 2 },
   goldRule: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(200,164,74,0.55)",
@@ -155,7 +160,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
   },
   section: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
@@ -193,7 +198,7 @@ const styles = StyleSheet.create({
     color: INK,
   },
   emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     color: INK,
     textAlign: "center",

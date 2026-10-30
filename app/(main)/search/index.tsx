@@ -42,6 +42,7 @@ import { tokenizeQuery, expandQueryTerms, buildDidYouMean } from "@/lib/utils/se
 import { useAuth } from "@/lib/supabase/auth";
 import { HomeProductCard } from "@/components/home/premium/HomeProductCard";
 import { pickImage, takePhoto } from "@/lib/upload";
+import { C } from "@/components/orders/parcel-track";
 import {
   getFashionKeywordCompletions,
   matchCategories,
@@ -473,6 +474,12 @@ export default function SearchScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.45, 1]}
+        style={styles.glow}
+      />
       <SearchOrbitChrome
         topInset={insets.top}
         draft={draft}
@@ -976,7 +983,14 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.paper.DEFAULT,
+    backgroundColor: C.paper,
+  },
+  glow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 520,
   },
   /* Body */
   body: {

@@ -62,9 +62,12 @@ export function LogWearSheet({ item, onClose, onConfirm, pending }: Props) {
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Log a wear</Text>
-              <Text style={styles.title} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.title} numberOfLines={1}>
+                {item.name}
+              </Text>
               <Text style={styles.sub}>
-                {item.wear_count}× worn so far{item.brand_name ? ` · ${item.brand_name}` : ""}
+                {item.wear_count}× worn so far
+                {item.brand_name ? ` · ${item.brand_name}` : ""}
               </Text>
             </View>
             <TouchableOpacity hitSlop={8} onPress={onClose}>
@@ -105,7 +108,11 @@ export function LogWearSheet({ item, onClose, onConfirm, pending }: Props) {
               <Text style={styles.btnGhostText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, pending && { opacity: 0.6 }]}
+              style={[
+                styles.btn,
+                styles.btnPrimary,
+                pending && { opacity: 0.6 },
+              ]}
               onPress={handleConfirm}
               activeOpacity={0.85}
               disabled={pending}
@@ -199,7 +206,7 @@ const styles: Record<string, any> = StyleSheet.create({
     textTransform: "uppercase",
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 22,
     color: INK,
     marginTop: 2,
@@ -233,7 +240,7 @@ const styles: Record<string, any> = StyleSheet.create({
     textTransform: "uppercase",
   },
   cpwValue: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 18,
     color: INK,
     marginTop: 2,

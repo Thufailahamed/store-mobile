@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
+import { C } from "@/components/orders/parcel-track";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 
@@ -104,10 +105,10 @@ export function SearchOrbitChrome({
                 <TouchableOpacity
                   onPress={onCameraSearch}
                   hitSlop={6}
-                  style={styles.fieldActionBtn}
+                  style={[styles.fieldActionBtn, styles.fieldActionInk]}
                   accessibilityLabel="Scan an item with the camera"
                 >
-                  <Ionicons name="camera-outline" size={20} color={INK} />
+                  <Ionicons name="camera-outline" size={18} color={C.lime} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -132,9 +133,7 @@ export function SearchOrbitChrome({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing[4],
-    backgroundColor: colors.paper.cream,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: `${colors.olive[900]}12`,
+    backgroundColor: C.glow,
     zIndex: 10,
   },
   topRow: {
@@ -151,10 +150,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: `${colors.ink.DEFAULT}0F`,
-    ...shadows.soft,
-    shadowOpacity: 0.06,
+    shadowColor: C.ink,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
   },
   searchField: {
     flex: 1,
@@ -163,16 +163,16 @@ const styles = StyleSheet.create({
     gap: spacing[2],
     height: 50,
     paddingLeft: spacing[4],
-    paddingRight: spacing[1.5],
+    paddingRight: 6,
     borderRadius: radii.full,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: `${colors.ink.DEFAULT}0F`,
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 6 },
+    borderColor: C.line,
+    shadowColor: C.ink,
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.07,
     shadowRadius: 16,
-    elevation: 4,
+    elevation: 3,
   },
   fieldActions: {
     flexDirection: "row",
@@ -191,7 +191,10 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
+    backgroundColor: C.accentSoft,
+  },
+  fieldActionInk: {
+    backgroundColor: C.ink,
   },
   searchInput: {
     flex: 1,
@@ -211,7 +214,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.olive[600],
+    backgroundColor: C.lime,
   },
   resultsMeta: {
     fontFamily: fontFamilies.sans.regular,

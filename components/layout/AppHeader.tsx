@@ -14,7 +14,7 @@ import Animated, {
 import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { Label, Display } from "@/components/ui/Typography";
+import { Label } from "@/components/ui/Typography";
 import { Avatar, useToast } from "@/components/ui";
 import { LiveTicker } from "./LiveTicker";
 import { useCart, useWishlist, useUI } from "@/lib/stores";
@@ -24,6 +24,7 @@ import { getAddresses, updateAddress } from "@/lib/api";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
 import { navigateHome } from "@/lib/navigation";
+import { C } from "@/components/orders/parcel-track";
 
 interface AppHeaderProps {
   showTicker?: boolean;
@@ -37,6 +38,11 @@ interface AppHeaderProps {
    * the cart stays one tap away.
    */
   scrollY?: SharedValue<number>;
+  /**
+   * "atelier" matches the Account screen: cream glow backdrop, white circular
+   * action buttons with lime badges, and a white search pill. Home uses it.
+   */
+  tone?: "default" | "atelier";
 }
 
 /** Open Location Codes ("7C3X+RXR") are what map pins save — not something to show a shopper. */
@@ -81,7 +87,9 @@ export function AppHeader({
   compact = false,
   showBackToHome = false,
   scrollY,
+  tone = "default",
 }: AppHeaderProps) {
+  const atelier = tone === "atelier";
   const router = useRouter();
   const pathname = usePathname();
   const isWishlistScreen = pathname.includes("/wishlist");
@@ -241,7 +249,7 @@ export function AppHeader({
   );
 
   return (
-    <View style={[styles.wrapper, { paddingTop: insets.top }]}>
+    <View style={[styles.wrapper, atelier && styles.wrapperAtelier, { paddingTop: insets.top }]}>
       <Animated.View style={[collapsible && styles.collapsibleTop, collapsible && topStyle]}>
         <View
           style={collapsible && styles.collapsibleInner}
@@ -256,11 +264,19 @@ export function AppHeader({
             }
           }}
         >
-          {showTicker && <LiveTicker />}
+          {showTicker ? (
+            atelier ? (
+              <View style={styles.tickerPill}>
+                <LiveTicker tone="atelier" />
+              </View>
+            ) : (
+              <LiveTicker />
+            )
+          ) : null}
           <View style={[styles.masthead, compact && styles.mastheadCompact]}>
             {showBackToHome ? (
               <TouchableOpacity
-                style={styles.backBtn}
+                style={[styles.backBtn, atelier && styles.circleAtelier, atelier && styles.backBtnAtelier]}
                 onPress={() => navigateHome(router)}
                 activeOpacity={0.7}
                 accessibilityLabel="Back to home"
@@ -274,7 +290,13 @@ export function AppHeader({
               onPress={handleAddressPress}
               accessibilityLabel="Change delivery address"
             >
-              <Ionicons name="location-sharp" size={18} color={colors.light.primary} />
+              {atelier && !showBackToHome ? (
+                <View style={styles.pinCircle}>
+                  <Ionicons name="location-sharp" size={17} color={colors.olive[700]} />
+                </View>
+              ) : (
+                <Ionicons name="location-sharp" size={18} color={colors.light.primary} />
+              )}
               <View style={styles.locationTextWrap}>
                 <Text style={styles.locationKicker}>Deliver to</Text>
                 <View style={styles.locationValueRow}>
@@ -286,15 +308,17 @@ export function AppHeader({
               </View>
             </TouchableOpacity>
 
-            <View style={styles.actions}>
+            <View style={[styles.actions, atelier && styles.actionsAtelier]}>
               {!isNotificationsScreen && (
                 <HeaderIcon
+                  atelier={atelier}
                   icon="notifications-outline"
                   onPress={handleNotificationsPress}
                 />
               )}
               {!isWishlistScreen && (
                 <HeaderIcon
+                  atelier={atelier}
                   icon="heart-outline"
                   badge={wishlistCount}
                   onPress={handleWishlistPress}
@@ -302,6 +326,7 @@ export function AppHeader({
               )}
               {!isCartScreen && (
                 <HeaderIcon
+                  atelier={atelier}
                   icon="bag-outline"
                   badge={cartCount}
                   onPress={handleCartPress}
@@ -313,9 +338,9 @@ export function AppHeader({
       </Animated.View>
 
       {showSearch ? (
-        <View style={styles.searchRow}>
+        <View style={[styles.searchRow, atelier && styles.searchRowAtelier]}>
           <TouchableOpacity
-            style={styles.searchBar}
+            style={[styles.searchBar, atelier && styles.searchBarAtelier]}
             activeOpacity={0.85}
             onPress={() => router.push("/(main)/search")}
           >
@@ -325,22 +350,29 @@ export function AppHeader({
               color={colors.light.mutedForeground}
               style={styles.searchIcon}
             />
-            <Text style={styles.searchPlaceholder}>Search LUXE</Text>
+            <Text style={[styles.searchPlaceholder, atelier && styles.searchPlaceholderAtelier]}>
+              {atelier ? "Search pieces, stores, brands" : "Search LUXE"}
+            </Text>
+            {atelier ? (
+              <View style={styles.searchSpark}>
+                <Ionicons name="sparkles" size={13} color={LIME} />
+              </View>
+            ) : null}
           </TouchableOpacity>
-          <View style={styles.trailingSlot}>
+          <View style={[styles.trailingSlot, atelier && styles.trailingSlotAtelier]}>
             <Animated.View
               style={[StyleSheet.absoluteFill, collapsible && accountStyle]}
               pointerEvents={collapsed ? "none" : "auto"}
             >
               <TouchableOpacity
-                style={styles.accountBtn}
+                style={[styles.accountBtn, atelier && styles.accountBtnAtelier]}
                 activeOpacity={0.8}
                 onPress={() => router.push("/(main)/account")}
                 accessibilityLabel="Account"
               >
                 <Avatar
                   uri={avatarUrl}
-                  size={30}
+                  size={atelier ? 38 : 30}
                   backgroundColor="#e9e9e4"
                   iconColor="#8f8f86"
                 />
@@ -352,15 +384,15 @@ export function AppHeader({
                 pointerEvents={collapsed ? "auto" : "none"}
               >
                 <TouchableOpacity
-                  style={[styles.accountBtn, styles.bagBtn]}
+                  style={[styles.accountBtn, styles.bagBtn, atelier && styles.circleAtelier]}
                   activeOpacity={0.8}
                   onPress={handleCartPress}
                   accessibilityLabel="Bag"
                 >
                   <Ionicons name="bag-outline" size={18} color={colors.light.foreground} />
                   {cartCount > 0 ? (
-                    <View style={styles.badge}>
-                      <Label style={styles.badgeText}>{cartCount > 99 ? "99+" : String(cartCount)}</Label>
+                    <View style={[styles.badge, atelier && styles.badgeAtelier]}>
+                      <Label style={[styles.badgeText, atelier && styles.badgeTextAtelier]}>{cartCount > 99 ? "99+" : String(cartCount)}</Label>
                     </View>
                   ) : null}
                 </TouchableOpacity>
@@ -370,7 +402,7 @@ export function AppHeader({
         </View>
       ) : null}
 
-      <View style={styles.hairline} />
+      {atelier ? null : <View style={styles.hairline} />}
 
       <Modal
         visible={modalVisible}
@@ -390,7 +422,8 @@ export function AppHeader({
 
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Display size="lg" style={{ color: colors.light.foreground }}>Deliver to</Display>
+                <Text style={styles.modalKicker}>DELIVERY ADDRESS</Text>
+                <Text style={styles.modalTitle}>Deliver to</Text>
                 <Text style={styles.modalSub}>Choose where your order should arrive</Text>
               </View>
               <TouchableOpacity
@@ -398,18 +431,18 @@ export function AppHeader({
                 style={styles.modalCloseBtn}
                 accessibilityLabel="Close"
               >
-                <Ionicons name="close" size={18} color={colors.light.foreground} />
+                <Ionicons name="close" size={18} color={C.text} />
               </TouchableOpacity>
             </View>
 
             {loadingAddresses && addresses.length === 0 ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={colors.light.primary} />
+                <ActivityIndicator size="small" color={C.accent} />
               </View>
             ) : addresses.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <View style={styles.emptyIcon}>
-                  <Ionicons name="location-outline" size={24} color={colors.olive[700]} />
+                  <Ionicons name="location-outline" size={24} color={C.text} />
                 </View>
                 <Text style={styles.emptyTitle}>No saved addresses yet</Text>
                 <Text style={styles.emptyText}>Add one so we know where to deliver.</Text>
@@ -429,20 +462,15 @@ export function AppHeader({
                       accessibilityRole="radio"
                       accessibilityState={{ selected: isCurrent }}
                     >
-                      <View style={[styles.radio, isCurrent && styles.radioActive]}>
-                        {isSwitching ? (
-                          <ActivityIndicator size="small" color={colors.light.primary} />
-                        ) : isCurrent ? (
-                          <View style={styles.radioDot} />
-                        ) : null}
+                      <View style={[styles.addrIcon, isCurrent && styles.addrIconActive]}>
+                        <Ionicons
+                          name={a.type === "home" ? "home-outline" : a.type === "work" ? "briefcase-outline" : "location-outline"}
+                          size={18}
+                          color={isCurrent ? C.lime : C.text}
+                        />
                       </View>
                       <View style={styles.addressInfo}>
                         <View style={styles.nameRow}>
-                          <Ionicons
-                            name={a.type === "home" ? "home-outline" : a.type === "work" ? "briefcase-outline" : "location-outline"}
-                            size={14}
-                            color={colors.olive[700]}
-                          />
                           <Text style={styles.addrType}>{addressTypeLabel(a.type)}</Text>
                           {a.is_default ? (
                             <View style={styles.defaultChip}>
@@ -458,14 +486,23 @@ export function AppHeader({
                           {a.phone ? ` · ${formatPhone(a.phone)}` : ""}
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        style={styles.editBtn}
-                        onPress={() => goToAddresses(`?edit=${a.id}`)}
-                        hitSlop={8}
-                        accessibilityLabel={`Edit ${addressTypeLabel(a.type)} address`}
-                      >
-                        <Ionicons name="create-outline" size={17} color={colors.light.mutedForeground} />
-                      </TouchableOpacity>
+                      <View style={styles.addrSide}>
+                        <View style={[styles.radio, isCurrent && styles.radioActive]}>
+                          {isSwitching ? (
+                            <ActivityIndicator size="small" color={C.lime} />
+                          ) : isCurrent ? (
+                            <Ionicons name="checkmark" size={14} color={C.lime} />
+                          ) : null}
+                        </View>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => goToAddresses(`?edit=${a.id}`)}
+                          hitSlop={8}
+                          accessibilityLabel={`Edit ${addressTypeLabel(a.type)} address`}
+                        >
+                          <Ionicons name="create-outline" size={15} color={C.muted} />
+                        </TouchableOpacity>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -477,8 +514,14 @@ export function AppHeader({
               onPress={() => goToAddresses("?action=add")}
               activeOpacity={0.85}
             >
-              <Ionicons name="add" size={18} color={colors.light.primaryForeground} />
-              <Text style={styles.addAddressBtnText}>Add a new address</Text>
+              <View style={styles.addAddressIcon}>
+                <Ionicons name="add" size={18} color={C.ink} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.addAddressBtnText}>Add a new address</Text>
+                <Text style={styles.addAddressSub}>Pin it on the map or type it in</Text>
+              </View>
+              <Ionicons name="arrow-forward" size={17} color={C.lime} />
             </TouchableOpacity>
             {addresses.length > 0 ? (
               <TouchableOpacity style={styles.manageLink} onPress={() => goToAddresses()} hitSlop={6}>
@@ -496,32 +539,135 @@ function HeaderIcon({
   icon,
   badge,
   onPress,
+  atelier,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   badge?: number;
   onPress: () => void;
+  atelier?: boolean;
 }) {
   return (
-    <TouchableOpacity style={styles.iconBtn} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={[styles.iconBtn, atelier && styles.circleAtelier]} onPress={onPress} activeOpacity={0.7}>
       <Ionicons
         name={icon}
-        size={22}
+        size={atelier ? 19 : 22}
         color={colors.light.foreground}
       />
       {!!badge && badge > 0 && (
-        <View style={styles.badge}>
-          <Label style={styles.badgeText}>{badge > 99 ? "99+" : String(badge)}</Label>
+        <View style={[styles.badge, atelier && styles.badgeAtelier]}>
+          <Label style={[styles.badgeText, atelier && styles.badgeTextAtelier]}>{badge > 99 ? "99+" : String(badge)}</Label>
         </View>
       )}
     </TouchableOpacity>
   );
 }
 
+/** Account-screen palette, used by the "atelier" tone. */
+const GLOW = C.glow;
+const INK = C.ink;
+const LIME = C.lime;
+const GOLD_SOFT = C.goldSoft;
+
 const styles = StyleSheet.create({
   wrapper: {
     backgroundColor: colors.light.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
+  },
+  wrapperAtelier: {
+    backgroundColor: GLOW,
+    borderBottomWidth: 0,
+  },
+  tickerPill: {
+    marginHorizontal: 20,
+    marginTop: 6,
+  },
+  backBtnAtelier: {
+    marginRight: 6,
+  },
+  pinCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 4,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  actionsAtelier: {
+    gap: 8,
+  },
+  circleAtelier: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#FFFFFF",
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  badgeAtelier: {
+    top: -3,
+    right: -3,
+    minWidth: 19,
+    height: 19,
+    borderRadius: 10,
+    backgroundColor: INK,
+    borderWidth: 2,
+    borderColor: GLOW,
+  },
+  badgeTextAtelier: {
+    color: LIME,
+    fontSize: 9,
+  },
+  searchRowAtelier: {
+    paddingTop: 4,
+    paddingBottom: 14,
+    gap: 12,
+  },
+  searchBarAtelier: {
+    height: 48,
+    paddingLeft: 18,
+    paddingRight: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.07)",
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  searchPlaceholderAtelier: {
+    flex: 1,
+    fontSize: 14,
+  },
+  searchSpark: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: INK,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trailingSlotAtelier: {
+    width: 48,
+    height: 48,
+  },
+  accountBtnAtelier: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: GOLD_SOFT,
+    backgroundColor: "#FFFFFF",
   },
   masthead: {
     flexDirection: "row",
@@ -666,44 +812,62 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(22,23,15,0.45)",
     justifyContent: "flex-end",
   },
   modalSheet: {
-    backgroundColor: colors.light.card,
-    borderTopLeftRadius: radii["3xl"],
-    borderTopRightRadius: radii["3xl"],
+    backgroundColor: C.paper,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     paddingHorizontal: 20,
     paddingTop: 10,
     maxHeight: "80%",
   },
   modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.light.border,
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "rgba(22,23,15,0.12)",
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: 18,
   },
   modalHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 18,
+  },
+  modalKicker: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    color: C.accent,
+  },
+  modalTitle: {
+    marginTop: 3,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 24,
+    letterSpacing: -0.6,
+    color: C.text,
   },
   modalSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.light.mutedForeground,
+    fontSize: 13.5,
+    color: C.muted,
     marginTop: 2,
   },
   modalCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#FFFFFF",
+    shadowColor: C.ink,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
   },
   loadingContainer: {
     paddingVertical: 40,
@@ -712,63 +876,77 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     paddingVertical: 28,
+    marginBottom: 12,
     alignItems: "center",
     gap: 4,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
   },
   emptyIcon: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: colors.olive[50],
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
   },
   emptyTitle: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 15,
-    color: colors.light.foreground,
+    color: C.text,
   },
   emptyText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
   addressList: {
-    marginBottom: 12,
+    marginBottom: 6,
   },
   addressOption: {
     flexDirection: "row",
     alignItems: "flex-start",
     padding: 14,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: C.line,
+    backgroundColor: "#FFFFFF",
     marginBottom: 10,
     gap: 12,
   },
   addressOptionActive: {
-    borderColor: colors.light.primary,
-    backgroundColor: colors.olive[50],
+    borderColor: C.ink,
   },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: colors.light.border,
+  addrIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 1,
+  },
+  addrIconActive: {
+    backgroundColor: C.ink,
+  },
+  addrSide: {
+    alignItems: "center",
+    gap: 10,
+  },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: C.faint,
+    alignItems: "center",
+    justifyContent: "center",
   },
   radioActive: {
-    borderColor: colors.light.primary,
-  },
-  radioDot: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    backgroundColor: colors.light.primary,
+    borderColor: C.ink,
+    backgroundColor: C.ink,
   },
   addressInfo: {
     flex: 1,
@@ -777,66 +955,81 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
   addrType: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
+    color: C.text,
   },
   defaultChip: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[100],
+    paddingHorizontal: 8,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    backgroundColor: C.lime,
   },
   defaultChipText: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 10.5,
-    color: colors.olive[800],
+    color: C.ink,
   },
   addrDetails: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: colors.light.foreground,
+    color: C.text,
   },
   addrMeta: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
   editBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: -4,
-    marginRight: -6,
+    backgroundColor: C.accentSoft,
   },
   addAddressBtn: {
     flexDirection: "row",
-    height: 50,
-    borderRadius: radii.full,
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    marginTop: 4,
+    borderRadius: 22,
+    backgroundColor: C.ink,
+  },
+  addAddressIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    marginTop: 4,
-    backgroundColor: colors.light.primary,
   },
   addAddressBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 15,
-    color: colors.light.primaryForeground,
+    color: C.cream,
+  },
+  addAddressSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12.5,
+    color: "rgba(250,248,241,0.6)",
+    marginTop: 1,
   },
   manageLink: {
+    flexDirection: "row",
     alignSelf: "center",
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   manageLinkText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.primary,
+    fontSize: 13.5,
+    color: C.accent,
   },
 });

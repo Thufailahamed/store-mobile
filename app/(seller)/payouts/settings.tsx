@@ -21,7 +21,7 @@ import { MethodPicker } from "@/components/payouts/MethodPicker";
 import { PayoutAccountCard } from "@/components/payouts/PayoutSurfaces";
 import { useToast } from "@/components/ui";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import { SellerStateView } from "@/components/seller/chrome";
+import { SellerStateView, SellerGlow } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { colors, spacing, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -128,13 +128,11 @@ export default function SettingsScreen() {
       <View
         style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}
       >
-        <SellerBackButton
-          label="Payouts"
-          fallbackHref="/(seller)/payouts"
-          style={{ marginBottom: 14 }}
-        />
-        <Text style={styles.kicker}>Atelier · Ledger</Text>
-        <Text style={styles.title}>Payout settings</Text>
+        <SellerGlow />
+        <View style={styles.headerRow}>
+          <SellerBackButton label="Payouts" fallbackHref="/(seller)/payouts" />
+          <Text style={styles.title} numberOfLines={1} accessibilityRole="header">Payout settings</Text>
+        </View>
         <Text style={styles.subtitle}>Where your earnings are sent</Text>
       </View>
     </>
@@ -242,7 +240,8 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingBottom: 32 },
   header: {
     paddingHorizontal: spacing[5],
@@ -257,16 +256,17 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
+    flex: 1,
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.ink.mute,
-    marginTop: 3,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 8,
   },
   accountCard: { marginHorizontal: spacing[5], marginBottom: spacing[4] },
   dirtyPill: {
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   skelCard: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     padding: spacing[4],
     borderWidth: 1,

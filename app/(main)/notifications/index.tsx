@@ -31,6 +31,11 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, spacing, radii, typography } from "@/lib/theme/tokens";
 import { PaperBackground } from "@/components/layout";
 import { useNotificationsRealtime } from "@/lib/hooks/useNotificationsRealtime";
+import {
+  HeaderButton,
+  UserPageFrame,
+  withUserTheme,
+} from "@/components/user/user-page";
 
 type NotifFilter = "all" | "messages" | "alerts" | "social" | "saved";
 
@@ -83,9 +88,7 @@ const DEFAULT_TYPE_META = {
 };
 
 function formatRelativeShort(dateStr: string): string {
-  const mins = Math.floor(
-    (Date.now() - new Date(dateStr).getTime()) / 60000
-  );
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
   if (mins < 1) return "now";
   if (mins < 60) return `${mins} mn`;
   const hrs = Math.floor(mins / 60);
@@ -104,7 +107,7 @@ function dayLabel(dateStr: string): string {
   const startOfDay = (d: Date) =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diffDays = Math.round(
-    (startOfDay(today) - startOfDay(date)) / 86400000
+    (startOfDay(today) - startOfDay(date)) / 86400000,
   );
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
@@ -127,13 +130,23 @@ function normalizeType(type: string): string {
   if (t === "promotion" || t === "marketing") return "promo";
   if (t === "rewards") return "loyalty";
   // Lifecycle types (order_shipped, order.delivered, payment_received, …).
-  if (t === "order_out_for_delivery" || t === "order.out_for_delivery" || t === "order_failed_attempt" || t === "order.failed_attempt") return "delivery";
+  if (
+    t === "order_out_for_delivery" ||
+    t === "order.out_for_delivery" ||
+    t === "order_failed_attempt" ||
+    t === "order.failed_attempt"
+  )
+    return "delivery";
   if (t.startsWith("payment")) return "payment";
-  if (t.startsWith("order") || t.startsWith("return") || t.startsWith("refund")) return "order";
+  if (t.startsWith("order") || t.startsWith("return") || t.startsWith("refund"))
+    return "order";
   return t;
 }
 
-function matchesFilter(notification: Notification, filter: NotifFilter): boolean {
+function matchesFilter(
+  notification: Notification,
+  filter: NotifFilter,
+): boolean {
   if (filter === "all") return true;
   const normalized = normalizeType(notification.type);
   return FILTER_TYPES[filter].map(normalizeType).includes(normalized);
@@ -177,15 +190,25 @@ export default function NotificationsScreen() {
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,
     onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
-      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
-      queryClient.setQueryData<Notification[]>(["notifications", user?.id], (old) =>
-        (old ?? []).map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)),
+      await queryClient.cancelQueries({
+        queryKey: ["notifications", user?.id],
+      });
+      const previous = queryClient.getQueryData<Notification[]>([
+        "notifications",
+        user?.id,
+      ]);
+      queryClient.setQueryData<Notification[]>(
+        ["notifications", user?.id],
+        (old) =>
+          (old ?? []).map((n) =>
+            n.id === id ? { ...n, read_at: new Date().toISOString() } : n,
+          ),
       );
       return { previous };
     },
     onError: (err, _id, context) => {
-      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      if (context?.previous)
+        queryClient.setQueryData(["notifications", user?.id], context.previous);
       toast("Couldn't mark as read. Try again.", "error");
     },
     onSettled: () => {
@@ -200,15 +223,25 @@ export default function NotificationsScreen() {
       if (!res.ok) throw new Error(res.error);
     },
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
-      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
-      queryClient.setQueryData<Notification[]>(["notifications", user?.id], (old) =>
-        (old ?? []).map((n) => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })),
+      await queryClient.cancelQueries({
+        queryKey: ["notifications", user?.id],
+      });
+      const previous = queryClient.getQueryData<Notification[]>([
+        "notifications",
+        user?.id,
+      ]);
+      queryClient.setQueryData<Notification[]>(
+        ["notifications", user?.id],
+        (old) =>
+          (old ?? []).map((n) =>
+            n.read_at ? n : { ...n, read_at: new Date().toISOString() },
+          ),
       );
       return { previous };
     },
     onError: (err, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      if (context?.previous)
+        queryClient.setQueryData(["notifications", user?.id], context.previous);
       toast("Couldn't mark all as read. Try again.", "error");
     },
     onSettled: () => {
@@ -219,15 +252,22 @@ export default function NotificationsScreen() {
   const deleteMutation = useMutation({
     mutationFn: deleteNotification,
     onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
-      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
-      queryClient.setQueryData<Notification[]>(["notifications", user?.id], (old) =>
-        (old ?? []).filter((n) => n.id !== id),
+      await queryClient.cancelQueries({
+        queryKey: ["notifications", user?.id],
+      });
+      const previous = queryClient.getQueryData<Notification[]>([
+        "notifications",
+        user?.id,
+      ]);
+      queryClient.setQueryData<Notification[]>(
+        ["notifications", user?.id],
+        (old) => (old ?? []).filter((n) => n.id !== id),
       );
       return { previous };
     },
     onError: (_err, _id, context) => {
-      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      if (context?.previous)
+        queryClient.setQueryData(["notifications", user?.id], context.previous);
       toast("Couldn't delete that notification.", "error");
     },
     onSettled: () => {
@@ -238,8 +278,13 @@ export default function NotificationsScreen() {
   const clearAllMutation = useMutation({
     mutationFn: clearAllNotifications,
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["notifications", user?.id] });
-      const previous = queryClient.getQueryData<Notification[]>(["notifications", user?.id]);
+      await queryClient.cancelQueries({
+        queryKey: ["notifications", user?.id],
+      });
+      const previous = queryClient.getQueryData<Notification[]>([
+        "notifications",
+        user?.id,
+      ]);
       queryClient.setQueryData<Notification[]>(["notifications", user?.id], []);
       return { previous };
     },
@@ -247,7 +292,8 @@ export default function NotificationsScreen() {
       toast("Inbox cleared", "success");
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(["notifications", user?.id], context.previous);
+      if (context?.previous)
+        queryClient.setQueryData(["notifications", user?.id], context.previous);
       toast("Couldn't clear notifications.", "error");
     },
     onSettled: () => {
@@ -260,7 +306,8 @@ export default function NotificationsScreen() {
   // for a manual pull-to-refresh.
   useNotificationsRealtime({
     userId: user?.id,
-    onChange: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    onChange: () =>
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
     // Also show a local push so the user is alerted even if their
     // Expo token registration failed upstream. The hook dedupes by
     // (type, order_id) so we don't spam them.
@@ -269,7 +316,7 @@ export default function NotificationsScreen() {
 
   const notifications = useMemo(
     () => notificationsQuery.data ?? [],
-    [notificationsQuery.data]
+    [notificationsQuery.data],
   );
 
   const unreadByFilter = useMemo(() => {
@@ -288,7 +335,7 @@ export default function NotificationsScreen() {
           if (matchesFilter(notification, key)) {
             counts[key] += 1;
           }
-        }
+        },
       );
     });
     return counts;
@@ -296,7 +343,7 @@ export default function NotificationsScreen() {
 
   const visibleNotifications = useMemo(
     () => notifications.filter((n) => matchesFilter(n, filter)),
-    [notifications, filter]
+    [notifications, filter],
   );
 
   const handlePress = useCallback(
@@ -310,7 +357,10 @@ export default function NotificationsScreen() {
         // well-formed in-app route, and never let a bad value crash
         // navigation with no feedback.
         if (!isSafeInAppPath(data.screen)) {
-          console.warn("[notifications] rejected unsafe screen target:", data.screen);
+          console.warn(
+            "[notifications] rejected unsafe screen target:",
+            data.screen,
+          );
           toast("This notification's link is no longer valid.", "error");
           return;
         }
@@ -330,7 +380,7 @@ export default function NotificationsScreen() {
         router.push(`/(main)/products/${data.product_slug}` as never);
       }
     },
-    [markReadMutation, router, toast]
+    [markReadMutation, router, toast],
   );
 
   const sections = useMemo(() => {
@@ -345,64 +395,53 @@ export default function NotificationsScreen() {
   }, [visibleNotifications]);
 
   const todayCount = useMemo(
-    () => notifications.filter((n) => dayLabel(n.created_at) === "Today").length,
-    [notifications]
+    () =>
+      notifications.filter((n) => dayLabel(n.created_at) === "Today").length,
+    [notifications],
   );
 
   const confirmDelete = (id: string) =>
     Alert.alert("Delete notification?", undefined, [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(id) },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteMutation.mutate(id),
+      },
     ]);
 
   const unreadAll = unreadByFilter.all;
 
   return (
-    <PaperBackground style={styles.screen}>
-      {/* ── Header ─────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
-        <View style={styles.headerTop}>
-          <Pressable
-            onPress={() => navigateHome(router)}
-            style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]}
-            hitSlop={8}
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={20} color={theme.ink.DEFAULT} />
-          </Pressable>
-          <Pressable
-            onPress={() =>
-              Alert.alert("Clear all notifications?", "This removes every notification from your inbox.", [
+    <UserPageFrame
+      title="Notifications"
+      onBack={() => navigateHome(router)}
+      right={
+        <HeaderButton
+          icon="trash-outline"
+          label="Clear all notifications"
+          disabled={notifications.length === 0}
+          onPress={() =>
+            Alert.alert(
+              "Clear all notifications?",
+              "This removes every notification from your inbox.",
+              [
                 { text: "Cancel", style: "cancel" },
-                { text: "Clear all", style: "destructive", onPress: () => clearAllMutation.mutate() },
-              ])
-            }
-            disabled={notifications.length === 0}
-            style={({ pressed }) => [
-              styles.headerBtn,
-              notifications.length === 0 && { opacity: 0.4 },
-              pressed && styles.pressed,
-            ]}
-            hitSlop={8}
-            accessibilityLabel="Clear all notifications"
-          >
-            <Ionicons name="trash-outline" size={17} color={theme.accent2.rust} />
-          </Pressable>
-        </View>
-
-        <View style={styles.titleBlock}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowBar} />
-            <Text style={styles.headerEyebrow}>YOUR INBOX</Text>
-          </View>
-          <Text style={styles.headerTitle}>
-            Notifi<Text style={styles.headerTitleAccent}>cations</Text>
-          </Text>
-        </View>
-
+                {
+                  text: "Clear all",
+                  style: "destructive",
+                  onPress: () => clearAllMutation.mutate(),
+                },
+              ],
+            )
+          }
+        />
+      }
+    >
+      <View style={styles.summaryWrap}>
         {/* Summary card */}
         <LinearGradient
-          colors={["#3a4120", theme.olive[900], "#14170a"]}
+          colors={["#22241a", "#15160f"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.summary}
@@ -421,7 +460,9 @@ export default function NotificationsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.summaryValue}>
                 {unreadAll > 0 ? unreadAll : "All clear"}
-                {unreadAll > 0 ? <Text style={styles.summaryValueUnit}> unread</Text> : null}
+                {unreadAll > 0 ? (
+                  <Text style={styles.summaryValueUnit}> unread</Text>
+                ) : null}
               </Text>
               <Text style={styles.summarySub} numberOfLines={1}>
                 {notifications.length} total · {todayCount} today
@@ -431,7 +472,10 @@ export default function NotificationsScreen() {
           <Pressable
             onPress={() => unreadAll > 0 && markAllMutation.mutate()}
             disabled={unreadAll === 0}
-            style={({ pressed }) => [pressed && styles.pressed, unreadAll === 0 && { opacity: 0.5 }]}
+            style={({ pressed }) => [
+              pressed && styles.pressed,
+              unreadAll === 0 && { opacity: 0.5 },
+            ]}
             accessibilityLabel="Mark all as read"
           >
             <LinearGradient
@@ -440,7 +484,11 @@ export default function NotificationsScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.summaryBtn}
             >
-              <Ionicons name="checkmark-done" size={14} color={theme.olive[900]} />
+              <Ionicons
+                name="checkmark-done"
+                size={14}
+                color={theme.olive[900]}
+              />
               <Text style={styles.summaryBtnText}>Read all</Text>
             </LinearGradient>
           </Pressable>
@@ -474,17 +522,31 @@ export default function NotificationsScreen() {
                 size={14}
                 color={selected ? GOLD_LIGHT : theme.ink.mute}
               />
-              <Text style={[styles.filterChipText, selected && { color: theme.paper.cream }]}>
+              <Text
+                style={[
+                  styles.filterChipText,
+                  selected && { color: theme.paper.cream },
+                ]}
+              >
                 {item.label}
               </Text>
               {unread > 0 && (
                 <View
                   style={[
                     styles.filterCount,
-                    { backgroundColor: selected ? GOLD_LIGHT : theme.accent2.rust },
+                    {
+                      backgroundColor: selected
+                        ? GOLD_LIGHT
+                        : theme.accent2.rust,
+                    },
                   ]}
                 >
-                  <Text style={[styles.filterCountText, { color: selected ? theme.olive[900] : "#fff" }]}>
+                  <Text
+                    style={[
+                      styles.filterCountText,
+                      { color: selected ? theme.olive[900] : "#fff" },
+                    ]}
+                  >
                     {unread}
                   </Text>
                 </View>
@@ -516,7 +578,10 @@ export default function NotificationsScreen() {
           action={
             <Pressable
               onPress={() => notificationsQuery.refetch()}
-              style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.retryBtn,
+                pressed && styles.pressed,
+              ]}
               accessibilityRole="button"
             >
               <Ionicons name="refresh" size={15} color={theme.paper.cream} />
@@ -526,7 +591,9 @@ export default function NotificationsScreen() {
         />
       ) : visibleNotifications.length === 0 ? (
         <EmptyState
-          icon={filter === "all" ? "notifications-off-outline" : "file-tray-outline"}
+          icon={
+            filter === "all" ? "notifications-off-outline" : "file-tray-outline"
+          }
           title={filter === "all" ? "Nothing new, yet" : "Nothing here yet"}
           sub={
             filter === "all"
@@ -545,7 +612,9 @@ export default function NotificationsScreen() {
           }}
           refreshControl={
             <RefreshControl
-              refreshing={notificationsQuery.isFetching && !notificationsQuery.isLoading}
+              refreshing={
+                notificationsQuery.isFetching && !notificationsQuery.isLoading
+              }
               onRefresh={() => notificationsQuery.refetch()}
               tintColor={theme.colors.primary}
             />
@@ -572,7 +641,7 @@ export default function NotificationsScreen() {
           )}
         />
       )}
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
@@ -595,7 +664,7 @@ function EmptyState({
       <View style={styles.emptyRingOuter}>
         <View style={styles.emptyRingInner}>
           <LinearGradient
-            colors={["#3a4120", theme.olive[900]]}
+            colors={["#22241a", "#15160f"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.emptyIcon}
@@ -657,7 +726,12 @@ function NotificationRow({
     >
       {isUnread ? <View style={styles.unreadBar} /> : null}
 
-      <View style={[styles.iconTile, { backgroundColor: `${tint}14`, borderColor: `${tint}30` }]}>
+      <View
+        style={[
+          styles.iconTile,
+          { backgroundColor: `${tint}14`, borderColor: `${tint}30` },
+        ]}
+      >
         <Ionicons name={meta.icon} size={19} color={tint} />
         {isUnread && <View style={styles.unreadDot} />}
       </View>
@@ -665,9 +739,13 @@ function NotificationRow({
       <View style={styles.rowBody}>
         <View style={styles.metaRow}>
           <View style={[styles.typeChip, { backgroundColor: `${tint}14` }]}>
-            <Text style={[styles.typeLabel, { color: tint }]}>{meta.label.toUpperCase()}</Text>
+            <Text style={[styles.typeLabel, { color: tint }]}>
+              {meta.label.toUpperCase()}
+            </Text>
           </View>
-          <Text style={styles.time}>{formatRelativeShort(item.created_at)}</Text>
+          <Text style={styles.time}>
+            {formatRelativeShort(item.created_at)}
+          </Text>
           {isUnread ? <Text style={styles.newTag}>NEW</Text> : null}
         </View>
         {showTitle ? (
@@ -701,12 +779,19 @@ function NotificationRow({
           onPress={onDelete}
           hitSlop={10}
           accessibilityLabel="Delete notification"
-          style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: theme.colors.muted }]}
+          style={({ pressed }) => [
+            styles.deleteBtn,
+            pressed && { backgroundColor: theme.colors.muted },
+          ]}
         >
           <Ionicons name="close" size={14} color={theme.ink.mute} />
         </Pressable>
         {actionable ? (
-          <Ionicons name="chevron-forward" size={15} color={theme.colors.border} />
+          <Ionicons
+            name="chevron-forward"
+            size={15}
+            color={theme.colors.border}
+          />
         ) : null}
       </View>
     </Pressable>
@@ -721,381 +806,398 @@ const cardShadow = {
   elevation: 4,
 } as const;
 
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+const styles = withUserTheme(
+  StyleSheet.create({
+    screen: { flex: 1 },
+    summaryWrap: { paddingHorizontal: 20, paddingBottom: 4 },
+    pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
 
-  /* Header */
-  header: {
-    paddingHorizontal: spacing[4],
-    paddingBottom: spacing[2],
-  },
-  headerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  headerBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.paper.cream,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    ...cardShadow,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-  },
-  titleBlock: { marginTop: spacing[4], paddingHorizontal: 4 },
-  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  eyebrowBar: { width: 18, height: 2, borderRadius: 1, backgroundColor: colors.accent2.ochre },
-  headerEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    letterSpacing: 1.8,
-    color: colors.accent2.rust,
-  },
-  headerTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 40,
-    lineHeight: 46,
-    letterSpacing: -1.2,
-    color: colors.ink.DEFAULT,
-    marginTop: 4,
-  },
-  headerTitleAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
+    /* Header */
+    header: {
+      paddingHorizontal: spacing[4],
+      paddingBottom: spacing[2],
+    },
+    headerTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    headerBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: colors.paper.cream,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.light.border,
+      alignItems: "center",
+      justifyContent: "center",
+      ...cardShadow,
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+    },
+    titleBlock: { marginTop: spacing[4], paddingHorizontal: 4 },
+    eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    eyebrowBar: {
+      width: 18,
+      height: 2,
+      borderRadius: 1,
+      backgroundColor: colors.accent2.ochre,
+    },
+    headerEyebrow: {
+      fontFamily: fontFamilies.mono.semibold,
+      fontSize: 9.5,
+      letterSpacing: 1.8,
+      color: colors.accent2.rust,
+    },
+    headerTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 40,
+      lineHeight: 46,
+      letterSpacing: -1.2,
+      color: colors.ink.DEFAULT,
+      marginTop: 4,
+    },
+    headerTitleAccent: {
+      fontFamily: fontFamilies.sans.medium,
+      color: colors.olive[600],
+    },
 
-  /* Summary */
-  summary: {
-    marginTop: spacing[4],
-    borderRadius: 22,
-    padding: 14,
-    paddingLeft: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(232,212,150,0.16)",
-    shadowColor: "#161a0a",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.25,
-    shadowRadius: 22,
-    elevation: 10,
-  },
-  summaryGlow: {
-    position: "absolute",
-    top: -60,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(200,164,74,0.16)",
-  },
-  summaryHairline: {
-    position: "absolute",
-    top: 0,
-    left: 30,
-    right: 30,
-    height: 1,
-    backgroundColor: "rgba(232,212,150,0.45)",
-  },
-  summaryLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
-  summaryBell: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: "rgba(232,212,150,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(232,212,150,0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  summaryBellDot: {
-    position: "absolute",
-    top: 9,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent2.rust,
-    borderWidth: 1.5,
-    borderColor: colors.olive[900],
-  },
-  summaryValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: colors.paper.cream,
-    letterSpacing: -0.4,
-  },
-  summaryValueUnit: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: "rgba(244,242,234,0.65)",
-    letterSpacing: 0,
-  },
-  summarySub: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: "rgba(244,242,234,0.5)",
-    letterSpacing: 0.4,
-    marginTop: 2,
-  },
-  summaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 13,
-    height: 36,
-    borderRadius: 18,
-  },
-  summaryBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
-    color: colors.olive[900],
-  },
+    /* Summary */
+    summary: {
+      marginTop: spacing[4],
+      borderRadius: 22,
+      padding: 14,
+      paddingLeft: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: "rgba(232,212,150,0.16)",
+      shadowColor: "#161a0a",
+      shadowOffset: { width: 0, height: 14 },
+      shadowOpacity: 0.25,
+      shadowRadius: 22,
+      elevation: 10,
+    },
+    summaryGlow: {
+      position: "absolute",
+      top: -60,
+      right: -40,
+      width: 160,
+      height: 160,
+      borderRadius: 80,
+      backgroundColor: "rgba(200,164,74,0.16)",
+    },
+    summaryHairline: {
+      position: "absolute",
+      top: 0,
+      left: 30,
+      right: 30,
+      height: 1,
+      backgroundColor: "rgba(232,212,150,0.45)",
+    },
+    summaryLeft: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    summaryBell: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: "rgba(232,212,150,0.1)",
+      borderWidth: 1,
+      borderColor: "rgba(232,212,150,0.22)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    summaryBellDot: {
+      position: "absolute",
+      top: 9,
+      right: 10,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.accent2.rust,
+      borderWidth: 1.5,
+      borderColor: colors.olive[900],
+    },
+    summaryValue: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 22,
+      color: colors.paper.cream,
+      letterSpacing: -0.4,
+    },
+    summaryValueUnit: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 13,
+      color: "rgba(244,242,234,0.65)",
+      letterSpacing: 0,
+    },
+    summarySub: {
+      fontFamily: fontFamilies.mono.regular,
+      fontSize: 10,
+      color: "rgba(244,242,234,0.5)",
+      letterSpacing: 0.4,
+      marginTop: 2,
+    },
+    summaryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 13,
+      height: 36,
+      borderRadius: 18,
+    },
+    summaryBtnText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 12,
+      color: colors.olive[900],
+    },
 
-  /* Filters */
-  filterScroll: { flexGrow: 0 },
-  filterRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[2],
-    paddingBottom: spacing[2],
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    height: 38,
-    paddingHorizontal: 15,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.cream,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-  },
-  filterChipActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-    ...cardShadow,
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-  },
-  filterChipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: colors.ink.soft,
-  },
-  filterCount: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 5,
-  },
-  filterCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 10 },
+    /* Filters */
+    filterScroll: { flexGrow: 0 },
+    filterRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing[2],
+      paddingHorizontal: spacing[4],
+      paddingTop: spacing[2],
+      paddingBottom: spacing[2],
+    },
+    filterChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      height: 38,
+      paddingHorizontal: 15,
+      borderRadius: radii.full,
+      backgroundColor: colors.paper.cream,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.light.border,
+    },
+    filterChipActive: {
+      backgroundColor: "#15160f",
+      borderColor: colors.olive[900],
+      ...cardShadow,
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+    },
+    filterChipText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 12.5,
+      color: colors.ink.soft,
+    },
+    filterCount: {
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 5,
+    },
+    filterCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 10 },
 
-  /* Day groups */
-  dayHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: spacing[5],
-    marginBottom: spacing[2.5],
-    paddingHorizontal: 4,
-  },
-  dayLabel: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 17,
-    color: colors.ink.DEFAULT,
-  },
-  dayLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.light.border },
-  dayCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.ink.mute,
-    letterSpacing: 0.6,
-  },
-  groupCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    overflow: "hidden",
-    ...cardShadow,
-  },
-  loadingList: { paddingHorizontal: spacing[4], paddingTop: spacing[4] },
+    /* Day groups */
+    dayHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginTop: spacing[5],
+      marginBottom: spacing[2.5],
+      paddingHorizontal: 4,
+    },
+    dayLabel: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 17,
+      color: colors.ink.DEFAULT,
+    },
+    dayLine: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.light.border,
+    },
+    dayCount: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      color: colors.ink.mute,
+      letterSpacing: 0.6,
+    },
+    groupCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.light.border,
+      overflow: "hidden",
+      ...cardShadow,
+    },
+    loadingList: { paddingHorizontal: spacing[4], paddingTop: spacing[4] },
 
-  /* Row */
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 15,
-    paddingLeft: 16,
-    paddingRight: 12,
-    gap: 12,
-  },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  rowUnread: { backgroundColor: "#fbf8ec" },
-  unreadBar: {
-    position: "absolute",
-    left: 0,
-    top: 14,
-    bottom: 14,
-    width: 3,
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
-    backgroundColor: colors.accent2.ochre,
-  },
-  iconTile: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unreadDot: {
-    position: "absolute",
-    top: -3,
-    right: -3,
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#fbf8ec",
-    backgroundColor: colors.accent2.rust,
-  },
-  rowBody: { flex: 1, minWidth: 0, gap: 5 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-  typeChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-  typeLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.9,
-  },
-  time: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.ink.mute,
-  },
-  newTag: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.9,
-    color: colors.accent2.rust,
-  },
-  title: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.ink.DEFAULT,
-  },
-  message: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.ink.DEFAULT,
-  },
-  messageSecondary: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.ink.mute,
-  },
-  thumb: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: colors.light.muted,
-  },
-  rowSide: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  deleteBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+    /* Row */
+    row: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      paddingVertical: 15,
+      paddingLeft: 16,
+      paddingRight: 12,
+      gap: 12,
+    },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.light.border,
+    },
+    rowUnread: { backgroundColor: "#fbf8ec" },
+    unreadBar: {
+      position: "absolute",
+      left: 0,
+      top: 14,
+      bottom: 14,
+      width: 3,
+      borderTopRightRadius: 3,
+      borderBottomRightRadius: 3,
+      backgroundColor: colors.accent2.ochre,
+    },
+    iconTile: {
+      width: 46,
+      height: 46,
+      borderRadius: 15,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    unreadDot: {
+      position: "absolute",
+      top: -3,
+      right: -3,
+      width: 11,
+      height: 11,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: "#fbf8ec",
+      backgroundColor: colors.accent2.rust,
+    },
+    rowBody: { flex: 1, minWidth: 0, gap: 5 },
+    metaRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+    typeChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+    typeLabel: {
+      fontFamily: fontFamilies.mono.semibold,
+      fontSize: 8.5,
+      letterSpacing: 0.9,
+    },
+    time: {
+      fontFamily: fontFamilies.mono.regular,
+      fontSize: 10,
+      color: colors.ink.mute,
+    },
+    newTag: {
+      fontFamily: fontFamilies.mono.semibold,
+      fontSize: 8.5,
+      letterSpacing: 0.9,
+      color: colors.accent2.rust,
+    },
+    title: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 14,
+      color: colors.ink.DEFAULT,
+    },
+    message: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.ink.DEFAULT,
+    },
+    messageSecondary: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.ink.mute,
+    },
+    thumb: {
+      width: 52,
+      height: 52,
+      borderRadius: 14,
+      backgroundColor: colors.light.muted,
+    },
+    rowSide: {
+      alignSelf: "stretch",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    deleteBtn: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
-  /* Empty */
-  emptyWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing[8],
-    paddingBottom: spacing[16],
-    gap: spacing[2],
-  },
-  emptyRingOuter: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing[3],
-  },
-  emptyRingInner: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.paper.cream,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    ...cardShadow,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    letterSpacing: -0.5,
-    color: colors.ink.DEFAULT,
-  },
-  emptySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.ink.mute,
-    textAlign: "center",
-  },
-  retryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: spacing[3],
-    paddingHorizontal: spacing[5],
-    height: 42,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-  },
-  retryText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: colors.paper.cream,
-  },
-});
+    /* Empty */
+    emptyWrap: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: spacing[8],
+      paddingBottom: spacing[16],
+      gap: spacing[2],
+    },
+    emptyRingOuter: {
+      width: 132,
+      height: 132,
+      borderRadius: 66,
+      borderWidth: 1,
+      borderColor: "rgba(200,164,74,0.25)",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: spacing[3],
+    },
+    emptyRingInner: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: colors.paper.cream,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.light.border,
+      alignItems: "center",
+      justifyContent: "center",
+      ...cardShadow,
+    },
+    emptyIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 24,
+      letterSpacing: -0.5,
+      color: colors.ink.DEFAULT,
+    },
+    emptySub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.ink.mute,
+      textAlign: "center",
+    },
+    retryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: spacing[3],
+      paddingHorizontal: spacing[5],
+      height: 42,
+      borderRadius: radii.full,
+      backgroundColor: "#15160f",
+    },
+    retryText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: typography.fontSizes.sm,
+      color: colors.paper.cream,
+    },
+  }),
+);

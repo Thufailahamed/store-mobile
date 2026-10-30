@@ -6,44 +6,56 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-
   KeyboardAvoidingView,
   Platform,
   TextInput,
   RefreshControl,
-  ActionSheetIOS,
   Linking,
 } from "react-native";
 import { Modal } from "@/components/ui/Modal";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@/components/ui/Icon";
 import { getSellerStore, getSellerOrderById, transitionOrderStatus, cancelOrder } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
-import { canSellerCancelOrder } from "@/lib/order-lifecycle";
-import { colors, typography, radii } from "@/lib/theme/tokens";
+import { canSellerCancelOrder, getSellerAdvanceStatus } from "@/lib/order-lifecycle";
+import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
-import { CUSTOMER_STATUS_STEPS, getSellerNextStatus } from "@/lib/order-lifecycle";
-import { formatCheckoutPayment, formatOrderStatusLabel, formatPaymentStatus } from "@/lib/orders/seller-list";
-import { orderStatusTone } from "@/lib/seller/status-tones";
-import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import { HERO, LuxeHero } from "@/components/seller/luxe";
-import { Skeleton, SkeletonListRow } from "@/components/ui/Skeleton";
+import {
+  formatCheckoutPayment,
+  formatOrderStatusLabel,
+  formatPaymentStatus,
+  readShippingAddress,
+} from "@/lib/orders/seller-list";
+import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  C,
+  CLOSED,
+  RIBBON,
+  ParcelArt,
+  TrackRail,
+  etaFor,
+  routeStyles,
+  shortDate,
+} from "@/components/orders/parcel-track";
+import { DetailTopBar, MenuSheet, type MenuItem } from "@/components/orders/detail-chrome";
+import { LUX } from "@/components/orders/luxe-order";
 import type { Order, OrderStatus } from "@/lib/types";
 
-const STATUSES: OrderStatus[] = CUSTOMER_STATUS_STEPS;
-const CREAM = colors.paper.cream;
-const INK = colors.olive[950];
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-LK", {
-    year: "numeric",
-    month: "short",
+function formatDateTime(dateStr: string) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-LK", {
     day: "numeric",
+    month: "short",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -52,8 +64,10 @@ function formatDate(dateStr: string) {
 export default function SellerOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
+  const [storeName, setStoreName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -61,6 +75,7 @@ export default function SellerOrderDetail() {
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [refundReason, setRefundReason] = useState("");
   const [copied, setCopied] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id || !user) return;
@@ -71,6 +86,7 @@ export default function SellerOrderDetail() {
       setRefreshing(false);
       return;
     }
+    setStoreName(storeRes.data.name ?? null);
     const res = await getSellerOrderById(id, storeRes.data.id);
     if (res.ok && res.data) {
       setOrder(res.data);
@@ -95,12 +111,16 @@ export default function SellerOrderDetail() {
     load();
   }, [load]);
 
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/(seller)/orders" as never);
+  };
+
   const handleTransition = async (nextStatus: OrderStatus) => {
     if (!order) return;
-    const label = nextStatus.replace(/_/g, " ");
     Alert.alert(
       "Update status?",
-      `Mark order as "${label}"?`,
+      `Mark order as "${formatOrderStatusLabel(nextStatus)}"?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -165,85 +185,70 @@ export default function SellerOrderDetail() {
     }
   };
 
-  // Refund is shown when the order is in a state the seller can transition
-  // out of (delivered, or processing under admin override per
-  // ORDER_STATUS_EDGES).
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.content}>
-          <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
-          <View style={styles.skeletonHeader}>
-            <Skeleton width="48%" height={28} borderRadius={8} />
-            <Skeleton width="32%" height={14} borderRadius={6} />
-            <Skeleton width={88} height={28} borderRadius={radii.full} style={{ marginTop: 4 }} />
-          </View>
-          <View style={styles.skeletonCard}>
-            <Skeleton width="40%" height={12} />
-            <Skeleton width="70%" height={18} style={{ marginTop: 10 }} />
-            <Skeleton width="55%" height={14} style={{ marginTop: 8 }} />
-          </View>
-          <View style={styles.skeletonCard}>
-            <Skeleton width="100%" height={44} borderRadius={radii.lg} />
-          </View>
-          <SkeletonListRow />
-          <SkeletonListRow />
-          <SkeletonListRow />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!order) {
+  if (loading || !order) {
     const friendlyError =
       !loadError
-        ? "Order not found"
+        ? null
         : /more than one relationship|upstream:|PGRST/i.test(loadError)
           ? "Something went wrong loading this order. Please try again."
           : loadError;
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.content}>
-          <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
-          <View style={styles.errorPanel}>
-            <View style={styles.errorIcon}>
-              <Text style={styles.errorIconText}>!</Text>
-            </View>
-            <Text style={styles.errorTitle}>Couldn’t load this order</Text>
-            <Text style={styles.errorBody}>{friendlyError}</Text>
-            <TouchableOpacity
-              style={styles.retryBtn}
-              onPress={retry}
-              accessibilityRole="button"
-              accessibilityLabel="Try again"
-            >
-              <Text style={styles.retryLabel}>Try again</Text>
-            </TouchableOpacity>
+      <View style={styles.root}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={[C.glow, C.glowSoft, C.paper]}
+          locations={[0, 0.55, 1]}
+          style={styles.glow}
+        />
+        <SafeAreaView style={styles.flex} edges={["top"]}>
+          <DetailTopBar title="Order Details" onBack={goBack} />
+          <View style={styles.loadingContainer}>
+            {!loading ? (
+              <>
+                <Ionicons name="cloud-offline-outline" size={26} color={C.muted} />
+                <Text style={styles.loadingTitle}>Couldn’t load this order</Text>
+                <Text style={styles.loadingText}>{friendlyError ?? "Order not found"}</Text>
+                <TouchableOpacity style={styles.retryBtn} onPress={retry} activeOpacity={0.85}>
+                  <Text style={styles.retryBtnText}>Try again</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={{ width: "100%", gap: 14 }}>
+                <Skeleton height={180} borderRadius={24} />
+                <Skeleton height={64} borderRadius={20} />
+                <Skeleton height={300} borderRadius={26} />
+              </View>
+            )}
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
     );
   }
 
+  const items = order.items ?? [];
+  const ribbon = RIBBON[order.status] ?? RIBBON.pending;
+  const closed = CLOSED.includes(order.status);
   const canRefund = order.status === "delivered" || order.status === "processing";
   const canCancel = canSellerCancelOrder(order.status);
-  const nextStatus = getSellerNextStatus(order.status);
-  const sc = orderStatusTone(order.status);
-  const itemsCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+  const nextStatus = getSellerAdvanceStatus(order.status);
+  const itemsCount = items.reduce((s, i) => s + i.quantity, 0);
   // Sellers see their products only — buyer-side fees and delivery stay off this screen.
-  const itemsTotal = order.items?.reduce((s, i) => s + i.total, 0) ?? 0;
-  const statusIndex = STATUSES.indexOf(order.status as OrderStatus);
-  // cancelled / refunded / returned are not points on the fulfilment
-  // track, so a step bar with nothing highlighted would just look broken.
-  const isTerminal = statusIndex < 0;
+  const itemsTotal = items.reduce((s, i) => s + i.total, 0);
   const isPaid = order.payment_status === "paid";
   const codUnpaid = order.payment_method === "cod" && !isPaid;
-  // Destructive actions live behind the "…" menu so the bottom bar only
-  // carries the next fulfilment step. Refund surfaces in the bar itself
-  // once there is no next step (e.g. delivered).
-  const hasMoreActions = canCancel || (canRefund && !!nextStatus);
+  const ship = readShippingAddress(order);
+  const customer = ship?.name || "Customer";
+  const to = ship ? [ship.city, ship.region].filter(Boolean).join(", ") || ship.line1 || customer : customer;
+  const eta = etaFor(order).eta;
   const showActionBar = !!nextStatus || canRefund;
+
+  let statusLine: string;
+  if (order.status === "delivered") statusLine = `Delivered ${shortDate(order.delivered_at ?? order.placed_at)}`;
+  else if (closed) statusLine = formatOrderStatusLabel(order.status);
+  else if (nextStatus) statusLine = `Next: mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`;
+  else if (isExternalCourierEnabledMobile()) statusLine = `${formatOrderStatusLabel(order.status)} · updates from courier`;
+  else statusLine = formatOrderStatusLabel(order.status);
+  const statusRight = closed || order.status === "delivered" ? `${itemsCount} item${itemsCount === 1 ? "" : "s"}` : `Est. ${shortDate(eta)}`;
 
   const copyOrderNumber = async () => {
     if (!order.order_number) return;
@@ -252,517 +257,666 @@ export default function SellerOrderDetail() {
     setTimeout(() => setCopied(false), 1600);
   };
 
-  const openMoreActions = () => {
-    const options: { label: string; run: () => void }[] = [];
-    if (canRefund && nextStatus) options.push({ label: "Refund order", run: openRefundDialog });
-    if (canCancel) options.push({ label: "Cancel order", run: handleCancel });
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...options.map((o) => o.label), "Close"],
-          destructiveButtonIndex: options.map((_, i) => i),
-          cancelButtonIndex: options.length,
-          title: order.order_number,
-        },
-        (index) => options[index]?.run(),
-      );
-    } else {
-      Alert.alert(order.order_number, undefined, [
-        ...options.map((o) => ({ text: o.label, style: "destructive" as const, onPress: o.run })),
-        { text: "Close", style: "cancel" as const },
-      ]);
-    }
-  };
+  const openInvoice = () => router.push(`/(seller)/orders/${order.id}/invoice` as never);
+  const callCustomer = ship?.phone ? () => void Linking.openURL(`tel:${ship.phone}`) : null;
+
+  const menu: MenuItem[] = [
+    { icon: "copy-outline", label: "Copy order number", onPress: () => void copyOrderNumber() },
+    { icon: "document-text-outline", label: "Customer invoice", onPress: openInvoice },
+    ...(callCustomer ? [{ icon: "call-outline" as const, label: "Call customer", onPress: callCustomer }] : []),
+    ...(canRefund && nextStatus
+      ? [{ icon: "return-down-back-outline" as const, label: "Refund order", onPress: openRefundDialog, danger: true }]
+      : []),
+    ...(canCancel
+      ? [{ icon: "close-circle-outline" as const, label: "Cancel order", onPress: handleCancel, danger: true }]
+      : []),
+  ];
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-    <View style={styles.header}>
-      <SellerBackButton label="Orders" fallbackHref="/(seller)/orders" />
-      {hasMoreActions ? (
-        <TouchableOpacity
-          style={styles.moreButton}
-          onPress={openMoreActions}
-          disabled={updating}
-          accessibilityRole="button"
-          accessibilityLabel="More order actions"
+    <View style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.55, 1]}
+        style={styles.glow}
+      />
+      <SafeAreaView style={styles.flex} edges={["top"]}>
+        <DetailTopBar title="Order Details" onBack={goBack} onMore={() => setMenuOpen(true)} />
+
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
         >
-          <Ionicons name="ellipsis-horizontal" size={18} color={colors.olive[900]} />
-        </TouchableOpacity>
-      ) : null}
-    </View>
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingBottom: showActionBar ? 110 : 32 }]}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />
-      }
-    >
-      <LuxeHero style={styles.orderHero}>
-        <View style={styles.heroTopRow}>
-          <View style={styles.heroStatus}>
-            <View style={[styles.heroStatusDot, isTerminal && styles.heroStatusDotMuted]} />
-            <Text style={styles.heroStatusText}>{formatOrderStatusLabel(order.status)}</Text>
-          </View>
-          <Text style={styles.orderDate} numberOfLines={1}>{formatDate(order.placed_at)}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.orderNumberRow}
-          onPress={() => void copyOrderNumber()}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={`Copy order number ${order.order_number}`}
-        >
-          <Text style={styles.orderNumber} numberOfLines={1} adjustsFontSizeToFit>{order.order_number}</Text>
-          <View style={[styles.copyChip, copied && styles.copyChipDone]}>
-            <Ionicons name={copied ? "checkmark" : "copy-outline"} size={12} color={copied ? "#FAF8F1" : HERO.text} />
-          </View>
-        </TouchableOpacity>
-        <View style={styles.heroFooter}>
-          <View>
-            <Text style={styles.heroMetaLabel}>TOTAL · {itemsCount} {itemsCount === 1 ? "ITEM" : "ITEMS"}</Text>
-            <Text style={styles.heroTotal} numberOfLines={1}>{formatPrice(itemsTotal)}</Text>
-          </View>
-          <View style={[styles.heroPayment, codUnpaid && styles.heroPaymentWarn]}>
-            <Ionicons
-              name={isPaid ? "checkmark-circle" : "time-outline"}
-              size={13}
-              color={codUnpaid ? colors.accent2.rust : HERO.text}
-            />
-            <Text style={[styles.heroPaymentText, codUnpaid && styles.heroPaymentTextWarn]}>
-              {formatCheckoutPayment(order.payment_method)} · {formatPaymentStatus(order.payment_status)}
+          <View style={styles.itemsHead}>
+            <Text style={styles.itemsKicker}>IN THIS PARCEL</Text>
+            <Text style={styles.itemsCount}>
+              {itemsCount} unit{itemsCount === 1 ? "" : "s"}
             </Text>
           </View>
-        </View>
-
-        {!isTerminal ? (
-          <View style={styles.stepper}>
-            {STATUSES.map((step, i) => {
-              const done = i < statusIndex;
-              const current = i === statusIndex;
-              return (
-                <View key={step} style={styles.step}>
-                  <View style={styles.stepTrackRow}>
-                    <View style={[styles.stepLine, i === 0 && styles.stepLineHidden, (done || current) && i > 0 && styles.stepLineDone]} />
-                    <View style={[styles.stepDot, done && styles.stepDotDone, current && styles.stepDotCurrent]}>
-                      {done ? <Ionicons name="checkmark" size={9} color="#FAF8F1" /> : null}
-                    </View>
-                    <View style={[styles.stepLine, i === STATUSES.length - 1 && styles.stepLineHidden, done && styles.stepLineDone]} />
+          <View style={styles.itemsCard}>
+            {items.map((item, i) => (
+              <Animated.View
+                key={item.id}
+                entering={FadeInDown.delay(i * 60).duration(380)}
+                style={[styles.itemRow, i > 0 && styles.itemRowDivider]}
+              >
+                <View style={styles.itemThumb}>
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+                  ) : (
+                    <Ionicons name="shirt-outline" size={22} color={C.muted} />
+                  )}
+                </View>
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemSku} numberOfLines={1}>
+                    {formatPrice(item.unit_price, order.currency)} EACH
+                  </Text>
+                  <Text style={[styles.itemName, item.status === "cancelled" && styles.strike]} numberOfLines={1}>
+                    {item.product_name}
+                  </Text>
+                  <View style={styles.itemMeta}>
+                    {item.variant_label ? (
+                      <View style={styles.variantChip}>
+                        <Text style={styles.variantChipText} numberOfLines={1}>{item.variant_label}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={styles.unitText}>Qty {item.quantity}</Text>
+                    {item.status === "cancelled" ? <Text style={styles.cancelPiece}>Cancelled</Text> : null}
                   </View>
-                  <Text
-                    style={[styles.stepLabel, done && styles.stepLabelActive, current && styles.stepLabelCurrent]}
-                    numberOfLines={2}
-                  >
-                    {formatOrderStatusLabel(step)}
+                </View>
+                <Text style={[styles.itemPrice, item.status === "cancelled" && styles.strike]}>
+                  {formatPrice(item.total, order.currency)}
+                </Text>
+              </Animated.View>
+            ))}
+          </View>
+
+          <View style={styles.sheet}>
+            <View style={styles.grabber} />
+
+            <View style={styles.personRow}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarInitial}>{customer.charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.personKicker}>Customer</Text>
+                <Text style={styles.personName} numberOfLines={1}>{customer}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.roundDark}
+                onPress={openInvoice}
+                activeOpacity={0.85}
+                accessibilityLabel="Customer invoice"
+              >
+                <Ionicons name="document-text-outline" size={18} color={C.cream} />
+              </TouchableOpacity>
+              {callCustomer ? (
+                <TouchableOpacity
+                  style={styles.roundDark}
+                  onPress={callCustomer}
+                  activeOpacity={0.85}
+                  accessibilityLabel="Call customer"
+                >
+                  <Ionicons name="call" size={17} color={C.cream} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <View style={styles.statusBar}>
+              <View style={[styles.statusDot, { backgroundColor: closed ? C.rust : C.ink }]} />
+              <Text style={styles.statusText} numberOfLines={1}>{statusLine}</Text>
+              <Text style={styles.statusRight}>{statusRight}</Text>
+            </View>
+
+            <View style={styles.bookShadow}>
+              <View style={styles.book}>
+                <ParcelArt />
+                <View style={styles.bookTop}>
+                  <Text style={styles.bookLabel}>Order</Text>
+                  <View style={[styles.bookPill, { backgroundColor: ribbon.bg }]}>
+                    <Text style={[styles.bookPillText, { color: ribbon.fg }]}>{formatOrderStatusLabel(order.status)}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.bookNumberRow}
+                  onPress={() => void copyOrderNumber()}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Copy order number ${order.order_number}`}
+                >
+                  <Text style={styles.bookNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                    {order.order_number}
+                  </Text>
+                  <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={16} color={copied ? C.accent : C.muted} />
+                </TouchableOpacity>
+
+                <TrackRail order={order} />
+
+                <View style={routeStyles.route}>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>FROM</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>{storeName || "Your store"}</Text>
+                    <Text style={routeStyles.routeSub}>{shortDate(order.placed_at)}</Text>
+                  </View>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>TO</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>{to}</Text>
+                    <Text style={routeStyles.routeSub} numberOfLines={1}>
+                      {order.status === "delivered"
+                        ? `Delivered ${shortDate(order.delivered_at ?? order.placed_at)}`
+                        : closed
+                          ? formatOrderStatusLabel(order.status)
+                          : `Estimated ${shortDate(eta)}`}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[routeStyles.route, { marginTop: 14 }]}>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>YOUR ITEMS</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>
+                      {formatPrice(itemsTotal, order.currency)}
+                    </Text>
+                  </View>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>RECIPIENT</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>{customer.split(" ")[0]}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {codUnpaid ? (
+              <View style={styles.codBanner}>
+                <Ionicons name="cash-outline" size={18} color={C.rust} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.codTitle}>Cash on delivery</Text>
+                  <Text style={styles.codBody}>
+                    The customer pays in cash at delivery. Once it is collected, the order can be marked through its status flow.
                   </Text>
                 </View>
-              );
-            })}
-          </View>
-        ) : null}
-      </LuxeHero>
-
-      {isTerminal ? (
-        <View style={[styles.terminalNotice, { backgroundColor: sc.bg }]}>
-          <Ionicons name="information-circle-outline" size={18} color={sc.text} />
-          <Text style={[styles.terminalNoticeText, { color: sc.text }]}>This order is {formatOrderStatusLabel(order.status).toLowerCase()} and fulfilment has stopped.</Text>
-        </View>
-      ) : null}
-
-      {codUnpaid ? (
-        <View style={styles.codBanner}>
-          <Ionicons name="cash-outline" size={18} color={colors.accent2.rust} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.codTitle}>Cash on delivery</Text>
-            <Text style={styles.codBody}>The customer pays in cash at delivery. Once it is collected, the order can be marked through its status flow.</Text>
-          </View>
-        </View>
-      ) : null}
-
-      <TouchableOpacity
-        style={[styles.card, styles.invoiceRow]}
-        onPress={() => router.push(`/(seller)/orders/${order.id}/invoice` as never)}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel="Open customer invoice"
-      >
-        <Ionicons name="document-text-outline" size={20} color={colors.olive[800]} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.invoiceTitle}>Customer invoice</Text>
-          <Text style={styles.invoiceSub}>
-            {isPaid ? "Paid · view or save as PDF" : codUnpaid ? "Unpaid until cash is collected · view or save as PDF" : "View or save as PDF"}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.olive[800]} />
-      </TouchableOpacity>
-
-      {order.notes ? (
-        <View style={styles.section}>
-          <SectionEyebrow index="01" label="CUSTOMER NOTE" />
-          <View style={[styles.card, styles.notesCard]}>
-            <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.olive[700]} style={{ marginTop: 2 }} />
-            <Text style={styles.notesText}>{order.notes}</Text>
-          </View>
-        </View>
-      ) : null}
-
-      <View style={styles.section}>
-        <SectionEyebrow
-          index={String(1 + (order.notes ? 1 : 0)).padStart(2, "0")}
-          label={`ITEMS · ${itemsCount} ${itemsCount === 1 ? "UNIT" : "UNITS"}`}
-        />
-        <View style={styles.card}>
-          {order.items?.map((item) => (
-            <View key={item.id} style={styles.itemCard}>
-              <View>
-                {item.image_url ? (
-                  <Image source={{ uri: item.image_url }} style={styles.itemThumb} contentFit="cover" />
-                ) : (
-                  <View style={[styles.itemThumb, styles.itemThumbEmpty]}><Ionicons name="image-outline" size={20} color={colors.ink.mute} /></View>
-                )}
-                {item.quantity > 1 ? (
-                  <View style={styles.qtyBadge}><Text style={styles.qtyBadgeText}>×{item.quantity}</Text></View>
-                ) : null}
               </View>
-              <View style={styles.itemInfo}>
-                <Text style={styles.itemName} numberOfLines={2}>{item.product_name}</Text>
-                {item.variant_label ? <Text style={styles.itemVariant}>{item.variant_label}</Text> : null}
-                <Text style={styles.itemUnitPrice}>
-                  {item.quantity} × {formatPrice(item.total / Math.max(1, item.quantity))}
+            ) : null}
+
+            {order.notes ? (
+              <View style={styles.block}>
+                <Text style={styles.blockTitle}>Customer note</Text>
+                <View style={styles.noteRow}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color={C.accent} style={{ marginTop: 2 }} />
+                  <Text style={styles.noteText}>{order.notes}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* Payment */}
+            <View style={styles.block}>
+              <View style={styles.blockHead}>
+                <Text style={styles.blockTitle}>Payment</Text>
+                <View
+                  style={[
+                    styles.payBadge,
+                    { backgroundColor: isPaid ? "rgba(83,94,44,0.12)" : codUnpaid ? "rgba(184,92,58,0.1)" : "rgba(200,164,74,0.16)" },
+                  ]}
+                >
+                  <Ionicons
+                    name={isPaid ? "checkmark-circle" : "time"}
+                    size={12}
+                    color={isPaid ? C.accent : codUnpaid ? C.rust : LUX.goldInk}
+                  />
+                  <Text
+                    style={[
+                      styles.payBadgeText,
+                      { color: isPaid ? C.accent : codUnpaid ? C.rust : LUX.goldInk },
+                    ]}
+                  >
+                    {formatPaymentStatus(order.payment_status).toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.methodRow}>
+                <View style={styles.methodIcon}>
+                  <Ionicons
+                    name={order.payment_method === "cod" ? "cash-outline" : "card-outline"}
+                    size={18}
+                    color={C.accent}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodTitle}>{formatCheckoutPayment(order.payment_method)}</Text>
+                  <Text style={styles.methodSub}>Placed {formatDateTime(order.placed_at)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.ledger}>
+                {items.map((item) => (
+                  <LedgerLine
+                    key={item.id}
+                    label={`${item.product_name} × ${item.quantity}`}
+                    value={formatPrice(item.total, order.currency)}
+                  />
+                ))}
+                <View style={styles.ledgerTotal}>
+                  <Text style={styles.ledgerTotalLabel}>Your items</Text>
+                  <Text style={styles.ledgerTotalValue}>{formatPrice(itemsTotal, order.currency)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Delivery address */}
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>Delivery address</Text>
+              {ship ? (
+                <View style={styles.addrRow}>
+                  <View style={styles.methodIcon}>
+                    <Ionicons name="location" size={18} color={C.accent} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={styles.methodTitle}>{customer}</Text>
+                    {ship.line1 ? (
+                      <Text style={styles.addrText}>
+                        {ship.line1}
+                        {ship.line2 ? `, ${ship.line2}` : ""}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.addrText}>
+                      {[ship.city, ship.region, ship.postalCode].filter(Boolean).join(", ")}
+                    </Text>
+                    {ship.phone ? (
+                      <TouchableOpacity style={styles.phoneChip} onPress={callCustomer ?? undefined} activeOpacity={0.8}>
+                        <Ionicons name="call-outline" size={11} color={C.accent} />
+                        <Text style={styles.phoneChipText}>{ship.phone}</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              ) : (
+                <Text style={[styles.addrText, { marginTop: 8 }]}>No delivery address on record.</Text>
+              )}
+            </View>
+
+            {canCancel && !nextStatus ? (
+              <TouchableOpacity style={styles.cancelRow} onPress={handleCancel} activeOpacity={0.75}>
+                <Ionicons name="close-circle-outline" size={16} color={C.rust} />
+                <Text style={styles.cancelText}>Cancel this order</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <View style={{ height: showActionBar ? 110 : Math.max(insets.bottom, 16) + 16 }} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+
+      {showActionBar ? (
+        <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={styles.actionBarTint} />
+          {nextStatus ? (
+            <TouchableOpacity
+              style={[styles.primaryAction, updating && styles.actionDisabled]}
+              onPress={() => handleTransition(nextStatus)}
+              disabled={updating}
+              accessibilityRole="button"
+              accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+            >
+              <View>
+                <Text style={styles.primaryActionKicker}>NEXT STEP</Text>
+                <Text style={styles.primaryActionText}>
+                  {updating ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}
                 </Text>
               </View>
-              <Text style={styles.itemPrice}>{formatPrice(item.total)}</Text>
-            </View>
-          ))}
-
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatPrice(itemsTotal)}</Text>
-          </View>
+              {updating ? null : (
+                <View style={styles.primaryActionArrow}>
+                  <Ionicons name="arrow-forward" size={18} color={C.ink} />
+                </View>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.refundAction, updating && styles.actionDisabled]}
+              onPress={openRefundDialog}
+              disabled={updating}
+              accessibilityRole="button"
+              accessibilityLabel="Refund order"
+            >
+              <Ionicons name="return-down-back-outline" size={17} color={C.rust} />
+              <Text style={styles.refundActionText}>Refund order</Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
-    </ScrollView>
+      ) : null}
 
-    {/* Refund modal — cross-platform reason input + confirm */}
-    <Modal
-      visible={refundModalOpen}
-      transparent
-      animationType="fade"
-      onRequestClose={closeRefundDialog}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.modalOverlay}
+      {/* Refund modal — cross-platform reason input + confirm */}
+      <Modal
+        visible={refundModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeRefundDialog}
       >
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Refund order</Text>
-          <Text style={styles.modalBody}>
-            This marks the order as refunded and notifies the buyer. Add an optional reason for the audit log:
-          </Text>
-          <TextInput
-            style={styles.modalInput}
-            value={refundReason}
-            onChangeText={setRefundReason}
-            placeholder="e.g. Customer reported defect"
-            placeholderTextColor={colors.light.mutedForeground}
-            multiline
-          />
-          <View style={styles.modalActions}>
-            <TouchableOpacity
-              style={[styles.modalBtn, styles.modalBtnCancel]}
-              onPress={closeRefundDialog}
-              disabled={updating}
-            >
-              <Text style={styles.modalBtnCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalBtn, styles.modalBtnConfirm, updating && { opacity: 0.6 }]}
-              onPress={submitRefund}
-              disabled={updating}
-            >
-              <Text style={styles.modalBtnConfirmText}>
-                {updating ? "Refunding..." : "Refund"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-    {showActionBar ? (
-      <View style={styles.actionBar}>
-        <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={styles.actionBarTint} />
-        {nextStatus ? (
-          <TouchableOpacity
-            style={[styles.primaryAction, updating && styles.actionDisabled]}
-            onPress={() => handleTransition(nextStatus)}
-            disabled={updating}
-            accessibilityRole="button"
-            accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
-          >
-            <View>
-              <Text style={styles.primaryActionKicker}>NEXT STEP</Text>
-              <Text style={styles.primaryActionText}>{updating ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}</Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Refund order</Text>
+            <Text style={styles.modalBody}>
+              This marks the order as refunded and notifies the buyer. Add an optional reason for the audit log:
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={refundReason}
+              onChangeText={setRefundReason}
+              placeholder="e.g. Customer reported defect"
+              placeholderTextColor={C.muted}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={closeRefundDialog}
+                disabled={updating}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnConfirm, updating && { opacity: 0.6 }]}
+                onPress={submitRefund}
+                disabled={updating}
+              >
+                <Text style={styles.modalBtnConfirmText}>
+                  {updating ? "Refunding..." : "Refund"}
+                </Text>
+              </TouchableOpacity>
             </View>
-            {updating ? null : (
-              <View style={styles.primaryActionArrow}>
-                <Ionicons name="arrow-forward" size={18} color="#1A1915" />
-              </View>
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.refundAction, updating && styles.actionDisabled]}
-            onPress={openRefundDialog}
-            disabled={updating}
-            accessibilityRole="button"
-            accessibilityLabel="Refund order"
-          >
-            <Ionicons name="return-down-back-outline" size={17} color={colors.accent2.rust} />
-            <Text style={styles.refundActionText}>Refund order</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    ) : null}
-    </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <MenuSheet open={menuOpen} items={menu} onClose={() => setMenuOpen(false)} bottom={insets.bottom} />
+    </View>
   );
 }
 
-function SectionEyebrow({ index, label }: { index: string; label: string }) {
+function LedgerLine({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.eyebrowRow}>
-      <Text style={styles.eyebrowIndex}>{index}</Text>
-      <View style={styles.eyebrowRule} />
-      <Text style={styles.sectionEyebrow}>{label}</Text>
+    <View style={styles.ledgerLine}>
+      <Text style={styles.ledgerLabel} numberOfLines={1}>{label}</Text>
+      <Text style={styles.ledgerValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
-  content: { paddingHorizontal: 16, paddingTop: 4 },
+  root: { flex: 1, backgroundColor: C.paper },
+  flex: { flex: 1 },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 420 },
 
-  skeletonHeader: { gap: 10, marginTop: 8, marginBottom: 16 },
-  skeletonCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
-    padding: 16,
-    marginBottom: 12,
-  },
+  loadingContainer: { flex: 1, alignItems: "center", paddingHorizontal: 20, paddingTop: 12, gap: 10 },
+  loadingTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: C.text },
+  loadingText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: C.muted, textAlign: "center" },
+  retryBtn: { marginTop: 4, height: 42, paddingHorizontal: 20, borderRadius: 21, backgroundColor: C.ink, justifyContent: "center" },
+  retryBtnText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: C.cream },
 
-  errorPanel: {
-    marginTop: 24,
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    paddingVertical: 36,
-    paddingHorizontal: 28,
-    alignItems: "center",
-    gap: 8,
-  },
-  errorIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  errorIconText: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: colors.olive[700],
-  },
-  errorTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.lg,
-    color: INK,
-    textAlign: "center",
-  },
-  errorBody: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  retryBtn: {
-    marginTop: 12,
-    minHeight: 44,
+  scroll: { flexGrow: 1, paddingTop: 6 },
+
+  itemsHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
     paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[700],
+    marginBottom: 10,
+  },
+  itemsKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
+  itemsCount: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+
+  itemsCard: {
+    marginHorizontal: 20,
+    paddingHorizontal: 12,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  itemRowDivider: { borderTopWidth: 1, borderTopColor: C.line },
+  itemThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#f0ede2",
     alignItems: "center",
     justifyContent: "center",
   },
-  retryLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: CREAM,
-    fontSize: typography.fontSizes.sm,
+  itemBody: { flex: 1, minWidth: 0, gap: 2 },
+  itemSku: { fontFamily: fontFamilies.mono.semibold, fontSize: 9.5, letterSpacing: 1.2, color: C.accent },
+  itemName: { fontFamily: fontFamilies.sans.bold, fontSize: 15, letterSpacing: -0.2, color: C.text },
+  itemMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 },
+  itemPrice: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    letterSpacing: -0.2,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
   },
-
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 },
-  moreButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.14)", alignItems: "center", justifyContent: "center" },
-
-  orderHero: { marginBottom: 14 },
-  orderNumberRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
-  copyChip: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: HERO.chip, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.chipBorder },
-  copyChipDone: { backgroundColor: HERO.ink, borderColor: HERO.ink },
-  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  heroStatus: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radii.full, backgroundColor: HERO.chip, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.chipBorder },
-  heroStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent2.ochre },
-  heroStatusDotMuted: { backgroundColor: "rgba(83,94,44,0.35)" },
-  heroStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: HERO.text },
-  orderDate: { flexShrink: 1, fontFamily: fontFamilies.display.italic, fontSize: 12.5, color: HERO.mute },
-  orderNumber: { flexShrink: 1, fontFamily: fontFamilies.mono.semibold, fontSize: 16, color: HERO.ink, letterSpacing: 0.2 },
-  heroFooter: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginTop: 8 },
-  heroMetaLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.5, color: HERO.kicker },
-  heroTotal: { marginTop: 2, fontFamily: fontFamilies.display.regular, fontSize: 30, lineHeight: 36, color: HERO.ink, letterSpacing: -0.8, fontVariant: ["tabular-nums"] },
-  heroPayment: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: radii.full, backgroundColor: HERO.tile, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.tileBorder },
-  heroPaymentWarn: { backgroundColor: "rgba(184,92,58,0.08)", borderColor: "rgba(184,92,58,0.28)" },
-  heroPaymentText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: HERO.text },
-  heroPaymentTextWarn: { color: colors.accent2.rust },
-
-  stepper: { flexDirection: "row", marginTop: 12, paddingTop: 12, marginHorizontal: -6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: HERO.divider },
-  step: { flex: 1, alignItems: "center", gap: 6 },
-  stepTrackRow: { flexDirection: "row", alignItems: "center", alignSelf: "stretch" },
-  stepLine: { flex: 1, height: 2, backgroundColor: "rgba(83,94,44,0.12)" },
-  stepLineDone: { backgroundColor: colors.olive[600] },
-  stepLineHidden: { backgroundColor: "transparent" },
-  stepDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: "rgba(83,94,44,0.25)", backgroundColor: "#fffdf8", alignItems: "center", justifyContent: "center" },
-  stepDotDone: { borderColor: colors.olive[600], backgroundColor: colors.olive[600] },
-  stepDotCurrent: { width: 18, height: 18, borderRadius: 9, borderWidth: 5, borderColor: colors.accent2.ochre, backgroundColor: "#fffdf8" },
-  stepLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 9.5, lineHeight: 12, color: "rgba(83,94,44,0.45)", textAlign: "center", paddingHorizontal: 2 },
-  stepLabelActive: { color: HERO.mute },
-  stepLabelCurrent: { fontFamily: fontFamilies.sans.semibold, color: HERO.ink },
-
-  terminalNotice: { flexDirection: "row", alignItems: "flex-start", gap: 9, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: "rgba(83,94,44,0.08)" },
-  terminalNoticeText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 13, lineHeight: 19 },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+  variantChip: {
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 11,
     justifyContent: "center",
-    padding: 20,
+    backgroundColor: C.accentSoft,
+    maxWidth: 140,
   },
-  modalCard: {
-    backgroundColor: colors.paper.DEFAULT,
-    borderRadius: radii.lg,
-    padding: 18,
+  variantChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.olive[800] },
+  unitText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
+  cancelPiece: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.rust },
+  strike: { textDecorationLine: "line-through", opacity: 0.6 },
+
+  sheet: {
+    flex: 1,
+    marginTop: 22,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  grabber: { alignSelf: "center", width: 44, height: 5, borderRadius: 3, backgroundColor: "#e2e0d6", marginBottom: 16 },
+
+  personRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: C.ink,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: C.goldSoft,
+  },
+  avatarInitial: { fontFamily: fontFamilies.display.semibold, fontSize: 21, color: C.goldSoft },
+  personKicker: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+  personName: { fontFamily: fontFamilies.sans.bold, fontSize: 18, letterSpacing: -0.3, color: C.text, marginTop: 1 },
+  roundDark: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.ink,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  statusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 18,
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: "#efede4",
+  },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { flex: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text },
+  statusRight: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+
+  bookShadow: {
+    marginTop: 14,
+    borderRadius: 26,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  book: {
+    borderRadius: 26,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
+    borderColor: C.line,
+    padding: 20,
+    backgroundColor: "#FFFFFF",
   },
-  modalTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.lg,
-    color: INK,
-    marginBottom: 6,
+  bookTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  bookLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 13.5, color: C.muted },
+  bookPill: { height: 30, paddingHorizontal: 14, borderRadius: 15, justifyContent: "center" },
+  bookPillText: { fontFamily: fontFamilies.sans.bold, fontSize: 12.5 },
+  bookNumberRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  bookNumber: {
+    flexShrink: 1,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 26,
+    letterSpacing: -0.6,
+    color: C.text,
   },
-  modalBody: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    marginBottom: 12,
-    lineHeight: 20,
+
+  codBanner: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(184,92,58,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.24)",
+    borderRadius: 20,
+    padding: 14,
   },
+  codTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.rust },
+  codBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, marginTop: 3, lineHeight: 17 },
+
+  block: {
+    marginTop: 14,
+    padding: 18,
+    borderRadius: 24,
+    backgroundColor: "#faf9f4",
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  blockHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  blockTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, letterSpacing: -0.2, color: C.text },
+  noteRow: { flexDirection: "row", gap: 10, marginTop: 10 },
+  noteText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: C.text },
+  payBadge: { flexDirection: "row", alignItems: "center", gap: 5, height: 26, paddingHorizontal: 10, borderRadius: 13 },
+  payBadgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1 },
+  methodRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14 },
+  methodIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  methodTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 14.5, color: C.text },
+  methodSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, marginTop: 1 },
+  ledger: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.line, borderStyle: "dashed", gap: 10 },
+  ledgerLine: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  ledgerLabel: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: C.muted },
+  ledgerValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text, fontVariant: ["tabular-nums"] },
+  ledgerTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
+  ledgerTotalLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.text },
+  ledgerTotalValue: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
+  },
+
+  addrRow: { flexDirection: "row", gap: 12, marginTop: 14 },
+  addrText: { fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 18, color: C.muted },
+  phoneChip: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: C.accentSoft,
+  },
+  phoneChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
+
+  cancelRow: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 48,
+  },
+  cancelText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.rust },
+
+  actionBar: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, overflow: "hidden", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
+  actionBarTint: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(255,255,255,0.72)" },
+  primaryAction: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderRadius: 30, backgroundColor: C.ink, paddingLeft: 24, paddingRight: 7, shadowColor: "#16150F", shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
+  primaryActionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.6, color: C.lime, marginBottom: 2 },
+  primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, color: C.cream },
+  primaryActionArrow: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.lime, alignItems: "center", justifyContent: "center" },
+  refundAction: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 27, borderWidth: 1, borderColor: "rgba(184,92,58,0.3)", backgroundColor: "rgba(184,92,58,0.05)" },
+  refundActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, color: C.rust },
+  actionDisabled: { opacity: 0.6 },
+
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 20 },
+  modalCard: { backgroundColor: "#FFFFFF", borderRadius: 26, padding: 20, borderWidth: 1, borderColor: C.line },
+  modalTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: C.text, marginBottom: 6 },
+  modalBody: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: C.muted, marginBottom: 12, lineHeight: 20 },
   modalInput: {
     minHeight: 70,
     textAlignVertical: "top",
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: INK,
-    backgroundColor: CREAM,
-    borderRadius: radii.md,
+    fontSize: 14,
+    color: C.text,
+    backgroundColor: "#faf9f4",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    borderColor: C.line,
     padding: 12,
   },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 14,
-  },
-  modalBtn: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalBtnCancel: {
-    backgroundColor: colors.olive[50],
-  },
-  modalBtnCancelText: {
-    fontFamily: fontFamilies.sans.medium,
-    color: INK,
-    fontSize: typography.fontSizes.sm,
-  },
-  modalBtnConfirm: {
-    backgroundColor: colors.accent2.rust,
-  },
-  modalBtnConfirmText: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: "#fff",
-    fontSize: typography.fontSizes.sm,
-  },
-
-  section: { marginTop: 26 },
-  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12, marginLeft: 4 },
-  eyebrowIndex: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: colors.olive[600] },
-  eyebrowRule: { width: 18, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(26,25,21,0.25)" },
-  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: colors.ink.mute },
-  invoiceRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 20, paddingVertical: 14 },
-  invoiceTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: "#16150F" },
-  invoiceSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "rgba(22,21,15,0.55)", marginTop: 2 },
-  card: { backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "rgba(83,94,44,0.1)", padding: 18, shadowColor: "#16150F", shadowOpacity: 0.05, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
-  cardDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(83,94,44,0.14)", marginVertical: 14 },
-
-  codBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "rgba(184,92,58,0.08)", borderWidth: 1, borderColor: "rgba(184,92,58,0.24)", borderRadius: 18, padding: 14 },
-  codTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.accent2.rust },
-  codBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 3, lineHeight: 17 },
-
-  customerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#1A1915", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#E8CF8F" },
-  avatarText: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: "#E8CF8F" },
-  addressName: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: INK },
-  addressPhone: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.mutedForeground, marginTop: 2 },
-  callButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  addressRow: { flexDirection: "row", gap: 10 },
-  addressLine: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: INK },
-
-  notesCard: { flexDirection: "row", gap: 10, backgroundColor: colors.olive[50] },
-  notesText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: INK },
-
-  itemCard: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 6 },
-  itemThumb: { width: 68, height: 68, borderRadius: 18, backgroundColor: colors.olive[50] },
-  itemThumbEmpty: { alignItems: "center", justifyContent: "center" },
-  qtyBadge: { position: "absolute", right: -5, top: -5, minWidth: 24, height: 22, borderRadius: 11, paddingHorizontal: 5, backgroundColor: INK, borderWidth: 2, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
-  qtyBadgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: CREAM },
-  itemInfo: { flex: 1, minWidth: 0, gap: 3 },
-  itemName: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, lineHeight: 19, color: INK },
-  itemVariant: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, textTransform: "capitalize" },
-  itemUnitPrice: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
-  itemPrice: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: INK, fontVariant: ["tabular-nums"] },
-
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginTop: 8, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.14)" },
-  totalLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: INK },
-  totalValue: { fontFamily: fontFamilies.display.semibold, fontSize: 26, color: INK, letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
-
-  actionBar: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, overflow: "hidden", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.12)" },
-  actionBarTint: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(250,249,245,0.72)" },
-  primaryAction: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderRadius: radii.full, backgroundColor: "#1A1915", paddingLeft: 24, paddingRight: 7, shadowColor: "#16150F", shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
-  primaryActionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.6, color: "#8F897D", marginBottom: 2 },
-  primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, color: CREAM },
-  primaryActionArrow: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#E8CF8F", alignItems: "center", justifyContent: "center" },
-  refundAction: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: radii.full, borderWidth: 1, borderColor: "rgba(184,92,58,0.3)", backgroundColor: "rgba(184,92,58,0.05)" },
-  refundActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, color: colors.accent2.rust },
-  actionDisabled: { opacity: 0.6 },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 14 },
+  modalBtn: { minHeight: 44, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  modalBtnCancel: { backgroundColor: C.accentSoft },
+  modalBtnCancelText: { fontFamily: fontFamilies.sans.semibold, color: C.text, fontSize: 14 },
+  modalBtnConfirm: { backgroundColor: C.rust },
+  modalBtnConfirmText: { fontFamily: fontFamilies.sans.semibold, color: "#fff", fontSize: 14 },
 });

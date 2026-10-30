@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@/components/ui/Icon";
+import { SellerGlow } from "@/components/seller/chrome";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   getSellerStore,
@@ -233,7 +234,7 @@ function SellerProductEdit({ id }: { id: string }) {
     getProductSizeGuideBackend(id).then((res) => {
       if (!alive || !res.ok || !res.data) return;
       if (res.data.size_system) setSizeSystemPick(res.data.size_system as SizeSystem);
-      setSizeGuide({ columns: res.data.columns, rows: res.data.rows });
+      setSizeGuide({ columns: res.data.columns ?? [], rows: res.data.rows ?? [] });
     });
     return () => {
       alive = false;
@@ -1067,6 +1068,7 @@ function SellerProductEdit({ id }: { id: string }) {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" />
+      <SellerGlow />
       <View style={styles.topBar}>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -1107,7 +1109,7 @@ function SellerProductEdit({ id }: { id: string }) {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           ref={scrollRef}
-          style={styles.container}
+          style={styles.scroller}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
@@ -1810,18 +1812,19 @@ function SellerProductEdit({ id }: { id: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  scroller: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingHorizontal: spacing[4], paddingTop: spacing[3], paddingBottom: spacing[7] },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: colors.light.background,
+    backgroundColor: "#f8f7f2",
     paddingHorizontal: 32,
     gap: 8,
   },
   errorTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     color: INK,
     marginTop: 12,
@@ -1849,25 +1852,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: spacing[4],
-    paddingTop: 6,
-    paddingBottom: 12,
-    backgroundColor: colors.light.background,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(83,94,44,0.12)",
+    paddingHorizontal: spacing[5],
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   headerCopy: { flex: 1, minWidth: 0 },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: 21, lineHeight: 26, color: INK, letterSpacing: -0.3 },
+  title: { fontFamily: fontFamilies.sans.bold, fontSize: 21, lineHeight: 26, color: INK, letterSpacing: -0.3 },
   subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 1 },
   headerStatus: {
     flexDirection: "row",
@@ -1906,7 +1909,7 @@ const styles = StyleSheet.create({
   },
   progressBadgeDone: { backgroundColor: OK_GREEN, borderColor: OK_GREEN },
   progressBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[800], fontVariant: ["tabular-nums"] },
-  progressTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 17, color: INK },
+  progressTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: INK },
   progressSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 1 },
   progressPct: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[800], fontVariant: ["tabular-nums"] },
   progressSegs: { flexDirection: "row", gap: 4 },
@@ -2018,13 +2021,13 @@ const styles = StyleSheet.create({
   flowTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: INK },
   flowDesc: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.light.mutedForeground, textAlign: "center" },
 
-  preflightCard: { marginTop: 12, padding: 14, borderRadius: 16, borderWidth: 1, backgroundColor: CREAM },
+  preflightCard: { marginTop: 12, padding: 14, borderRadius: 16, borderWidth: 1, backgroundColor: "#FFFFFF" },
   preflightIdle: { borderColor: "rgba(83,94,44,0.14)" },
   preflightApproved: { borderColor: "rgba(83,94,44,0.35)", backgroundColor: colors.olive[50] },
   preflightPending: { borderColor: "rgba(200,164,74,0.45)", backgroundColor: "#f3efe2" },
   preflightFlagged: { borderColor: "rgba(184,92,58,0.35)", backgroundColor: "#f4e6df" },
   preflightHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  preflightTitle: { fontSize: 15, fontFamily: fontFamilies.display.semibold, color: INK },
+  preflightTitle: { fontSize: 15, fontFamily: fontFamilies.sans.bold, color: INK },
   preflightScore: { fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, fontFamily: fontFamilies.mono.medium },
   scoreTrack: { height: 5, borderRadius: 3, backgroundColor: "rgba(83,94,44,0.1)", overflow: "hidden", marginTop: 10 },
   scoreFill: { height: "100%", borderRadius: 3 },

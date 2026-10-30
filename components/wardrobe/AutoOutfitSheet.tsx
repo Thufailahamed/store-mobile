@@ -14,18 +14,24 @@ import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { radii } from "@/lib/theme/tokens";
 import { useToast } from "@/components/ui";
-import {
-  autoGenerateOutfits,
-  createWardrobeOutfit,
-} from "@/lib/api/wardrobe";
-import type { AutoOutfit, AutoOutfitPiece, AutoOutfitResult, WardrobeItem, WardrobeOutfit } from "@/lib/types";
+import { autoGenerateOutfits, createWardrobeOutfit } from "@/lib/api/wardrobe";
+import type {
+  AutoOutfit,
+  AutoOutfitPiece,
+  AutoOutfitResult,
+  WardrobeItem,
+  WardrobeOutfit,
+} from "@/lib/types";
 
 const INK = "#16170f";
 const MUTED = "#6b6b6b";
 const BORDER = "rgba(22,23,15,0.10)";
 const OLIVE = "#556b2f";
 
-const SEASONS: Array<{ key: "all" | "spring" | "summer" | "fall" | "winter"; label: string }> = [
+const SEASONS: Array<{
+  key: "all" | "spring" | "summer" | "fall" | "winter";
+  label: string;
+}> = [
   { key: "all", label: "Any" },
   { key: "spring", label: "Spring" },
   { key: "summer", label: "Summer" },
@@ -59,7 +65,7 @@ export function AutoOutfitSheet({
 }) {
   const { toast } = useToast();
   const [occasion, setOccasion] = useState("");
-  const [season, setSeason] = useState<typeof SEASONS[number]["key"]>("all");
+  const [season, setSeason] = useState<(typeof SEASONS)[number]["key"]>("all");
   const [seedItemId, setSeedItemId] = useState<string>("");
   const [limit, setLimit] = useState(5);
   const [result, setResult] = useState<AutoOutfitResult | null>(null);
@@ -150,7 +156,13 @@ export function AutoOutfitSheet({
                 style={styles.input}
                 onPress={() => {
                   // Lightweight inline prompt: cycle through 4 presets then free.
-                  const presets = ["", "Work", "Brunch", "Date night", "Wedding"];
+                  const presets = [
+                    "",
+                    "Work",
+                    "Brunch",
+                    "Date night",
+                    "Wedding",
+                  ];
                   const i = presets.indexOf(occasion);
                   setOccasion(presets[(i + 1) % presets.length]);
                 }}
@@ -173,7 +185,9 @@ export function AutoOutfitSheet({
                       onPress={() => setSeason(s.key)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>
+                      <Text
+                        style={[styles.chipTxt, active && styles.chipTxtActive]}
+                      >
                         {s.label}
                       </Text>
                     </TouchableOpacity>
@@ -205,7 +219,10 @@ export function AutoOutfitSheet({
                       onPress={() => setSeedItemId(it.id)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.seedTxt, active && styles.seedTxtActive]} numberOfLines={1}>
+                      <Text
+                        style={[styles.seedTxt, active && styles.seedTxtActive]}
+                        numberOfLines={1}
+                      >
                         {it.name}
                       </Text>
                     </TouchableOpacity>
@@ -225,7 +242,9 @@ export function AutoOutfitSheet({
                       onPress={() => setLimit(n)}
                       activeOpacity={0.8}
                     >
-                      <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>
+                      <Text
+                        style={[styles.chipTxt, active && styles.chipTxtActive]}
+                      >
                         {n}
                       </Text>
                     </TouchableOpacity>
@@ -234,7 +253,11 @@ export function AutoOutfitSheet({
               </View>
             </Field>
 
-            <TouchableOpacity style={styles.cta} onPress={handleGenerate} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={styles.cta}
+              onPress={handleGenerate}
+              activeOpacity={0.85}
+            >
               <Ionicons name="sparkles" size={16} color="#fff" />
               <Text style={styles.ctaTxt}>Generate outfits</Text>
             </TouchableOpacity>
@@ -247,9 +270,16 @@ export function AutoOutfitSheet({
                       {combo.pieces.slice(0, 4).map((p: AutoOutfitPiece) => (
                         <View key={p.wardrobe_item_id} style={styles.thumb}>
                           {p.image_url ? (
-                            <RNImage source={{ uri: p.image_url }} style={styles.thumbImg} />
+                            <RNImage
+                              source={{ uri: p.image_url }}
+                              style={styles.thumbImg}
+                            />
                           ) : (
-                            <Ionicons name="shirt-outline" size={14} color={MUTED} />
+                            <Ionicons
+                              name="shirt-outline"
+                              size={14}
+                              color={MUTED}
+                            />
                           )}
                         </View>
                       ))}
@@ -279,7 +309,8 @@ export function AutoOutfitSheet({
 
             {result && result.outfits.length === 0 && (
               <Text style={styles.noOutfits}>
-                No outfits could be generated — add more tops, bottoms, or dresses.
+                No outfits could be generated — add more tops, bottoms, or
+                dresses.
               </Text>
             )}
           </ScrollView>
@@ -289,7 +320,13 @@ export function AutoOutfitSheet({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -336,7 +373,7 @@ const styles: Record<string, any> = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontWeight: "600",
     color: INK,
     marginTop: 2,

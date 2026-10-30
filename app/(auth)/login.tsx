@@ -23,6 +23,7 @@ import { FIXED_LOGIN_CODE_ENABLED } from "@/lib/supabase/fixed-login-code";
 import { mergeAnonSessionOnLogin } from "@/lib/recommender";
 import { EMAIL_REGEX, normalizePhoneE164 } from "@/lib/contact-validation";
 import { useToast } from "@/components/ui";
+import { VerifyOtpSheet } from "@/components/auth/VerifyOtpSheet";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { C } from "@/components/orders/parcel-track";
 import {
@@ -50,6 +51,8 @@ function formatLocalPhone(input: string): string {
 
 export default function LoginScreen() {
   const router = useRouter();
+  // Phone the OTP sheet is verifying (null = sheet closed).
+  const [otpPhone, setOtpPhone] = useState<string | null>(null);
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const [phone, setPhone] = useState("");
@@ -114,7 +117,7 @@ export default function LoginScreen() {
     const e164 = normalizePhoneE164(phone);
     Keyboard.dismiss();
     if (FIXED_LOGIN_CODE_ENABLED) {
-      router.push({ pathname: "/(auth)/verify-otp", params: { phone: e164 } });
+      setOtpPhone(e164);
       return;
     }
     setLoading(true);
@@ -126,11 +129,7 @@ export default function LoginScreen() {
     if (error) {
       toast(error.message, "error");
     } else {
-      toast("Verification code sent!", "success");
-      router.push({
-        pathname: "/(auth)/verify-otp",
-        params: { phone: e164 },
-      });
+      setOtpPhone(e164);
     }
   };
 
@@ -329,6 +328,7 @@ export default function LoginScreen() {
           onPress={() => router.push("/(auth)/register")}
         />
       </ScrollView>
+      <VerifyOtpSheet visible={!!otpPhone} phone={otpPhone ?? ""} onClose={() => setOtpPhone(null)} />
     </KeyboardAvoidingView>
   );
 }

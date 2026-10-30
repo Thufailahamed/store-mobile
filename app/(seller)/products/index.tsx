@@ -31,6 +31,8 @@ import { formatPrice } from "@/lib/utils";
 import { getVariantAvailableStock, LOW_STOCK_THRESHOLD } from "@/lib/inventory";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
+  SellerFilterTab,
+  SellerGlow,
   SellerSearchField,
   SELLER_CREAM,
   SELLER_INK,
@@ -872,11 +874,7 @@ export default function SellerProducts() {
     <View>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
         <View style={styles.headerCopy}>
-          <View style={styles.kickerRow}>
-            <View style={styles.kickerRule} />
-            <Text style={styles.kicker}>Seller catalogue</Text>
-          </View>
-          <Text style={styles.title}>Products</Text>
+          <Text style={styles.title} accessibilityRole="header">Products</Text>
         </View>
         <View style={styles.headerActions}>
           {selectMode ? (
@@ -938,8 +936,8 @@ export default function SellerProducts() {
                   accessibilityLabel={`${m.label}, ${m.value}`}
                 >
                   <View style={styles.overviewLabelRow}>
-                    <Ionicons name={m.icon} size={11} color={warn ? GOLD : "rgba(250,248,241,0.6)"} />
-                    <Text style={[styles.overviewLabel, active && { color: CREAM }]}>{m.label}</Text>
+                    <Ionicons name={m.icon} size={12} color={warn ? GOLD : colors.light.mutedForeground} />
+                    <Text style={[styles.overviewLabel, active && { color: INK }]}>{m.label}</Text>
                   </View>
                   <Text style={[styles.overviewValue, warn && { color: GOLD }]}>{m.value}</Text>
                   {active ? <View style={styles.overviewActiveBar} /> : null}
@@ -956,7 +954,6 @@ export default function SellerProducts() {
             value={search}
             onChangeText={setSearch}
             placeholder="Search name or SKU"
-            style={styles.searchField}
           />
         </View>
         <View style={styles.viewToggle}>
@@ -988,30 +985,14 @@ export default function SellerProducts() {
         data={STATUS_TABS}
         keyExtractor={(item) => item.key}
         style={styles.statusList}
-        renderItem={({ item }) => {
-          const active = status === item.key;
-          const itemCount = stats ? stats[item.key] : undefined;
-          return (
-            <TouchableOpacity
-              style={styles.tab}
-              onPress={() => setStatus(item.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`${item.label}${itemCount ? `, ${itemCount}` : ""}`}
-              activeOpacity={0.7}
-            >
-              <View style={styles.tabLabelRow}>
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{item.label}</Text>
-                {typeof itemCount === "number" && itemCount > 0 ? (
-                  <Text style={[styles.tabCount, active && styles.tabCountActive]}>
-                    {itemCount > 99 ? "99+" : itemCount}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={[styles.tabIndicator, active && styles.tabIndicatorOn]} />
-            </TouchableOpacity>
-          );
-        }}
+        renderItem={({ item }) => (
+          <SellerFilterTab
+            label={item.label}
+            count={stats ? stats[item.key] : undefined}
+            active={status === item.key}
+            onPress={() => setStatus(item.key)}
+          />
+        )}
         contentContainerStyle={styles.tabsContent}
       />
 
@@ -1052,6 +1033,7 @@ export default function SellerProducts() {
 
   return (
     <View style={styles.container}>
+      <SellerGlow />
       <StatusBar barStyle="dark-content" />
       {viewMode === "grid" ? (
         <FlatList
@@ -1133,7 +1115,7 @@ export default function SellerProducts() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   errorWrap: {
     alignItems: "center",
     justifyContent: "center",
@@ -1141,19 +1123,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.light.background },
+  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "#ebe5cc" },
 
   // Header
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "center",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[5],
+    paddingBottom: 16,
     gap: 12,
   },
   headerCopy: { flex: 1, minWidth: 0 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   kickerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
   kickerRule: { width: 18, height: 1, backgroundColor: GOLD },
   kicker: {
@@ -1165,15 +1147,14 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
   iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
@@ -1184,9 +1165,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: INK,
-    paddingLeft: 5,
-    paddingRight: 16,
-    height: 42,
+    paddingLeft: 6,
+    paddingRight: 18,
+    height: 46,
     borderRadius: radii.full,
     shadowColor: "#161a0a",
     shadowOpacity: 0.22,
@@ -1198,7 +1179,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: GOLD,
+    backgroundColor: "#c8e08a",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1216,16 +1197,18 @@ const styles = StyleSheet.create({
   overview: {
     marginHorizontal: spacing[5],
     marginBottom: spacing[4],
-    backgroundColor: colors.olive[900],
-    borderRadius: 24,
-    paddingTop: 16,
-    paddingBottom: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.07)",
+    paddingTop: 18,
+    paddingBottom: 16,
     overflow: "hidden",
-    shadowColor: "#161a0a",
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
+    shadowColor: "#16170f",
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    elevation: 3,
   },
   overviewTop: {
     flexDirection: "row",
@@ -1235,37 +1218,37 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   overviewKicker: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: GOLD,
+    color: colors.olive[600],
   },
   overviewTotal: {
     fontFamily: fontFamilies.display.semibold,
     fontSize: 22,
-    color: CREAM,
+    color: INK,
     letterSpacing: -0.4,
   },
   overviewTotalUnit: {
     fontFamily: fontFamilies.display.italic,
     fontSize: 15,
-    color: "rgba(250,248,241,0.6)",
+    color: colors.light.mutedForeground,
   },
   overviewRow: { flexDirection: "row" },
   overviewCell: { flex: 1, paddingHorizontal: 18, paddingVertical: 2 },
-  overviewCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(250,248,241,0.18)" },
+  overviewCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(22,23,15,0.08)" },
   overviewLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   overviewLabel: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: "rgba(250,248,241,0.6)",
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
   overviewValue: {
     fontFamily: fontFamilies.display.regular,
-    fontSize: 26,
-    lineHeight: 32,
-    color: CREAM,
+    fontSize: 28,
+    lineHeight: 34,
+    color: INK,
     marginTop: 2,
     fontVariant: ["tabular-nums"],
   },
@@ -1288,19 +1271,10 @@ const styles = StyleSheet.create({
   statusList: {
     flexGrow: 0,
     flexShrink: 0,
+    marginTop: 12,
     marginBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(83,94,44,0.22)",
   },
-  tabsContent: { paddingHorizontal: spacing[5], gap: 22 },
-  tab: { paddingTop: 12 },
-  tabLabelRow: { flexDirection: "row", alignItems: "flex-start", gap: 3, paddingBottom: 10 },
-  tabText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: colors.ink.mute },
-  tabTextActive: { fontFamily: fontFamilies.sans.bold, color: INK },
-  tabCount: { fontFamily: fontFamilies.mono.medium, fontSize: 9, color: colors.ink.mute, marginTop: -1 },
-  tabCountActive: { color: colors.olive[600] },
-  tabIndicator: { height: 2, borderRadius: 1, backgroundColor: "transparent" },
-  tabIndicatorOn: { backgroundColor: INK },
+  tabsContent: { paddingHorizontal: spacing[5], gap: 10 },
 
   resultsHeader: {
     flexDirection: "row",
@@ -1400,7 +1374,7 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 16,
     lineHeight: 20,
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     color: INK,
     letterSpacing: -0.2,
   },
@@ -1472,7 +1446,7 @@ const styles = StyleSheet.create({
   gridName: {
     fontSize: 14,
     lineHeight: 18,
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.semibold,
     color: INK,
     minHeight: 36,
   },
@@ -1512,7 +1486,7 @@ const styles = StyleSheet.create({
     ...CARD_SHADOW,
   },
   emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     color: INK,
     marginTop: 18,

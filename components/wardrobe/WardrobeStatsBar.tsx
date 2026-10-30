@@ -17,16 +17,20 @@ export function WardrobeStatsBar({ stats }: { stats: WardrobeStats | null }) {
     { k: "Wears", v: String(totals?.total_wears ?? 0) },
     {
       k: "Avg/wear",
-      v: typeof totals?.avg_cost_per_wear === "number"
-        ? formatPrice(totals.avg_cost_per_wear)
-        : "—",
+      v:
+        typeof totals?.avg_cost_per_wear === "number"
+          ? formatPrice(totals.avg_cost_per_wear)
+          : "—",
     },
   ];
 
   return (
     <View style={styles.grid}>
       {cells.map((c, idx) => (
-        <View key={c.k} style={idx > 0 ? [styles.cell, styles.cellBorder] : styles.cell}>
+        <View
+          key={c.k}
+          style={idx > 0 ? [styles.cell, styles.cellBorder] : styles.cell}
+        >
           <Text style={styles.label}>{c.k}</Text>
           <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
             {c.v}

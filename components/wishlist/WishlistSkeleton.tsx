@@ -2,7 +2,10 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Skeleton } from "@/components/ui";
 import { spacing, radii } from "@/lib/theme/tokens";
-import { WISHLIST_GRID_GAP, useWishlistLayout } from "@/components/wishlist/layout";
+import {
+  WISHLIST_GRID_GAP,
+  useWishlistLayout,
+} from "@/components/wishlist/layout";
 
 export function WishlistSkeleton() {
   const { cardWidth, imageHeight } = useWishlistLayout();

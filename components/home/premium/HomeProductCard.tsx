@@ -5,13 +5,17 @@ import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useWishlist } from "@/lib/stores";
 import { useTrackEvent } from "@/lib/recommender";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors, radii } from "@/lib/theme/tokens";
+import { C } from "@/components/orders/parcel-track";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 export const HOME_PRODUCT_CARD_WIDTH = 148;
 export const HOME_PRODUCT_CARD_WIDTH_LARGE = 178;
+/** Inner padding of the white card frame around the image. */
+const CARD_PAD = 7;
 
 interface HomeProductCardProps {
   product: Product;
@@ -36,7 +40,7 @@ function HomeProductCardInner({
 }: HomeProductCardProps) {
   const router = useRouter();
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
-  const toggle = useWishlist((s) => s.toggle);
+  const toggleWishlist = useWishlistToggle();
   const tracker = useTrackEvent();
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const onSale = product.mrp > product.price;
@@ -47,6 +51,7 @@ function HomeProductCardInner({
       : 0;
   const isLarge = size === "large";
   const cardWidth = isLarge ? HOME_PRODUCT_CARD_WIDTH_LARGE : HOME_PRODUCT_CARD_WIDTH;
+  const imageWidth = cardWidth - CARD_PAD * 2;
 
   return (
     <TouchableOpacity
@@ -54,7 +59,7 @@ function HomeProductCardInner({
       activeOpacity={0.85}
       onPress={() => router.push(`/(main)/products/${product.slug}`)}
     >
-      <View style={[styles.imageWrap, { width: cardWidth, height: cardWidth }]}>
+      <View style={[styles.imageWrap, { width: imageWidth, height: Math.round(imageWidth * 1.12) }]}>
         {primaryImage ? (
           <Image
             source={{ uri: primaryImage }}
@@ -77,7 +82,7 @@ function HomeProductCardInner({
           style={styles.heartBtn}
           onPress={() => {
             tracker.wishlist(product, isWishlisted ? "remove" : "add");
-            toggle(product.id);
+            toggleWishlist(product);
           }}
           activeOpacity={0.75}
           hitSlop={8}
@@ -101,10 +106,6 @@ function HomeProductCardInner({
           </View>
         ) : null}
       </View>
-
-      <Text style={[styles.productName, isLarge && styles.productNameLarge]} numberOfLines={1}>
-        {product.name || "Untitled Piece"}
-      </Text>
 
       {storeOrBrandName ? (
         <View style={styles.storeRow}>
@@ -137,6 +138,10 @@ function HomeProductCardInner({
         </View>
       ) : null}
 
+      <Text style={[styles.productName, isLarge && styles.productNameLarge]} numberOfLines={1}>
+        {product.name || "Untitled Piece"}
+      </Text>
+
       <View style={styles.priceRow}>
         {/* Discount is shown once — as the badge on the image — so the
             price row is just selling price + struck-through MRP. */}
@@ -168,14 +173,18 @@ export const HomeProductCard = React.memo(
 const styles = StyleSheet.create({
   card: {
     width: HOME_PRODUCT_CARD_WIDTH,
+    padding: CARD_PAD,
+    paddingBottom: 11,
+    borderRadius: 22,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
   },
   imageWrap: {
-    width: HOME_PRODUCT_CARD_WIDTH,
-    height: HOME_PRODUCT_CARD_WIDTH,
-    borderRadius: radii.xl,
+    borderRadius: 16,
     overflow: "hidden",
-    backgroundColor: colors.olive[50],
-    marginBottom: spacing[2],
+    backgroundColor: "#f0ede2",
+    marginBottom: 9,
   },
   image: {
     width: "100%",
@@ -188,44 +197,36 @@ const styles = StyleSheet.create({
   },
   heartBtn: {
     position: "absolute",
-    top: 8,
-    right: 8,
+    top: 7,
+    right: 7,
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "rgba(250, 248, 241, 0.92)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
   },
   saleBadge: {
     position: "absolute",
-    left: 8,
-    top: 8,
-    backgroundColor: colors.accent2.rust,
-    paddingHorizontal: 7.5,
-    paddingVertical: 3.5,
-    borderRadius: radii.full,
+    left: 7,
+    top: 7,
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 11,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.18,
-    shadowRadius: 2.5,
-    elevation: 3,
   },
   saleBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    lineHeight: 12,
-    color: "#ffffff",
-    letterSpacing: 0.4,
-    fontWeight: "600",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10.5,
+    color: C.lime,
   },
   disclosureBadge: {
     position: "absolute",
-    right: 8,
-    bottom: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    right: 7,
+    bottom: 7,
+    backgroundColor: "rgba(22,23,15,0.6)",
     borderRadius: radii.full,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -242,6 +243,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginBottom: 3,
+    paddingHorizontal: 3,
   },
   storeLogo: {
     width: 14,
@@ -252,30 +254,33 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: colors.olive[100],
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   storeInitial: {
     fontFamily: fontFamilies.sans.bold,
     fontSize: 8,
-    color: colors.light.primary,
+    color: C.accent,
   },
   storeName: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    color: C.accent,
   },
   productName: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: colors.light.foreground,
-    marginBottom: 2,
-    lineHeight: 17,
+    fontSize: 13.5,
+    color: C.text,
+    marginBottom: 3,
+    lineHeight: 18,
+    paddingHorizontal: 3,
   },
   productNameLarge: {
-    fontSize: 14,
+    fontSize: 14.5,
     lineHeight: 19,
   },
   priceRow: {
@@ -283,11 +288,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     flexWrap: "wrap",
+    paddingHorizontal: 3,
   },
   sellingPrice: {
-    fontFamily: fontFamilies.sans.bold,
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
-    color: colors.light.foreground,
+    color: C.text,
   },
   sellingPriceLarge: {
     fontSize: 14,
@@ -296,6 +302,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
     textDecorationLine: "line-through",
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
 });

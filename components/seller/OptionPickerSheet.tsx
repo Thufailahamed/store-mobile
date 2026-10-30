@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingHorizontal: 16, paddingBottom: 8 },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(83,94,44,0.25)", marginTop: 10 },
   sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14 },
-  sheetTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: INK },
+  sheetTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 20, color: INK },
   search: {
     flexDirection: "row",
     alignItems: "center",

@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   iconTile: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
   headerCopy: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK, letterSpacing: -0.2 },
+  title: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: INK, letterSpacing: -0.2 },
   requiredTag: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 10,
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 8,
   },
-  coverSlotTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 16, color: INK },
+  coverSlotTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: INK },
   coverSlotSub: { fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.light.mutedForeground },
   shotCol: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 8, alignContent: "space-between" },
   shotSlot: {

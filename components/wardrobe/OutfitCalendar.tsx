@@ -9,8 +9,18 @@ const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 const GOLD_DEEP = "#85651b";
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -97,7 +107,11 @@ export function OutfitCalendar({
           accessibilityRole="button"
           accessibilityLabel="Previous month"
         >
-          <Ionicons name="chevron-back" size={17} color={colors.light.foreground} />
+          <Ionicons
+            name="chevron-back"
+            size={17}
+            color={colors.light.foreground}
+          />
         </TouchableOpacity>
         <Text style={styles.title}>{monthLabel}</Text>
         <TouchableOpacity
@@ -107,14 +121,20 @@ export function OutfitCalendar({
           accessibilityRole="button"
           accessibilityLabel="Next month"
         >
-          <Ionicons name="chevron-forward" size={17} color={colors.light.foreground} />
+          <Ionicons
+            name="chevron-forward"
+            size={17}
+            color={colors.light.foreground}
+          />
         </TouchableOpacity>
       </View>
 
       {/* Weekday labels */}
       <View style={styles.weekRow}>
         {WEEKDAYS.map((d, i) => (
-          <Text key={`${d}-${i}`} style={styles.weekLabel}>{d}</Text>
+          <Text key={`${d}-${i}`} style={styles.weekLabel}>
+            {d}
+          </Text>
         ))}
       </View>
 
@@ -146,12 +166,7 @@ export function OutfitCalendar({
                   : undefined
               }
             >
-              <Text
-                style={[
-                  styles.dayNum,
-                  isToday && styles.dayNumToday,
-                ]}
-              >
+              <Text style={[styles.dayNum, isToday && styles.dayNumToday]}>
                 {c.date!.getDate()}
               </Text>
               {items.length > 0 && (
@@ -175,7 +190,11 @@ export function OutfitCalendar({
       {/* Scheduled looks */}
       <View style={styles.schedule}>
         <Text style={styles.scheduleEyebrow}>
-          {upcoming.length > 0 ? "Coming up" : scheduledDates.length > 0 ? "Scheduled" : "Coming up"}
+          {upcoming.length > 0
+            ? "Coming up"
+            : scheduledDates.length > 0
+              ? "Scheduled"
+              : "Coming up"}
         </Text>
         {list.length === 0 ? (
           <Text style={styles.scheduleEmpty}>
@@ -211,7 +230,11 @@ export function OutfitCalendar({
                     {items.length > 1 ? `  ·  +${items.length - 1} more` : ""}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={14}
+                  color={colors.light.mutedForeground}
+                />
               </TouchableOpacity>
             );
           })
@@ -227,7 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: HAIRLINE,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: spacing[4],
     paddingTop: spacing[4],
     paddingBottom: spacing[2],
@@ -244,11 +267,11 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
   },
   title: {
     fontSize: 20,
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     letterSpacing: -0.3,
     color: colors.light.foreground,
   },
@@ -279,7 +302,7 @@ const styles = StyleSheet.create({
   },
   dayCellWith: {},
   dayCellToday: {
-    backgroundColor: colors.olive[900],
+    backgroundColor: "#15160f",
     borderRadius: 12,
   },
   dayNum: {
@@ -348,12 +371,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 44,
     borderRadius: 10,
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
   schedDayNum: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 16,
     color: colors.light.foreground,
   },

@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
   },
   headerCopy: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: INK, letterSpacing: -0.2 },
+  title: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: INK, letterSpacing: -0.2 },
   requiredTag: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 10,

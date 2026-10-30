@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   blockedTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 24,
     color: colors.light.foreground,
   },

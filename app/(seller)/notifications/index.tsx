@@ -9,6 +9,7 @@ import {
   StatusBar,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,7 +21,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import { SellerStateView, SellerSearchField, SellerFilterTab } from "@/components/seller/chrome";
+import { SellerStateView, SellerSearchField, SellerFilterTab, SellerGlow } from "@/components/seller/chrome";
 import {
   filterSellerInbox,
   formatNotificationBody,
@@ -310,8 +311,12 @@ export default function SellerNotifications() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 6 }]}>
+        <SellerGlow />
         <View style={styles.topBar}>
           <SellerBackButton label="Back" fallbackHref="/(seller)/more" />
+          <View style={styles.titleLine}>
+            <Text style={styles.pageTitle} numberOfLines={1} accessibilityRole="header">Notifications</Text>
+          </View>
           {unreadCount > 0 ? (
             <TouchableOpacity
               style={[styles.markAllBtn, markingAll && { opacity: 0.6 }]}
@@ -320,18 +325,12 @@ export default function SellerNotifications() {
               accessibilityRole="button"
               accessibilityLabel="Mark all as read"
             >
-              <Ionicons name="checkmark-done-outline" size={16} color={colors.olive[900]} />
-              <Text style={styles.markAllText}>{markingAll ? "Saving…" : "Mark all read"}</Text>
+              {markingAll ? (
+                <ActivityIndicator size="small" color={INK} />
+              ) : (
+                <Ionicons name="checkmark-done-outline" size={19} color={INK} />
+              )}
             </TouchableOpacity>
-          ) : null}
-        </View>
-        <Text style={styles.kicker}>Atelier</Text>
-        <View style={styles.titleLine}>
-          <Text style={styles.pageTitle}>Notifications</Text>
-          {unreadCount > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
-            </View>
           ) : null}
         </View>
         <Text style={styles.subtitle}>
@@ -429,9 +428,9 @@ export default function SellerNotifications() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   header: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
-  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  topBar: { flexDirection: "row", alignItems: "center", gap: 12 },
   kicker: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
@@ -440,13 +439,13 @@ const styles = StyleSheet.create({
     color: colors.olive[700],
     marginBottom: 4,
   },
-  titleLine: { flexDirection: "row", alignItems: "center", gap: 10 },
+  titleLine: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center" },
   pageTitle: {
+    flex: 1,
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
   },
   unreadBadge: {
     minWidth: 26,
@@ -460,23 +459,24 @@ const styles = StyleSheet.create({
   },
   unreadBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: CREAM, fontVariant: ["tabular-nums"] },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
     color: colors.light.mutedForeground,
-    marginTop: 4,
+    marginTop: 8,
   },
   markAllBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 40,
-    paddingHorizontal: 14,
-    gap: 6,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.16)",
-    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  markAllText: { fontFamily: fontFamilies.sans.semibold, fontSize: typography.fontSizes.xs, color: colors.olive[900] },
   searchContainer: { paddingHorizontal: spacing[5], marginBottom: spacing[3] },
   tabsContainer: { flexGrow: 0, flexShrink: 0 },
   tabsContent: { paddingHorizontal: spacing[5], paddingVertical: 2, gap: 8, alignItems: "center" },

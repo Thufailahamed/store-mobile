@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   cardMid: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12 },
   mono: { minWidth: 44, height: 44, paddingHorizontal: 5, borderRadius: 13, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center" },
   monoText: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, letterSpacing: 0.4, color: CREAM },
-  cardTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: HERO.ink, letterSpacing: -0.2 },
+  cardTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: HERO.ink, letterSpacing: -0.2 },
   cardNumber: { marginTop: 2, fontFamily: fontFamilies.mono.semibold, fontSize: 13, letterSpacing: 1, color: HERO.text },
   cardNumberMissing: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, letterSpacing: 0, color: colors.accent2.rust },
   cardBottom: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 },

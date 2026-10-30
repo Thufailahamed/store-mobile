@@ -15,7 +15,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, getStoreReviews } from "@/lib/api";
 import { ReplyModal } from "@/components/seller/ReplyModal";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
-import { SellerFilterTab, SellerStateView } from "@/components/seller/chrome";
+import { SellerFilterTab, SellerStateView, SellerGlow } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { HERO, LuxeHero } from "@/components/seller/luxe";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
@@ -525,12 +525,11 @@ export default function SellerReviews() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
-          <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
+          <SellerGlow />
           <View style={s.headerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.kicker}>Atelier</Text>
-              <Text style={s.title}>Reviews</Text>
-              <Text style={s.subtitle}>{headerSubtitle}</Text>
+            <SellerBackButton label="More" fallbackHref="/(seller)/more" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.title} accessibilityRole="header">Reviews</Text>
             </View>
             {!loading && !loadError && total > 0 ? (
               <View style={[s.queuePill, unansweredCount > 0 && s.queuePillWarn]}>
@@ -547,6 +546,7 @@ export default function SellerReviews() {
               </View>
             ) : null}
           </View>
+          <Text style={s.subtitle}>{headerSubtitle}</Text>
         </View>
 
         {loading ? (
@@ -583,7 +583,7 @@ export default function SellerReviews() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingBottom: 20 },
   body: { paddingHorizontal: spacing[5] },
   header: {
@@ -599,23 +599,19 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
+    flex: 1,
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.ink.mute,
-    marginTop: 3,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 8,
   },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: 12,
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   queuePill: {
     flexDirection: "row",
     alignItems: "center",
@@ -807,7 +803,7 @@ const s = StyleSheet.create({
   },
 
   reviewTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 17,
     color: INK,
     marginBottom: 5,
@@ -906,7 +902,7 @@ const s = StyleSheet.create({
   replyBtnLabelPrimary: { color: CREAM },
 
   emptyCard: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
@@ -940,7 +936,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 21,
     letterSpacing: -0.3,
     color: INK,
@@ -1026,7 +1022,7 @@ const s = StyleSheet.create({
 
   skelSummary: {
     flexDirection: "row",
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.08)",
@@ -1034,7 +1030,7 @@ const s = StyleSheet.create({
     gap: 16,
   },
   skelCard: {
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii["2xl"],
     padding: 16,
     borderWidth: 1,

@@ -22,6 +22,8 @@ import {
   SellerSearchField,
   SellerStateView,
   SellerStatusPill,
+  SellerFilterTab,
+  SellerGlow,
 } from "@/components/seller/chrome";
 import {
   countReturnsByStatus,
@@ -354,15 +356,11 @@ export default function SellerReturns() {
   const listHeader = (
     <View>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 6 }]}>
-        <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 14 }} />
+        <SellerGlow />
         <View style={styles.headerRow}>
+          <SellerBackButton label="More" fallbackHref="/(seller)/more" />
           <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={styles.kickerRow}>
-              <View style={styles.kickerRule} />
-              <Text style={styles.kicker}>Atelier</Text>
-            </View>
-            <Text style={styles.title}>Returns</Text>
-            <Text style={styles.subtitle}>{headerSubtitle}</Text>
+            <Text style={styles.title} accessibilityRole="header">Returns</Text>
           </View>
           {!loading && !loadError ? (
             <View style={[styles.queuePill, counts.requested > 0 && styles.queuePillWarn]}>
@@ -373,6 +371,7 @@ export default function SellerReturns() {
             </View>
           ) : null}
         </View>
+        <Text style={styles.subtitle}>{headerSubtitle}</Text>
       </View>
 
       {!loadError && !isFiltered && !loading ? (
@@ -401,7 +400,7 @@ export default function SellerReturns() {
                     : {})}
                 >
                   <View style={styles.overviewLabelRow}>
-                    <Ionicons name={m.icon} size={11} color={m.warn ? GOLD : "rgba(250,248,241,0.6)"} />
+                    <Ionicons name={m.icon} size={12} color={m.warn ? GOLD : colors.light.mutedForeground} />
                     <Text style={styles.overviewLabel}>{m.label}</Text>
                   </View>
                   <Text
@@ -427,7 +426,7 @@ export default function SellerReturns() {
               accessibilityLabel="Show requested returns"
             >
               <Text style={styles.overviewCtaText}>Review {pluralize(counts.requested, "request")}</Text>
-              <Ionicons name="arrow-forward" size={13} color={INK} />
+              <Ionicons name="arrow-forward" size={13} color="#c8e08a" />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -439,7 +438,6 @@ export default function SellerReturns() {
           onChangeText={setSearchInput}
           placeholder="Search order, piece, buyer…"
           accessibilityLabel="Search returns"
-          style={styles.searchField}
         />
       </View>
 
@@ -450,30 +448,14 @@ export default function SellerReturns() {
         keyExtractor={(t) => t.key}
         style={styles.tabsContainer}
         contentContainerStyle={styles.tabsContent}
-        renderItem={({ item: tab }) => {
-          const active = statusTab === tab.key;
-          const count = counts[tab.key as keyof typeof counts] ?? 0;
-          return (
-            <TouchableOpacity
-              style={styles.tab}
-              onPress={() => setStatusTab(tab.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`${tab.label}${count ? `, ${count}` : ""}`}
-              activeOpacity={0.7}
-            >
-              <View style={styles.tabLabelRow}>
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
-                {count > 0 ? (
-                  <Text style={[styles.tabCount, active && styles.tabCountActive]}>
-                    {count > 99 ? "99+" : count}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={[styles.tabIndicator, active && styles.tabIndicatorOn]} />
-            </TouchableOpacity>
-          );
-        }}
+        renderItem={({ item: tab }) => (
+          <SellerFilterTab
+            label={tab.label}
+            count={counts[tab.key as keyof typeof counts] ?? 0}
+            active={statusTab === tab.key}
+            onPress={() => setStatusTab(tab.key)}
+          />
+        )}
       />
 
       {!loading && isFiltered ? (
@@ -539,14 +521,14 @@ export default function SellerReturns() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
-  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
+  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "#ebe5cc" },
   listContent: { paddingBottom: 48 },
   listInset: { paddingHorizontal: spacing[5] },
 
   // Header
-  header: { paddingHorizontal: spacing[5], paddingBottom: spacing[5] },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", gap: 12 },
+  header: { paddingHorizontal: spacing[5], paddingBottom: 16 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   kickerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
   kickerRule: { width: 18, height: 1, backgroundColor: GOLD },
   kicker: {
@@ -557,17 +539,17 @@ const styles = StyleSheet.create({
     color: colors.olive[700],
   },
   title: {
+    flex: 1,
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
   subtitle: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 15,
-    color: colors.ink.mute,
-    marginTop: 4,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
+    marginTop: 8,
   },
   queuePill: {
     flexDirection: "row",
@@ -590,13 +572,15 @@ const styles = StyleSheet.create({
   overview: {
     marginHorizontal: spacing[5],
     marginBottom: spacing[4],
-    backgroundColor: colors.olive[900],
-    borderRadius: 24,
-    paddingTop: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.07)",
+    paddingTop: 18,
     paddingBottom: 16,
-    shadowColor: "#161a0a",
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
+    shadowColor: "#16170f",
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 4,
   },
@@ -610,22 +594,22 @@ const styles = StyleSheet.create({
   overviewKicker: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: GOLD,
+    color: colors.olive[600],
   },
-  overviewTotal: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: CREAM, letterSpacing: -0.4 },
-  overviewTotalUnit: { fontFamily: fontFamilies.display.italic, fontSize: 15, color: "rgba(250,248,241,0.6)" },
+  overviewTotal: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: INK, letterSpacing: -0.4 },
+  overviewTotalUnit: { fontFamily: fontFamilies.display.italic, fontSize: 15, color: colors.light.mutedForeground },
   overviewRow: { flexDirection: "row" },
   overviewCell: { flex: 1, paddingHorizontal: 18, paddingVertical: 2, minWidth: 0 },
-  overviewCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(250,248,241,0.18)" },
+  overviewCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(22,23,15,0.08)" },
   overviewLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  overviewLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: "rgba(250,248,241,0.6)" },
+  overviewLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: colors.light.mutedForeground },
   overviewValue: {
     fontFamily: fontFamilies.display.regular,
     fontSize: 26,
     lineHeight: 32,
-    color: CREAM,
+    color: INK,
     marginTop: 2,
     fontVariant: ["tabular-nums"],
   },
@@ -637,31 +621,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    height: 42,
+    height: 46,
     borderRadius: radii.full,
-    backgroundColor: GOLD,
+    backgroundColor: INK,
   },
-  overviewCtaText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: INK },
+  overviewCtaText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: CREAM },
 
   // Search + tabs
   searchContainer: { paddingHorizontal: spacing[5], marginBottom: 6 },
-  searchField: { backgroundColor: "#FFFFFF", borderColor: "transparent", minHeight: 44, ...CARD_SHADOW },
   tabsContainer: {
     flexGrow: 0,
     flexShrink: 0,
+    marginTop: 12,
     marginBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(83,94,44,0.22)",
   },
-  tabsContent: { paddingHorizontal: spacing[5], gap: 22 },
-  tab: { paddingTop: 12 },
-  tabLabelRow: { flexDirection: "row", alignItems: "flex-start", gap: 3, paddingBottom: 10 },
-  tabText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: colors.ink.mute },
-  tabTextActive: { fontFamily: fontFamilies.sans.bold, color: INK },
-  tabCount: { fontFamily: fontFamilies.mono.medium, fontSize: 9, color: colors.ink.mute, marginTop: -1 },
-  tabCountActive: { color: colors.olive[600] },
-  tabIndicator: { height: 2, borderRadius: 1, backgroundColor: "transparent" },
-  tabIndicatorOn: { backgroundColor: INK },
+  tabsContent: { paddingHorizontal: spacing[5], gap: 10 },
 
   resultsBar: {
     flexDirection: "row",
@@ -713,7 +687,7 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
   },
   product: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 17,
     lineHeight: 22,
     color: INK,
@@ -810,7 +784,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     letterSpacing: -0.4,
     color: INK,

@@ -28,6 +28,7 @@ import type { Order, Product } from "@/lib/types";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { ORDER_TONE } from "@/components/orders/luxe-order";
 import { C, CLOSED, ParcelArt, RIBBON, TrackRail } from "@/components/orders/parcel-track";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 function savedCardToPaymentCard(c: SavedCard): PaymentCard {
   const mm = String(c.exp_month).padStart(2, "0");
@@ -244,7 +245,7 @@ export default function AccountScreen() {
   const router = useRouter();
   const { user, signOut, role } = useAuth();
   const wishlistItems = useWishlist((s) => s.items);
-  const toggle = useWishlist((s) => s.toggle);
+  const toggleWishlist = useWishlistToggle();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [followedStores, setFollowedStores] = useState<FollowedStore[]>([]);
@@ -596,7 +597,7 @@ export default function AccountScreen() {
                       )}
                       <TouchableOpacity
                         style={styles.heartBtn}
-                        onPress={() => toggle(p.id)}
+                        onPress={() => toggleWishlist(p, img)}
                         hitSlop={8}
                         accessibilityLabel={saved ? "Remove from wishlist" : "Add to wishlist"}
                       >

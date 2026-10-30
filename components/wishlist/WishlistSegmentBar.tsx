@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  View,
-  Pressable,
-  FlatList,
-  StyleSheet,
-  Text,
-} from "react-native";
+import { View, Pressable, FlatList, StyleSheet, Text } from "react-native";
 import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -15,11 +9,7 @@ const INK = colors.ink.DEFAULT;
 const MUTED = colors.ink.mute;
 
 export type WishlistFilter = "all" | "in_stock" | "on_sale";
-export type WishlistSort =
-  | "recent"
-  | "price_asc"
-  | "price_desc"
-  | "name";
+export type WishlistSort = "recent" | "price_asc" | "price_desc" | "name";
 
 const FILTERS: { key: WishlistFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -29,8 +19,16 @@ const FILTERS: { key: WishlistFilter; label: string }[] = [
 
 const SORTS: { key: WishlistSort; label: string; icon: string }[] = [
   { key: "recent", label: "Recently added", icon: "time-outline" },
-  { key: "price_asc", label: "Price · low to high", icon: "trending-up-outline" },
-  { key: "price_desc", label: "Price · high to low", icon: "trending-down-outline" },
+  {
+    key: "price_asc",
+    label: "Price · low to high",
+    icon: "trending-up-outline",
+  },
+  {
+    key: "price_desc",
+    label: "Price · high to low",
+    icon: "trending-down-outline",
+  },
   { key: "name", label: "Name · A → Z", icon: "text-outline" },
 ];
 
@@ -83,7 +81,12 @@ export function WishlistSegmentBar({
                     {f.label}
                   </Text>
                   {count != null ? (
-                    <Text style={[styles.chipCount, selected && styles.chipCountActive]}>
+                    <Text
+                      style={[
+                        styles.chipCount,
+                        selected && styles.chipCountActive,
+                      ]}
+                    >
                       {count}
                     </Text>
                   ) : null}
@@ -94,7 +97,10 @@ export function WishlistSegmentBar({
 
           <Pressable
             onPress={() => setOpen(true)}
-            style={({ pressed }) => [styles.sortBtn, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [
+              styles.sortBtn,
+              pressed && { opacity: 0.7 },
+            ]}
             accessibilityLabel={`Sort: ${activeSort.label}`}
           >
             <Ionicons name="swap-vertical" size={16} color={INK} />
@@ -102,7 +108,11 @@ export function WishlistSegmentBar({
           </Pressable>
         </View>
 
-        <Pressable onPress={() => setOpen(true)} style={styles.metaRow} hitSlop={6}>
+        <Pressable
+          onPress={() => setOpen(true)}
+          style={styles.metaRow}
+          hitSlop={6}
+        >
           {visibleCount != null ? (
             <Text style={styles.metaCount}>
               {visibleCount} {visibleCount === 1 ? "piece" : "pieces"}
@@ -118,9 +128,17 @@ export function WishlistSegmentBar({
         </Pressable>
       </View>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable onPress={(e) => e.stopPropagation?.()} style={styles.sheet}>
+          <Pressable
+            onPress={(e) => e.stopPropagation?.()}
+            style={styles.sheet}
+          >
             <View style={styles.sheetHandle}>
               <View style={styles.handleBar} />
             </View>
@@ -145,16 +163,27 @@ export function WishlistSegmentBar({
                       pressed && { opacity: 0.6 },
                     ]}
                   >
-                    <View style={[styles.optionIcon, selected && styles.optionIconSelected]}>
+                    <View
+                      style={[
+                        styles.optionIcon,
+                        selected && styles.optionIconSelected,
+                      ]}
+                    >
                       <Ionicons
                         name={item.icon as any}
                         size={16}
-                        color={selected ? colors.paper.cream : colors.olive[700]}
+                        color={
+                          selected ? colors.paper.cream : colors.olive[700]
+                        }
                       />
                     </View>
                     <Text style={styles.optionText}>{item.label}</Text>
                     {selected ? (
-                      <Ionicons name="checkmark-circle" size={20} color={colors.olive[800]} />
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={colors.olive[800]}
+                      />
                     ) : null}
                   </Pressable>
                 );
@@ -183,7 +212,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 4,
     borderRadius: radii.full,
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: `${colors.olive[700]}1F`,
     minWidth: 0,
@@ -200,7 +229,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   chipActive: {
-    backgroundColor: colors.olive[900],
+    backgroundColor: "#15160f",
     ...shadows.soft,
   },
   chipText: {
@@ -227,7 +256,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: `${colors.olive[700]}33`,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -251,7 +280,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   metaCount: {
-    fontFamily: fontFamilies.display.italic,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 14,
     color: colors.ink.soft,
   },
@@ -277,7 +306,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: 10,
@@ -301,7 +330,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   sheetTitle: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 24,
     color: INK,
     letterSpacing: -0.4,
@@ -322,7 +351,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
   },
   optionSelected: {
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
   },
   optionIcon: {
     width: 34,
@@ -330,10 +359,10 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
   },
   optionIconSelected: {
-    backgroundColor: colors.olive[900],
+    backgroundColor: "#15160f",
   },
   optionText: {
     flex: 1,

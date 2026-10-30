@@ -12,7 +12,6 @@ import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground } from "@/components/layout";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { radii, spacing } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
@@ -26,6 +25,7 @@ import {
 } from "@/lib/api/wardrobe";
 import { LogWearSheet } from "@/components/wardrobe/LogWearSheet";
 import type { WardrobeItem, WardrobeOutfit } from "@/lib/types";
+import { HeaderButton, UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 const OLIVE = "#556b2f";
 const INK = "#16170f";
@@ -64,11 +64,14 @@ export default function WardrobeItemDetailScreen() {
     }
     const outfitsRes = await listWardrobeOutfits();
     if (outfitsRes.ok) {
-      const foundOutfit = outfitsRes.data.outfits.find((o) => o.id === id) ?? null;
+      const foundOutfit =
+        outfitsRes.data.outfits.find((o) => o.id === id) ?? null;
       if (foundOutfit) {
         setOutfit(foundOutfit);
         setItem(null);
-        const ids = new Set((foundOutfit.items ?? []).map((l) => l.wardrobe_item_id));
+        const ids = new Set(
+          (foundOutfit.items ?? []).map((l) => l.wardrobe_item_id),
+        );
         const allItems = res.ok ? res.data.items : [];
         setOutfitItems(allItems.filter((it) => ids.has(it.id)));
         setLoading(false);
@@ -91,19 +94,22 @@ export default function WardrobeItemDetailScreen() {
     setRefreshing(false);
   }, [load]);
 
-  const handleLogWear = useCallback(async (wornAtIso: string) => {
-    if (!item) return;
-    setLogPending(true);
-    const res = await logWardrobeWear(item.id, { worn_at: wornAtIso });
-    setLogPending(false);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
-    }
-    setWearOpen(false);
-    toast(`Worn × ${res.data.result.wear_count}`, "success");
-    await load();
-  }, [item, load, toast]);
+  const handleLogWear = useCallback(
+    async (wornAtIso: string) => {
+      if (!item) return;
+      setLogPending(true);
+      const res = await logWardrobeWear(item.id, { worn_at: wornAtIso });
+      setLogPending(false);
+      if (!res.ok) {
+        toast(res.error, "error");
+        return;
+      }
+      setWearOpen(false);
+      toast(`Worn × ${res.data.result.wear_count}`, "success");
+      await load();
+    },
+    [item, load, toast],
+  );
 
   const handleArchiveToggle = useCallback(async () => {
     if (!item) return;
@@ -142,34 +148,25 @@ export default function WardrobeItemDetailScreen() {
   }, [item, router, toast]);
 
   return (
-    <PaperBackground style={{ backgroundColor: "#ffffff" }}>
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity
-          style={styles.headerBtn}
-          onPress={() => router.back()}
-          activeOpacity={0.85}
-          hitSlop={8}
-        >
-          <Ionicons name="chevron-back" size={20} color={INK} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {item?.name ?? outfit?.name ?? "Wardrobe"}
-        </Text>
-        <TouchableOpacity
-          style={styles.headerBtn}
+    <UserPageFrame
+      title={item?.name ?? outfit?.name ?? "Wardrobe"}
+      right={
+        <HeaderButton
+          icon="trash-outline"
+          label="Delete"
           onPress={handleDelete}
-          activeOpacity={0.85}
-          hitSlop={8}
-        >
-          <Ionicons name="trash-outline" size={18} color={INK} />
-        </TouchableOpacity>
-      </View>
-
+        />
+      }
+    >
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={OLIVE} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={OLIVE}
+          />
         }
       >
         {loading ? (
@@ -193,20 +190,48 @@ export default function WardrobeItemDetailScreen() {
                   style={styles.card}
                   activeOpacity={0.85}
                   onPress={() =>
-                    router.push({ pathname: "/(main)/wardrobe/[id]", params: { id: oi.id } } as never)
+                    router.push({
+                      pathname: "/(main)/wardrobe/[id]",
+                      params: { id: oi.id },
+                    } as never)
                   }
                 >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
                     {oi.image_url ? (
-                      <Image source={{ uri: oi.image_url }} style={{ width: 48, height: 48, borderRadius: 10 }} contentFit="cover" />
+                      <Image
+                        source={{ uri: oi.image_url }}
+                        style={{ width: 48, height: 48, borderRadius: 10 }}
+                        contentFit="cover"
+                      />
                     ) : (
-                      <View style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: "#f1efe6", alignItems: "center", justifyContent: "center" }}>
-                        <Ionicons name="shirt-outline" size={20} color={MUTED} />
+                      <View
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 10,
+                          backgroundColor: "#f1efe6",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons
+                          name="shirt-outline"
+                          size={20}
+                          color={MUTED}
+                        />
                       </View>
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cardTitle}>{oi.name}</Text>
-                      <Text style={styles.muted}>{oi.garment_type} · worn {oi.wear_count}×</Text>
+                      <Text style={styles.muted}>
+                        {oi.garment_type} · worn {oi.wear_count}×
+                      </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={MUTED} />
                   </View>
@@ -246,7 +271,9 @@ export default function WardrobeItemDetailScreen() {
 
             <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
               {item.brand_name ? (
-                <Text style={styles.brand}>{item.brand_name.toUpperCase()}</Text>
+                <Text style={styles.brand}>
+                  {item.brand_name.toUpperCase()}
+                </Text>
               ) : null}
               <Text style={styles.title}>{item.name}</Text>
 
@@ -285,14 +312,19 @@ export default function WardrobeItemDetailScreen() {
                     <Text style={styles.cpwLabel}>COST / WEAR</Text>
                     <Text style={styles.cpwValue}>
                       {item.purchase_price && item.wear_count > 0
-                        ? formatPrice(item.purchase_price / item.wear_count, item.currency)
+                        ? formatPrice(
+                            item.purchase_price / item.wear_count,
+                            item.currency,
+                          )
                         : "—"}
                     </Text>
                   </View>
                   <View style={styles.cpwCard}>
                     <Text style={styles.cpwLabel}>LAST</Text>
                     <Text style={styles.cpwValue}>
-                      {item.last_worn_at ? new Date(item.last_worn_at).toLocaleDateString() : "Never"}
+                      {item.last_worn_at
+                        ? new Date(item.last_worn_at).toLocaleDateString()
+                        : "Never"}
                     </Text>
                   </View>
                 </View>
@@ -327,7 +359,9 @@ export default function WardrobeItemDetailScreen() {
                 ) : null}
                 <MetaRow k="Source" v={item.source} />
                 {item.season ? <MetaRow k="Season" v={item.season} /> : null}
-                {item.occasion ? <MetaRow k="Occasion" v={item.occasion} /> : null}
+                {item.occasion ? (
+                  <MetaRow k="Occasion" v={item.occasion} />
+                ) : null}
               </View>
 
               <TouchableOpacity
@@ -336,12 +370,18 @@ export default function WardrobeItemDetailScreen() {
                 activeOpacity={0.85}
               >
                 <Ionicons
-                  name={item.status === "active" ? "archive-outline" : "refresh-outline"}
+                  name={
+                    item.status === "active"
+                      ? "archive-outline"
+                      : "refresh-outline"
+                  }
                   size={14}
                   color={INK}
                 />
                 <Text style={styles.ghostBtnText}>
-                  {item.status === "active" ? "Archive item" : "Restore to active"}
+                  {item.status === "active"
+                    ? "Archive item"
+                    : "Restore to active"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -357,7 +397,7 @@ export default function WardrobeItemDetailScreen() {
         onConfirm={handleLogWear}
         pending={logPending}
       />
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
@@ -378,7 +418,7 @@ function MetaRow({ k, v }: { k: string; v: string }) {
   );
 }
 
-const styles: Record<string, any> = StyleSheet.create({
+const styles: Record<string, any> = withUserTheme(StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -392,7 +432,7 @@ const styles: Record<string, any> = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 16,
     fontWeight: "600",
     color: INK,
@@ -446,13 +486,13 @@ const styles: Record<string, any> = StyleSheet.create({
     fontWeight: "700",
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 26,
     color: INK,
     marginTop: 4,
   },
   price: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 18,
     color: INK,
     marginTop: 6,
@@ -506,7 +546,7 @@ const styles: Record<string, any> = StyleSheet.create({
     gap: 8,
   },
   cardTitle: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 15,
     color: INK,
     fontWeight: "600",
@@ -533,7 +573,7 @@ const styles: Record<string, any> = StyleSheet.create({
     fontWeight: "700",
   },
   cpwValue: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 16,
     color: INK,
     fontWeight: "600",
@@ -610,9 +650,9 @@ const styles: Record<string, any> = StyleSheet.create({
     gap: 4,
   },
   notFoundTitle: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 20,
     color: INK,
     marginTop: 8,
   },
-});
+}));

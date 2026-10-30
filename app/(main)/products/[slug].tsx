@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { PaperBackground } from "@/components/layout";
+import { C } from "@/components/orders/parcel-track";
 import { SectionHeader } from "@/components/layout";
 import { ProductImageGallery } from "@/components/product/ProductImageGallery";
 import { ProductInfo } from "@/components/product/ProductInfo";
@@ -41,6 +42,7 @@ import {
 } from "@/lib/recommender";
 import type { Product, ProductVariant, Review } from "@/lib/types";
 import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 export default function ProductDetailScreen() {
   const router = useRouter();
@@ -48,7 +50,8 @@ export default function ProductDetailScreen() {
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { addItem, items: cartItems } = useCart();
-  const { toggle, items: wishlistItems } = useWishlist();
+  const { items: wishlistItems } = useWishlist();
+  const toggleWishlist = useWishlistToggle();
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -185,7 +188,7 @@ export default function ProductDetailScreen() {
       quantity,
     });
     tracker.cartAdd(product);
-    toast("Added to basket", "success");
+    toast("Added to basket", "success", { image: img, subtitle: product.name });
     useUI.getState().setCartDrawer(true);
     return true;
   };
@@ -258,7 +261,13 @@ export default function ProductDetailScreen() {
 
   return (
     <>
-    <PaperBackground style={{ flex: 1 }}>
+    <View style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.5, 1]}
+        style={styles.glow}
+      />
       {/* Sticky Top Navigation Bar */}
       <Animated.View
         style={[
@@ -307,7 +316,7 @@ export default function ProductDetailScreen() {
             onPress={() => {
               if (product) {
                 tracker.wishlist(product, isWishlisted ? "remove" : "add");
-                toggle(product.id);
+                toggleWishlist(product);
               }
             }}
             activeOpacity={0.8}
@@ -626,11 +635,13 @@ export default function ProductDetailScreen() {
             activeOpacity={0.8}
             accessibilityRole="button"
           >
-            <Ionicons
-              name={isInCart ? "bag-check-outline" : "bag-add-outline"}
-              size={17}
-              color={colors.olive[900]}
-            />
+            <View style={styles.stickyAddIcon}>
+              <Ionicons
+                name={isInCart ? "bag-check-outline" : "bag-add-outline"}
+                size={16}
+                color={C.text}
+              />
+            </View>
             <Body style={styles.stickyAddText}>
               {isInCart ? "Go to basket" : soldOut ? "Sold out" : "Add to basket"}
             </Body>
@@ -643,11 +654,13 @@ export default function ProductDetailScreen() {
             accessibilityRole="button"
           >
             <Body style={styles.stickyBuyText}>Buy now</Body>
-            <Ionicons name="arrow-forward" size={16} color="#ffffff" />
+            <View style={styles.stickyBuyArrow}>
+              <Ionicons name="arrow-forward" size={15} color={C.ink} />
+            </View>
           </TouchableOpacity>
         </View>
       </View>
-    </PaperBackground>
+    </View>
 
     <ReviewForm
       visible={showReviewForm}
@@ -673,6 +686,17 @@ export default function ProductDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: C.paper,
+  },
+  glow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 560,
+  },
   empty: {
     flex: 1,
     alignItems: "center",
@@ -695,7 +719,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   topBarTint: {
-    backgroundColor: Platform.OS === "ios" ? `${colors.light.background}C8` : colors.light.background,
+    backgroundColor: Platform.OS === "ios" ? "rgba(235,229,204,0.82)" : C.glow,
   },
   headerCenter: {
     flex: 1,
@@ -713,9 +737,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   headerPriceText: {
-    color: colors.olive[600],
+    color: C.accent,
     fontSize: 12,
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.sans.bold,
   },
   topRight: {
     flexDirection: "row",
@@ -726,38 +750,36 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    borderWidth: 1,
-    borderColor: `${colors.ink.DEFAULT}0F`,
-    backgroundColor: "rgba(255,255,255,0.94)",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#16170f",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    shadowColor: C.ink,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 3,
   },
   cartBtn: {
     position: "relative",
   },
   headerBadge: {
     position: "absolute",
-    top: -4,
-    right: -4,
-    backgroundColor: colors.accent2.rust,
-    borderRadius: 8,
-    minWidth: 17,
-    height: 17,
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: colors.light.background,
+    top: -3,
+    right: -3,
+    backgroundColor: C.ink,
+    borderRadius: 10,
+    minWidth: 19,
+    height: 19,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: C.glow,
     alignItems: "center",
     justifyContent: "center",
   },
   headerBadgeText: {
-    color: "#ffffff",
+    color: C.lime,
     fontSize: 9,
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.bold,
   },
   section: {
     marginTop: spacing[5],
@@ -767,16 +789,18 @@ const styles = StyleSheet.create({
   },
   purchasePanel: {
     marginTop: spacing[6],
-    marginHorizontal: spacing[4],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[5],
+    marginHorizontal: spacing[5],
+    paddingTop: 18,
+    paddingBottom: 18,
     backgroundColor: "#ffffff",
-    borderRadius: 28,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: `${colors.ink.DEFAULT}0D`,
-    ...shadows.editorial,
-    shadowOpacity: 0.08,
-    shadowRadius: 28,
+    borderColor: C.line,
+    shadowColor: C.ink,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
   },
   purchaseGlow: {
     position: "absolute",
@@ -799,67 +823,59 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   purchaseEyebrow: {
-    color: colors.olive[600],
+    color: C.accent,
     fontSize: 10,
-    letterSpacing: 2.4,
-    fontFamily: fontFamilies.sans.bold,
+    letterSpacing: 1.8,
+    fontFamily: fontFamilies.mono.semibold,
   },
   purchaseTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    lineHeight: 30,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 20,
+    lineHeight: 26,
     letterSpacing: -0.4,
-    color: colors.light.foreground,
+    color: C.text,
   },
   purchaseTitleItalic: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 24,
-    lineHeight: 30,
-    color: colors.olive[600],
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: C.accent,
   },
   stockPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 11,
+    height: 28,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: `${colors.olive[500]}2E`,
+    backgroundColor: C.ink,
   },
   stockPillSoldOut: {
-    borderColor: `${colors.accent2.rust}33`,
-    backgroundColor: `${colors.accent2.rust}0D`,
+    backgroundColor: C.rust,
   },
   stockDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.olive[500],
-    shadowColor: colors.olive[400],
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.lime,
   },
   stockDotSoldOut: {
-    backgroundColor: colors.accent2.rust,
-    shadowColor: colors.accent2.rust,
+    backgroundColor: C.cream,
   },
   stockText: {
-    color: colors.olive[700],
-    fontSize: 10,
-    letterSpacing: 1,
+    color: C.cream,
+    fontSize: 10.5,
+    letterSpacing: 0.6,
     fontFamily: fontFamilies.sans.bold,
   },
   stockTextSoldOut: {
-    color: colors.accent2.rust,
+    color: C.cream,
   },
   purchaseDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: `${colors.olive[900]}1A`,
-    marginVertical: spacing[5],
-    marginHorizontal: spacing[5],
+    height: 1,
+    backgroundColor: C.line,
+    marginVertical: 18,
+    marginHorizontal: 18,
   },
   qtySection: {
     paddingHorizontal: spacing[5],
@@ -871,18 +887,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing[3],
-    paddingTop: spacing[5],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: `${colors.olive[900]}1A`,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
   qtyLabelWrap: {
     flexShrink: 1,
     gap: 3,
   },
   qtyLabelText: {
-    color: colors.olive[600],
+    color: C.accent,
     fontSize: 10,
-    letterSpacing: 2,
+    letterSpacing: 1.8,
+    fontFamily: fontFamilies.mono.semibold,
   },
   qtyHint: {
     color: colors.light.mutedForeground,
@@ -892,11 +909,9 @@ const styles = StyleSheet.create({
   qtyContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.paper.warm,
+    backgroundColor: C.accentSoft,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: `${colors.olive[900]}10`,
-    padding: 5,
+    padding: 4,
   },
   qtyPillBtn: {
     width: 40,
@@ -905,8 +920,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#ffffff",
-    ...shadows.soft,
-    shadowOpacity: 0.08,
   },
   qtyPillBtnDisabled: {
     opacity: 0.4,
@@ -914,9 +927,9 @@ const styles = StyleSheet.create({
   qtyValue: {
     minWidth: 44,
     textAlign: "center",
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 17,
+    color: C.text,
   },
   relatedSection: {
     marginTop: spacing[6],
@@ -940,18 +953,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: `${colors.ink.DEFAULT}1A`,
-    paddingTop: spacing[4],
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingTop: 16,
     paddingHorizontal: spacing[4],
     gap: spacing[3],
     overflow: "hidden",
-    ...shadows.editorial,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
   stickyTint: {
-    backgroundColor: Platform.OS === "ios" ? "rgba(255,255,255,0.86)" : "#ffffff",
+    backgroundColor: Platform.OS === "ios" ? "rgba(255,255,255,0.9)" : "#ffffff",
   },
   stickySummary: {
     flexDirection: "row",
@@ -969,21 +981,21 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   stickyEyebrow: {
-    color: colors.light.mutedForeground,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    fontFamily: fontFamilies.sans.bold,
+    color: C.accent,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    fontFamily: fontFamilies.mono.semibold,
   },
   stickyVariant: {
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontSize: 13.5,
+    color: C.text,
     fontFamily: fontFamilies.sans.semibold,
   },
   stickyTotal: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 21,
+    letterSpacing: -0.5,
+    color: C.text,
   },
   stickyBottomInner: {
     flexDirection: "row",
@@ -1005,22 +1017,41 @@ const styles = StyleSheet.create({
   },
   stickyAddBtn: {
     borderWidth: 1,
-    borderColor: `${colors.olive[900]}2E`,
-    backgroundColor: colors.paper.DEFAULT,
+    borderColor: C.line,
+    backgroundColor: C.paper,
+    paddingLeft: 6,
+  },
+  stickyAddIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
   stickyBuyBtn: {
-    backgroundColor: colors.ink.DEFAULT,
+    backgroundColor: C.ink,
+    paddingRight: 6,
+  },
+  stickyBuyArrow: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: "auto",
   },
   stickyAddText: {
-    color: colors.olive[900],
+    color: C.text,
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    letterSpacing: 0.4,
+    fontSize: 14,
+    flexShrink: 1,
   },
   stickyBuyText: {
-    color: "#ffffff",
+    color: C.cream,
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    letterSpacing: 0.4,
+    fontSize: 14,
+    marginLeft: "auto",
   },
 });

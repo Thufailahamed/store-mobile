@@ -10,6 +10,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 import { HOME_PRODUCT_CARD_WIDTH } from "./HomeProductCard";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 interface ForYouProductCardProps {
   product: Product;
@@ -24,7 +25,7 @@ interface ForYouProductCardProps {
 export function ForYouProductCard({ product, reason }: ForYouProductCardProps) {
   const router = useRouter();
   const isWishlisted = useWishlist((s) => !!s.items[product.id]);
-  const toggle = useWishlist((s) => s.toggle);
+  const toggleWishlist = useWishlistToggle();
   const tracker = useTrackEvent();
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
   const storeOrBrandName = product.store?.name || product.brand?.name;
@@ -49,7 +50,7 @@ export function ForYouProductCard({ product, reason }: ForYouProductCardProps) {
           style={styles.heartBtn}
           onPress={() => {
             tracker.wishlist(product, isWishlisted ? "remove" : "add");
-            toggle(product.id);
+            toggleWishlist(product);
           }}
           activeOpacity={0.75}
           hitSlop={8}

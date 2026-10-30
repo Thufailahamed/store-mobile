@@ -10,6 +10,7 @@ import {
   Alert,
   Share,
   StatusBar,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { useRouter } from "expo-router";
@@ -33,6 +34,8 @@ import { SellerStockSheet } from "@/components/seller/SellerStockSheet";
 import type { SellerInventoryRow as InventoryRow } from "@/lib/seller-inventory";
 import { groupSellerRows } from "@/lib/seller-inventory";
 import {
+  SellerFilterTab,
+  SellerGlow,
   SellerSearchField,
   SELLER_CREAM,
   SELLER_INK,
@@ -404,8 +407,7 @@ export default function SellerInventory() {
     <>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 10 }]}>
         <View style={styles.headerCopy}>
-          <Text style={styles.kicker}>Stock control</Text>
-          <Text style={styles.title}>Inventory</Text>
+          <Text style={styles.title} accessibilityRole="header">Inventory</Text>
           <Text style={styles.count}>{countLabel}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -527,33 +529,29 @@ export default function SellerInventory() {
           value={search}
           onChangeText={setSearch}
           placeholder="Search SKU, product, size or colour"
-          style={styles.searchField}
         />
       </View>
-      <View style={styles.segment}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.segment}
+        contentContainerStyle={styles.segmentRow}
+      >
         {([
           { key: "all" as const, label: "All", count: rows.length },
           { key: "healthy" as const, label: "Healthy", count: stats.healthy },
           { key: "low" as const, label: "Low", count: stats.low },
           { key: "out" as const, label: "Out", count: stats.out },
-        ]).map((item) => {
-          const active = filter === item.key;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              style={[styles.segmentItem, active && styles.segmentItemActive]}
-              onPress={() => setFilter(item.key)}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`${item.label}, ${item.count}`}
-            >
-              <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>{item.label}</Text>
-              <Text style={[styles.segmentCount, active && styles.segmentCountActive]}>{item.count}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+        ]).map((item) => (
+          <SellerFilterTab
+            key={item.key}
+            label={item.label}
+            count={item.count}
+            active={filter === item.key}
+            onPress={() => setFilter(item.key)}
+          />
+        ))}
+      </ScrollView>
 
       <View style={styles.resultsHeader}>
         <View style={{ flex: 1, gap: 4 }}>
@@ -598,6 +596,7 @@ export default function SellerInventory() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <SellerGlow />
       <FlatList
         data={groups}
         keyExtractor={(item) => item.key}
@@ -721,7 +720,7 @@ export default function SellerInventory() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   errorWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 8 },
 
   header: {
@@ -729,11 +728,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[5],
+    paddingBottom: 16,
     gap: 12,
   },
   headerCopy: { flex: 1, minWidth: 0 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   kicker: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
@@ -744,30 +743,27 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 31,
     color: INK,
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
   },
   count: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
     color: colors.light.mutedForeground,
-    marginTop: 3,
+    marginTop: 2,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: INK,
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: "#16170f",
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   cancelSelectBtn: {
     paddingHorizontal: 16,
@@ -831,36 +827,20 @@ const styles = StyleSheet.create({
   attentionCta: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: HERO.ink },
   attentionCtaText: { fontFamily: fontFamilies.sans.bold, fontSize: 11.5, color: CREAM },
   searchWrap: { marginHorizontal: spacing[5], marginBottom: 10 },
-  searchField: { backgroundColor: "#FFFFFF", borderColor: "rgba(83,94,44,0.12)" },
-  segment: {
-    flexDirection: "row",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[2],
-    padding: 4,
-    gap: 4,
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-  },
-  segmentItem: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 1 },
-  segmentItemActive: { backgroundColor: colors.olive[900] },
-  segmentLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: colors.ink.soft },
-  segmentLabelActive: { color: CREAM },
-  segmentCount: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: colors.ink.mute },
-  segmentCountActive: { color: "#E8CF8F" },
+  segment: { flexGrow: 0, marginTop: 6, marginBottom: 14 },
+  segmentRow: { paddingHorizontal: spacing[5], gap: 10 },
   resultsHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: spacing[5], marginTop: spacing[5], marginBottom: 12, gap: 10 },
   resultsEyebrowRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   resultsRule: { width: 14, height: 1.5, borderRadius: 1, backgroundColor: GOLD },
   resultsMeta: { fontFamily: fontFamilies.mono.semibold, fontSize: 8.5, letterSpacing: 1.4, color: colors.olive[600] },
-  resultsTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: INK, letterSpacing: -0.2 },
+  resultsTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 20, color: INK, letterSpacing: -0.2 },
   clearButton: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.olive[50] },
   clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.olive[800] },
 
   listContent: { paddingBottom: 24 },
   skeletonCard: {
     flexDirection: "row",
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
@@ -874,14 +854,14 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: CREAM,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.14)",
     alignItems: "center",
     justifyContent: "center",
   },
   emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 20,
     color: INK,
     marginTop: 16,

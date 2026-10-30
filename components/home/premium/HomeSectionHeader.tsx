@@ -1,92 +1,83 @@
 import React from "react";
 import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
-import { colors, spacing } from "@/lib/theme/tokens";
+import { spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
 
 interface HomeSectionHeaderProps {
   title: string;
   onPress?: () => void;
   kicker?: string;
   accent?: boolean;
-  /** Extra control rendered before the chevron (e.g. a refresh button). */
+  /** Extra control rendered before the action link (e.g. a refresh button). */
   right?: React.ReactNode;
+  /** Text of the trailing action link. */
+  actionLabel?: string;
 }
 
 /**
- * The one section header used by every Home section: mono kicker, serif
- * display title, optional chevron. Keep all Home headers on this so the
- * page reads as one publication instead of a mix of type styles.
+ * The one section header used by every Home section — same language as the
+ * Account screen: spaced mono kicker, bold sans title, olive "See all ›"
+ * link. Keep all Home headers on this so the page reads as one system.
  */
-export function HomeSectionHeader({ title, onPress, kicker, accent, right }: HomeSectionHeaderProps) {
-  const titleBlock = (
-    <View style={styles.left}>
-      {kicker ? <Text style={styles.kicker}>{kicker}</Text> : null}
-      <Text style={[styles.title, accent && styles.titleAccent]} numberOfLines={1}>
-        {title}
-      </Text>
-    </View>
-  );
-
+export function HomeSectionHeader({ title, onPress, kicker, accent, right, actionLabel = "See all" }: HomeSectionHeaderProps) {
   return (
     <View style={styles.row}>
+      <View style={styles.left}>
+        {kicker ? <Text style={styles.kicker}>{kicker.toUpperCase()}</Text> : null}
+        <Text style={[styles.title, accent && styles.titleAccent]} numberOfLines={1}>
+          {title}
+        </Text>
+      </View>
+      {right}
       {onPress ? (
-        <TouchableOpacity style={styles.pressable} onPress={onPress} activeOpacity={0.7}>
-          {titleBlock}
-          {right}
-          <View style={styles.chevron}>
-            <Ionicons name="chevron-forward" size={16} color={colors.light.foreground} />
-          </View>
+        <TouchableOpacity onPress={onPress} hitSlop={8} style={styles.action} activeOpacity={0.75}>
+          <Text style={styles.actionText}>{actionLabel}</Text>
+          <Ionicons name="chevron-forward" size={13} color={C.accent} />
         </TouchableOpacity>
-      ) : (
-        <View style={styles.pressable}>
-          {titleBlock}
-          {right}
-        </View>
-      )}
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[3.5],
-  },
-  pressable: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: spacing[2],
+    paddingHorizontal: spacing[5] + 2,
+    marginBottom: 12,
   },
   left: {
     flex: 1,
-    gap: 3,
+    minWidth: 0,
   },
   kicker: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    color: colors.light.primary,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
+    letterSpacing: 1.8,
+    color: C.accent,
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 23,
-    lineHeight: 28,
-    color: colors.light.foreground,
-    letterSpacing: -0.2,
+    marginTop: 3,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: C.text,
   },
   titleAccent: {
-    color: colors.light.primary,
+    color: C.accent,
   },
-  chevron: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  action: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 1,
+    gap: 2,
+    paddingBottom: 3,
+  },
+  actionText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: C.accent,
   },
 });

@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { View, Pressable, ScrollView, StyleSheet, Text, type ViewStyle } from "react-native";
+import {
+  View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  type ViewStyle,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -27,13 +34,28 @@ interface WishlistEmptyStateProps {
 const GOLD = "#E8CF8F";
 const CREAM = colors.paper.cream;
 
-const STEPS: { icon: keyof typeof Ionicons.glyphMap; title: string; body: string }[] = [
+const STEPS: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  body: string;
+}[] = [
   { icon: "heart-outline", title: "Save", body: "Tap the heart on any piece" },
-  { icon: "notifications-outline", title: "Watch", body: "We'll flag price drops" },
-  { icon: "bag-handle-outline", title: "Claim", body: "Move to bag in one tap" },
+  {
+    icon: "notifications-outline",
+    title: "Watch",
+    body: "We'll flag price drops",
+  },
+  {
+    icon: "bag-handle-outline",
+    title: "Claim",
+    body: "Move to bag in one tap",
+  },
 ];
 
-export function WishlistEmptyState({ hasBagItems, style }: WishlistEmptyStateProps) {
+export function WishlistEmptyState({
+  hasBagItems,
+  style,
+}: WishlistEmptyStateProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [picks, setPicks] = useState<Product[]>([]);
@@ -59,7 +81,10 @@ export function WishlistEmptyState({ hasBagItems, style }: WishlistEmptyStatePro
       showsVerticalScrollIndicator={false}
     >
       {/* Hero */}
-      <Animated.View entering={FadeInDown.duration(520)} style={styles.heroShadow}>
+      <Animated.View
+        entering={FadeInDown.duration(520)}
+        style={styles.heroShadow}
+      >
         <LinearGradient
           colors={["#2a2c1f", "#16170f", "#0f100b"]}
           locations={[0, 0.55, 1]}
@@ -81,8 +106,8 @@ export function WishlistEmptyState({ hasBagItems, style }: WishlistEmptyStatePro
             Nothing saved <Text style={styles.titleItalic}>yet</Text>
           </Text>
           <Text style={styles.copy}>
-            Your edit begins with a single heart. Keep the pieces you love in one place — we'll
-            watch them for you.
+            Your edit begins with a single heart. Keep the pieces you love in
+            one place — we'll watch them for you.
           </Text>
 
           <View style={styles.stats}>
@@ -113,9 +138,14 @@ export function WishlistEmptyState({ hasBagItems, style }: WishlistEmptyStatePro
             <Pressable
               onPress={() => router.push("/(main)/cart")}
               hitSlop={8}
-              style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.6 }]}
+              style={({ pressed }) => [
+                styles.secondary,
+                pressed && { opacity: 0.6 },
+              ]}
             >
-              <Text style={styles.secondaryText}>or finish what's in your bag</Text>
+              <Text style={styles.secondaryText}>
+                or finish what's in your bag
+              </Text>
               <Ionicons name="arrow-forward" size={12} color={GOLD} />
             </Pressable>
           ) : null}
@@ -123,7 +153,10 @@ export function WishlistEmptyState({ hasBagItems, style }: WishlistEmptyStatePro
       </Animated.View>
 
       {/* How it works */}
-      <Animated.View entering={FadeInDown.duration(520).delay(120)} style={styles.stepsCard}>
+      <Animated.View
+        entering={FadeInDown.duration(520).delay(120)}
+        style={styles.stepsCard}
+      >
         <Text style={styles.stepsKicker}>HOW YOUR COLLECTION WORKS</Text>
         <View style={styles.steps}>
           {STEPS.map((s, i) => (
@@ -143,14 +176,21 @@ export function WishlistEmptyState({ hasBagItems, style }: WishlistEmptyStatePro
           ))}
         </View>
         <View style={styles.syncNote}>
-          <Ionicons name="shield-checkmark-outline" size={13} color={colors.olive[600]} />
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={13}
+            color={colors.olive[600]}
+          />
           <Text style={styles.syncNoteText}>Synced across the app and web</Text>
         </View>
       </Animated.View>
 
       {/* Suggestions */}
       {picks.length >= 2 && (
-        <Animated.View entering={FadeInDown.duration(520).delay(200)} style={styles.rail}>
+        <Animated.View
+          entering={FadeInDown.duration(520).delay(200)}
+          style={styles.rail}
+        >
           <ProductRail
             kicker="Worth a heart"
             title="Pieces to start with"
@@ -287,14 +327,14 @@ const styles = StyleSheet.create({
 
   title: {
     marginTop: spacing[6],
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 34,
     lineHeight: 40,
     letterSpacing: -1,
     color: CREAM,
     textAlign: "center",
   },
-  titleItalic: { fontFamily: fontFamilies.display.italic, color: GOLD },
+  titleItalic: { fontFamily: fontFamilies.sans.medium, color: GOLD },
   copy: {
     marginTop: 10,
     fontFamily: fontFamilies.sans.regular,
@@ -320,7 +360,7 @@ const styles = StyleSheet.create({
     borderLeftColor: "rgba(232,207,143,0.22)",
   },
   statValue: {
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 22,
     color: "rgba(250,248,241,0.9)",
   },
@@ -364,7 +404,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   secondaryText: {
-    fontFamily: fontFamilies.display.italic,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 15,
     color: GOLD,
   },
@@ -420,10 +460,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  stepNumText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, color: GOLD },
+  stepNumText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    color: GOLD,
+  },
   stepTitle: {
     marginTop: 10,
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 17,
     color: colors.ink.DEFAULT,
   },

@@ -19,7 +19,7 @@ import { formatPrice, pluralize } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RevenueChart } from "@/components/seller/RevenueChart";
-import { SellerScreenHeader, SellerStateView } from "@/components/seller/chrome";
+import { SellerScreenHeader, SellerStateView, SellerFilterTab } from "@/components/seller/chrome";
 import { formatCheckoutPayment, formatOrderStatusLabel } from "@/lib/orders/seller-list";
 
 const CREAM = colors.paper.cream;
@@ -243,26 +243,16 @@ export default function SellerAnalyticsScreen() {
       />
 
       <View style={styles.rangeWrap}>
-        <View style={styles.segmentWrap}>
-          {RANGES.map((r) => {
-            const active = r.key === range;
-            return (
-              <TouchableOpacity
-                key={r.key}
-                style={[styles.segment, active && styles.segmentActive]}
-                onPress={() => onRange(r.key)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Show ${RANGE_LABEL[r.key]}`}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {r.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segmentWrap}>
+          {RANGES.map((r) => (
+            <SellerFilterTab
+              key={r.key}
+              label={r.label}
+              active={r.key === range}
+              onPress={() => onRange(r.key)}
+            />
+          ))}
+        </ScrollView>
       </View>
 
       {loading && !refreshing ? (
@@ -822,39 +812,16 @@ export default function SellerAnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
-  rangeWrap: { paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
-  segmentWrap: {
-    flexDirection: "row",
-    backgroundColor: "rgba(83,94,44,0.07)",
-    borderRadius: 14,
-    padding: 3,
-    gap: 2,
-  },
-  segment: {
-    flex: 1,
-    minHeight: 34,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentActive: {
-    backgroundColor: "#FFFFFF",
-    ...shadows.soft,
-  },
-  segmentText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: colors.olive[700],
-  },
-  segmentTextActive: { color: INK, fontFamily: fontFamilies.sans.semibold },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
+  rangeWrap: { paddingBottom: spacing[4] },
+  segmentWrap: { paddingHorizontal: spacing[5], gap: 10 },
   scroll: { flex: 1 },
   body: { padding: spacing[5], paddingTop: 0, gap: 12 },
 
   /* Hero */
   heroCard: {
-    backgroundColor: colors.olive[950],
-    borderRadius: 24,
+    backgroundColor: "#15160f",
+    borderRadius: 26,
     padding: 20,
     gap: 8,
     ...shadows.soft,
@@ -889,11 +856,16 @@ const styles = StyleSheet.create({
     width: "47%",
     flexGrow: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
-    padding: 14,
+    borderColor: "rgba(22,23,15,0.07)",
+    padding: 16,
     gap: 8,
+    shadowColor: "#16170f",
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
   },
   kpiTop: { flexDirection: "row", alignItems: "center", gap: 8 },
   kpiIcon: {
@@ -973,7 +945,7 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
   },
   panelTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: typography.fontSizes.lg,
     color: INK,
   },
@@ -1077,7 +1049,7 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
   },
   productRevenue: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: typography.fontSizes.sm,
     color: INK,
   },
@@ -1117,7 +1089,7 @@ const styles = StyleSheet.create({
   invTile: {
     width: "47%",
     flexGrow: 1,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.xl,
     padding: 12,
     gap: 3,
@@ -1232,7 +1204,7 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
   },
   reviewCard: {
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.08)",
@@ -1260,7 +1232,7 @@ const styles = StyleSheet.create({
   basketRow: { flexDirection: "row", gap: 10 },
   basketTile: {
     flex: 1,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.08)",
@@ -1306,7 +1278,7 @@ const styles = StyleSheet.create({
   },
   paymentMeta: { alignItems: "flex-end", gap: 1 },
   paymentRevenue: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: typography.fontSizes.sm,
     color: INK,
   },
@@ -1320,7 +1292,7 @@ const styles = StyleSheet.create({
   catalogRow: { flexDirection: "row", gap: 10 },
   catalogTile: {
     flex: 1,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.08)",
@@ -1345,7 +1317,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.08)",

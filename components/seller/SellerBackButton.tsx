@@ -1,11 +1,11 @@
 import React from "react";
-import { TouchableOpacity, Text, View, StyleSheet, type ViewStyle } from "react-native";
+import { TouchableOpacity, StyleSheet, type ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { colors, typography } from "@/lib/theme/tokens";
-import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
 
 type Props = {
+  /** Screen-reader label for the button (e.g. the screen it returns to). */
   label?: string;
   fallbackHref?: string;
   onPress?: () => void;
@@ -13,6 +13,7 @@ type Props = {
   light?: boolean;
 };
 
+/** Round white back button, matching the Orders screens' header chrome. */
 export function SellerBackButton({
   label = "Back",
   fallbackHref = "/(seller)",
@@ -21,11 +22,10 @@ export function SellerBackButton({
   light = false,
 }: Props) {
   const router = useRouter();
-  const tint = light ? colors.paper.cream : colors.olive[800];
 
   return (
     <TouchableOpacity
-      style={[styles.row, style]}
+      style={[styles.circle, light && styles.circleLight, style]}
       onPress={() => {
         if (onPress) {
           onPress();
@@ -35,44 +35,32 @@ export function SellerBackButton({
         else router.push(fallbackHref as any);
       }}
       accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      activeOpacity={0.7}
+      accessibilityLabel={label === "Back" ? "Back" : `Back to ${label}`}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      activeOpacity={0.8}
     >
-      <View style={[styles.iconDisk, light && styles.iconDiskLight]}>
-        <Ionicons name="chevron-back" size={18} color={tint} />
-      </View>
-      <Text style={[styles.label, { color: tint }]}>{label}</Text>
+      <Ionicons name="chevron-back" size={20} color={light ? C.cream : C.text} />
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    alignSelf: "flex-start",
-    minHeight: 44,
-    marginLeft: -2,
-    paddingRight: 8,
-  },
-  iconDisk: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  circle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(83,94,44,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  iconDiskLight: {
-    backgroundColor: "rgba(250,248,241,0.12)",
-    borderColor: "rgba(250,248,241,0.18)",
-  },
-  label: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.sm,
+  circleLight: {
+    backgroundColor: "rgba(250,248,241,0.14)",
+    shadowOpacity: 0,
+    elevation: 0,
   },
 });

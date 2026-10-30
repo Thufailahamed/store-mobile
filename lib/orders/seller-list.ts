@@ -144,6 +144,34 @@ export function readShippingContact(order: {
   };
 }
 
+export interface ShippingAddressView {
+  name: string | null;
+  phone: string | null;
+  line1: string | null;
+  line2: string | null;
+  city: string | null;
+  region: string | null;
+  postalCode: string | null;
+}
+
+/** Full delivery address for the seller detail screen; tolerates JSON-string rows. */
+export function readShippingAddress(order: {
+  shipping_address?: unknown;
+  address?: unknown;
+}): ShippingAddressView | null {
+  const ship = coerceAddress(order.shipping_address) ?? coerceAddress(order.address);
+  if (!ship) return null;
+  return {
+    name: pickStr(ship.full_name, ship.name),
+    phone: pickStr(ship.phone),
+    line1: pickStr(ship.line1, ship.address_line1),
+    line2: pickStr(ship.line2, ship.address_line2),
+    city: pickStr(ship.city, ship.town),
+    region: pickStr(ship.state, ship.district, ship.province),
+    postalCode: pickStr(ship.postal_code, ship.zip),
+  };
+}
+
 function coerceAddress(raw: unknown): Record<string, unknown> | null {
   return asRecord(parseMaybeJson(raw));
 }

@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet, Text, TouchableOpacity } from "react-native";
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+} from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
@@ -193,7 +199,9 @@ export function WardrobeItemCard({
             <Text style={styles.wearText}>{item.wear_count}× worn</Text>
           </View>
           {cpw !== null ? (
-            <Text style={styles.meta}>{formatPrice(cpw, item.currency)}/wear</Text>
+            <Text style={styles.meta}>
+              {formatPrice(cpw, item.currency)}/wear
+            </Text>
           ) : null}
         </View>
       </View>
@@ -211,7 +219,7 @@ const styles: Record<string, any> = StyleSheet.create({
   },
   imageWrap: {
     position: "relative",
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: "hidden",
@@ -338,7 +346,7 @@ const styles: Record<string, any> = StyleSheet.create({
   name: {
     fontSize: 15,
     color: INK,
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     letterSpacing: -0.2,
   },
   priceRow: {

@@ -9,7 +9,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -18,6 +21,7 @@ import { useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api/backend";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 const GOLD = colors.accent2.ochre;
 const GOLD_DEEP = "#85651b";
@@ -115,7 +119,7 @@ export default function FitProfileScreen() {
   useEffect(() => {
     void fetchJson<{ data?: Record<string, number> }>("/api/size-fit/profile")
       .then((res) => {
-        const data = res.ok ? res.data.data ?? res.data : null;
+        const data = res.ok ? (res.data.data ?? res.data) : null;
         if (!data || typeof data !== "object") return;
         const next: Record<string, string> = {};
         for (const k of MEASUREMENT_KEYS) {
@@ -127,7 +131,8 @@ export default function FitProfileScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-  const set = (key: string) => (v: string) => setVals((s) => ({ ...s, [key]: v }));
+  const set = (key: string) => (v: string) =>
+    setVals((s) => ({ ...s, [key]: v }));
   const unit = unitSystem === "metric" ? "cm" : "in";
 
   const save = async () => {
@@ -172,23 +177,10 @@ export default function FitProfileScreen() {
   }, [vals.chest_cm, vals.waist_cm]);
 
   return (
-    <PaperBackground>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Navigation */}
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            style={styles.navBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-          </TouchableOpacity>
-
-          <Text style={styles.navTitle}>Fit & tailoring</Text>
-
+    <UserPageFrame
+      title="Fit & tailoring"
+      right={
+        <>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={save}
@@ -201,11 +193,17 @@ export default function FitProfileScreen() {
             {saving ? (
               <ActivityIndicator size="small" color={GOLD} />
             ) : (
-              <Ionicons name="checkmark" size={19} color={colors.light.foreground} />
+              <Ionicons
+                name="checkmark"
+                size={19}
+                color={colors.light.foreground}
+              />
             )}
           </TouchableOpacity>
-        </View>
-
+        </>
+      }
+    >
+      <SafeAreaView style={styles.container} edges={[]}>
         {loading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={GOLD} size="small" />
@@ -227,13 +225,14 @@ export default function FitProfileScreen() {
                 Your <Text style={styles.pageTitleAccent}>fit profile</Text>
               </Text>
               <Text style={styles.pageSub}>
-                Save your measurements once — we suggest your size on every collection.
+                Save your measurements once — we suggest your size on every
+                collection.
               </Text>
             </View>
 
             {/* Suggested size */}
             <LinearGradient
-              colors={["#1f2418", "#14170e"]}
+              colors={["#22241a", "#15160f"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.hero}
@@ -242,12 +241,16 @@ export default function FitProfileScreen() {
               {predictedSize ? (
                 <View style={styles.heroStats}>
                   <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>{predictedSize.top}</Text>
+                    <Text style={styles.heroStatValue}>
+                      {predictedSize.top}
+                    </Text>
                     <Text style={styles.heroStatLabel}>Tops & jackets</Text>
                   </View>
                   <View style={styles.heroDivider} />
                   <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>{predictedSize.bottom}</Text>
+                    <Text style={styles.heroStatValue}>
+                      {predictedSize.bottom}
+                    </Text>
                     <Text style={styles.heroStatLabel}>Trousers & pants</Text>
                   </View>
                 </View>
@@ -270,7 +273,12 @@ export default function FitProfileScreen() {
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                     >
-                      <Text style={[styles.unitPillText, active && styles.unitPillTextActive]}>
+                      <Text
+                        style={[
+                          styles.unitPillText,
+                          active && styles.unitPillTextActive,
+                        ]}
+                      >
                         {u === "metric" ? "cm · kg" : "in · lbs"}
                       </Text>
                     </TouchableOpacity>
@@ -297,7 +305,10 @@ export default function FitProfileScreen() {
                   return (
                     <TouchableOpacity
                       key={p.id}
-                      style={[styles.fitTile, isSelected && styles.fitTileActive]}
+                      style={[
+                        styles.fitTile,
+                        isSelected && styles.fitTileActive,
+                      ]}
                       onPress={() => setFitPref(p.id)}
                       activeOpacity={0.85}
                       accessibilityRole="button"
@@ -305,25 +316,40 @@ export default function FitProfileScreen() {
                     >
                       <View style={styles.fitTileTop}>
                         <View
-                          style={[styles.fitIcon, isSelected && styles.fitIconActive]}
+                          style={[
+                            styles.fitIcon,
+                            isSelected && styles.fitIconActive,
+                          ]}
                         >
                           <Ionicons
                             name={p.icon}
                             size={15}
-                            color={isSelected ? "#E8CF8F" : colors.light.foreground}
+                            color={
+                              isSelected ? "#E8CF8F" : colors.light.foreground
+                            }
                           />
                         </View>
                         {isSelected && (
-                          <Ionicons name="checkmark-circle" size={16} color={GOLD} />
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={16}
+                            color={GOLD}
+                          />
                         )}
                       </View>
                       <Text
-                        style={[styles.fitLabel, isSelected && styles.fitLabelActive]}
+                        style={[
+                          styles.fitLabel,
+                          isSelected && styles.fitLabelActive,
+                        ]}
                       >
                         {p.label}
                       </Text>
                       <Text
-                        style={[styles.fitDesc, isSelected && styles.fitDescActive]}
+                        style={[
+                          styles.fitDesc,
+                          isSelected && styles.fitDescActive,
+                        ]}
                       >
                         {p.desc}
                       </Text>
@@ -455,335 +481,341 @@ export default function FitProfileScreen() {
                 {saving ? (
                   <ActivityIndicator size="small" color={colors.olive[900]} />
                 ) : (
-                  <Ionicons name="checkmark" size={15} color={colors.olive[900]} />
+                  <Ionicons
+                    name="checkmark"
+                    size={15}
+                    color={colors.olive[900]}
+                  />
                 )}
               </View>
             </TouchableOpacity>
           </ScrollView>
         )}
       </SafeAreaView>
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  loadingText: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 14,
-    color: colors.light.mutedForeground,
-  },
+const styles = withUserTheme(
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    loadingWrap: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 12,
+    },
+    loadingText: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 14,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Nav */
-  navBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  navTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
+    /* Nav */
+    navBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing[5],
+      paddingVertical: spacing[2.5],
+    },
+    navBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    navTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 15,
+      color: colors.light.foreground,
+    },
 
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-    gap: 14,
-  },
+    scrollContent: {
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[2],
+      gap: 14,
+    },
 
-  /* Heading */
-  pageHead: {
-    marginBottom: spacing[2],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-    marginBottom: 4,
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    letterSpacing: -0.6,
-    lineHeight: 38,
-    color: colors.light.foreground,
-  },
-  pageTitleAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: GOLD_DEEP,
-  },
-  pageSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13.5,
-    lineHeight: 20,
-    color: colors.light.mutedForeground,
-    marginTop: 6,
-    maxWidth: 300,
-  },
+    /* Heading */
+    pageHead: {
+      marginBottom: spacing[2],
+    },
+    eyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: GOLD_DEEP,
+      marginBottom: 4,
+    },
+    pageTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 32,
+      letterSpacing: -0.6,
+      lineHeight: 38,
+      color: colors.light.foreground,
+    },
+    pageTitleAccent: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
+    pageSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13.5,
+      lineHeight: 20,
+      color: colors.light.mutedForeground,
+      marginTop: 6,
+      maxWidth: 300,
+    },
 
-  /* Suggested size hero */
-  hero: {
-    borderRadius: 24,
-    padding: spacing[5],
-    gap: spacing[4],
-    ...shadows.editorial,
-  },
-  heroEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: "rgba(232, 207, 143, 0.85)",
-  },
-  heroStats: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  heroStatCell: {
-    flex: 1,
-    gap: 3,
-  },
-  heroStatValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 19,
-    letterSpacing: -0.3,
-    color: colors.paper.cream,
-  },
-  heroStatLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: "rgba(250, 248, 241, 0.55)",
-  },
-  heroDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: "rgba(250, 248, 241, 0.12)",
-    marginHorizontal: spacing[4],
-  },
-  heroEmpty: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: "rgba(250, 248, 241, 0.7)",
-  },
-  unitSwitch: {
-    flexDirection: "row",
-    backgroundColor: "rgba(250, 248, 241, 0.08)",
-    borderRadius: radii.full,
-    padding: 4,
-  },
-  unitPill: {
-    flex: 1,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.full,
-  },
-  unitPillActive: {
-    backgroundColor: "#E8CF8F",
-  },
-  unitPillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11.5,
-    letterSpacing: 0.8,
-    color: "rgba(250, 248, 241, 0.65)",
-  },
-  unitPillTextActive: {
-    color: colors.olive[900],
-    fontFamily: fontFamilies.mono.semibold,
-  },
+    /* Suggested size hero */
+    hero: {
+      borderRadius: 24,
+      padding: spacing[5],
+      gap: spacing[4],
+      ...shadows.editorial,
+    },
+    heroEyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: "rgba(232, 207, 143, 0.85)",
+    },
+    heroStats: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    heroStatCell: {
+      flex: 1,
+      gap: 3,
+    },
+    heroStatValue: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 19,
+      letterSpacing: -0.3,
+      color: colors.paper.cream,
+    },
+    heroStatLabel: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 9.5,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: "rgba(250, 248, 241, 0.55)",
+    },
+    heroDivider: {
+      width: 1,
+      height: 30,
+      backgroundColor: "rgba(250, 248, 241, 0.12)",
+      marginHorizontal: spacing[4],
+    },
+    heroEmpty: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 18,
+      color: "rgba(250, 248, 241, 0.7)",
+    },
+    unitSwitch: {
+      flexDirection: "row",
+      backgroundColor: "rgba(250, 248, 241, 0.08)",
+      borderRadius: radii.full,
+      padding: 4,
+    },
+    unitPill: {
+      flex: 1,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radii.full,
+    },
+    unitPillActive: {
+      backgroundColor: "#E8CF8F",
+    },
+    unitPillText: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 11.5,
+      letterSpacing: 0.8,
+      color: "rgba(250, 248, 241, 0.65)",
+    },
+    unitPillTextActive: {
+      color: colors.olive[900],
+      fontFamily: fontFamilies.mono.semibold,
+    },
 
-  /* Cards */
-  card: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    gap: spacing[4],
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-  cardHeaderText: {
-    gap: 3,
-  },
-  cardEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-  },
-  cardTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
-  },
-  cardIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+    /* Cards */
+    card: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      padding: spacing[5],
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      gap: spacing[4],
+    },
+    cardHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+    },
+    cardHeaderText: {
+      gap: 3,
+    },
+    cardEyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: GOLD_DEEP,
+    },
+    cardTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 20,
+      letterSpacing: -0.3,
+      color: colors.light.foreground,
+    },
+    cardIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: "rgba(200, 164, 74, 0.12)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
 
-  /* Silhouette grid */
-  fitGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  fitTile: {
-    width: "47.8%",
-    backgroundColor: colors.paper.warm,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-    gap: 5,
-  },
-  fitTileActive: {
-    backgroundColor: colors.olive[900],
-  },
-  fitTileTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  fitIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fitIconActive: {
-    backgroundColor: "rgba(200, 164, 74, 0.18)",
-  },
-  fitLabel: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  fitLabelActive: {
-    color: colors.paper.cream,
-  },
-  fitDesc: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    lineHeight: 14,
-    color: colors.light.mutedForeground,
-  },
-  fitDescActive: {
-    color: "rgba(250, 248, 241, 0.65)",
-  },
+    /* Silhouette grid */
+    fitGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
+    fitTile: {
+      width: "47.8%",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 18,
+      padding: 14,
+      borderWidth: 1.5,
+      borderColor: "transparent",
+      gap: 5,
+    },
+    fitTileActive: {
+      backgroundColor: "#15160f",
+    },
+    fitTileTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 4,
+    },
+    fitIcon: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fitIconActive: {
+      backgroundColor: "rgba(200, 164, 74, 0.18)",
+    },
+    fitLabel: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 13.5,
+      color: colors.light.foreground,
+    },
+    fitLabelActive: {
+      color: colors.paper.cream,
+    },
+    fitDesc: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 10.5,
+      lineHeight: 14,
+      color: colors.light.mutedForeground,
+    },
+    fitDescActive: {
+      color: "rgba(250, 248, 241, 0.65)",
+    },
 
-  /* Inputs */
-  fieldsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  fieldCol: {
-    flex: 1,
-    gap: 6,
-  },
-  fieldLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  fieldInputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.paper.warm,
-    borderRadius: radii.xl,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 12 : 8,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    gap: 8,
-  },
-  fieldInput: {
-    flex: 1,
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-    padding: 0,
-  },
-  unitSuffix: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.olive[600],
-  },
-  fieldHint: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    color: colors.light.mutedForeground,
-  },
+    /* Inputs */
+    fieldsRow: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    fieldCol: {
+      flex: 1,
+      gap: 6,
+    },
+    fieldLabel: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 9.5,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: colors.light.mutedForeground,
+    },
+    fieldInputWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.paper.warm,
+      borderRadius: radii.xl,
+      paddingHorizontal: 14,
+      paddingVertical: Platform.OS === "ios" ? 12 : 8,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      gap: 8,
+    },
+    fieldInput: {
+      flex: 1,
+      fontFamily: fontFamilies.mono.semibold,
+      fontSize: 15,
+      color: colors.light.foreground,
+      padding: 0,
+    },
+    unitSuffix: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 11,
+      color: colors.olive[600],
+    },
+    fieldHint: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 10.5,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Save */
-  saveBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    height: 56,
-    paddingLeft: 22,
-    paddingRight: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    marginTop: 4,
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  saveBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.paper.cream,
-    letterSpacing: 0.2,
-  },
-  saveBtnArrow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.paper.cream,
-  },
-});
+    /* Save */
+    saveBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      height: 56,
+      paddingLeft: 22,
+      paddingRight: 6,
+      borderRadius: radii.full,
+      backgroundColor: "#15160f",
+      marginTop: 4,
+      shadowColor: colors.olive[950],
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.22,
+      shadowRadius: 12,
+      elevation: 5,
+    },
+    saveBtnText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 15,
+      color: colors.paper.cream,
+      letterSpacing: 0.2,
+    },
+    saveBtnArrow: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.paper.cream,
+    },
+  }),
+);

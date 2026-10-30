@@ -13,16 +13,27 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
-import { getWardrobeInsights, logWardrobeWear, updateWardrobeItem } from "@/lib/api/wardrobe";
+import {
+  getWardrobeInsights,
+  logWardrobeWear,
+  updateWardrobeItem,
+} from "@/lib/api/wardrobe";
 import type { GarmentType, WardrobeInsights, WardrobeItem } from "@/lib/types";
 
 const INK = "#16170f";
 const MUTED = "#65684d";
 
 const GARMENT_LABEL: Record<string, string> = {
-  top: "Top", bottom: "Bottom", dress: "Dress", footwear: "Footwear",
-  bag: "Bag", accessory: "Accessory", jewelry: "Jewelry", watch: "Watch",
-  beauty: "Beauty", other: "Other",
+  top: "Top",
+  bottom: "Bottom",
+  dress: "Dress",
+  footwear: "Footwear",
+  bag: "Bag",
+  accessory: "Accessory",
+  jewelry: "Jewelry",
+  watch: "Watch",
+  beauty: "Beauty",
+  other: "Other",
 };
 
 type AccentKey = "amber" | "blue" | "rose" | "emerald";
@@ -40,7 +51,11 @@ const ACCENT_DOT: Record<AccentKey, string> = {
   emerald: "#6a7639",
 };
 
-export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem) => void }) {
+export function InsightsSection({
+  onLogWear,
+}: {
+  onLogWear?: (item: WardrobeItem) => void;
+}) {
   const { toast } = useToast();
   const [insights, setInsights] = useState<WardrobeInsights | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,18 +168,30 @@ export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem
       {cards.map((c) => (
         <View key={c.title} style={styles.card}>
           <View style={styles.head}>
-            <View style={[styles.dot, { backgroundColor: ACCENT_DOT[c.accent] }]} />
-            <Text style={[styles.cardTitle, { color: ACCENT_TXT[c.accent] }]}>{c.title}</Text>
+            <View
+              style={[styles.dot, { backgroundColor: ACCENT_DOT[c.accent] }]}
+            />
+            <Text style={[styles.cardTitle, { color: ACCENT_TXT[c.accent] }]}>
+              {c.title}
+            </Text>
           </View>
           <View style={styles.countRow}>
-            <Text style={[styles.count, c.count === 0 && styles.countMuted]}>{c.count}</Text>
-            <Text style={styles.sub} numberOfLines={2}>{c.subtitle}</Text>
+            <Text style={[styles.count, c.count === 0 && styles.countMuted]}>
+              {c.count}
+            </Text>
+            <Text style={styles.sub} numberOfLines={2}>
+              {c.subtitle}
+            </Text>
           </View>
           <View style={styles.rule} />
           <View style={{ gap: 10 }}>
             {c.items.length === 0 ? (
               <View style={styles.emptyRow}>
-                <Ionicons name="checkmark-circle-outline" size={15} color={colors.olive[500]} />
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={15}
+                  color={colors.olive[500]}
+                />
                 <Text style={styles.empty}>All clear</Text>
               </View>
             ) : (
@@ -172,7 +199,11 @@ export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem
                 <View key={it.id} style={styles.itemRow}>
                   <View style={styles.thumb}>
                     {it.image_url ? (
-                      <Image source={{ uri: it.image_url }} style={styles.thumbImg} contentFit="cover" />
+                      <Image
+                        source={{ uri: it.image_url }}
+                        style={styles.thumbImg}
+                        contentFit="cover"
+                      />
                     ) : (
                       <Ionicons name="shirt-outline" size={14} color={MUTED} />
                     )}
@@ -182,7 +213,8 @@ export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem
                       {it.name}
                     </Text>
                     <Text style={styles.itemMeta}>
-                      {GARMENT_LABEL[it.garment_type as GarmentType] ?? it.garment_type}
+                      {GARMENT_LABEL[it.garment_type as GarmentType] ??
+                        it.garment_type}
                       {c.meta ? ` · ${c.meta(it)}` : ""}
                     </Text>
                   </View>
@@ -221,7 +253,7 @@ const styles: Record<string, any> = StyleSheet.create({
     borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     padding: 16,
     ...shadows.soft,
   },
@@ -253,7 +285,7 @@ const styles: Record<string, any> = StyleSheet.create({
   count: {
     fontSize: 40,
     lineHeight: 46,
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.medium,
     letterSpacing: -1,
     color: INK,
   },
@@ -263,14 +295,19 @@ const styles: Record<string, any> = StyleSheet.create({
     fontSize: 11.5,
     lineHeight: 15,
     color: MUTED,
-    fontFamily: fontFamilies.display.italic,
+    fontFamily: fontFamilies.sans.medium,
   },
   rule: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.light.border,
     marginVertical: 12,
   },
-  emptyRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 },
+  emptyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+  },
   empty: {
     fontSize: 12,
     color: colors.olive[600],
@@ -286,7 +323,7 @@ const styles: Record<string, any> = StyleSheet.create({
     height: 44,
     borderRadius: 10,
     overflow: "hidden",
-    backgroundColor: colors.paper.warm,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -296,7 +333,7 @@ const styles: Record<string, any> = StyleSheet.create({
   },
   itemName: {
     fontSize: 13,
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     color: INK,
   },
   itemMeta: {

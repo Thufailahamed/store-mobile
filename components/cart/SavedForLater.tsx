@@ -6,10 +6,10 @@ import { useTheme } from "@/lib/hooks/useTheme";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { typography, spacing, radii } from "@/lib/theme/tokens";
-import { useWishlist } from "@/lib/stores";
 import { Image } from "expo-image";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
+import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 
 interface SavedForLaterProps {
   products: Product[];
@@ -19,7 +19,7 @@ interface SavedForLaterProps {
 export function SavedForLater({ products, style }: SavedForLaterProps) {
   const theme = useTheme();
   const router = useRouter();
-  const { toggle } = useWishlist();
+  const toggleWishlist = useWishlistToggle();
 
   if (!products.length) return null;
 
@@ -85,7 +85,7 @@ export function SavedForLater({ products, style }: SavedForLaterProps) {
                   />
                 ) : null}
                 <Pressable
-                  onPress={() => toggle(item.id)}
+                  onPress={() => toggleWishlist(item, img)}
                   hitSlop={8}
                   style={[
                     styles.heart,

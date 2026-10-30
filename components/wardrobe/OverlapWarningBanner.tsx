@@ -50,7 +50,8 @@ export function OverlapWarningBanner({
 
   if (!user?.id || loading || !overlap) return null;
 
-  const cpw = typeof overlap.cost_per_wear === "number" ? overlap.cost_per_wear : null;
+  const cpw =
+    typeof overlap.cost_per_wear === "number" ? overlap.cost_per_wear : null;
 
   return (
     <View style={styles.banner}>
@@ -58,8 +59,7 @@ export function OverlapWarningBanner({
       <View style={{ flex: 1 }}>
         <Text style={styles.title}>You already own this</Text>
         <Text style={styles.meta}>
-          Worn {overlap.wear_count}×
-          {cpw ? ` · CPW ${formatPrice(cpw)}` : ""}
+          Worn {overlap.wear_count}×{cpw ? ` · CPW ${formatPrice(cpw)}` : ""}
         </Text>
       </View>
       {onOpenWardrobe && (

@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   },
   stepText: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, color: CREAM },
   sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 18,
     color: INK,
     letterSpacing: -0.2,

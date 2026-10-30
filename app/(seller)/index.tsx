@@ -21,6 +21,7 @@ import {
   SELLER_CREAM,
   SELLER_GOLD,
   SELLER_RUST,
+  SellerGlow,
   SellerStatusPill,
 } from "@/components/seller/chrome";
 import { SellerBentoGrid } from "@/components/seller/SellerBentoGrid";
@@ -224,7 +225,7 @@ export default function SellerDashboard() {
   if (loadError && !store) {
     return (
       <ScrollView
-        style={styles.container}
+        style={styles.scroller}
         contentContainerStyle={styles.centeredContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SELLER_GOLD} />}
       >
@@ -245,7 +246,7 @@ export default function SellerDashboard() {
   if (!store) {
     return (
       <ScrollView
-        style={styles.container}
+        style={styles.scroller}
         contentContainerStyle={styles.centeredContent}
         keyboardShouldPersistTaps="handled"
       >
@@ -298,7 +299,7 @@ export default function SellerDashboard() {
   if (accessBlocked) {
     return (
       <ScrollView
-        style={styles.container}
+        style={styles.scroller}
         contentContainerStyle={styles.centeredContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SELLER_GOLD} />}
       >
@@ -409,8 +410,9 @@ export default function SellerDashboard() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+      <SellerGlow height={360} />
       <ScrollView
-        style={styles.container}
+        style={styles.scroller}
         contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 16) + 10 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SELLER_GOLD} />}
         showsVerticalScrollIndicator={false}
@@ -477,7 +479,7 @@ export default function SellerDashboard() {
         >
           <LinearGradient
             pointerEvents="none"
-            colors={["#f5f4ef", "#faf8f1", "#efece2"]}
+            colors={["#f6f2e2", "#FFFFFF", "#FFFFFF"]}
             locations={[0, 0.55, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -485,8 +487,8 @@ export default function SellerDashboard() {
           />
           <LinearGradient
             pointerEvents="none"
-            colors={["rgba(83,94,44,0.10)", "transparent", "rgba(83,94,44,0.05)"]}
-            locations={[0, 0.55, 1]}
+            colors={["rgba(200,164,74,0.08)", "transparent", "transparent"]}
+            locations={[0, 0.5, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.85, y: 1 }}
             style={StyleSheet.absoluteFill}
@@ -825,9 +827,10 @@ const CARD_SHADOW = {
 } as const;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
+  scroller: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingHorizontal: spacing[5], paddingBottom: 120 },
-  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.light.background },
+  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "#ebe5cc" },
   loadingHeader: { paddingHorizontal: spacing[5], paddingBottom: spacing[6] },
   loadingBody: { padding: spacing[5] },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -848,7 +851,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing[2],
   },
-  onboardingTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 26, color: INK },
+  onboardingTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 26, color: INK },
   onboardingSub: { fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: colors.ink.mute, marginBottom: spacing[3] },
   inputLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK, marginTop: spacing[2] },
   input: {
@@ -954,19 +957,19 @@ const styles = StyleSheet.create({
   // Hero
   hero: {
     marginTop: 16,
-    backgroundColor: "#f5f4ef",
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 26,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
     overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(83,94,44,0.14)",
-    shadowColor: "#3d4423",
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.07)",
+    shadowColor: "#16170f",
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
   },
   heroSheen: {
     position: "absolute",
@@ -974,7 +977,7 @@ const styles = StyleSheet.create({
     left: 24,
     right: 24,
     height: 1,
-    backgroundColor: "rgba(83,94,44,0.18)",
+    backgroundColor: "rgba(200,164,74,0.25)",
   },
   heroTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
   heroKicker: {
@@ -1038,10 +1041,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: "rgba(83,94,44,0.06)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(83,94,44,0.14)",
+    borderRadius: 16,
+    backgroundColor: "#f6f5ef",
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.05)",
   },
   heroStatLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   heroStatLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 10.5, color: colors.ink.mute },
@@ -1092,13 +1095,13 @@ const styles = StyleSheet.create({
   section: { marginTop: 34 },
   sectionHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14 },
   sectionEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
     letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: colors.olive[700],
+    color: colors.olive[600],
   },
-  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: INK },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 21, lineHeight: 26, letterSpacing: -0.5, color: INK, marginTop: 2 },
   viewAll: { flexDirection: "row", alignItems: "center", gap: 4, paddingBottom: 4 },
   viewAllText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: INK },
 

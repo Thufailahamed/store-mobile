@@ -1,5 +1,13 @@
 import React from "react";
-import { View, Pressable, StyleSheet, Text, ScrollView, TextInput, Platform } from "react-native";
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Text,
+  ScrollView,
+  TextInput,
+  Platform,
+} from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii } from "@/lib/theme/tokens";
@@ -23,13 +31,29 @@ const GARMENT_LABEL: Record<GarmentType, string> = {
 };
 
 const GARMENT_ORDER: GarmentType[] = [
-  "top", "bottom", "dress", "footwear", "bag", "accessory", "jewelry", "watch", "beauty", "other",
+  "top",
+  "bottom",
+  "dress",
+  "footwear",
+  "bag",
+  "accessory",
+  "jewelry",
+  "watch",
+  "beauty",
+  "other",
 ];
 
 export type WardrobeGarmentFilter = GarmentType | "all";
-export type WardrobeStatusFilter = "active" | "archived" | "sold" | "donated" | "all";
+export type WardrobeStatusFilter =
+  "active" | "archived" | "sold" | "donated" | "all";
 
-const STATUS_ORDER: WardrobeStatusFilter[] = ["active", "archived", "sold", "donated", "all"];
+const STATUS_ORDER: WardrobeStatusFilter[] = [
+  "active",
+  "archived",
+  "sold",
+  "donated",
+  "all",
+];
 
 const STATUS_LABEL: Record<WardrobeStatusFilter, string> = {
   active: "In closet",
@@ -122,10 +146,17 @@ export function WardrobeFilterBar({
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.statusText, active && styles.statusTextActive]}>
+              <Text
+                style={[styles.statusText, active && styles.statusTextActive]}
+              >
                 {STATUS_LABEL[s]}
               </Text>
-              <View style={[styles.statusUnderline, active && styles.statusUnderlineActive]} />
+              <View
+                style={[
+                  styles.statusUnderline,
+                  active && styles.statusUnderlineActive,
+                ]}
+              />
             </Pressable>
           );
         })}
@@ -154,11 +185,16 @@ function Pill({
         pressed && { opacity: 0.85 },
       ]}
     >
-      <Text style={[styles.pillText, active && styles.pillTextActive]} numberOfLines={1}>
+      <Text
+        style={[styles.pillText, active && styles.pillTextActive]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
       {count > 0 && (
-        <Text style={[styles.pillCount, active && styles.pillCountActive]}>{count}</Text>
+        <Text style={[styles.pillCount, active && styles.pillCountActive]}>
+          {count}
+        </Text>
       )}
     </Pressable>
   );
@@ -178,7 +214,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 46,
     paddingVertical: Platform.OS === "ios" ? 0 : 4,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: "#FFFFFF",
     borderRadius: radii.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,

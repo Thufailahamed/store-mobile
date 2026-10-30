@@ -1,4 +1,5 @@
 import type { OrderStatus } from "@/lib/types";
+import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
 
 /** Legal single-step seller transitions (fulfillment uses scan / fulfill RPCs). */
 export const SELLER_NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
@@ -85,6 +86,17 @@ export function isValidOrderStatusTransition(
 
 export function getSellerNextStatus(status: OrderStatus): OrderStatus | null {
   return SELLER_NEXT_STATUS[status] ?? null;
+}
+
+/**
+ * The status a seller can advance an order to from the seller screens. With
+ * the external courier on, orders are booked with the courier at placement
+ * and its updates drive every status, so sellers advance nothing (web parity:
+ * the seller orders page hides "Mark packed").
+ */
+export function getSellerAdvanceStatus(status: OrderStatus): OrderStatus | null {
+  if (isExternalCourierEnabledMobile()) return null;
+  return getSellerNextStatus(status);
 }
 
 /** Web parity: seller orders page allows Cancel except from shipped/delivered/cancelled/returned/refunded. */

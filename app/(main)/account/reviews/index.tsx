@@ -9,7 +9,10 @@ import {
   Text,
   RefreshControl,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
@@ -25,6 +28,7 @@ import {
 } from "@/lib/account-local";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 type Tab = "all" | "published";
 
@@ -100,7 +104,8 @@ export default function ReviewsScreen() {
       } else {
         const local = await getStoredReviews(activeUserId);
         setReviews(local);
-        if (isManualRefresh) toast(res.error || "Failed to load reviews", "error");
+        if (isManualRefresh)
+          toast(res.error || "Failed to load reviews", "error");
       }
     } catch {
       const local = await getStoredReviews(activeUserId);
@@ -122,12 +127,23 @@ export default function ReviewsScreen() {
 
   const avg = useMemo(() => {
     if (reviews.length === 0) return "0.0";
-    return (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1);
+    return (
+      reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+    ).toFixed(1);
   }, [reviews]);
 
-  const totalPhotos = useMemo(() => reviews.reduce((sum, r) => sum + r.photos, 0), [reviews]);
-  const totalHelpful = useMemo(() => reviews.reduce((sum, r) => sum + r.helpful, 0), [reviews]);
-  const publishedCount = useMemo(() => reviews.filter((r) => r.status === "published").length, [reviews]);
+  const totalPhotos = useMemo(
+    () => reviews.reduce((sum, r) => sum + r.photos, 0),
+    [reviews],
+  );
+  const totalHelpful = useMemo(
+    () => reviews.reduce((sum, r) => sum + r.helpful, 0),
+    [reviews],
+  );
+  const publishedCount = useMemo(
+    () => reviews.filter((r) => r.status === "published").length,
+    [reviews],
+  );
 
   const rank = useMemo(() => {
     if (reviews.length >= 10) return "Gold";
@@ -161,26 +177,14 @@ export default function ReviewsScreen() {
     );
   };
 
-  const tabCount = (key: Tab) => (key === "all" ? reviews.length : publishedCount);
+  const tabCount = (key: Tab) =>
+    key === "all" ? reviews.length : publishedCount;
 
   return (
-    <PaperBackground>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Navigation */}
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.navBtn}
-            activeOpacity={0.7}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-          </TouchableOpacity>
-
-          <Text style={styles.navTitle}>My reviews</Text>
-
+    <UserPageFrame
+      title="My reviews"
+      right={
+        <>
           <TouchableOpacity
             onPress={() => loadReviews(true)}
             disabled={refreshing}
@@ -193,11 +197,17 @@ export default function ReviewsScreen() {
             {refreshing ? (
               <ActivityIndicator size="small" color={GOLD} />
             ) : (
-              <Ionicons name="refresh-outline" size={18} color={colors.light.foreground} />
+              <Ionicons
+                name="refresh-outline"
+                size={18}
+                color={colors.light.foreground}
+              />
             )}
           </TouchableOpacity>
-        </View>
-
+        </>
+      }
+    >
+      <SafeAreaView style={styles.container} edges={[]}>
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
@@ -223,7 +233,7 @@ export default function ReviewsScreen() {
 
           {/* Score hero */}
           <LinearGradient
-            colors={["#1f2418", "#14170e"]}
+            colors={["#22241a", "#15160f"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.hero}
@@ -250,28 +260,45 @@ export default function ReviewsScreen() {
           {/* Stat strip */}
           <View style={styles.statsStrip}>
             <View style={styles.statCell}>
-              <Text style={[styles.statNum, reviews.length === 0 && styles.statNumMuted]}>
+              <Text
+                style={[
+                  styles.statNum,
+                  reviews.length === 0 && styles.statNumMuted,
+                ]}
+              >
                 {reviews.length}
               </Text>
               <Text style={styles.statLabel}>Reviews</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statCell}>
-              <Text style={[styles.statNum, totalHelpful === 0 && styles.statNumMuted]}>
+              <Text
+                style={[
+                  styles.statNum,
+                  totalHelpful === 0 && styles.statNumMuted,
+                ]}
+              >
                 {totalHelpful}
               </Text>
               <Text style={styles.statLabel}>Helpful</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statCell}>
-              <Text style={[styles.statNum, totalPhotos === 0 && styles.statNumMuted]}>
+              <Text
+                style={[
+                  styles.statNum,
+                  totalPhotos === 0 && styles.statNumMuted,
+                ]}
+              >
                 {totalPhotos}
               </Text>
               <Text style={styles.statLabel}>Photos</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statCell}>
-              <Text style={styles.statNum} numberOfLines={1}>{rank}</Text>
+              <Text style={styles.statNum} numberOfLines={1}>
+                {rank}
+              </Text>
               <Text style={styles.statLabel}>Rank</Text>
             </View>
           </View>
@@ -289,7 +316,12 @@ export default function ReviewsScreen() {
                     onPress={() => setTab(t.key)}
                     activeOpacity={0.8}
                   >
-                    <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        isActive && styles.segmentTextActive,
+                      ]}
+                    >
                       {t.label}
                       {count > 0 ? ` ${count}` : ""}
                     </Text>
@@ -331,7 +363,11 @@ export default function ReviewsScreen() {
                 >
                   <Text style={styles.primaryBtnText}>Review your orders</Text>
                   <View style={styles.primaryBtnArrow}>
-                    <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                    <Ionicons
+                      name="arrow-forward"
+                      size={14}
+                      color={colors.olive[900]}
+                    />
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -348,7 +384,10 @@ export default function ReviewsScreen() {
               <View style={styles.tipsCard}>
                 <Text style={styles.eyebrow}>Writing a good review</Text>
                 {REVIEW_TIPS.map((s, i) => (
-                  <View key={s.n} style={[styles.tipRow, i > 0 && styles.rowDivider]}>
+                  <View
+                    key={s.n}
+                    style={[styles.tipRow, i > 0 && styles.rowDivider]}
+                  >
                     <Text style={styles.tipNum}>{s.n}</Text>
                     <View style={styles.tipBody}>
                       <Text style={styles.tipTitle}>{s.title}</Text>
@@ -376,21 +415,42 @@ export default function ReviewsScreen() {
                       <View style={styles.badgeRow}>
                         {review.status === "published" ? (
                           <View style={[styles.pill, styles.pillPublished]}>
-                            <Ionicons name="checkmark" size={10} color={GREEN} />
-                            <Text style={[styles.pillText, { color: GREEN }]}>Published</Text>
+                            <Ionicons
+                              name="checkmark"
+                              size={10}
+                              color={GREEN}
+                            />
+                            <Text style={[styles.pillText, { color: GREEN }]}>
+                              Published
+                            </Text>
                           </View>
                         ) : (
                           <View style={[styles.pill, styles.pillPending]}>
-                            <Ionicons name="time-outline" size={10} color={GOLD_DEEP} />
-                            <Text style={[styles.pillText, { color: GOLD_DEEP }]}>
+                            <Ionicons
+                              name="time-outline"
+                              size={10}
+                              color={GOLD_DEEP}
+                            />
+                            <Text
+                              style={[styles.pillText, { color: GOLD_DEEP }]}
+                            >
                               In review
                             </Text>
                           </View>
                         )}
                         {review.isVerifiedPurchase && (
                           <View style={[styles.pill, styles.pillVerified]}>
-                            <Ionicons name="shield-checkmark" size={9} color={colors.olive[700]} />
-                            <Text style={[styles.pillText, { color: colors.olive[700] }]}>
+                            <Ionicons
+                              name="shield-checkmark"
+                              size={9}
+                              color={colors.olive[700]}
+                            />
+                            <Text
+                              style={[
+                                styles.pillText,
+                                { color: colors.olive[700] },
+                              ]}
+                            >
                               Verified
                             </Text>
                           </View>
@@ -414,14 +474,18 @@ export default function ReviewsScreen() {
                     {/* Product */}
                     <View style={styles.productRow}>
                       <View style={styles.productEmblem}>
-                        <Text style={styles.productEmblemText}>{initials || "—"}</Text>
+                        <Text style={styles.productEmblemText}>
+                          {initials || "—"}
+                        </Text>
                       </View>
                       <View style={styles.productInfo}>
                         <TouchableOpacity
                           activeOpacity={0.8}
                           onPress={() =>
                             review.productSlug &&
-                            router.push(`/(main)/products/${review.productSlug}`)
+                            router.push(
+                              `/(main)/products/${review.productSlug}`,
+                            )
                           }
                         >
                           <Text style={styles.productName} numberOfLines={1}>
@@ -443,7 +507,9 @@ export default function ReviewsScreen() {
                     <View style={styles.reviewBody}>
                       <Stars rating={review.rating} />
                       {review.title ? (
-                        <Text style={styles.reviewHeadline}>{review.title}</Text>
+                        <Text style={styles.reviewHeadline}>
+                          {review.title}
+                        </Text>
                       ) : null}
                       {review.body ? (
                         <Text style={styles.reviewBodyText}>{review.body}</Text>
@@ -453,7 +519,11 @@ export default function ReviewsScreen() {
                     {/* Footer */}
                     <View style={styles.cardFooter}>
                       <View style={styles.helpfulMeta}>
-                        <Ionicons name="thumbs-up-outline" size={12} color={GOLD_DEEP} />
+                        <Ionicons
+                          name="thumbs-up-outline"
+                          size={12}
+                          color={GOLD_DEEP}
+                        />
                         <Text style={styles.helpfulText}>
                           {review.helpful === 0
                             ? "No votes yet"
@@ -463,11 +533,19 @@ export default function ReviewsScreen() {
                       {review.productSlug && (
                         <TouchableOpacity
                           style={styles.viewLink}
-                          onPress={() => router.push(`/(main)/products/${review.productSlug}`)}
+                          onPress={() =>
+                            router.push(
+                              `/(main)/products/${review.productSlug}`,
+                            )
+                          }
                           hitSlop={6}
                         >
                           <Text style={styles.viewLinkText}>View piece</Text>
-                          <Ionicons name="arrow-forward" size={11} color={colors.light.foreground} />
+                          <Ionicons
+                            name="arrow-forward"
+                            size={11}
+                            color={colors.light.foreground}
+                          />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -478,435 +556,437 @@ export default function ReviewsScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+const styles = withUserTheme(
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
 
-  /* Nav */
-  navBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  navTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
+    /* Nav */
+    navBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing[5],
+      paddingVertical: spacing[2.5],
+    },
+    navBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    navTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 15,
+      color: colors.light.foreground,
+    },
 
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-    gap: 14,
-  },
+    scrollContent: {
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[2],
+      gap: 14,
+    },
 
-  /* Heading */
-  pageHead: {
-    marginBottom: spacing[2],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-    marginBottom: 4,
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    letterSpacing: -0.6,
-    lineHeight: 38,
-    color: colors.light.foreground,
-  },
-  pageTitleAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: GOLD_DEEP,
-  },
+    /* Heading */
+    pageHead: {
+      marginBottom: spacing[2],
+    },
+    eyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: GOLD_DEEP,
+      marginBottom: 4,
+    },
+    pageTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 32,
+      letterSpacing: -0.6,
+      lineHeight: 38,
+      color: colors.light.foreground,
+    },
+    pageTitleAccent: {
+      fontFamily: fontFamilies.sans.medium,
+      color: GOLD_DEEP,
+    },
 
-  /* Hero */
-  hero: {
-    borderRadius: 24,
-    padding: spacing[5],
-    ...shadows.editorial,
-  },
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  heroEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: "rgba(232, 207, 143, 0.85)",
-  },
-  heroIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(200, 164, 74, 0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroScoreRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 14,
-  },
-  heroScore: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 44,
-    letterSpacing: -1.2,
-    lineHeight: 50,
-    color: colors.paper.cream,
-  },
-  heroScoreRight: {
-    gap: 4,
-    paddingBottom: 8,
-  },
-  heroScoreSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(250, 248, 241, 0.6)",
-  },
-  starsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
+    /* Hero */
+    hero: {
+      borderRadius: 24,
+      padding: spacing[5],
+      ...shadows.editorial,
+    },
+    heroTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 8,
+    },
+    heroEyebrow: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.6,
+      textTransform: "uppercase",
+      color: "rgba(232, 207, 143, 0.85)",
+    },
+    heroIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: "rgba(200, 164, 74, 0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    heroScoreRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: 14,
+    },
+    heroScore: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 44,
+      letterSpacing: -1.2,
+      lineHeight: 50,
+      color: colors.paper.cream,
+    },
+    heroScoreRight: {
+      gap: 4,
+      paddingBottom: 8,
+    },
+    heroScoreSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12.5,
+      color: "rgba(250, 248, 241, 0.6)",
+    },
+    starsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+    },
 
-  /* Stat strip */
-  statsStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.paper.cream,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingVertical: 14,
-    ...shadows.soft,
-  },
-  statCell: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-  },
-  statNum: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
-  },
-  statNumMuted: {
-    color: "rgba(22, 23, 15, 0.35)",
-  },
-  statLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 28,
-    backgroundColor: colors.light.border,
-  },
+    /* Stat strip */
+    statsStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: colors.paper.cream,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingVertical: 14,
+      ...shadows.soft,
+    },
+    statCell: {
+      flex: 1,
+      alignItems: "center",
+      gap: 2,
+    },
+    statNum: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 20,
+      letterSpacing: -0.3,
+      color: colors.light.foreground,
+    },
+    statNumMuted: {
+      color: "rgba(22, 23, 15, 0.35)",
+    },
+    statLabel: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 9.5,
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      color: colors.light.mutedForeground,
+    },
+    statDivider: {
+      width: StyleSheet.hairlineWidth,
+      height: 28,
+      backgroundColor: colors.light.border,
+    },
 
-  /* Segmented tabs */
-  segmented: {
-    flexDirection: "row",
-    gap: 4,
-    backgroundColor: colors.paper.warm,
-    borderRadius: radii.full,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-  },
-  segment: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 9,
-    borderRadius: radii.full,
-  },
-  segmentActive: {
-    backgroundColor: colors.paper.cream,
-    ...shadows.soft,
-  },
-  segmentText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.mutedForeground,
-  },
-  segmentTextActive: {
-    color: colors.light.foreground,
-  },
+    /* Segmented tabs */
+    segmented: {
+      flexDirection: "row",
+      gap: 4,
+      backgroundColor: colors.paper.warm,
+      borderRadius: radii.full,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+    },
+    segment: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 9,
+      borderRadius: radii.full,
+    },
+    segmentActive: {
+      backgroundColor: colors.paper.cream,
+      ...shadows.soft,
+    },
+    segmentText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13,
+      color: colors.light.mutedForeground,
+    },
+    segmentTextActive: {
+      color: colors.light.foreground,
+    },
 
-  /* Loading */
-  loadingWrap: {
-    paddingVertical: 50,
-    alignItems: "center",
-    gap: 10,
-  },
-  loadingText: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 13.5,
-    color: colors.light.mutedForeground,
-  },
+    /* Loading */
+    loadingWrap: {
+      paddingVertical: 50,
+      alignItems: "center",
+      gap: 10,
+    },
+    loadingText: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 13.5,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Empty */
-  emptyWrap: {
-    gap: 14,
-  },
-  emptyCard: {
-    alignItems: "center",
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingVertical: spacing[8],
-    paddingHorizontal: spacing[6],
-  },
-  emptyIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.paper.warm,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing[4],
-  },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    letterSpacing: -0.3,
-    color: colors.light.foreground,
-    textAlign: "center",
-  },
-  emptySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    marginTop: 6,
-    maxWidth: 280,
-  },
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    height: 50,
-    paddingLeft: 22,
-    paddingRight: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    marginTop: spacing[5],
-  },
-  primaryBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.paper.cream,
-  },
-  primaryBtnArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  textLink: {
-    marginTop: spacing[3],
-    paddingVertical: 4,
-  },
-  textLinkText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-    textDecorationLine: "underline",
-  },
+    /* Empty */
+    emptyWrap: {
+      gap: 14,
+    },
+    emptyCard: {
+      alignItems: "center",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingVertical: spacing[8],
+      paddingHorizontal: spacing[6],
+    },
+    emptyIcon: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: colors.paper.warm,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: spacing[4],
+    },
+    emptyTitle: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 22,
+      letterSpacing: -0.3,
+      color: colors.light.foreground,
+      textAlign: "center",
+    },
+    emptySub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+      textAlign: "center",
+      marginTop: 6,
+      maxWidth: 280,
+    },
+    primaryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      height: 50,
+      paddingLeft: 22,
+      paddingRight: 6,
+      borderRadius: radii.full,
+      backgroundColor: "#15160f",
+      marginTop: spacing[5],
+    },
+    primaryBtnText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 14,
+      color: colors.paper.cream,
+    },
+    primaryBtnArrow: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    textLink: {
+      marginTop: spacing[3],
+      paddingVertical: 4,
+    },
+    textLinkText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13,
+      color: colors.light.foreground,
+      textDecorationLine: "underline",
+    },
 
-  /* Tips */
-  tipsCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[2],
-  },
-  tipRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing[4],
-    paddingVertical: spacing[3.5],
-  },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  tipNum: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 16,
-    color: GOLD_DEEP,
-    width: 24,
-  },
-  tipBody: {
-    flex: 1,
-    gap: 3,
-  },
-  tipTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  tipDesc: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.light.mutedForeground,
-  },
+    /* Tips */
+    tipsCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[5],
+      paddingBottom: spacing[2],
+    },
+    tipRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacing[4],
+      paddingVertical: spacing[3.5],
+    },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.light.border,
+    },
+    tipNum: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 16,
+      color: GOLD_DEEP,
+      width: 24,
+    },
+    tipBody: {
+      flex: 1,
+      gap: 3,
+    },
+    tipTitle: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13.5,
+      color: colors.light.foreground,
+    },
+    tipDesc: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.light.mutedForeground,
+    },
 
-  /* Review cards */
-  reviewsList: {
-    gap: 12,
-  },
-  reviewCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    padding: spacing[4],
-    gap: spacing[3],
-    ...shadows.soft,
-  },
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  badgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  pillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-  },
-  pillPublished: {
-    backgroundColor: "rgba(21, 128, 61, 0.1)",
-  },
-  pillPending: {
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-  },
-  pillVerified: {
-    backgroundColor: "rgba(65, 74, 35, 0.1)",
-  },
-  productRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-  },
-  productEmblem: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: colors.paper.warm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  productEmblemText: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: colors.olive[700],
-  },
-  productInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  productName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    letterSpacing: -0.2,
-    color: colors.light.foreground,
-  },
-  productMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
-  },
-  reviewBody: {
-    gap: 6,
-  },
-  reviewHeadline: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  reviewBodyText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-  },
-  cardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: spacing[2.5],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  helpfulMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  helpfulText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-  },
-  viewLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  viewLinkText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: colors.light.foreground,
-  },
-});
+    /* Review cards */
+    reviewsList: {
+      gap: 12,
+    },
+    reviewCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: HAIRLINE,
+      padding: spacing[4],
+      gap: spacing[3],
+      ...shadows.soft,
+    },
+    cardTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    badgeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    pill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: radii.full,
+    },
+    pillText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 11,
+    },
+    pillPublished: {
+      backgroundColor: "rgba(21, 128, 61, 0.1)",
+    },
+    pillPending: {
+      backgroundColor: "rgba(200, 164, 74, 0.12)",
+    },
+    pillVerified: {
+      backgroundColor: "rgba(65, 74, 35, 0.1)",
+    },
+    productRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing[3],
+    },
+    productEmblem: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      backgroundColor: colors.paper.warm,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    productEmblemText: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 15,
+      color: colors.olive[700],
+    },
+    productInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    productName: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 16,
+      letterSpacing: -0.2,
+      color: colors.light.foreground,
+    },
+    productMeta: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 11.5,
+      color: colors.light.mutedForeground,
+    },
+    reviewBody: {
+      gap: 6,
+    },
+    reviewHeadline: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 14,
+      color: colors.light.foreground,
+    },
+    reviewBodyText: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.light.mutedForeground,
+    },
+    cardFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingTop: spacing[2.5],
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.light.border,
+    },
+    helpfulMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+    helpfulText: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: 12,
+      color: colors.light.mutedForeground,
+    },
+    viewLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    viewLinkText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 12.5,
+      color: colors.light.foreground,
+    },
+  }),
+);

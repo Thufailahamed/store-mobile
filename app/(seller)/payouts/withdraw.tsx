@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
+import { SellerGlow } from "@/components/seller/chrome";
 import { getPayoutBalanceBackend, getPayoutsBackend, withdrawPayoutBackend } from "@/lib/api/backend";
 import { generateIdempotencyKey } from "@/lib/payouts/idempotency";
 import { coercePayoutSettings, isPayoutKycError, payoutKycUserMessage } from "@/lib/payouts/settings";
@@ -123,6 +124,7 @@ export default function WithdrawScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <SellerGlow />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 12) + 8 }]}
@@ -136,8 +138,7 @@ export default function WithdrawScreen() {
               <Ionicons name="chevron-back" size={20} color={INK} />
             </PressScale>
             <View style={{ flex: 1 }}>
-              <Text style={styles.kicker}>LEDGER · PAYOUT</Text>
-              <Text style={styles.title}>Withdraw</Text>
+              <Text style={styles.title} accessibilityRole="header">Withdraw</Text>
             </View>
             <View style={styles.secureBadge}>
               <Ionicons name="lock-closed" size={11} color={colors.olive[700]} />
@@ -287,22 +288,30 @@ function SummaryRow({ label, value, muted }: { label: string; value: string; mut
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingHorizontal: spacing[5], paddingBottom: 24 },
 
   header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 20 },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   kicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.4, color: colors.olive[600], marginBottom: 2 },
-  title: { fontFamily: fontFamilies.display.semibold, fontSize: 28, color: INK, letterSpacing: -0.4 },
+  title: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
+    color: INK,
+    letterSpacing: -0.8,
+  },
   secureBadge: {
     flexDirection: "row",
     alignItems: "center",

@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase/client";
 import { isValidEmail, isValidPhone, normalizePhoneE164 } from "@/lib/contact-validation";
 import { checkUniqueBackend, isValidReferralCode } from "@/lib/api/backend";
 import { useToast } from "@/components/ui";
+import { VerifyOtpSheet } from "@/components/auth/VerifyOtpSheet";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { hasStoreApi } from "@/lib/api/delivery-company-api";
 import { C } from "@/components/orders/parcel-track";
@@ -86,6 +87,8 @@ const ROLE_DETAILS: Record<
 
 export default function RegisterScreen() {
   const router = useRouter();
+  // Details the OTP sheet is verifying (null = sheet closed).
+  const [otp, setOtp] = useState<{ phone: string; referral?: string; invite?: string } | null>(null);
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ role?: string; code?: string; ref?: string; referral?: string }>();
@@ -186,15 +189,11 @@ export default function RegisterScreen() {
       return;
     }
 
-    toast("Verification code sent!", "success");
-    // Referral / rider invite are applied by verify-otp once a session exists.
-    router.push({
-      pathname: "/(auth)/verify-otp",
-      params: {
-        phone: formattedPhone,
-        ...(role === "delivery" && inviteCode.trim() ? { invite: inviteCode.trim() } : {}),
-        ...(role !== "delivery" && trimmedReferral ? { referral: trimmedReferral } : {}),
-      },
+    // Referral / rider invite are applied by the OTP sheet once a session exists.
+    setOtp({
+      phone: formattedPhone,
+      ...(role === "delivery" && inviteCode.trim() ? { invite: inviteCode.trim() } : {}),
+      ...(role !== "delivery" && trimmedReferral ? { referral: trimmedReferral } : {}),
     });
   };
 
@@ -376,6 +375,13 @@ export default function RegisterScreen() {
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/(auth)/login"))}
         />
       </ScrollView>
+      <VerifyOtpSheet
+        visible={!!otp}
+        phone={otp?.phone ?? ""}
+        referral={otp?.referral}
+        invite={otp?.invite}
+        onClose={() => setOtp(null)}
+      />
     </KeyboardAvoidingView>
   );
 }

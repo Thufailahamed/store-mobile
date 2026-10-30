@@ -33,6 +33,7 @@ import {
 import type { Address } from "@/lib/types";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 const TYPE_META: Record<AddressType, { label: string }> = {
   home: { label: "Home" },
@@ -182,28 +183,32 @@ export default function AddressesScreen() {
   };
 
   const handleDelete = (a: Address) => {
-    Alert.alert("Remove address", "This will remove the address from your saved list.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: async () => {
-          if (a.is_default) {
-            const nextDefault = addresses.find((addr) => addr.id !== a.id);
-            if (nextDefault) {
-              await updateAddress(nextDefault.id, { is_default: true });
+    Alert.alert(
+      "Remove address",
+      "This will remove the address from your saved list.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            if (a.is_default) {
+              const nextDefault = addresses.find((addr) => addr.id !== a.id);
+              if (nextDefault) {
+                await updateAddress(nextDefault.id, { is_default: true });
+              }
             }
-          }
-          const res = await deleteAddress(a.id);
-          if (!res.ok) {
-            toast(res.error, "error");
-            return;
-          }
-          toast("Address removed", "success");
-          refresh();
+            const res = await deleteAddress(a.id);
+            if (!res.ok) {
+              toast(res.error, "error");
+              return;
+            }
+            toast("Address removed", "success");
+            refresh();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const setDefault = async (a: Address) => {
@@ -224,17 +229,20 @@ export default function AddressesScreen() {
   const defaultAddress = addresses.find((a) => a.is_default);
 
   return (
-    <PaperBackground style={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerSide} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Addresses</Text>
-        <TouchableOpacity onPress={openAdd} style={styles.headerSide} hitSlop={8}>
-          <Ionicons name="add" size={22} color={colors.light.foreground} />
-        </TouchableOpacity>
-      </View>
-
+    <UserPageFrame
+      title="Addresses"
+      right={
+        <>
+          <TouchableOpacity
+            onPress={openAdd}
+            style={styles.headerSide}
+            hitSlop={8}
+          >
+            <Ionicons name="add" size={22} color={colors.light.foreground} />
+          </TouchableOpacity>
+        </>
+      }
+    >
       {loading ? (
         <View style={styles.loading}>
           <Skeleton height={28} width="70%" borderRadius={4} />
@@ -243,7 +251,10 @@ export default function AddressesScreen() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing[10] }]}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: insets.bottom + spacing[10] },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.pageTitle}>Where we deliver</Text>
@@ -267,7 +278,10 @@ export default function AddressesScreen() {
 
           <Pressable
             onPress={openAdd}
-            style={({ pressed }) => [styles.addDashed, pressed && styles.addDashedPressed]}
+            style={({ pressed }) => [
+              styles.addDashed,
+              pressed && styles.addDashedPressed,
+            ]}
           >
             <View style={styles.addSquare}>
               <Ionicons name="add" size={22} color={colors.light.foreground} />
@@ -286,7 +300,7 @@ export default function AddressesScreen() {
         onClose={closeSheet}
         onSubmit={handleSubmit}
       />
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
@@ -327,11 +341,27 @@ function AddressCard({
             </View>
           </View>
           <View style={styles.cardActions}>
-            <TouchableOpacity onPress={onEdit} hitSlop={8} style={styles.iconTap}>
-              <Ionicons name="pencil-outline" size={18} color={colors.light.foreground} />
+            <TouchableOpacity
+              onPress={onEdit}
+              hitSlop={8}
+              style={styles.iconTap}
+            >
+              <Ionicons
+                name="pencil-outline"
+                size={18}
+                color={colors.light.foreground}
+              />
             </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} hitSlop={8} style={styles.iconTap}>
-              <Ionicons name="trash-outline" size={18} color={colors.light.mutedForeground} />
+            <TouchableOpacity
+              onPress={onDelete}
+              hitSlop={8}
+              style={styles.iconTap}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={18}
+                color={colors.light.mutedForeground}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -359,7 +389,10 @@ function AddressCard({
         </View>
 
         {!a.is_default ? (
-          <TouchableOpacity onPress={onSetDefault} style={styles.setDefaultLink}>
+          <TouchableOpacity
+            onPress={onSetDefault}
+            style={styles.setDefaultLink}
+          >
             <Text style={styles.setDefaultText}>Set as default</Text>
           </TouchableOpacity>
         ) : null}
@@ -368,211 +401,213 @@ function AddressCard({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing[4],
-    paddingBottom: spacing[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.light.border,
-  },
-  headerSide: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: fontFamilies.display.regular,
-    fontSize: typography.fontSizes["2xl"],
-    color: colors.light.foreground,
-  },
-  loading: {
-    padding: spacing[5],
-    gap: spacing[4],
-  },
-  content: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[6],
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 34,
-    lineHeight: 40,
-    color: colors.light.foreground,
-    marginBottom: spacing[2],
-  },
-  pageSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: colors.light.mutedForeground,
-    textTransform: "uppercase",
-    marginBottom: spacing[6],
-  },
-  list: {
-    gap: spacing[6],
-    marginBottom: spacing[6],
-  },
-  cardOuter: {
-    position: "relative",
-    marginTop: spacing[3],
-  },
-  pinBadge: {
-    position: "absolute",
-    top: -14,
-    left: spacing[4],
-    zIndex: 2,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.cream,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.paper.cream,
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[4],
-  },
-  cardHead: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing[2],
-  },
-  cardHeadMain: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing[2],
-  },
-  cardName: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes.xl,
-    color: colors.light.foreground,
-  },
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-  },
-  typePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.secondary,
-  },
-  typePillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: colors.light.foreground,
-  },
-  defaultPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.foreground,
-  },
-  defaultPillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: colors.paper.cream,
-    textTransform: "uppercase",
-  },
-  cardActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    flexShrink: 0,
-    paddingTop: 2,
-  },
-  iconTap: {
-    padding: 2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.light.border,
-    marginVertical: spacing[4],
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  detailIcon: {
-    marginTop: 2,
-    marginRight: spacing[2],
-  },
-  detailText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    lineHeight: 21,
-    color: colors.light.foreground,
-  },
-  phoneRow: {
-    marginTop: spacing[3],
-  },
-  setDefaultLink: {
-    marginTop: spacing[4],
-    alignSelf: "flex-start",
-  },
-  setDefaultText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.primary,
-    textDecorationLine: "underline",
-  },
-  addDashed: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing[8],
-    paddingHorizontal: spacing[4],
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    backgroundColor: "transparent",
-  },
-  addDashedPressed: {
-    opacity: 0.85,
-    backgroundColor: colors.olive[50],
-  },
-  addSquare: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.paper.cream,
-    marginBottom: spacing[3],
-  },
-  addTitle: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    letterSpacing: 1.4,
-    color: colors.light.foreground,
-    textTransform: "uppercase",
-    marginBottom: 6,
-  },
-  addSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-  },
-});
+const styles = withUserTheme(
+  StyleSheet.create({
+    screen: { flex: 1 },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing[4],
+      paddingBottom: spacing[3],
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.light.border,
+    },
+    headerSide: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerTitle: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: typography.fontSizes["2xl"],
+      color: colors.light.foreground,
+    },
+    loading: {
+      padding: spacing[5],
+      gap: spacing[4],
+    },
+    content: {
+      paddingHorizontal: spacing[5],
+      paddingTop: spacing[6],
+    },
+    pageTitle: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: 34,
+      lineHeight: 40,
+      color: colors.light.foreground,
+      marginBottom: spacing[2],
+    },
+    pageSubtitle: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 10,
+      letterSpacing: 1.2,
+      color: colors.light.mutedForeground,
+      textTransform: "uppercase",
+      marginBottom: spacing[6],
+    },
+    list: {
+      gap: spacing[6],
+      marginBottom: spacing[6],
+    },
+    cardOuter: {
+      position: "relative",
+      marginTop: spacing[3],
+    },
+    pinBadge: {
+      position: "absolute",
+      top: -14,
+      left: spacing[4],
+      zIndex: 2,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: colors.light.border,
+      backgroundColor: colors.paper.cream,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    card: {
+      borderWidth: 1,
+      borderColor: colors.light.border,
+      borderRadius: radii.lg,
+      backgroundColor: "#FFFFFF",
+      paddingHorizontal: spacing[4],
+      paddingTop: spacing[5],
+      paddingBottom: spacing[4],
+    },
+    cardHead: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: spacing[2],
+    },
+    cardHeadMain: {
+      flex: 1,
+      minWidth: 0,
+      gap: spacing[2],
+    },
+    cardName: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: typography.fontSizes.xl,
+      color: colors.light.foreground,
+    },
+    pillRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
+    typePill: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radii.full,
+      backgroundColor: colors.light.secondary,
+    },
+    typePillText: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 9,
+      letterSpacing: 0.8,
+      color: colors.light.foreground,
+    },
+    defaultPill: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radii.full,
+      backgroundColor: colors.light.foreground,
+    },
+    defaultPillText: {
+      fontFamily: fontFamilies.mono.medium,
+      fontSize: 9,
+      letterSpacing: 0.8,
+      color: colors.paper.cream,
+      textTransform: "uppercase",
+    },
+    cardActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing[3],
+      flexShrink: 0,
+      paddingTop: 2,
+    },
+    iconTap: {
+      padding: 2,
+    },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.light.border,
+      marginVertical: spacing[4],
+    },
+    detailRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+    },
+    detailIcon: {
+      marginTop: 2,
+      marginRight: spacing[2],
+    },
+    detailText: {
+      flex: 1,
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: typography.fontSizes.sm,
+      lineHeight: 21,
+      color: colors.light.foreground,
+    },
+    phoneRow: {
+      marginTop: spacing[3],
+    },
+    setDefaultLink: {
+      marginTop: spacing[4],
+      alignSelf: "flex-start",
+    },
+    setDefaultText: {
+      fontFamily: fontFamilies.sans.medium,
+      fontSize: typography.fontSizes.xs,
+      color: colors.light.primary,
+      textDecorationLine: "underline",
+    },
+    addDashed: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: spacing[8],
+      paddingHorizontal: spacing[4],
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.light.border,
+      borderRadius: radii.lg,
+      backgroundColor: "transparent",
+    },
+    addDashedPressed: {
+      opacity: 0.85,
+      backgroundColor: colors.olive[50],
+    },
+    addSquare: {
+      width: 48,
+      height: 48,
+      borderRadius: radii.md,
+      borderWidth: 1,
+      borderColor: colors.light.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.paper.cream,
+      marginBottom: spacing[3],
+    },
+    addTitle: {
+      fontFamily: fontFamilies.mono.semibold,
+      fontSize: 11,
+      letterSpacing: 1.4,
+      color: colors.light.foreground,
+      textTransform: "uppercase",
+      marginBottom: 6,
+    },
+    addSub: {
+      fontFamily: fontFamilies.sans.regular,
+      fontSize: typography.fontSizes.sm,
+      color: colors.light.mutedForeground,
+      textAlign: "center",
+    },
+  }),
+);

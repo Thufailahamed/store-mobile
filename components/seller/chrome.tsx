@@ -10,8 +10,10 @@ import {
   type StyleProp,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { C } from "@/components/orders/parcel-track";
 import { Ionicons } from "@/components/ui/Icon";
-import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
+import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
@@ -36,7 +38,54 @@ type ScreenHeaderProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** Consistent top chrome: optional back, editorial kicker/title, meta, actions. */
+/** Warm top glow behind seller headers — same wash as the Orders screens. */
+export function SellerGlow({ height = 320 }: { height?: number }) {
+  return (
+    <LinearGradient
+      pointerEvents="none"
+      colors={[C.glow, C.glow, C.glowSoft, C.paper]}
+      locations={[0, 0.22, 0.6, 1]}
+      style={[styles.glow, { height }]}
+    />
+  );
+}
+
+/** White round icon button used in seller headers (back, actions). */
+export function SellerCircleButton({
+  icon,
+  onPress,
+  accessibilityLabel,
+  badge,
+  style,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  accessibilityLabel: string;
+  badge?: number | null;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.circleBtn, style]}
+      onPress={onPress}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Ionicons name={icon} size={19} color={C.text} />
+      {badge != null && badge > 0 ? (
+        <View style={styles.circleBadge}>
+          <Text style={styles.circleBadgeText}>{badge > 99 ? "99+" : badge}</Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * Consistent top chrome, Orders-style: round back button, large display
+ * title, optional round actions on the right and a muted subtitle line.
+ */
 export function SellerScreenHeader({
   kicker,
   title,
@@ -48,31 +97,22 @@ export function SellerScreenHeader({
   style,
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
+  const sub = [kicker, meta].filter(Boolean).join(" · ");
   return (
-    <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 6 }, style]}>
-      {backLabel ? (
-        <SellerBackButton
-          label={backLabel}
-          fallbackHref={backHref}
-          onPress={onBack}
-          style={styles.headerBack}
-        />
-      ) : null}
+    <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }, style]}>
+      <SellerGlow />
       <View style={styles.headerRow}>
+        {backLabel ? (
+          <SellerBackButton label={backLabel} fallbackHref={backHref} onPress={onBack} />
+        ) : null}
         <View style={styles.headerTextCol}>
-          <Text style={styles.kicker}>{kicker}</Text>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
             {title}
           </Text>
         </View>
-        {(meta || right) && (
-          <View style={styles.headerRight}>
-            {meta ? <Text style={styles.meta}>{meta}</Text> : null}
-            {right}
-          </View>
-        )}
+        {right ? <View style={styles.headerRight}>{right}</View> : null}
       </View>
-      <View style={styles.goldRule} />
+      {sub ? <Text style={styles.headerSub} numberOfLines={1}>{sub}</Text> : null}
     </View>
   );
 }
@@ -94,13 +134,13 @@ export function SellerSearchField({
 }: SearchFieldProps) {
   return (
     <View style={[styles.searchWrap, style]}>
-      <Ionicons name="search" size={16} color={colors.ink.mute} />
+      <Ionicons name="search-outline" size={20} color={C.muted} />
       <TextInput
         style={styles.searchInput}
         placeholder={placeholder}
         value={value}
         onChangeText={onChangeText}
-        placeholderTextColor={colors.ink.mute}
+        placeholderTextColor="#A1A1A6"
         returnKeyType="search"
         accessibilityLabel={accessibilityLabel ?? placeholder}
         clearButtonMode="never"
@@ -112,7 +152,7 @@ export function SellerSearchField({
           accessibilityLabel="Clear search"
           accessibilityRole="button"
         >
-          <Ionicons name="close-circle" size={18} color={colors.ink.mute} />
+          <Ionicons name="close-circle" size={18} color={C.faint} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -133,7 +173,7 @@ export function SellerFilterTab({
 }) {
   return (
     <TouchableOpacity
-      style={[styles.filterTab, active && styles.filterTabActive]}
+      style={[styles.filterTab, typeof count === "number" && styles.filterTabWithCount, active && styles.filterTabActive]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
@@ -141,7 +181,7 @@ export function SellerFilterTab({
       activeOpacity={0.75}
     >
       <Text style={[styles.filterTabText, active && styles.filterTabTextActive]}>{label}</Text>
-      {typeof count === "number" && count > 0 ? (
+      {typeof count === "number" ? (
         <View style={[styles.filterCount, active && styles.filterCountActive]}>
           <Text style={[styles.filterCountText, active && styles.filterCountTextActive]}>
             {count > 99 ? "99+" : count}
@@ -369,7 +409,7 @@ export function SellerShortcutGrid({
             ? "rgba(184,92,58,0.28)"
             : item.tone === "warn"
               ? "rgba(200,164,74,0.4)"
-              : sellerBorder;
+              : C.line;
         return (
           <TouchableOpacity
             key={item.key}
@@ -380,7 +420,7 @@ export function SellerShortcutGrid({
             accessibilityLabel={item.label}
           >
             <View style={styles.shortcutIconWrap}>
-              <Ionicons name={item.icon} size={20} color={colors.olive[800]} />
+              <Ionicons name={item.icon} size={20} color={C.accent} />
               {item.badge != null && item.badge > 0 ? (
                 <View style={styles.shortcutBadge}>
                   <Text style={styles.shortcutBadgeText}>
@@ -397,114 +437,136 @@ export function SellerShortcutGrid({
   );
 }
 
+const cardShadow = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
+
 const styles = StyleSheet.create({
+  glow: { position: "absolute", top: 0, left: 0, right: 0 },
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[2],
-    backgroundColor: colors.light.background,
+    paddingBottom: 14,
   },
-  headerBack: { marginBottom: 4 },
   headerRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
+    alignItems: "center",
     gap: 12,
   },
   headerTextCol: { flex: 1, minWidth: 0 },
-  headerRight: {
-    alignItems: "flex-end",
-    gap: 8,
-    paddingBottom: 4,
-  },
-  kicker: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
-    textTransform: "uppercase",
-    color: colors.olive[700],
-    marginBottom: 2,
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerSub: {
+    marginTop: 6,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: C.muted,
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: SELLER_INK,
-    letterSpacing: -0.45,
+    fontSize: 31,
+    letterSpacing: -0.8,
+    color: C.text,
   },
-  meta: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    letterSpacing: 0.35,
-    color: colors.olive[700],
+  circleBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginTop: spacing[3],
+  circleBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: C.rust,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
   },
+  circleBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 9, color: "#FFFFFF" },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 46,
-    paddingHorizontal: 14,
+    height: 56,
+    paddingHorizontal: 20,
     gap: 10,
-    backgroundColor: SELLER_CREAM,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: sellerBorderStrong,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    elevation: 3,
   },
   searchInput: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
-    color: SELLER_INK,
-    paddingVertical: 11,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 15,
+    color: C.text,
+    padding: 0,
   },
   filterTab: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 38,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: SELLER_CREAM,
+    height: 46,
+    paddingLeft: 18,
+    paddingRight: 18,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: sellerBorderStrong,
-    gap: 6,
+    borderColor: C.line,
+    gap: 8,
   },
+  filterTabWithCount: { paddingRight: 12 },
   filterTabActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
+    backgroundColor: C.ink,
+    borderColor: C.ink,
   },
   filterTabText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: C.text,
   },
   filterTabTextActive: {
-    color: SELLER_CREAM,
-    fontFamily: fontFamilies.sans.semibold,
+    color: C.cream,
   },
   filterCount: {
-    backgroundColor: "rgba(83,94,44,0.1)",
-    borderRadius: radii.full,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
     paddingHorizontal: 6,
-    paddingVertical: 1,
-    minWidth: 20,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
   },
-  filterCountActive: { backgroundColor: "rgba(250,248,241,0.18)" },
+  filterCountActive: { backgroundColor: "rgba(200,224,138,0.18)" },
   filterCountText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: C.muted,
   },
-  filterCountTextActive: { color: SELLER_CREAM },
+  filterCountTextActive: { color: C.lime },
   panel: {
-    backgroundColor: SELLER_CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: sellerBorder,
+    borderColor: C.line,
     overflow: "hidden",
+    ...cardShadow,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -514,57 +576,57 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionKicker: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: colors.ink.mute,
-    marginBottom: 2,
+    color: C.accent,
+    marginBottom: 4,
   },
   sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: SELLER_INK,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 18,
+    color: C.text,
     letterSpacing: -0.3,
   },
   sectionLink: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[800],
+    fontSize: 13,
+    color: C.accent,
     paddingBottom: 2,
   },
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    maxWidth: 140,
+    paddingHorizontal: 10,
+    height: 26,
+    borderRadius: 13,
+    maxWidth: 160,
   },
   statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusPillText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
   stateCta: {
-    minHeight: 44,
+    minHeight: 46,
     paddingHorizontal: 22,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
+    borderRadius: 23,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
   },
   stateCtaText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: SELLER_CREAM,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: C.cream,
   },
   stickyBar: {
     position: "absolute",
@@ -575,72 +637,70 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: spacing[5],
     paddingTop: 12,
-    backgroundColor: "rgba(245,244,239,0.96)",
+    backgroundColor: "rgba(255,255,255,0.96)",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: sellerBorder,
+    borderTopColor: C.line,
   },
   primaryBtn: {
     flex: 1,
-    minHeight: 50,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
+    minHeight: 52,
+    borderRadius: 26,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
   },
   primaryBtnDisabled: { opacity: 0.45 },
   primaryBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: SELLER_CREAM,
-    letterSpacing: 0.15,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: C.cream,
   },
   ghostBtn: {
-    minHeight: 50,
-    paddingHorizontal: 16,
-    borderRadius: radii.full,
+    minHeight: 52,
+    paddingHorizontal: 18,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: sellerBorderStrong,
-    backgroundColor: SELLER_CREAM,
+    borderColor: "rgba(22,23,15,0.12)",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
   ghostBtnDanger: {
-    borderColor: "rgba(184,92,58,0.35)",
-    backgroundColor: "rgba(184,92,58,0.06)",
+    borderColor: "rgba(184,92,58,0.3)",
+    backgroundColor: "rgba(184,92,58,0.05)",
   },
   ghostBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[900],
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: C.text,
   },
   ghostBtnTextDanger: {
-    color: SELLER_RUST,
+    color: C.rust,
   },
   shortcutGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 12,
   },
   shortcutTile: {
     width: "47.5%",
     flexGrow: 1,
-    minHeight: 88,
-    backgroundColor: SELLER_CREAM,
-    borderRadius: radii["2xl"],
+    minHeight: 96,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     justifyContent: "space-between",
     gap: 12,
+    ...cardShadow,
   },
   shortcutIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: sellerBorder,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -652,18 +712,18 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 4,
-    backgroundColor: SELLER_RUST,
+    backgroundColor: C.rust,
     alignItems: "center",
     justifyContent: "center",
   },
   shortcutBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 9,
-    color: SELLER_CREAM,
+    color: C.cream,
   },
   shortcutLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    color: SELLER_INK,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14.5,
+    color: C.text,
   },
 });

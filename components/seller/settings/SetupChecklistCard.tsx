@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     color: colors.olive[700],
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 22,
     lineHeight: 28,
     color: INK,
