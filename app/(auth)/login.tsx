@@ -1,156 +1,125 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   StyleSheet,
-  ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
-  TouchableOpacity,
-  Animated,
-  Easing,
-  Alert,
-  ActivityIndicator,
+  Pressable,
+  Text,
+  TextInput,
+  ScrollView,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 WebBrowser.maybeCompleteAuthSession();
-import { Ionicons } from "@/components/ui/Icon";
-import Svg, { Path } from "react-native-svg";
 import { supabase } from "@/lib/supabase/client";
 import { completeAuthCallback } from "@/lib/supabase/oauth";
+import { FIXED_LOGIN_CODE_ENABLED } from "@/lib/supabase/fixed-login-code";
 import { mergeAnonSessionOnLogin } from "@/lib/recommender";
-import { isOperationalStoreStatus } from "@/lib/catalog-visibility";
-import { isValidEmail, isValidPhone } from "@/lib/contact-validation";
-import { Button, Input, useToast } from "@/components/ui";
-import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
-import { Display, Label, Body } from "@/components/ui/Typography";
+import { EMAIL_REGEX, normalizePhoneE164 } from "@/lib/contact-validation";
+import { useToast } from "@/components/ui";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
+import {
+  AltTile,
+  AuthBackButton,
+  AuthField,
+  AuthFooterLink,
+  OrDivider,
+  PasswordEye,
+  PrimaryButton,
+  authStyles,
+} from "@/components/auth/auth-ui";
 
-type Method = "password" | "otp" | "phone";
+// Keep only the 9 local digits of a Sri Lankan mobile number and group them
+// as "77 123 4567". Accepts pasted "+94…", "94…" and "0…" forms.
+function formatLocalPhone(input: string): string {
+  let digits = input.replace(/\D/g, "");
+  if (digits.startsWith("94") && digits.length > 9) digits = digits.slice(2);
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  digits = digits.slice(0, 9);
+  return [digits.slice(0, 2), digits.slice(2, 5), digits.slice(5)]
+    .filter(Boolean)
+    .join(" ");
+}
 
 export default function LoginScreen() {
   const router = useRouter();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
-  const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState(false);
-  const [method, setMethod] = useState<Method>("password");
+  const [phoneFocused, setPhoneFocused] = useState(false);
+  const phoneRef = useRef<TextInput>(null);
+  const phoneOk = /^\+947\d{8}$/.test(normalizePhoneE164(phone));
+  const phoneInvalid = phone.trim().length >= 4 && !phoneFocused && !phoneOk;
+  // Phone OTP is the default; email + password stays available.
+  const [method, setMethod] = useState<"phone" | "email">("phone");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const passwordRef = useRef<TextInput>(null);
+  const emailOk = EMAIL_REGEX.test(email.trim());
+  const emailInvalid = email.trim().length > 0 && !emailFocused && !emailOk;
+  const inputOk = method === "phone" ? phoneOk : emailOk && password.length > 0;
 
-  // Sliding tab animation state
-  const [containerWidth, setContainerWidth] = useState(0);
-  const indicatorTranslateX = useRef(new Animated.Value(0)).current;
-
-  const methods: { key: Method; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: "password", label: "Password", icon: "key-outline" },
-    { key: "otp", label: "Email link", icon: "sparkles-outline" },
-    { key: "phone", label: "Phone", icon: "call-outline" },
-  ];
-
-  const activeIndex = methods.findIndex((m) => m.key === method);
-
-  useEffect(() => {
-    if (containerWidth > 0) {
-      const tabWidth = (containerWidth - 8) / 3;
-      Animated.timing(indicatorTranslateX, {
-        toValue: activeIndex * tabWidth,
-        duration: 280,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [activeIndex, containerWidth]);
-
-  const handleLogin = async () => {
-    if (method === "otp") {
-      sendMagicLink();
-      return;
-    }
-    if (method === "phone") {
-      sendPhoneOtp();
-      return;
-    }
-
-    if (!email.trim() || !password.trim()) {
-      toast("Please fill in all fields", "error");
-      return;
-    }
-
-    if (!isValidEmail(email)) {
+  const signInWithEmail = async () => {
+    if (!emailOk) {
       toast("Enter a valid email address", "error");
       return;
     }
-
+    if (!password) {
+      toast("Please enter your password", "error");
+      return;
+    }
+    Keyboard.dismiss();
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
     setLoading(false);
-
     if (error) {
       toast(error.message, "error");
       return;
     }
-
-    // Merge any pre-login anon signals (browse events captured under the
-    // HMAC anon_sid) into this freshly-authenticated user. Best-effort.
     try {
       await mergeAnonSessionOnLogin();
     } catch {
-      // Ignore — anon merge is non-blocking.
+      // ignore
     }
     toast("Welcome back!", "success");
+    // Auth state listener in _layout.tsx handles redirection.
   };
 
-  const sendMagicLink = async () => {
-    if (!email.trim()) {
-      toast("Please enter your email", "error");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      toast("Enter a valid email address", "error");
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: "luxe://auth/callback",
-      },
-    });
-    setLoading(false);
-
-    if (error) {
-      toast(error.message, "error");
-    } else {
-      toast("Magic link sent! Check your inbox.", "success");
-      router.push({
-        pathname: "/(auth)/verify-otp",
-        params: { email: email.trim() },
-      });
-    }
-  };
 
   const sendPhoneOtp = async () => {
     if (!phone.trim()) {
       toast("Please enter your phone number", "error");
       return;
     }
-    if (!isValidPhone(phone)) {
-      toast("Phone number looks invalid", "error");
+    if (!phoneOk) {
+      toast("Enter a valid Sri Lankan mobile number", "error");
       return;
     }
 
+    const e164 = normalizePhoneE164(phone);
+    Keyboard.dismiss();
+    if (FIXED_LOGIN_CODE_ENABLED) {
+      router.push({ pathname: "/(auth)/verify-otp", params: { phone: e164 } });
+      return;
+    }
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
-      phone: phone.trim(),
+      phone: e164,
     });
     setLoading(false);
 
@@ -160,11 +129,14 @@ export default function LoginScreen() {
       toast("Verification code sent!", "success");
       router.push({
         pathname: "/(auth)/verify-otp",
-        params: { phone: phone.trim() },
+        params: { phone: e164 },
       });
     }
   };
 
+  const submit = method === "phone" ? sendPhoneOtp : signInWithEmail;
+
+  // Not surfaced in the UI right now; kept so Google sign-in can be re-enabled.
   const handleSocialLogin = async () => {
     setSocialLoading(true);
     try {
@@ -186,7 +158,10 @@ export default function LoginScreen() {
         return;
       }
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, "luxe://auth/callback");
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        "luxe://auth/callback",
+      );
 
       if (result.type === "success" && result.url) {
         const { error: cbError } = await completeAuthCallback(result.url);
@@ -209,400 +184,168 @@ export default function LoginScreen() {
       setSocialLoading(false);
     }
   };
+  void handleSocialLogin;
+  void socialLoading;
+
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace("/(auth)/welcome"));
+  const switchMethod = () => setMethod((m) => (m === "phone" ? "email" : "phone"));
+  const ctaLabel = method === "phone" ? "Send login code" : "Login";
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <KeyboardAvoidingView style={authStyles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: insets.top > 0 ? insets.top + spacing[4] : spacing[8],
-            paddingBottom: insets.bottom > 0 ? insets.bottom + spacing[4] : spacing[8],
-          },
+          authStyles.scroll,
+          { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) + 8 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Header section with luxury editorial brand details */}
-        <View style={styles.header}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandMark}>
-              <Display size="lg" style={styles.brandMarkText}>L</Display>
-            </View>
-            <Label style={styles.brandName}>LUXE</Label>
-          </View>
-          <View style={styles.titleRow}>
-            <Display size="4xl" style={styles.titleText}>Welcome </Display>
-            <Display italic size="4xl" style={styles.titleTextItalic}>back</Display>
-            <Display size="4xl" style={styles.titleText}>.</Display>
-          </View>
-          <Body muted style={styles.subtitle}>
-            Sign in to track orders, save pieces and pick up where you left off.
-          </Body>
-        </View>
+        <AuthBackButton onPress={goBack} />
 
-        {/* Social Google sign-in */}
-        <View style={styles.socialSection}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={handleSocialLogin}
-            disabled={loading || socialLoading}
-            style={styles.googleBtn}
-          >
-            {socialLoading ? (
-              <ActivityIndicator size="small" color={colors.light.foreground} />
-            ) : (
-              <>
-                <Svg viewBox="0 0 24 24" width={18} height={18}>
-                  <Path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <Path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
-                  <Path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.72.12-1.42.34-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.83z"/>
-                  <Path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83C6.71 7.31 9.14 5.38 12 5.38z"/>
-                </Svg>
-                <Body style={styles.googleBtnText}>Continue with Google</Body>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        <Animated.View entering={FadeInDown.duration(450)}>
+          <Text style={authStyles.title} accessibilityRole="header">
+            Welcome back! Glad to see you, again!
+          </Text>
+          <Text style={authStyles.subtitle}>
+            {method === "phone"
+              ? "Sign in with your mobile number — we’ll text you a code."
+              : "Sign in with your email and password."}
+          </Text>
+        </Animated.View>
 
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Body size="sm" style={styles.dividerText}>or sign in with</Body>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Method selector tab pill */}
-        <View
-          style={styles.pillContainer}
-          onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-        >
-          {containerWidth > 0 && (
-            <Animated.View
-              style={[
-                styles.pillIndicator,
-                {
-                  width: (containerWidth - 8) / 3,
-                  transform: [{ translateX: indicatorTranslateX }],
-                },
-              ]}
-            />
-          )}
-          {methods.map((m) => {
-            const active = method === m.key;
-            return (
-              <TouchableOpacity
-                key={m.key}
-                activeOpacity={0.8}
-                onPress={() => setMethod(m.key)}
-                style={styles.pillTab}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-              >
-                <Ionicons
-                  name={m.icon}
-                  size={14}
-                  color={active ? colors.light.foreground : colors.light.mutedForeground}
-                  style={styles.tabIcon}
-                />
-                <Body
-                  style={[
-                    styles.tabLabel,
-                    active ? styles.tabLabelActive : styles.tabLabelInactive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {m.label}
-                </Body>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Form area */}
-        <View style={styles.form}>
-          {method !== "phone" ? (
-            <Input
-              label="Email address"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              textContentType="username"
-              autoCorrect={false}
-              returnKeyType={method === "password" ? "next" : "send"}
-              onSubmitEditing={method === "password" ? undefined : handleLogin}
-              leftIcon={<Ionicons name="mail-outline" size={18} color={colors.light.mutedForeground} />}
-            />
-          ) : (
-            <Input
-              label="Phone number"
-              placeholder="077 123 4567"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              textContentType="telephoneNumber"
-              leftIcon={<Ionicons name="call-outline" size={18} color={colors.light.mutedForeground} />}
-            />
-          )}
-
-          {method === "password" && (
+        <Animated.View key={method} entering={FadeIn.duration(260)} style={authStyles.form}>
+          {method === "phone" ? (
             <>
-              <Input
-                label="Password"
-                placeholder="Enter your password"
+              <AuthField
+                ref={phoneRef}
+                value={phone}
+                onChangeText={(t) => setPhone(formatLocalPhone(t))}
+                onFocus={() => setPhoneFocused(true)}
+                onBlur={() => setPhoneFocused(false)}
+                placeholder="77 123 4567"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                textContentType="telephoneNumber"
+                returnKeyType="send"
+                maxLength={11}
+                onSubmitEditing={sendPhoneOtp}
+                accessibilityLabel="Mobile number"
+                accessibilityHint="Nine digit Sri Lankan mobile number"
+                invalid={phoneInvalid}
+                valid={phoneOk}
+                leading={
+                  <View style={styles.prefix}>
+                    <Text style={styles.flag}>🇱🇰</Text>
+                    <Text style={styles.prefixText}>+94</Text>
+                  </View>
+                }
+              />
+              <Text style={phoneInvalid ? authStyles.error : authStyles.hint}>
+                {phoneInvalid
+                  ? "Enter a valid Sri Lankan mobile number."
+                  : "We’ll text you a 6-digit code. No password needed."}
+              </Text>
+            </>
+          ) : (
+            <>
+              <AuthField
+                value={email}
+                onChangeText={setEmail}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
+                placeholder="Enter your email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                accessibilityLabel="Email"
+                invalid={emailInvalid}
+                valid={emailOk}
+              />
+              {emailInvalid ? <Text style={authStyles.error}>Enter a valid email address.</Text> : null}
+              <AuthField
+                ref={passwordRef}
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry={!showPwd}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
+                placeholder="Enter your password"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
                 autoComplete="password"
                 textContentType="password"
                 returnKeyType="go"
-                onSubmitEditing={handleLogin}
-                leftIcon={<Ionicons name="lock-closed-outline" size={18} color={colors.light.mutedForeground} />}
-                rightIcon={
-                  <TouchableOpacity
-                    onPress={() => setShowPwd(!showPwd)}
-                    activeOpacity={0.7}
-                    hitSlop={10}
-                    accessibilityRole="button"
-                    accessibilityLabel={showPwd ? "Hide password" : "Show password"}
-                  >
-                    <Ionicons
-                      name={showPwd ? "eye-off-outline" : "eye-outline"}
-                      size={18}
-                      color={colors.light.mutedForeground}
-                    />
-                  </TouchableOpacity>
-                }
+                onSubmitEditing={signInWithEmail}
+                accessibilityLabel="Password"
+                trailing={<PasswordEye shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
               />
-
-              <TouchableOpacity
+              <Pressable
                 onPress={() => router.push("/(auth)/forgot-password")}
-                style={styles.forgotLink}
                 hitSlop={8}
+                style={styles.forgot}
                 accessibilityRole="link"
               >
-                <Body size="sm" style={styles.forgotText}>Forgot password?</Body>
-              </TouchableOpacity>
+                <Text style={authStyles.link}>Forgot Password?</Text>
+              </Pressable>
             </>
           )}
 
-          {method === "otp" && (
-            <View style={styles.methodInfo}>
-              <Ionicons name="mail-open-outline" size={16} color={colors.olive[700]} />
-              <Body size="sm" style={styles.methodInfoText}>
-                We'll email you a one-time sign-in link. No password needed.
-              </Body>
-            </View>
-          )}
-
-          {method === "phone" && (
-            <View style={styles.methodInfo}>
-              <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.olive[700]} />
-              <Body size="sm" style={styles.methodInfoText}>
-                We'll text you a 6-digit code to sign in.
-              </Body>
-            </View>
-          )}
-
-          <Button
-            onPress={handleLogin}
+          <PrimaryButton
+            label={ctaLabel}
+            onPress={submit}
+            disabled={!inputOk}
             loading={loading}
-            variant="brand"
-            style={styles.submitButton}
-          >
-            {method === "password" ? "Sign in" : method === "otp" ? "Email me a link" : "Text me a code"}
-          </Button>
+            style={{ marginTop: 8 }}
+          />
+        </Animated.View>
+
+        <View style={styles.alt}>
+          <OrDivider label="Or continue with" />
+          <View style={styles.tiles}>
+            <AltTile
+              icon={method === "phone" ? "mail-outline" : "phone-portrait-outline"}
+              label={method === "phone" ? "Email" : "Phone"}
+              onPress={() => {
+                // Unmounted inputs never fire onBlur — clear focus state here.
+                setPhoneFocused(false);
+                setEmailFocused(false);
+                setPasswordFocused(false);
+                switchMethod();
+              }}
+            />
+            <AltTile icon="bag-handle-outline" label="Guest" onPress={() => router.replace("/(main)")} />
+          </View>
         </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Body size="sm" muted>New to LUXE? </Body>
-          <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
-            <Body size="sm" style={styles.footerLink}>Create an account</Body>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.finePrintRow}>
-          <Ionicons name="lock-closed-outline" size={11} color={colors.light.mutedForeground} />
-          <Body size="sm" style={styles.finePrint}>Secured with industry-standard encryption</Body>
-        </View>
+        <View style={{ flex: 1, minHeight: 24 }} />
+        <AuthFooterLink
+          prompt="Don’t have an account?"
+          action="Register Now"
+          onPress={() => router.push("/(auth)/register")}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.light.background,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  header: {
-    marginBottom: 28,
-  },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 28 },
-  brandMark: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  brandMarkText: { color: colors.paper.cream, lineHeight: 26 },
-  brandName: { color: colors.light.foreground, letterSpacing: 3, fontSize: 12 },
-  titleRow: {
+  prefix: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
+    gap: 6,
+    paddingRight: 12,
+    marginRight: 2,
+    borderRightWidth: 1,
+    borderRightColor: "rgba(22,23,15,0.12)",
   },
-  titleText: {
-    color: colors.light.foreground,
-    lineHeight: 46,
-  },
-  titleTextItalic: {
-    color: colors.olive[700],
-    lineHeight: 46,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: colors.light.mutedForeground,
-    lineHeight: 22,
-  },
-  socialSection: {
-    marginBottom: 22,
-  },
-  googleBtn: {
-    flexDirection: "row",
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  googleBtnText: {
-    color: colors.light.foreground,
-    fontSize: 15,
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 22,
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.light.border,
-  },
-  dividerText: {
-    color: colors.light.mutedForeground,
-    fontSize: 12,
-  },
-  pillContainer: {
-    flexDirection: "row",
-    backgroundColor: "rgba(83,94,44,0.07)",
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 22,
-    position: "relative",
-    height: 44,
-  },
-  pillIndicator: {
-    position: "absolute",
-    top: 4,
-    bottom: 4,
-    left: 4,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  pillTab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
-  },
-  tabIcon: {
-    marginRight: 5,
-  },
-  tabLabel: {
-    fontSize: 13,
-  },
-  tabLabelActive: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  tabLabelInactive: {
-    color: colors.light.mutedForeground,
-  },
-  form: {
-    gap: 16,
-  },
-  forgotLink: {
-    alignSelf: "flex-end",
-    marginTop: -6,
-    paddingVertical: 2,
-  },
-  forgotText: {
-    color: colors.olive[700],
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  methodInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: colors.olive[50],
-  },
-  methodInfoText: {
-    flex: 1,
-    lineHeight: 19,
-    color: colors.olive[800],
-  },
-  submitButton: {
-    marginTop: 6,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 28,
-  },
-  footerLink: {
-    color: colors.olive[700],
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  finePrintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    marginTop: 32,
-  },
-  finePrint: {
-    color: colors.light.mutedForeground,
-    fontSize: 11,
-  },
+  flag: { fontSize: 18 },
+  prefixText: { fontFamily: fontFamilies.sans.bold, fontSize: 15.5, color: C.text },
+  forgot: { alignSelf: "flex-end", marginTop: -2 },
+  alt: { marginTop: 30, gap: 16 },
+  tiles: { flexDirection: "row", gap: 12 },
 });

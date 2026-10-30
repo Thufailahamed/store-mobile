@@ -7,9 +7,17 @@ import {
   Text,
   View,
 } from "react-native";
+import Svg, { Path, Rect, Circle as SvgCircle } from "react-native-svg";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 import { Ionicons } from "@/components/ui/Icon";
-import * as Location from "expo-location";
+import { getDevicePosition } from "@/lib/location";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -23,7 +31,16 @@ interface AddressMapPickerProps {
   disabled?: boolean;
   /** Show the raw lat/lng strip along the bottom (useful for staff tools, noise for shoppers). */
   showCoords?: boolean;
+  /** Show the round "locate me" button in the corner. */
+  showLocateButton?: boolean;
+  /** Extra content layered over the bottom of the map (e.g. a CTA pill). */
+  overlay?: React.ReactNode;
+  /** Notifies parent when the user starts/stops touching the map to avoid ScrollView conflicts. */
+  onInteractionChange?: (interacting: boolean) => void;
 }
+
+/** If tiles haven't rendered by now the Maps SDK key is almost certainly rejected. */
+const TILE_TIMEOUT_MS = 9000;
 
 const FALLBACK_REGION: Region = {
   latitude: 6.9271,
@@ -51,7 +68,7 @@ function coordKey(lat: number, lng: number): string {
 
 /**
  * Map with a draggable pin. Parent receives coordinate updates for reverse-geocoding.
- * Kept outside ScrollView parents when possible — nested scroll steals map gestures on Android.
+ * Supports pin dragging, map panning to adjust pin, tapping anywhere, and gesture isolation.
  */
 export function AddressMapPicker({
   latitude,
@@ -62,9 +79,16 @@ export function AddressMapPicker({
   initialDelta = { latitudeDelta: 0.008, longitudeDelta: 0.008 },
   disabled = false,
   showCoords = true,
+  showLocateButton = true,
+  overlay,
+  onInteractionChange,
 }: AddressMapPickerProps) {
   const mapRef = useRef<MapView | null>(null);
   const lastPropKey = useRef<string | null>(null);
+  const isProgrammaticMove = useRef(false);
+  const isUserInteracting = useRef(false);
+  const userInteractionTimeout = useRef<NodeJS.Timeout | null>(null);
+
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(
     latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null
   );
@@ -75,10 +99,26 @@ export function AddressMapPicker({
   );
   const [mapReady, setMapReady] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [tilesLoaded, setTilesLoaded] = useState(false);
+  const [tilesFailed, setTilesFailed] = useState(false);
+
+  useEffect(() => {
+    if (tilesLoaded || mapReady) return;
+    const t = setTimeout(() => {
+      if (!mapReady && !tilesLoaded) {
+        setTilesFailed(true);
+      }
+    }, TILE_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [tilesLoaded, mapReady]);
 
   const animateTo = (lat: number, lng: number) => {
     if (!mapRef.current || !mapReady) return;
+    isProgrammaticMove.current = true;
     mapRef.current.animateToRegion(regionForPin(lat, lng, initialDelta), 350);
+    setTimeout(() => {
+      isProgrammaticMove.current = false;
+    }, 450);
   };
 
   const setPinCoords = (lat: number, lng: number, animate: boolean) => {
@@ -98,6 +138,22 @@ export function AddressMapPicker({
     animateTo(latitude, longitude);
   }, [latitude, longitude, mapReady]);
 
+  const handleTouchStart = () => {
+    if (userInteractionTimeout.current) {
+      clearTimeout(userInteractionTimeout.current);
+      userInteractionTimeout.current = null;
+    }
+    isUserInteracting.current = true;
+    onInteractionChange?.(true);
+  };
+
+  const handleTouchEnd = () => {
+    onInteractionChange?.(false);
+    userInteractionTimeout.current = setTimeout(() => {
+      isUserInteracting.current = false;
+    }, 400);
+  };
+
   const handleDragEnd = (e: {
     nativeEvent: { coordinate: { latitude: number; longitude: number } };
   }) => {
@@ -111,24 +167,42 @@ export function AddressMapPicker({
   }) => {
     if (disabled) return;
     const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
-    setPinCoords(lat, lng, false);
+    setPinCoords(lat, lng, true);
     onLocationChange(lat, lng);
+  };
+
+  const handlePoiClick = (e: {
+    nativeEvent: { coordinate: { latitude: number; longitude: number } };
+  }) => {
+    if (disabled) return;
+    const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
+    setPinCoords(lat, lng, true);
+    onLocationChange(lat, lng);
+  };
+
+  const handleRegionChangeComplete = (
+    region: Region,
+    details?: { isGesture?: boolean }
+  ) => {
+    if (disabled || isProgrammaticMove.current) return;
+    const wasUserGesture = details?.isGesture || isUserInteracting.current;
+    if (wasUserGesture) {
+      const lat = region.latitude;
+      const lng = region.longitude;
+      const key = coordKey(lat, lng);
+      if (lastPropKey.current !== key) {
+        lastPropKey.current = key;
+        setPin({ lat, lng });
+        onLocationChange(lat, lng);
+      }
+    }
   };
 
   const handleUseMyLocation = async () => {
     if (loadingLocation) return;
     setLoadingLocation(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        onUseMyLocation?.();
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+      const { lat, lng } = await getDevicePosition();
       setPinCoords(lat, lng, true);
       onLocationChange(lat, lng);
     } catch {
@@ -139,14 +213,30 @@ export function AddressMapPicker({
   };
 
   return (
-    <View style={[styles.container, { height }]} collapsable={false}>
+    <View
+      style={[styles.container, { height }]}
+      collapsable={false}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
       <MapView
         ref={mapRef}
         style={styles.map}
         provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
         initialRegion={initialRegion}
         onPress={handleMapPress}
-        onMapReady={() => setMapReady(true)}
+        onPoiClick={handlePoiClick}
+        onRegionChangeComplete={handleRegionChangeComplete}
+        onMapReady={() => {
+          setMapReady(true);
+          setTilesLoaded(true);
+          setTilesFailed(false);
+        }}
+        onMapLoaded={() => {
+          setTilesLoaded(true);
+          setTilesFailed(false);
+        }}
         scrollEnabled={!disabled}
         zoomEnabled={!disabled}
         rotateEnabled={false}
@@ -154,65 +244,196 @@ export function AddressMapPicker({
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
-        loadingEnabled
+        loadingEnabled={false}
         moveOnMarkerPress={false}
       >
         {pin ? (
           <Marker
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             draggable={!disabled}
-            onDragEnd={handleDragEnd}
+            onDragStart={handleTouchStart}
+            onDragEnd={(e) => {
+              handleTouchEnd();
+              handleDragEnd(e);
+            }}
             anchor={{ x: 0.5, y: 1 }}
-            pinColor={colors.light.primary}
-          />
+          >
+            <View style={styles.markerContainer}>
+              <View style={styles.markerBadge}>
+                <Ionicons name="location" size={22} color="#E8CF8F" />
+              </View>
+              <View style={styles.markerPoint} />
+            </View>
+          </Marker>
         ) : null}
       </MapView>
 
-      {!mapReady ? (
-        <View pointerEvents="none" style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color={colors.light.primary} />
-          <Text style={styles.loadingText}>Loading map…</Text>
-        </View>
+      {tilesFailed && !mapReady && !tilesLoaded ? (
+        <MapPlaceholder
+          pinned={Boolean(pin)}
+          title={pin ? "Location pinned" : "Map preview unavailable"}
+          sub={
+            pin
+              ? `${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}`
+              : "Use your current location to pin it exactly"
+          }
+        />
       ) : null}
 
-      {!pin && !loadingLocation && mapReady ? (
+      {!pin && !loadingLocation && (mapReady || tilesLoaded) ? (
         <View pointerEvents="none" style={styles.hint}>
           <Ionicons name="hand-left-outline" size={14} color={colors.light.primaryForeground} />
-          <Text style={styles.hintText}>Tap map to drop a pin</Text>
+          <Text style={styles.hintText}>Tap map or drag to place pin</Text>
+        </View>
+      ) : pin && (mapReady || tilesLoaded) ? (
+        <View pointerEvents="none" style={styles.hintPinned}>
+          <Ionicons name="move-outline" size={12} color="#E8CF8F" />
+          <Text style={styles.hintPinnedText}>Tap map or drag pin to adjust</Text>
         </View>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={handleUseMyLocation}
-        style={({ pressed }) => [styles.fab, !showCoords && styles.fabLow, pressed && styles.fabPressed]}
-        accessibilityLabel="Use my location"
-        disabled={loadingLocation || disabled}
-      >
-        {loadingLocation ? (
-          <ActivityIndicator size="small" color={colors.light.primary} />
-        ) : (
-          <Ionicons name="navigate" size={18} color={colors.light.primary} />
-        )}
-      </Pressable>
+      {showLocateButton ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={handleUseMyLocation}
+          style={({ pressed }) => [styles.fab, !showCoords && styles.fabLow, pressed && styles.fabPressed]}
+          accessibilityLabel="Use my location"
+          disabled={loadingLocation || disabled}
+        >
+          {loadingLocation ? (
+            <ActivityIndicator size="small" color={colors.light.primary} />
+          ) : (
+            <Ionicons name="navigate" size={18} color={colors.light.primary} />
+          )}
+        </Pressable>
+      ) : null}
+
+      {overlay ? <View style={styles.overlay}>{overlay}</View> : null}
 
       {showCoords ? (
-      <View pointerEvents="none" style={styles.coordsBar}>
-        <Ionicons name="pin" size={11} color={colors.light.primaryForeground} />
-        <Text style={styles.coordsText} numberOfLines={1}>
-          {pin
-            ? `${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}`
-            : "Drop pin to set delivery location"}
-        </Text>
-      </View>
+        <View pointerEvents="none" style={styles.coordsBar}>
+          <Ionicons name="pin" size={11} color={colors.light.primaryForeground} />
+          <Text style={styles.coordsText} numberOfLines={1}>
+            {pin
+              ? `${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}`
+              : "Drop pin to set delivery location"}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
 }
 
+/** Illustrated, softly animated stand-in shown while tiles load or fail. */
+function MapPlaceholder({ pinned, title, sub }: { pinned: boolean; title: string; sub?: string }) {
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }), -1);
+  }, [pulse]);
+  const ring = useAnimatedStyle(() => ({
+    opacity: 0.5 * (1 - pulse.value),
+    transform: [{ scale: 0.6 + pulse.value * 1.4 }],
+  }));
+
+  return (
+    <View pointerEvents="none" style={styles.placeholder}>
+      <Svg width="100%" height="100%" viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" style={StyleSheet.absoluteFill}>
+        <Rect x={0} y={0} width={400} height={220} fill="#ecebdd" />
+        {/* city blocks */}
+        <Rect x={18} y={16} width={96} height={58} rx={10} fill="#e2e2cf" />
+        <Rect x={134} y={22} width={70} height={46} rx={10} fill="#e4e5d2" />
+        <Rect x={286} y={14} width={98} height={66} rx={10} fill="#e2e2cf" />
+        <Rect x={22} y={140} width={80} height={64} rx={10} fill="#e4e5d2" />
+        <Rect x={250} y={150} width={128} height={56} rx={10} fill="#e2e2cf" />
+        {/* park + water */}
+        <Rect x={124} y={150} width={92} height={56} rx={14} fill="#d7dcbc" />
+        <Path d="M300 96 C330 92 360 110 400 104 L400 136 C362 142 330 126 300 132 Z" fill="#dfe3d6" />
+        {/* roads */}
+        <Path d="M-10 112 C90 96 170 130 260 110 S360 86 420 98" stroke="#faf8f1" strokeWidth={12} fill="none" strokeLinecap="round" />
+        <Path d="M232 -10 C224 60 246 140 230 240" stroke="#faf8f1" strokeWidth={9} fill="none" strokeLinecap="round" />
+        <Path d="M-10 112 C90 96 170 130 260 110 S360 86 420 98" stroke="#d9d5bf" strokeWidth={1} strokeDasharray="6 7" fill="none" />
+        <Path d="M120 -10 C126 40 112 80 120 240" stroke="#faf8f1" strokeWidth={6} fill="none" />
+        <SvgCircle cx={200} cy={108} r={3} fill="#c8a44a" opacity={0.6} />
+      </Svg>
+
+      <View style={styles.placeholderContent}>
+      <View style={styles.placeholderPinWrap}>
+        {!pinned && <Animated.View style={[styles.placeholderRing, ring]} />}
+        <View style={styles.placeholderPin}>
+          <Ionicons name={pinned ? "location" : "location-outline"} size={20} color="#E8CF8F" />
+        </View>
+      </View>
+
+      <View style={styles.placeholderLabel}>
+        <Text style={styles.placeholderTitle}>{title}</Text>
+        {sub ? (
+          <Text style={styles.placeholderSub} numberOfLines={1}>
+            {sub}
+          </Text>
+        ) : null}
+      </View>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  placeholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ecebdd",
+  },
+  placeholderContent: {
+    alignItems: "center",
+    marginBottom: spacing[12],
+  },
+  placeholderPinWrap: {
+    width: 64,
+    height: 64,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  placeholderRing: {
+    position: "absolute",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1.5,
+    borderColor: colors.accent2.ochre,
+  },
+  placeholderPin: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#16170f",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: colors.paper.cream,
+    ...shadows.editorial,
+  },
+  placeholderLabel: {
+    marginTop: spacing[2],
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(250,248,241,0.86)",
+  },
+  placeholderTitle: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 14,
+    color: colors.ink.DEFAULT,
+  },
+  placeholderSub: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: colors.ink.mute,
+    marginTop: 1,
+  },
   container: {
-    borderRadius: radii.xl,
+    borderRadius: 20,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.light.border,
@@ -223,17 +444,53 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  overlay: {
+    position: "absolute",
+    left: spacing[3],
+    right: spacing[3],
+    bottom: spacing[3],
+    zIndex: 3,
+  },
+  markerContainer: {
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing[2],
-    backgroundColor: colors.olive[50],
   },
-  loadingText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
+  markerBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#16170f",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#E8CF8F",
+    ...shadows.editorial,
+  },
+  markerPoint: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E8CF8F",
+    marginTop: 2,
+  },
+  hintPinned: {
+    position: "absolute",
+    top: spacing[3],
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(22, 23, 15, 0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(232,207,143,0.35)",
+  },
+  hintPinnedText: {
+    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
   },
   hint: {
     position: "absolute",

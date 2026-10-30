@@ -96,5 +96,12 @@ export async function fetchCompanionsById(
     { query: { limit: String(Math.min(limit, 24)) } },
   );
   if (!res.ok) return fail((res as { ok: false; error: string }).error);
-  return ok(res.data);
+  // The companions endpoint returns one `image` URL per item; cards read `images`.
+  const products = res.data.products.map((p) => {
+    const url = (p as { image?: string | null }).image;
+    if (p.images?.length || !url) return p;
+    const images = [{ id: p.id, product_id: p.id, url, media_type: "image", position: 0 }] as Product["images"];
+    return { ...p, images };
+  });
+  return ok({ ...res.data, products });
 }

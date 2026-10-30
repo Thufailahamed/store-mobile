@@ -4,12 +4,12 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  Modal,
   ScrollView,
   ActivityIndicator,
   Pressable,
   Image as RNImage,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { radii } from "@/lib/theme/tokens";

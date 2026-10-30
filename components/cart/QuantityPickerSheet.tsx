@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
-  Modal,
+
   Pressable,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Label, Body } from "@/components/ui/Typography";

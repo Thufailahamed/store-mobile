@@ -1,5 +1,6 @@
 import React from "react";
-import { View, TouchableOpacity, StyleSheet, Text, Modal, ScrollView, ActivityIndicator, Pressable } from "react-native";
+import { View, TouchableOpacity, StyleSheet, Text, ScrollView, ActivityIndicator, Pressable } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -7,13 +8,14 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { Label, Display } from "@/components/ui/Typography";
-import { useToast } from "@/components/ui";
+import { Avatar, useToast } from "@/components/ui";
 import { LiveTicker } from "./LiveTicker";
 import { useCart, useWishlist, useUI } from "@/lib/stores";
 import { colors, radii, typography } from "@/lib/theme/tokens";
@@ -39,6 +41,12 @@ interface AppHeaderProps {
 
 /** Open Location Codes ("7C3X+RXR") are what map pins save — not something to show a shopper. */
 const PLUS_CODE_RE = /^[23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{0,3}$/i;
+
+/** Scroll-up distance needed to unfold the header; scroll-down folds it. */
+const HEADER_DIR_THRESHOLD = 6;
+/** Always keep the header fully expanded near the top of the list. */
+const HEADER_TOP_REVEAL = 24;
+const HEADER_COLLAPSE_MS = 220;
 
 function addressLabel(a: Pick<Address, "type" | "line1" | "city">): string {
   const line1 = (a.line1 ?? "").trim();
@@ -85,6 +93,7 @@ export function AppHeader({
   const wishlistCount = useWishlist((s) => s.count());
   const { user } = useAuth();
   const { toast } = useToast();
+  const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) ?? null;
   const [addressText, setAddressText] = React.useState<string | null>(null);
   const [currentAddressId, setCurrentAddressId] = React.useState<string | null>(null);
   const [modalVisible, setModalVisible] = React.useState(false);
@@ -175,27 +184,57 @@ export function AppHeader({
   };
 
   // ── Collapse-on-scroll ─────────────────────────────────────────────
+  // Direction-driven, not position-driven: the ticker + address row fold
+  // away on any downward scroll and unfold on any upward scroll (and are
+  // always expanded near the top). Tying the fold to the raw offset left
+  // it hidden until the user scrolled all the way back to y=0 — it felt
+  // "stuck" when scrolling up mid-list.
   const collapsible = Boolean(scrollY) && showSearch;
   const topHeight = useSharedValue(0);
+  const collapse = useSharedValue(0); // 0 = expanded, 1 = folded away
+  // Offset where the current scroll direction started. Direction is judged
+  // against this anchor — not per-event deltas — because Android delivers
+  // many small scroll events whose individual deltas never reach the
+  // threshold, which left the header stuck folded.
+  const collapseAnchor = useSharedValue(0);
   const [collapsed, setCollapsed] = React.useState(false);
   const topStyle = useAnimatedStyle(() => {
     if (!scrollY || topHeight.value === 0) return {};
-    const y = Math.max(0, scrollY.value);
     return {
-      height: interpolate(y, [0, topHeight.value], [topHeight.value, 0], Extrapolation.CLAMP),
-      opacity: interpolate(y, [0, topHeight.value * 0.6], [1, 0], Extrapolation.CLAMP),
+      height: (1 - collapse.value) * topHeight.value,
+      opacity: interpolate(collapse.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
     };
   });
   const accountStyle = useAnimatedStyle(() => {
     if (!scrollY || topHeight.value === 0) return { opacity: 1 };
-    return { opacity: interpolate(scrollY.value, [topHeight.value * 0.5, topHeight.value], [1, 0], Extrapolation.CLAMP) };
+    return { opacity: interpolate(collapse.value, [0.5, 1], [1, 0], Extrapolation.CLAMP) };
   });
   const bagStyle = useAnimatedStyle(() => {
     if (!scrollY || topHeight.value === 0) return { opacity: 0 };
-    return { opacity: interpolate(scrollY.value, [topHeight.value * 0.5, topHeight.value], [0, 1], Extrapolation.CLAMP) };
+    return { opacity: interpolate(collapse.value, [0.5, 1], [0, 1], Extrapolation.CLAMP) };
   });
   useAnimatedReaction(
-    () => (scrollY && topHeight.value > 0 ? scrollY.value > topHeight.value * 0.75 : false),
+    () => (scrollY ? scrollY.value : 0),
+    (y) => {
+      if (!scrollY || topHeight.value === 0) return;
+      const offset = Math.max(0, y);
+      if (offset <= HEADER_TOP_REVEAL) {
+        collapseAnchor.value = offset;
+        collapse.value = withTiming(0, { duration: HEADER_COLLAPSE_MS });
+        return;
+      }
+      const drift = offset - collapseAnchor.value;
+      if (drift > HEADER_DIR_THRESHOLD) {
+        collapseAnchor.value = offset;
+        collapse.value = withTiming(1, { duration: HEADER_COLLAPSE_MS });
+      } else if (drift < -HEADER_DIR_THRESHOLD) {
+        collapseAnchor.value = offset;
+        collapse.value = withTiming(0, { duration: HEADER_COLLAPSE_MS });
+      }
+    },
+  );
+  useAnimatedReaction(
+    () => collapse.value > 0.75,
     (next, prev) => {
       if (next !== prev) runOnJS(setCollapsed)(next);
     },
@@ -205,8 +244,16 @@ export function AppHeader({
     <View style={[styles.wrapper, { paddingTop: insets.top }]}>
       <Animated.View style={[collapsible && styles.collapsibleTop, collapsible && topStyle]}>
         <View
+          style={collapsible && styles.collapsibleInner}
           onLayout={(e) => {
-            if (collapsible) topHeight.value = e.nativeEvent.layout.height;
+            // Only trust the measurement while fully expanded: mid-fold the
+            // clipped parent can squeeze this view, and recording that smaller
+            // height made the header "expand" back to a cut-off size (ticker
+            // visible, address row missing).
+            const h = e.nativeEvent.layout.height;
+            if (collapsible && h > 0 && (collapse.value === 0 || topHeight.value === 0)) {
+              topHeight.value = h;
+            }
           }}
         >
           {showTicker && <LiveTicker />}
@@ -291,7 +338,12 @@ export function AppHeader({
                 onPress={() => router.push("/(main)/account")}
                 accessibilityLabel="Account"
               >
-                <Ionicons name="person-outline" size={18} color={colors.light.foreground} />
+                <Avatar
+                  uri={avatarUrl}
+                  size={30}
+                  backgroundColor="#e9e9e4"
+                  iconColor="#8f8f86"
+                />
               </TouchableOpacity>
             </Animated.View>
             {collapsible && !isCartScreen ? (
@@ -300,7 +352,7 @@ export function AppHeader({
                 pointerEvents={collapsed ? "auto" : "none"}
               >
                 <TouchableOpacity
-                  style={styles.accountBtn}
+                  style={[styles.accountBtn, styles.bagBtn]}
                   activeOpacity={0.8}
                   onPress={handleCartPress}
                   accessibilityLabel="Bag"
@@ -505,6 +557,9 @@ const styles = StyleSheet.create({
   collapsibleTop: {
     overflow: "hidden",
   },
+  collapsibleInner: {
+    flexShrink: 0,
+  },
   locationTextWrap: {
     flex: 1,
   },
@@ -577,9 +632,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
+    backgroundColor: colors.paper.cream,
+    borderWidth: 1,
+    borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  // The avatar button clips to its circle; the bag needs its count badge to overflow.
+  bagBtn: {
+    overflow: "visible",
   },
   searchIcon: {
     marginRight: 8,

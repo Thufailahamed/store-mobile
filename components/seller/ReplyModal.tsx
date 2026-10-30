@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { replyToSellerReview } from "@/lib/api";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";

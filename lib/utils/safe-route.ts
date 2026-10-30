@@ -46,6 +46,7 @@ export const ALLOWED_ROUTES = new Set<string>([
   "/(seller)/products",
   "/(seller)/notifications",
   "/(brand)/more/notifications",
+  "/(auth)/welcome",
   "/(auth)/login",
   "/(auth)/register",
   "/(auth)/forgot-password",

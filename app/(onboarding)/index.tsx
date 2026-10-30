@@ -93,8 +93,12 @@ export default function OnboardingScreen() {
     };
   }, []);
 
-  const finishOnboarding = async (destination: "register" | "login") => {
+  const finishOnboarding = async (destination: "register" | "login" | "browse") => {
     await completeOnboarding();
+    if (destination === "browse") {
+      router.replace("/(main)");
+      return;
+    }
     router.replace(destination === "register" ? "/(auth)/register" : "/(auth)/login");
   };
 
@@ -228,6 +232,18 @@ export default function OnboardingScreen() {
         >
           <Text style={[styles.secondaryButtonText, { color: theme.colors.primary }]}>
             Sign in
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.browseButton}
+          onPress={() => finishOnboarding("browse")}
+          accessibilityRole="button"
+          accessibilityLabel="Browse the collection without signing in"
+        >
+          <Text style={[styles.browseButtonText, { color: theme.colors.mutedForeground }]}>
+            Browse the collection first
           </Text>
         </TouchableOpacity>
 
@@ -365,6 +381,17 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
+  },
+  browseButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    marginBottom: spacing[3],
+  },
+  browseButtonText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    textDecorationLine: "underline",
   },
   disclaimer: {
     textAlign: "center",

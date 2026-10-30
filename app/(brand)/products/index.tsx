@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/supabase/auth";
-import { getBrandByOwner, getBrandProducts, deleteSellerProduct } from "@/lib/api";
+import { getBrandByOwner, getBrandProducts, deleteBrandProduct } from "@/lib/api";
 import { Card, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -42,7 +42,7 @@ export default function BrandProducts() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteSellerProduct,
+    mutationFn: deleteBrandProduct,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["brand-products"] });
     },

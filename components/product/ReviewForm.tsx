@@ -4,7 +4,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Modal,
+  Pressable,
+  Animated,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -12,6 +13,8 @@ import {
   Image,
   ActivityIndicator,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { pickImage, uploadReviewPhoto } from "@/lib/upload";
@@ -28,7 +31,48 @@ interface ReviewFormProps {
   onClose: () => void;
   productId: string;
   productName: string;
+  /** Optional hero thumbnail + eyebrow shown in the product card. */
+  productImage?: string | null;
+  brandName?: string | null;
   onSubmitted?: () => void;
+}
+
+const RATING_WORDS = ["", "Poor", "Fair", "Good", "Very good", "Excellent"];
+const RATING_HINTS = [
+  "Tap a star to rate",
+  "Not for me",
+  "Could be better",
+  "Does the job",
+  "Really liked it",
+  "Absolutely love it",
+];
+const STAR_GOLD = colors.accent2.ochre;
+const MAX_PHOTOS = 5;
+
+/** A single star that springs when tapped. */
+function Star({ filled, onPress, index }: { filled: boolean; onPress: () => void; index: number }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const bounce = () => {
+    scale.setValue(0.7);
+    Animated.spring(scale, { toValue: 1, friction: 3, tension: 220, useNativeDriver: true }).start();
+  };
+  return (
+    <Pressable
+      onPress={() => { bounce(); onPress(); }}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`Rate ${index} star${index > 1 ? "s" : ""}`}
+      style={s.starBtn}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons
+          name={filled ? "star" : "star-outline"}
+          size={40}
+          color={filled ? STAR_GOLD : colors.light.border}
+        />
+      </Animated.View>
+    </Pressable>
+  );
 }
 
 const TITLE_MIN = 4;
@@ -36,8 +80,18 @@ const TITLE_MAX = 120;
 const CONTENT_MIN = 20;
 const CONTENT_MAX = 1000;
 
-export function ReviewForm({ visible, onClose, productId, productName, onSubmitted }: ReviewFormProps) {
+export function ReviewForm({
+  visible,
+  onClose,
+  productId,
+  productName,
+  productImage,
+  brandName,
+  onSubmitted,
+}: ReviewFormProps) {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const [focused, setFocused] = useState<"title" | "content" | null>(null);
   const { toast } = useToast();
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
@@ -85,8 +139,8 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
   }, [visible, user, productId]);
 
   const handleAddPhoto = async () => {
-    if (photos.length >= 5) {
-      toast("Maximum 5 photos per review", "error");
+    if (photos.length >= MAX_PHOTOS) {
+      toast(`Maximum ${MAX_PHOTOS} photos per review`, "error");
       return;
     }
     const result = await pickImage({ aspect: [1, 1], quality: 0.7 });
@@ -156,8 +210,8 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
       } else {
         toast(
           selectedOrderItemId
-            ? "Your verified review has been submitted for approval"
-            : "Your review has been submitted for approval",
+            ? "Your verified review is live"
+            : "Your review is live",
           "success"
         );
         resetForm();
@@ -170,8 +224,8 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
     {
       toast(
         selectedOrderItemId
-          ? "Your verified review has been submitted for approval"
-          : "Your review has been submitted for approval",
+          ? "Your verified review is live"
+          : "Your review is live",
         "success"
       );
       resetForm();
@@ -201,6 +255,9 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
 
   const showOrderPicker = !!user && (eligible.length > 0 || eligibleLoading);
   const willBeVerified = !!selectedOrderItemId;
+  const contentLen = content.trim().length;
+  const contentRemaining = Math.max(0, CONTENT_MIN - contentLen);
+  const canPost = rating > 0 && contentRemaining === 0 && !submitting;
 
   return (
     <Modal
@@ -214,28 +271,63 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={s.container}>
+          {/* Header */}
           <View style={s.header}>
-            <TouchableOpacity onPress={dismiss}>
+            <TouchableOpacity onPress={dismiss} hitSlop={10} style={s.headerSide}>
               <Text style={s.cancelText}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={s.headerTitle}>Write a Review</Text>
-            <TouchableOpacity onPress={handleSubmit} disabled={submitting}>
-              <Text style={[s.submitText, submitting && { opacity: 0.5 }]}>
-                {submitting ? "Posting..." : "Post"}
-              </Text>
-            </TouchableOpacity>
+            <View style={s.headerCenter}>
+              <Text style={s.headerEyebrow}>YOUR REVIEW</Text>
+              <Text style={s.headerTitle}>Share your thoughts</Text>
+            </View>
+            <View style={s.headerSide} />
           </View>
 
-          <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-            {/* Product Name */}
-            <Text style={s.productName} numberOfLines={1}>{productName}</Text>
+          <ScrollView
+            contentContainerStyle={s.content}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Product card */}
+            <View style={s.productCard}>
+              {productImage ? (
+                <Image source={{ uri: productImage }} style={s.productImage} />
+              ) : (
+                <View style={[s.productImage, s.productImageFallback]}>
+                  <Text style={s.productMonogram}>{productName.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                {!!brandName && <Text style={s.productBrand} numberOfLines={1}>{brandName.toUpperCase()}</Text>}
+                <Text style={s.productName} numberOfLines={2}>{productName}</Text>
+                {willBeVerified && (
+                  <View style={s.verifiedChip}>
+                    <Ionicons name="shield-checkmark" size={12} color={colors.olive[700]} />
+                    <Text style={s.verifiedChipText}>Verified purchase</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Star rating */}
+            <View style={s.ratingCard}>
+              <Text style={s.ratingQuestion}>How would you rate it?</Text>
+              <View style={s.starsRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star key={star} index={star} filled={star <= rating} onPress={() => setRating(star)} />
+                ))}
+              </View>
+              <Text style={[s.ratingWord, rating === 0 && s.ratingWordIdle]}>
+                {rating > 0 ? RATING_WORDS[rating] : " "}
+              </Text>
+              <Text style={s.ratingHint}>{RATING_HINTS[rating]}</Text>
+            </View>
 
             {/* Order picker — only when logged in & eligible rows exist */}
             {showOrderPicker && (
-              <View style={s.orderPickerBox}>
-                <View style={s.orderPickerHeader}>
-                  <Ionicons name="cube-outline" size={16} color={colors.light.foreground} />
-                  <Text style={s.orderPickerTitle}>Which order?</Text>
+              <View style={s.section}>
+                <View style={s.labelRow}>
+                  <Text style={s.label}>Link your order</Text>
                   {eligibleLoading && <ActivityIndicator size="small" color={colors.light.primary} />}
                 </View>
                 {eligibleLoading ? null : (
@@ -247,248 +339,323 @@ export function ReviewForm({ visible, onClose, productId, productName, onSubmitt
                           key={o.order_item_id}
                           style={[s.orderRow, selected && s.orderRowSelected]}
                           onPress={() => setSelectedOrderItemId(selected ? null : o.order_item_id)}
-                          activeOpacity={0.7}
+                          activeOpacity={0.8}
                         >
-                          <View style={[s.radio, selected && s.radioSelected]}>
-                            {selected && <View style={s.radioDot} />}
+                          <View style={[s.orderIcon, selected && s.orderIconSelected]}>
+                            <Ionicons
+                              name="bag-check-outline"
+                              size={16}
+                              color={selected ? colors.light.primaryForeground : colors.light.mutedForeground}
+                            />
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={s.orderNumber}>Order #{o.order_number}</Text>
                             <Text style={s.orderMeta}>
                               {o.delivered_at
                                 ? `Delivered ${formatReviewDate(o.delivered_at)}`
-                                : "Delivered"}{" "}
-                              · Qty {o.quantity}
+                                : "Delivered"}
+                              {"  ·  "}Qty {o.quantity}
                             </Text>
                           </View>
-                          {selected && (
-                            <Ionicons name="checkmark-circle" size={18} color={colors.olive[600]} />
-                          )}
+                          <View style={[s.radio, selected && s.radioSelected]}>
+                            {selected && <View style={s.radioDot} />}
+                          </View>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
                 )}
-                <Text style={s.orderHint}>
-                  Linking a delivered order marks this review as a Verified Purchase.
+                <Text style={s.helper}>
+                  Linking a delivered order adds a Verified Purchase badge to your review.
                 </Text>
               </View>
             )}
 
-            {/* Star Rating */}
-            <View style={s.ratingSection}>
-              <Text style={s.label}>Your Rating</Text>
-              <View style={s.starsRow}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <TouchableOpacity key={star} onPress={() => setRating(star)} style={s.starBtn}>
-                    <Ionicons
-                      name={star <= rating ? "star" : "star-outline"}
-                      size={36}
-                      color={star <= rating ? "#f59e0b" : colors.light.border}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {rating > 0 && (
-                <Text style={s.ratingLabel}>
-                  {rating === 1 ? "Poor" : rating === 2 ? "Fair" : rating === 3 ? "Good" : rating === 4 ? "Very Good" : "Excellent"}
-                </Text>
-              )}
-              {willBeVerified && (
-                <View style={s.verifiedChip}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.olive[600]} />
-                  <Text style={s.verifiedChipText}>Will post as Verified Purchase</Text>
-                </View>
-              )}
-            </View>
-
             {/* Title */}
-            <View style={s.field}>
-              <Text style={s.label}>Title (optional)</Text>
+            <View style={s.section}>
+              <View style={s.labelRow}>
+                <Text style={s.label}>Headline</Text>
+                <Text style={s.optional}>Optional</Text>
+              </View>
               <TextInput
-                style={s.input}
+                style={[s.input, focused === "title" && s.inputFocused]}
                 value={title}
                 onChangeText={setTitle}
-                placeholder="Summarize your experience"
-                placeholderTextColor={colors.light.mutedForeground}
-                maxLength={120}
+                onFocus={() => setFocused("title")}
+                onBlur={() => setFocused(null)}
+                placeholder="e.g. Beautiful drape, runs slightly large"
+                placeholderTextColor={colors.light.mutedForeground + "99"}
+                maxLength={TITLE_MAX}
+                returnKeyType="next"
               />
             </View>
 
             {/* Content */}
-            <View style={s.field}>
-              <Text style={s.label}>Your Review</Text>
+            <View style={s.section}>
+              <View style={s.labelRow}>
+                <Text style={s.label}>Your review</Text>
+              </View>
               <TextInput
-                style={[s.input, s.textArea]}
+                style={[s.input, s.textArea, focused === "content" && s.inputFocused]}
                 value={content}
                 onChangeText={setContent}
-                placeholder="What did you like or dislike? How was the fit and quality?"
-                placeholderTextColor={colors.light.mutedForeground}
+                onFocus={() => setFocused("content")}
+                onBlur={() => setFocused(null)}
+                placeholder="How was the fit, fabric and quality? Would you recommend it?"
+                placeholderTextColor={colors.light.mutedForeground + "99"}
                 multiline
-                numberOfLines={5}
                 textAlignVertical="top"
-                maxLength={1000}
+                maxLength={CONTENT_MAX}
               />
-              <Text style={s.charCount}>{content.length}/1000</Text>
+              <View style={s.counterRow}>
+                <View style={s.progressTrack}>
+                  <View
+                    style={[
+                      s.progressFill,
+                      {
+                        width: `${Math.min(100, (contentLen / CONTENT_MIN) * 100)}%`,
+                        backgroundColor: contentRemaining === 0 ? colors.olive[500] : STAR_GOLD,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[s.counterText, contentRemaining === 0 && { color: colors.olive[600] }]}>
+                  {contentRemaining > 0
+                    ? `${contentRemaining} more character${contentRemaining === 1 ? "" : "s"}`
+                    : `${content.length}/${CONTENT_MAX}`}
+                </Text>
+              </View>
             </View>
 
             {/* Photos */}
-            <View style={s.field}>
-              <Text style={s.label}>Photos (optional)</Text>
-              <View style={s.photosRow}>
+            <View style={s.section}>
+              <View style={s.labelRow}>
+                <Text style={s.label}>Add photos</Text>
+                <Text style={s.optional}>{photos.length}/{MAX_PHOTOS}</Text>
+              </View>
+              <Text style={[s.helper, { marginTop: 0, marginBottom: 12 }]}>
+                Reviews with photos help others see the real fit and colour.
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.photosRow}>
+                {photos.length < MAX_PHOTOS && (
+                  <TouchableOpacity style={s.addPhotoBtn} onPress={handleAddPhoto} activeOpacity={0.8}>
+                    <View style={s.addPhotoIcon}>
+                      <Ionicons name="camera-outline" size={20} color={colors.olive[700]} />
+                    </View>
+                    <Text style={s.addPhotoText}>{photos.length === 0 ? "Add photo" : "Add more"}</Text>
+                  </TouchableOpacity>
+                )}
                 {photos.map((uri, i) => (
-                  <View key={i} style={s.photoThumb}>
+                  <View key={uri + i} style={s.photoThumb}>
                     <Image source={{ uri }} style={s.photoImage} />
-                    <TouchableOpacity style={s.photoRemove} onPress={() => handleRemovePhoto(i)}>
-                      <Ionicons name="close-circle" size={20} color={colors.light.destructive} />
+                    <TouchableOpacity
+                      style={s.photoRemove}
+                      onPress={() => handleRemovePhoto(i)}
+                      hitSlop={8}
+                      accessibilityLabel="Remove photo"
+                    >
+                      <Ionicons name="close" size={12} color="#fff" />
                     </TouchableOpacity>
                   </View>
                 ))}
-                {photos.length < 5 && (
-                  <TouchableOpacity style={s.addPhotoBtn} onPress={handleAddPhoto}>
-                    <Ionicons name="camera-outline" size={24} color={colors.light.mutedForeground} />
-                    <Text style={s.addPhotoText}>Add</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              </ScrollView>
+            </View>
+
+            <View style={s.guidelines}>
+              <Ionicons name="information-circle-outline" size={14} color={colors.light.mutedForeground} />
+              <Text style={s.guidelinesText}>
+                Reviews are checked before they go live. Keep it honest and about the product.
+              </Text>
             </View>
           </ScrollView>
+
+          {/* Sticky CTA */}
+          <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={submitting}
+              activeOpacity={0.85}
+              style={[s.cta, !canPost && s.ctaDisabled]}
+              accessibilityRole="button"
+            >
+              {submitting ? (
+                <ActivityIndicator color={colors.light.primaryForeground} />
+              ) : (
+                <>
+                  <Text style={s.ctaText}>Post review</Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.light.primaryForeground} />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
+const sans = fontFamilies.sans;
+const display = fontFamilies.display;
+
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
+
+  // Header
   header: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingHorizontal: 20, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: colors.light.border,
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.light.border,
+  },
+  headerSide: { width: 64 },
+  headerCenter: { flex: 1, alignItems: "center" },
+  headerEyebrow: {
+    fontFamily: sans.semibold, fontSize: 10, letterSpacing: 1.8,
+    color: colors.light.mutedForeground,
   },
   headerTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
+    fontFamily: display.regular, fontSize: typography.fontSizes.lg,
+    color: colors.light.foreground, marginTop: 2,
   },
-  cancelText: { fontSize: typography.fontSizes.base, color: colors.light.mutedForeground },
-  submitText: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.bold as any,
-    color: colors.olive[600],
-  },
-  content: { padding: 24 },
-  productName: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold as any,
-    color: colors.light.foreground,
-    marginBottom: 20,
-  },
+  cancelText: { fontFamily: sans.medium, fontSize: typography.fontSizes.base, color: colors.light.mutedForeground },
 
-  ratingSection: { alignItems: "center", marginBottom: 24 },
-  starsRow: { flexDirection: "row", gap: 8, marginTop: 8 },
-  starBtn: { padding: 4 },
-  ratingLabel: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.olive[600],
-    fontWeight: typography.fontWeights.medium as any,
-    marginTop: 8,
+  content: { padding: 20, paddingBottom: 32 },
+
+  // Product card
+  productCard: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    padding: 12, borderRadius: radii.xl,
+    backgroundColor: colors.light.card,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.light.border,
+  },
+  productImage: { width: 64, height: 80, borderRadius: radii.lg, backgroundColor: colors.light.muted },
+  productImageFallback: { alignItems: "center", justifyContent: "center" },
+  productMonogram: { fontFamily: display.regular, fontSize: 26, color: colors.light.mutedForeground },
+  productBrand: {
+    fontFamily: sans.semibold, fontSize: 10, letterSpacing: 1.6,
+    color: colors.light.mutedForeground, marginBottom: 4,
+  },
+  productName: {
+    fontFamily: display.regular, fontSize: typography.fontSizes.xl, lineHeight: 26,
+    color: colors.light.foreground,
   },
   verifiedChip: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    marginTop: 8, paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 999, backgroundColor: colors.olive[50] ?? "#f3f4ec",
+    flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
+    marginTop: 8, paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: radii.full, backgroundColor: colors.olive[100],
   },
-  verifiedChipText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.olive[700] ?? colors.olive[600],
+  verifiedChipText: { fontFamily: sans.semibold, fontSize: 11, color: colors.olive[700] },
+
+  // Rating
+  ratingCard: {
+    alignItems: "center", marginTop: 16, marginBottom: 8,
+    paddingVertical: 24, paddingHorizontal: 16,
+    borderRadius: radii.xl, backgroundColor: colors.paper.warm,
+  },
+  ratingQuestion: { fontFamily: display.italic, fontSize: typography.fontSizes.xl, color: colors.light.foreground },
+  starsRow: { flexDirection: "row", gap: 4, marginTop: 14 },
+  starBtn: { padding: 4 },
+  ratingWord: {
+    fontFamily: sans.bold, fontSize: typography.fontSizes.sm, letterSpacing: 1.6,
+    textTransform: "uppercase", color: colors.olive[700], marginTop: 12, minHeight: 18,
+  },
+  ratingWordIdle: { color: "transparent" },
+  ratingHint: { fontFamily: sans.regular, fontSize: typography.fontSizes.sm, color: colors.light.mutedForeground, marginTop: 2 },
+
+  // Sections
+  section: { marginTop: 24 },
+  labelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  label: { fontFamily: sans.semibold, fontSize: typography.fontSizes.base, color: colors.light.foreground },
+  optional: { fontFamily: sans.medium, fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground },
+  helper: {
+    fontFamily: sans.regular, fontSize: typography.fontSizes.xs, lineHeight: 16,
+    color: colors.light.mutedForeground, marginTop: 8,
   },
 
-  orderPickerBox: {
-    marginBottom: 20, padding: 12,
-    borderRadius: radii.lg,
-    borderWidth: 1, borderColor: colors.light.border,
-    backgroundColor: colors.light.muted ?? "#f8f8f6",
-  },
-  orderPickerHeader: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    marginBottom: 8,
-  },
-  orderPickerTitle: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+  input: {
+    fontFamily: sans.regular,
+    backgroundColor: colors.light.card,
+    borderWidth: 1, borderColor: colors.light.input,
+    borderRadius: radii.xl, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: typography.fontSizes.base,
     color: colors.light.foreground,
-    flex: 1,
   },
-  orderList: { gap: 6 },
+  inputFocused: { borderColor: colors.olive[600], backgroundColor: "#fff" },
+  textArea: { minHeight: 140, paddingTop: 14, lineHeight: 22 },
+
+  counterRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 10 },
+  progressTrack: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.light.muted, overflow: "hidden" },
+  progressFill: { height: 3, borderRadius: 2 },
+  counterText: { fontFamily: sans.medium, fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground },
+
+  // Order picker
+  orderList: { gap: 8 },
   orderRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, borderRadius: radii.md,
-    borderWidth: 1, borderColor: colors.light.border,
-    backgroundColor: colors.light.background,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 12, borderRadius: radii.xl,
+    borderWidth: 1, borderColor: colors.light.input,
+    backgroundColor: colors.light.card,
   },
-  orderRowSelected: {
-    borderColor: colors.olive[600],
-    backgroundColor: colors.olive[50] ?? "#f3f4ec",
+  orderRowSelected: { borderColor: colors.olive[600], backgroundColor: colors.olive[50] },
+  orderIcon: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.light.muted,
   },
+  orderIconSelected: { backgroundColor: colors.olive[600] },
+  orderNumber: { fontFamily: sans.semibold, fontSize: typography.fontSizes.sm, color: colors.light.foreground },
+  orderMeta: { fontFamily: sans.regular, fontSize: typography.fontSizes.xs, color: colors.light.mutedForeground, marginTop: 2 },
   radio: {
-    width: 18, height: 18, borderRadius: 9,
-    borderWidth: 2, borderColor: colors.light.border,
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 1.5, borderColor: colors.light.border,
     alignItems: "center", justifyContent: "center",
   },
   radioSelected: { borderColor: colors.olive[600] },
-  radioDot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: colors.olive[600],
-  },
-  orderNumber: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
-  },
-  orderMeta: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-  orderHint: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    marginTop: 8,
-  },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.olive[600] },
 
-  field: { marginBottom: 20 },
-  label: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium as any,
-    color: colors.light.foreground,
-    marginBottom: 8,
+  // Photos
+  photosRow: { gap: 10, paddingRight: 8, paddingTop: 6 },
+  photoThumb: { width: 88, height: 110 },
+  photoImage: { width: 88, height: 110, borderRadius: radii.lg, backgroundColor: colors.light.muted },
+  photoRemove: {
+    position: "absolute", top: -6, right: -6,
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.ink.DEFAULT,
+    borderWidth: 2, borderColor: colors.light.background,
   },
-  input: {
-    backgroundColor: colors.light.card,
-    borderWidth: 1, borderColor: colors.light.border,
-    borderRadius: radii.lg, padding: 14,
-    fontSize: typography.fontSizes.base,
-    color: colors.light.foreground,
-  },
-  textArea: { minHeight: 120 },
-  charCount: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.light.mutedForeground,
-    textAlign: "right", marginTop: 4,
-  },
-
-  photosRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  photoThumb: { position: "relative", width: 80, height: 80 },
-  photoImage: { width: 80, height: 80, borderRadius: radii.lg },
-  photoRemove: { position: "absolute", top: -6, right: -6 },
   addPhotoBtn: {
-    width: 80, height: 80, borderRadius: radii.lg,
-    borderWidth: 1, borderColor: colors.light.border,
-    borderStyle: "dashed",
-    justifyContent: "center", alignItems: "center", gap: 2,
+    width: 88, height: 110, borderRadius: radii.lg,
+    borderWidth: 1.5, borderColor: colors.olive[300], borderStyle: "dashed",
+    backgroundColor: colors.olive[50],
+    justifyContent: "center", alignItems: "center", gap: 8,
   },
-  addPhotoText: { fontSize: 10, color: colors.light.mutedForeground },
+  addPhotoIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.light.card,
+  },
+  addPhotoText: { fontFamily: sans.semibold, fontSize: 11, color: colors.olive[700] },
+
+  guidelines: { flexDirection: "row", gap: 6, marginTop: 28, alignItems: "flex-start" },
+  guidelinesText: {
+    flex: 1, fontFamily: sans.regular, fontSize: typography.fontSizes.xs, lineHeight: 16,
+    color: colors.light.mutedForeground,
+  },
+
+  // Footer CTA
+  footer: {
+    paddingHorizontal: 20, paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.light.border,
+    backgroundColor: colors.light.background,
+  },
+  cta: {
+    height: 52, borderRadius: radii.full,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: colors.ink.DEFAULT,
+  },
+  ctaDisabled: { opacity: 0.35 },
+  ctaText: {
+    fontFamily: sans.semibold, fontSize: typography.fontSizes.base, letterSpacing: 0.3,
+    color: colors.light.primaryForeground,
+  },
 });

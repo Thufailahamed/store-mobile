@@ -244,7 +244,9 @@ export default function SellerLayout() {
 
       <Tabs.Screen name="analytics" options={{ href: null }} />
       <Tabs.Screen name="settings/index" options={{ href: null }} />
+      <Tabs.Screen name="settings/pickup-address" options={{ href: null }} />
       <Tabs.Screen name="products/[id]/index" options={{ href: null }} />
+      <Tabs.Screen name="products/new" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]/index" options={{ href: null }} />
       <Tabs.Screen name="returns/index" options={{ href: null }} />
       <Tabs.Screen name="returns/[id]/index" options={{ href: null }} />
@@ -257,6 +259,8 @@ export default function SellerLayout() {
       <Tabs.Screen name="payouts/connect-return" options={{ href: null }} />
       <Tabs.Screen name="payouts/stripe-return" options={{ href: null }} />
       <Tabs.Screen name="payouts/[payoutId]" options={{ href: null }} />
+      <Tabs.Screen name="payouts/verify" options={{ href: null }} />
+      <Tabs.Screen name="orders/[id]/invoice" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -34,6 +34,7 @@ vi.mock("@/lib/upload", () => ({
 
 import {
   createReturnRequest,
+  RETURNS_NOT_ACCEPTED_MESSAGE,
   getStores,
   getAllCategories,
   getOrderTracking,
@@ -60,8 +61,8 @@ describe("createReturnRequest", () => {
     });
     const r = await createReturnRequest("user-1", {
       orderId: "order-1",
-      reason: "Damaged",
-      items: [{ orderItemId: "oi-1", quantity: 1 }],
+      reason: "defective",
+      items: [{ productId: "p-1", variantId: "v-1", quantity: 1 }],
     });
     expect(r.ok).toBe(true);
     if (r.ok) {
@@ -69,8 +70,37 @@ describe("createReturnRequest", () => {
     }
     expect(backendMocks.createReturnRequestBackend).toHaveBeenCalledWith({
       order_id: "order-1",
-      items: [{ order_item_id: "oi-1", reason: "Damaged", quantity: 1 }],
+      reason: "defective",
+      items: [{ product_id: "p-1", variant_id: "v-1", quantity: 1 }],
     });
+  });
+
+  it("reads the RPC payload shape (return_group_id / return_number)", async () => {
+    backendMocks.createReturnRequestBackend.mockResolvedValueOnce({
+      ok: true,
+      data: { return_group_id: "g-2", return_number: "RET-1001" },
+    });
+    const r = await createReturnRequest("user-1", {
+      orderId: "order-1",
+      reason: "size_issue",
+      items: [{ productId: "p-1", quantity: 1 }],
+    });
+    expect(r.ok && r.data.returnGroupId).toBe("g-2");
+    expect(r.ok && r.data.returnNumber).toBe("RET-1001");
+  });
+
+  it("passes the final-sale refusal message through", async () => {
+    backendMocks.createReturnRequestBackend.mockResolvedValueOnce({
+      ok: false,
+      error: "Crocs doesn't accept returns. All sales are final.",
+    });
+    const r = await createReturnRequest("user-1", {
+      orderId: "order-1",
+      reason: "changed_mind",
+      items: [{ productId: "p-1", quantity: 1 }],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain(RETURNS_NOT_ACCEPTED_MESSAGE);
   });
 
   it("returns fail() when the backend errors", async () => {
@@ -80,8 +110,8 @@ describe("createReturnRequest", () => {
     });
     const r = await createReturnRequest("user-1", {
       orderId: "order-1",
-      reason: "Damaged",
-      items: [{ orderItemId: "oi-1", quantity: 1 }],
+      reason: "defective",
+      items: [{ productId: "p-1", variantId: "v-1", quantity: 1 }],
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("window closed");
@@ -94,8 +124,8 @@ describe("createReturnRequest", () => {
     });
     const r = await createReturnRequest("user-1", {
       orderId: "order-1",
-      reason: "Damaged",
-      items: [{ orderItemId: "oi-1", quantity: 1 }],
+      reason: "defective",
+      items: [{ productId: "p-1", variantId: "v-1", quantity: 1 }],
     });
     // The implementation grabs [0]?.return_group_id ?? "" — so returnGroupId is ""
     expect(r.ok).toBe(true);

@@ -5,11 +5,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17)}"
 
-# Drop stale native/CMake caches (e.g. after sandbox builds with temp Gradle paths).
+# Stop any running daemon to avoid stale transform cache conflicts.
+cd "$ROOT/android"
+./gradlew --stop 2>/dev/null || true
+
+# Drop stale native/CMake caches and module build caches.
 rm -rf \
   "$ROOT/android/app/.cxx" \
   "$ROOT/android/app/build" \
   "$ROOT/android/.gradle"
+
+find "$ROOT/node_modules" -type d -name "build" -path "*/android/build" -prune -exec rm -rf {} + 2>/dev/null || true
 
 # Embed brand fonts in the Android APK so release builds match iOS typography.
 FONTS_DIR="$ROOT/android/app/src/main/assets/fonts"
@@ -27,7 +33,7 @@ cp "$ROOT/node_modules/@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono
 cp "$ROOT/node_modules/@expo-google-fonts/jetbrains-mono/600SemiBold/JetBrainsMono_600SemiBold.ttf" "$FONTS_DIR/"
 
 cd "$ROOT/android"
-./gradlew clean assembleRelease
+./gradlew assembleRelease
 
 echo ""
 echo "APK: $ROOT/android/app/build/outputs/apk/release/app-release.apk"

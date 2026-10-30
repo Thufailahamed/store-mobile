@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { PaperBackground, ScreenHeader, SectionHeader } from "@/components/layout";
+import { PaperBackground, ScreenHeader } from "@/components/layout";
 import {
   AddressFormSheet,
   type AddressFormPayload,
@@ -40,7 +40,7 @@ import {
   SHIPPING_OPTIONS,
   type ShippingKey,
 } from "@/lib/utils";
-import { computeCartTotals, computeOrderShipping, platformFeeFor, shippingFeeFor, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
+import { computeCartTotals, computeOrderShipping, platformFeeFor, shippingFeeFor } from "@/lib/cart-pricing";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
@@ -137,6 +137,9 @@ export default function CheckoutScreen() {
    *  (address/cart checks, reservation hold) is a no-op instead of racing
    *  the first tap into placing a duplicate order. */
   const isSubmittingRef = useRef(false);
+  /** Set right before the bag is cleared after a placed (or abandoned) order,
+   *  so the empty-bag guard below doesn't hijack the success navigation. */
+  const checkoutFinishedRef = useRef(false);
   /** Order ids created during a multi-vendor place_order fan-out. The first
    *  id is the payment-anchored order; the rest are tracked alongside it. */
   const pendingOrderIdsRef = useRef<string[]>([]);
@@ -197,14 +200,12 @@ export default function CheckoutScreen() {
         pointsValue: pointsToUse,
         freeShippingCoupon,
         giftCardCredit: giftCardBalance,
-        giftWrapCount: cartItems.filter((i) => i.is_gift).length,
         pricing,
       }),
     [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance, cartItems, pricing],
   );
   const sub = checkoutTotals.sub;
   const shippingFee = checkoutTotals.shipping;
-  const giftWrapFee = cartItems.filter((i) => i.is_gift).length * GIFT_WRAP_FEE;
   const afterCoupon = checkoutTotals.afterCoupon;
   const pointsValue = pointsToUse;
   const tax = checkoutTotals.tax;
@@ -214,6 +215,31 @@ export default function CheckoutScreen() {
   // Fire checkout_started once when the user reaches the address step with a
   // non-empty bag. Mirrors web's behaviour.
   useTrackCheckoutStarted(sub, cartItems.length);
+
+  // Some bag lines were added without an image (e.g. from rails that don't
+  // carry one) — backfill thumbnails from the product snapshot.
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const missingThumbIds = [
+    ...new Set(cartItems.filter((i) => !i.image).map((i) => i.productId)),
+  ].join(",");
+  useEffect(() => {
+    if (!missingThumbIds) return;
+    let cancelled = false;
+    const ids = missingThumbIds.split(",");
+    void fetchCartProductSnapshots(ids).then((res) => {
+      if (cancelled || !res.ok) return;
+      const next: Record<string, string> = {};
+      for (const id of ids) {
+        const imgs = res.products[id]?.images;
+        const url = imgs?.find((im) => im.is_primary)?.url || imgs?.[0]?.url;
+        if (url) next[id] = url;
+      }
+      if (Object.keys(next).length) setThumbs((t) => ({ ...t, ...next }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [missingThumbIds]);
   const earnEstimate = Math.floor(afterCoupon * 0.05);
   // Max redeemable points: capped at balance and post-coupon subtotal (100-pt blocks).
   const maxRedeemablePts =
@@ -221,8 +247,10 @@ export default function CheckoutScreen() {
   const shippingOption = SHIPPING_OPTIONS.find((o) => o.key === shippingKey) ?? SHIPPING_OPTIONS[0];
 
   useEffect(() => {
+    if (checkoutFinishedRef.current) return;
     if (authLoading) return;
-    if (!user && !isGuest) {
+    // Orders always belong to an account; guest checkout is not offered on mobile.
+    if (!user) {
       router.replace("/(auth)/login");
       return;
     }
@@ -230,7 +258,7 @@ export default function CheckoutScreen() {
     let cancelled = false;
     void (async () => {
       const prepared = await isCheckoutPrepared();
-      if (cancelled) return;
+      if (cancelled || checkoutFinishedRef.current) return;
       if (!prepared || Object.keys(items).length === 0) {
         toast("Select items in your bag before checkout", "info");
         router.replace("/(main)/cart");
@@ -240,7 +268,7 @@ export default function CheckoutScreen() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user, isGuest, items, router, toast]);
+  }, [authLoading, user, items, router, toast]);
 
   const storeIds = useMemo(
     () => Array.from(new Set(Object.values(items).map((item) => item.storeId))),
@@ -277,6 +305,22 @@ export default function CheckoutScreen() {
     }
   }, [codAllowed, paymentMethod, isGuest]);
 
+  // (main) is a Tabs navigator, so this screen stays mounted after an order
+  // completes. When the buyer starts a new checkout, reset to a fresh flow and
+  // re-run the bag guard the finished flag suppressed while we were blurred.
+  useFocusEffect(
+    useCallback(() => {
+      if (!checkoutFinishedRef.current) return;
+      checkoutFinishedRef.current = false;
+      setStep(1);
+      void isCheckoutPrepared().then((prepared) => {
+        if (!prepared || Object.keys(useCart.getState().items).length === 0) {
+          router.replace("/(main)/cart");
+        }
+      });
+    }, [router]),
+  );
+
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
@@ -287,13 +331,6 @@ export default function CheckoutScreen() {
       });
     }, [user, toast]),
   );
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user && guest === "1" && openAddress === "1") {
-      setAddressSheetOpen(true);
-    }
-  }, [authLoading, user, guest, openAddress]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -668,7 +705,6 @@ export default function CheckoutScreen() {
           couponDiscount: 0,
           pointsValue: 0,
           freeShippingCoupon,
-          giftWrapCount: items.filter((i) => i.is_gift).length,
           pricing,
         });
         return { storeId, items, totals };
@@ -699,8 +735,6 @@ export default function CheckoutScreen() {
             sku: null,
             quantity: it.quantity,
             unit_price: it.price,
-            is_gift: !!it.is_gift,
-            gift_message: it.is_gift ? (it.gift_message ?? null) : null,
           })),
           subtotal: g.totals.sub,
           discount,
@@ -754,6 +788,7 @@ export default function CheckoutScreen() {
           const result = await runPaymentsLkCheckout(session.data.url);
           await releaseCartReservations();
           reservationsHeld = false;
+          checkoutFinishedRef.current = true;
           clear();
           if (result.status === "succeeded") {
             toast("Payment submitted — check your guest order status", "success");
@@ -767,6 +802,7 @@ export default function CheckoutScreen() {
         }
         await releaseCartReservations();
         reservationsHeld = false;
+        checkoutFinishedRef.current = true;
         clear();
         toast("Order placed", "success");
         router.replace(
@@ -802,6 +838,7 @@ export default function CheckoutScreen() {
         pendingOrderIdsFirstRef.current = null;
         await releaseCartReservations();
         reservationsHeld = false;
+        checkoutFinishedRef.current = true;
         clear();
         await loyalty.reload();
         toast("Payment complete", "success");
@@ -820,12 +857,14 @@ export default function CheckoutScreen() {
         if (!res.ok) {
           toast(res.error ?? "Could not cancel order", "error");
         } else if (siblingIds.length > 0) {
+          checkoutFinishedRef.current = true;
           clear();
           toast(
             `Payment cancelled — ${siblingIds.length} other order${siblingIds.length === 1 ? "" : "s"} kept for cash on delivery`,
             "info",
           );
         } else {
+          checkoutFinishedRef.current = true;
           clear();
           toast(
             dismissed
@@ -904,6 +943,7 @@ export default function CheckoutScreen() {
       await loyalty.reload();
       await releaseCartReservations();
       reservationsHeld = false;
+      checkoutFinishedRef.current = true;
       clear();
       toast("Order placed", "success");
       const orderIds = placed.map((o) => o.id).join(",");
@@ -993,40 +1033,62 @@ export default function CheckoutScreen() {
     <PaperBackground style={styles.screen}>
       <ScreenHeader title="Checkout" onBack={goBack} />
       <View style={styles.stepBar}>
-        {STEPS.map((s, i) => (
-          <React.Fragment key={s.key}>
-            <View style={styles.stepItem}>
-              <View
-                style={[
-                  styles.stepCircle,
-                  step > s.key && styles.stepCircleDone,
-                  step === s.key && styles.stepCircleActive,
-                ]}
-              >
+        <View style={styles.stepHeadRow}>
+          <Text style={styles.stepKicker}>
+            Step {step} of {STEPS.length}
+          </Text>
+          <Text style={styles.stepCurrent}>{STEPS[step - 1]?.label}</Text>
+        </View>
+        <View style={styles.stepTrack}>
+          {STEPS.map((s) => (
+            <TouchableOpacity
+              key={s.key}
+              style={styles.stepItem}
+              disabled={s.key >= step}
+              onPress={() => setStep(s.key)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${s.label} step`}
+            >
+              <View style={[styles.stepLine, step >= s.key && styles.stepLineActive]} />
+              <View style={styles.stepLabelRow}>
                 {step > s.key ? (
-                  <Ionicons name="checkmark" size={14} color={colors.paper.cream} />
-                ) : (
-                  <Text style={step === s.key ? styles.stepNumActive : styles.stepNum}>
-                    {s.key}
-                  </Text>
-                )}
+                  <Ionicons name="checkmark-circle" size={11} color={colors.olive[700]} />
+                ) : null}
+                <Text
+                  style={
+                    step === s.key
+                      ? styles.stepLabelActive
+                      : step > s.key
+                        ? styles.stepLabelDone
+                        : styles.stepLabel
+                  }
+                >
+                  {s.label}
+                </Text>
               </View>
-              <Text style={step === s.key ? styles.stepLabelActive : styles.stepLabel}>
-                {s.label.toUpperCase()}
-              </Text>
-            </View>
-            {i < STEPS.length - 1 && (
-              <View style={styles.stepLineWrap}>
-                <View style={[styles.stepLine, step > s.key && styles.stepLineActive]} />
-              </View>
-            )}
-          </React.Fragment>
-        ))}
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <View style={styles.contextStrip}>
-        <View style={styles.contextIcon}>
-          <Ionicons name="bag-handle-outline" size={14} color={colors.olive[800]} />
+        <View style={styles.contextThumbs}>
+          {cartItems.slice(0, 3).map((it, i) => {
+            const img = it.image || thumbs[it.productId];
+            return (
+              <View
+                key={buildCartLineKeyFromItem(it)}
+                style={[styles.contextThumb, { marginLeft: i === 0 ? 0 : -10, zIndex: 3 - i }]}
+              >
+                {img ? (
+                  <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                ) : (
+                  <Ionicons name="bag-handle-outline" size={13} color={colors.olive[800]} />
+                )}
+              </View>
+            );
+          })}
         </View>
         <Text style={styles.contextText} numberOfLines={1}>
           {cartItems.length} item{cartItems.length === 1 ? "" : "s"} in your bag
@@ -1038,13 +1100,13 @@ export default function CheckoutScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: step === 4 ? insets.bottom + 112 : insets.bottom + 24 },
+            { paddingBottom: insets.bottom + 128 },
           ]}
           showsVerticalScrollIndicator={false}
         >
         {step === 1 && (
           <View style={styles.panel}>
-            <SectionHeader kicker="Step 01" title="Delivery address" />
+            <StepTitle kicker="Delivery" title="Where should we deliver?" subtitle="Choose a saved address or add a new one." />
             {isGuest ? (
               <View style={styles.guestEmailCard}>
                 <View style={styles.guestEmailIcon}>
@@ -1186,7 +1248,7 @@ export default function CheckoutScreen() {
               accessibilityLabel="Add a new address"
             >
               <View style={styles.addAddressIconWrap}>
-                <Ionicons name="add" size={20} color={colors.olive[800]} />
+                <Ionicons name="add" size={20} color={colors.paper.cream} />
               </View>
               <View style={styles.addAddressCopy}>
                 <Text style={styles.addAddressTitle}>Add a new address</Text>
@@ -1198,28 +1260,17 @@ export default function CheckoutScreen() {
                 <Ionicons name="chevron-forward" size={14} color={colors.olive[800]} />
               </View>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.continueBtn}
-              onPress={handleAddressContinue}
-              activeOpacity={0.88}
-              accessibilityRole="button"
-              accessibilityLabel="Continue to shipping"
-            >
-              <Text style={styles.continueBtnText}>Continue to Shipping</Text>
-              <Ionicons name="arrow-forward" size={16} color={colors.paper.cream} />
-            </TouchableOpacity>
           </View>
         )}
 
         {step === 2 && (
           <View style={styles.panel}>
-            <SectionHeader kicker="Step 02" title="Shipping method" />
+            <StepTitle kicker="Shipping" title="How fast do you want it?" subtitle="Arrival dates are estimates from today." />
 
             <View style={styles.deliverToCard}>
               <View style={styles.deliverToLeft}>
                 <View style={styles.deliverToIcon}>
-                  <Ionicons name="location-sharp" size={16} color={colors.olive[800]} />
+                  <Ionicons name="location-sharp" size={16} color={colors.accent2.ochre} />
                 </View>
                 <View style={styles.deliverToInfo}>
                   <Text style={styles.deliverToKicker}>DELIVERING TO</Text>
@@ -1345,7 +1396,7 @@ export default function CheckoutScreen() {
             })()}
 
             <View style={styles.deliveryDateSection}>
-              <SectionHeader kicker="Optional" title="Delivery date" />
+              <StepTitle kicker="Optional" title="Preferred delivery date" small />
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1396,28 +1447,17 @@ export default function CheckoutScreen() {
                 })}
               </ScrollView>
             </View>
-
-            <TouchableOpacity
-              style={styles.continueBtn}
-              onPress={() => setStep(3)}
-              activeOpacity={0.88}
-              accessibilityRole="button"
-              accessibilityLabel="Continue to payment"
-            >
-              <Text style={styles.continueBtnText}>Continue to Payment</Text>
-              <Ionicons name="arrow-forward" size={16} color={colors.paper.cream} />
-            </TouchableOpacity>
           </View>
         )}
 
         {step === 3 && (
           <View style={styles.panel}>
-            <SectionHeader kicker="Step 03" title="Payment" />
+            <StepTitle kicker="Payment" title="How will you pay?" subtitle="Pay at your door, or securely by card." />
 
             <View style={styles.deliverToCard}>
               <View style={styles.deliverToLeft}>
                 <View style={styles.deliverToIcon}>
-                  <Ionicons name="cube-outline" size={16} color={colors.olive[800]} />
+                  <Ionicons name="cube-outline" size={16} color={colors.accent2.ochre} />
                 </View>
                 <View style={styles.deliverToInfo}>
                   <Text style={styles.deliverToKicker}>SHIPPING VIA {shippingOption.label.toUpperCase()}</Text>
@@ -1570,23 +1610,12 @@ export default function CheckoutScreen() {
                     : "Bank-grade 256-bit encryption. Payment processed through Payments.lk."}
               </Text>
             </View>
-
-            <TouchableOpacity
-              style={styles.continueBtn}
-              onPress={() => setStep(4)}
-              activeOpacity={0.88}
-              accessibilityRole="button"
-              accessibilityLabel="Review order"
-            >
-              <Text style={styles.continueBtnText}>Review Order</Text>
-              <Ionicons name="arrow-forward" size={16} color={colors.paper.cream} />
-            </TouchableOpacity>
           </View>
         )}
 
         {step === 4 && (
           <View style={styles.panel}>
-            <SectionHeader kicker="Step 04" title="Review & place" />
+            <StepTitle kicker="Review" title="Almost there" subtitle="Check everything before you place your order." />
 
             <View style={styles.orderConfigCard}>
               <TouchableOpacity
@@ -1669,7 +1698,7 @@ export default function CheckoutScreen() {
               <View style={styles.itemsSectionHead}>
                 <View style={styles.itemsSectionTitleRow}>
                   <Ionicons name="bag-handle-outline" size={15} color={colors.olive[800]} />
-                  <Text style={styles.itemsSectionLabel}>YOUR BAG</Text>
+                  <Text style={styles.itemsSectionLabel}>Your bag</Text>
                 </View>
                 <View style={styles.itemsCountBadge}>
                   <Text style={styles.itemsCountText}>
@@ -1683,8 +1712,12 @@ export default function CheckoutScreen() {
                   {index > 0 && <View style={styles.itemDivider} />}
                   <View style={styles.reviewItem}>
                     <View style={styles.reviewThumb}>
-                      {item.image ? (
-                        <Image source={{ uri: item.image }} style={styles.reviewImage} contentFit="cover" />
+                      {item.image || thumbs[item.productId] ? (
+                        <Image
+                          source={{ uri: item.image || thumbs[item.productId] }}
+                          style={styles.reviewImage}
+                          contentFit="cover"
+                        />
                       ) : (
                         <View style={styles.reviewImagePlaceholder}>
                           <Ionicons name="bag-outline" size={20} color={colors.light.mutedForeground} />
@@ -1724,7 +1757,7 @@ export default function CheckoutScreen() {
                 <View style={styles.couponIconWrap}>
                   <Ionicons name="pricetag-outline" size={14} color={colors.olive[800]} />
                 </View>
-                <Text style={styles.couponCardTitle}>PROMO CODE</Text>
+                <Text style={styles.couponCardTitle}>Promo code</Text>
               </View>
               {couponCode && (couponDiscount > 0 || freeShippingCoupon) ? (
                 <View style={styles.couponApplied}>
@@ -1800,13 +1833,10 @@ export default function CheckoutScreen() {
                 <View style={styles.receiptIconWrap}>
                   <Ionicons name="receipt-outline" size={14} color={colors.olive[800]} />
                 </View>
-                <Text style={styles.receiptLabel}>PRICE BREAKDOWN</Text>
+                <Text style={styles.receiptLabel}>Price breakdown</Text>
               </View>
               <View style={styles.receiptRule} />
-              <SummaryLine label="Subtotal" value={formatPrice(sub - giftWrapFee)} />
-              {giftWrapFee > 0 ? (
-                <SummaryLine label="Gift wrap" value={formatPrice(giftWrapFee)} />
-              ) : null}
+              <SummaryLine label="Subtotal" value={formatPrice(sub)} />
               {couponDiscount > 0 && (
                 <SummaryLine label="Coupon discount" value={`-${formatPrice(couponDiscount)}`} accent />
               )}
@@ -1870,31 +1900,48 @@ export default function CheckoutScreen() {
         )}
         </ScrollView>
 
-        {step === 4 && (
-          <View
-            style={[styles.reviewFooter, { paddingBottom: insets.bottom + 12 }]}
-            pointerEvents="box-none"
-          >
-            <View style={styles.reviewFooterTotal}>
-              <Text style={styles.reviewFooterLabel}>TOTAL PAYABLE</Text>
-              <Text style={styles.reviewFooterPrice}>{formatPrice(total)}</Text>
-              <Text style={styles.reviewFooterSub}>Platform fee & delivery included</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.placeOrderBtn, loading && { opacity: 0.7 }]}
-              onPress={handlePlaceOrder}
-              disabled={loading}
-              activeOpacity={0.88}
-              accessibilityRole="button"
-              accessibilityLabel="Place order"
-            >
-              <Text style={styles.placeOrderText}>
-                {loading ? "Placing order…" : "Place Order"}
-              </Text>
-              {!loading && <Ionicons name="arrow-forward" size={16} color={colors.paper.cream} />}
-            </TouchableOpacity>
+        <View
+          style={[styles.reviewFooter, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.reviewFooterTotal}>
+            <Text style={styles.reviewFooterLabel}>{step === 4 ? "Total payable" : "Order total"}</Text>
+            <Text style={styles.reviewFooterPrice}>{formatPrice(total)}</Text>
+            <Text style={styles.reviewFooterSub}>
+              {step === 4
+                ? "Platform fee & delivery included"
+                : `${cartItems.length} item${cartItems.length === 1 ? "" : "s"} · ${shippingFee === 0 ? "free delivery" : `${formatPrice(shippingFee)} delivery`}`}
+            </Text>
           </View>
-        )}
+          <TouchableOpacity
+            style={[styles.placeOrderBtn, loading && { opacity: 0.7 }]}
+            onPress={
+              step === 1
+                ? handleAddressContinue
+                : step === 2
+                  ? () => setStep(3)
+                  : step === 3
+                    ? () => setStep(4)
+                    : handlePlaceOrder
+            }
+            disabled={loading}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel={step === 4 ? "Place order" : "Continue"}
+          >
+            {loading ? <ActivityIndicator size="small" color={colors.paper.cream} /> : null}
+            <Text style={styles.placeOrderText}>
+              {step === 4 ? (loading ? "Placing…" : "Place order") : step === 3 ? "Review order" : "Continue"}
+            </Text>
+            {!loading ? (
+              <Ionicons
+                name={step === 4 ? "lock-closed" : "arrow-forward"}
+                size={step === 4 ? 14 : 16}
+                color={colors.paper.cream}
+              />
+            ) : null}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {confirmingPayment && (
@@ -1920,6 +1967,26 @@ export default function CheckoutScreen() {
         defaultPhone={(user?.user_metadata?.phone as string) ?? ""}
       />
     </PaperBackground>
+  );
+}
+
+function StepTitle({
+  kicker,
+  title,
+  subtitle,
+  small,
+}: {
+  kicker: string;
+  title: string;
+  subtitle?: string;
+  small?: boolean;
+}) {
+  return (
+    <View style={[styles.stepTitleWrap, small && styles.stepTitleWrapSmall]}>
+      <Text style={styles.stepTitleKicker}>{kicker}</Text>
+      <Text style={[styles.stepTitle, small && styles.stepTitleSmall]}>{title}</Text>
+      {subtitle ? <Text style={styles.stepTitleSub}>{subtitle}</Text> : null}
+    </View>
   );
 }
 
@@ -1983,7 +2050,7 @@ function GiftCardBlock({
           <View style={styles.couponIconWrap}>
             <Ionicons name="gift-outline" size={14} color={colors.olive[800]} />
           </View>
-          <Text style={styles.couponCardTitle}>GIFT CARD</Text>
+          <Text style={styles.couponCardTitle}>Gift card</Text>
         </View>
         <View style={styles.couponApplied}>
           <View style={styles.couponAppliedLeft}>
@@ -2014,7 +2081,7 @@ function GiftCardBlock({
         <View style={styles.couponIconWrap}>
           <Ionicons name="gift-outline" size={14} color={colors.olive[800]} />
         </View>
-        <Text style={styles.couponCardTitle}>GIFT CARD</Text>
+        <Text style={styles.couponCardTitle}>Gift card</Text>
       </View>
       <View style={styles.couponInputRow}>
         <TextInput
@@ -2045,6 +2112,42 @@ function GiftCardBlock({
   );
 }
 
+const INK = colors.olive[900];
+const CREAM = colors.paper.cream;
+const SURFACE = "#ffffff";
+const PAGE = colors.paper.DEFAULT;
+const HAIR = `${colors.light.border}b3`;
+
+/** Shared white option-card surface. */
+const surfaceCard = {
+  backgroundColor: SURFACE,
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: HAIR,
+  shadowColor: colors.ink.DEFAULT,
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.04,
+  shadowRadius: 10,
+  elevation: 1,
+} as const;
+
+const selectedCard = {
+  borderColor: INK,
+  borderWidth: 1.5,
+  shadowOpacity: 0.1,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 4,
+} as const;
+
+const kickerText = {
+  fontFamily: fontFamilies.mono.medium,
+  fontSize: 9.5,
+  letterSpacing: 1.6,
+  textTransform: "uppercase",
+  color: colors.light.mutedForeground,
+} as const;
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   body: { flex: 1 },
@@ -2054,221 +2157,246 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing[5],
   },
+
+  /* ---- Stepper ---- */
   stepBar: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: spacing[3],
-    paddingBottom: spacing[2],
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  stepHeadRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 10,
+    marginBottom: 10,
+  },
+  stepKicker: {
+    ...kickerText,
+    color: colors.olive[600],
+  },
+  stepCurrent: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: colors.light.foreground,
+  },
+  stepTrack: {
+    flexDirection: "row",
+    gap: 6,
   },
   stepItem: {
-    alignItems: "center",
-    gap: 5,
-    width: 62,
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepCircleActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.22,
-    shadowRadius: 5,
-    elevation: 4,
-  },
-  stepCircleDone: {
-    backgroundColor: colors.olive[700],
-    borderColor: colors.olive[700],
-  },
-  stepNum: {
-    fontFamily: fontFamilies.mono.medium,
-    color: colors.light.mutedForeground,
-    fontSize: 11,
-  },
-  stepNumActive: {
-    fontFamily: fontFamilies.mono.semibold,
-    color: colors.paper.cream,
-    fontSize: 12,
-  },
-  stepLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    color: colors.light.mutedForeground,
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-  },
-  stepLabelActive: {
-    fontFamily: fontFamilies.mono.semibold,
-    color: colors.olive[800],
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-  },
-  stepLineWrap: {
     flex: 1,
-    height: 32,
-    justifyContent: "center",
-    marginHorizontal: -4,
+    gap: 7,
   },
   stepLine: {
-    height: 2,
-    backgroundColor: colors.light.border,
-    borderRadius: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.light.muted,
   },
   stepLineActive: {
-    backgroundColor: colors.olive[700],
+    backgroundColor: INK,
   },
+  stepLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  stepLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
+  },
+  stepLabelDone: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: colors.olive[700],
+  },
+  stepLabelActive: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11.5,
+    color: colors.light.foreground,
+  },
+
+  /* ---- Bag strip ---- */
   contextStrip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2.5],
+    gap: 10,
     marginHorizontal: 20,
-    marginBottom: spacing[3],
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[3],
-    borderRadius: radii.full,
+    marginTop: 10,
+    marginBottom: 6,
+    paddingVertical: 8,
+    paddingLeft: 8,
+    paddingRight: 16,
+    borderRadius: 18,
+    backgroundColor: SURFACE,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.cream,
-    ...shadows.soft,
+    borderColor: HAIR,
   },
-  contextIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.olive[100],
+  contextThumbs: {
+    flexDirection: "row",
+  },
+  contextThumb: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: colors.olive[50],
+    borderWidth: 2,
+    borderColor: SURFACE,
     alignItems: "center",
     justifyContent: "center",
+  },
+  contextIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[50],
   },
   contextText: {
     flex: 1,
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.light.foreground,
+    fontSize: 13,
+    color: colors.light.mutedForeground,
   },
   contextPrice: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 14,
+    fontSize: 17,
     color: colors.light.foreground,
   },
-  content: { paddingHorizontal: 20 },
+
+  content: { paddingHorizontal: 20, paddingTop: 10 },
   panel: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: spacing[5],
-    gap: spacing[3.5],
-    ...shadows.soft,
+    gap: 12,
   },
+
+  /* ---- Step titles ---- */
+  stepTitleWrap: {
+    paddingTop: 8,
+    paddingBottom: 6,
+    gap: 4,
+  },
+  stepTitleWrapSmall: {
+    paddingTop: 18,
+    paddingBottom: 2,
+  },
+  stepTitleKicker: {
+    ...kickerText,
+    color: colors.olive[600],
+  },
+  stepTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.8,
+    color: colors.light.foreground,
+  },
+  stepTitleSmall: {
+    fontSize: 21,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+  },
+  stepTitleSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: colors.light.mutedForeground,
+  },
+
+  /* ---- Address ---- */
   addressCard: {
-    padding: spacing[4],
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
+    ...surfaceCard,
+    padding: 16,
     gap: 10,
   },
   addressCardActive: {
-    borderColor: colors.olive[700],
-    borderWidth: 1.5,
-    backgroundColor: "rgba(83,94,44,0.03)",
-    ...shadows.soft,
+    ...selectedCard,
   },
   addressCardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
   },
   addressLeftCol: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
+    gap: 12,
   },
   addressTypeTile: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.olive[100],
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.olive[50],
   },
   addressTypeTileActive: {
-    backgroundColor: colors.olive[800],
+    backgroundColor: INK,
   },
   addressHeadInfo: {
     flex: 1,
-    minWidth: 0,
   },
   nameBadgeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
     flexWrap: "wrap",
+    gap: 8,
   },
   addressName: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.light.foreground,
+    maxWidth: "60%",
   },
   badgeRow: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 5,
   },
   typeBadge: {
-    backgroundColor: colors.olive[100],
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: radii.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: colors.olive[50],
   },
   typeBadgeText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: colors.olive[800],
-    letterSpacing: 0.6,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: colors.olive[700],
   },
   defaultBadge: {
-    backgroundColor: "rgba(200,164,74,0.18)",
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: radii.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: `${colors.accent2.ochre}22`,
   },
   defaultBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    color: "#8a6a2a",
-    letterSpacing: 0.6,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: "#8a6d22",
   },
   addressRadio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 8,
   },
   addressRadioActive: {
-    backgroundColor: colors.olive[800],
-    borderColor: colors.olive[800],
+    backgroundColor: INK,
+    borderColor: INK,
   },
   addressText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.light.mutedForeground,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.ink.soft,
   },
   metaRow: {
     flexDirection: "row",
@@ -2279,168 +2407,134 @@ const styles = StyleSheet.create({
   phoneChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
   },
   phoneText: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+    fontSize: 12.5,
     color: colors.light.mutedForeground,
   },
   pinnedChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.olive[50],
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
   },
   pinnedDot: {
     width: 5,
     height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.olive[700],
+    borderRadius: 3,
+    backgroundColor: colors.olive[500],
   },
   pinnedText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: colors.olive[800],
-    letterSpacing: 0.2,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.olive[700],
   },
   addressCardFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(83,94,44,0.12)",
-    marginTop: 2,
+    borderTopColor: colors.light.border,
   },
   selectedTag: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
   },
   selectedTagText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.olive[800],
+    fontSize: 12.5,
+    color: colors.olive[700],
   },
   tapToSelectText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12.5,
     color: colors.light.mutedForeground,
   },
   editBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.sm,
-    backgroundColor: colors.olive[50],
+    gap: 5,
+    paddingHorizontal: 12,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: PAGE,
   },
   editBtnText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
     color: colors.olive[800],
   },
   addAddressCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    padding: spacing[4],
-    borderRadius: radii.xl,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderStyle: "dashed",
-    borderColor: "rgba(83,94,44,0.3)",
-    backgroundColor: colors.paper.cream,
+    borderColor: colors.olive[300],
+    backgroundColor: `${colors.olive[50]}80`,
   },
   addAddressIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.olive[100],
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: INK,
     alignItems: "center",
     justifyContent: "center",
   },
   addAddressCopy: {
     flex: 1,
-    minWidth: 0,
     gap: 2,
   },
   addAddressTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.light.foreground,
   },
   addAddressSubtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+    fontSize: 12.5,
     color: colors.light.mutedForeground,
   },
   addAddressChevronWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.olive[100],
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: SURFACE,
     alignItems: "center",
     justifyContent: "center",
-  },
-  continueBtn: {
-    minHeight: 50,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 4,
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  continueBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.paper.cream,
-    letterSpacing: 0.3,
   },
   guestEmailCard: {
+    ...surfaceCard,
     flexDirection: "row",
-    gap: spacing[3],
-    padding: spacing[4],
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
   },
   guestEmailIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   guestEmailLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[700],
-    letterSpacing: 0.8,
+    ...kickerText,
   },
   guestEmailInput: {
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    height: 44,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
     color: colors.light.foreground,
-    backgroundColor: colors.light.card,
+    paddingVertical: 2,
   },
   coordsPill: {
     flexDirection: "row",
@@ -2455,414 +2549,356 @@ const styles = StyleSheet.create({
   },
   coordsText: {
     color: colors.olive[700],
-    fontFamily: "JetBrainsMono_500Medium",
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 9,
     letterSpacing: 0.4,
   },
+
+  /* ---- Context card (deliver-to / shipping-via) ---- */
   deliverToCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[3],
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.warm,
-    gap: spacing[2],
+    gap: 10,
+    padding: 12,
+    paddingLeft: 14,
+    borderRadius: 18,
+    backgroundColor: INK,
   },
   deliverToLeft: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    flex: 1,
-    minWidth: 0,
+    gap: 12,
   },
   deliverToIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.olive[100],
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   deliverToInfo: {
     flex: 1,
-    minWidth: 0,
-    gap: 1,
+    gap: 2,
   },
   deliverToKicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: colors.olive[700],
-    textTransform: "uppercase",
+    ...kickerText,
+    color: "rgba(250,248,241,0.6)",
   },
   deliverToAddress: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontSize: 14,
+    color: CREAM,
   },
   deliverToChangeBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.DEFAULT,
-    borderWidth: 1,
-    borderColor: colors.olive[200],
+    gap: 5,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: CREAM,
   },
   deliverToChangeText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12.5,
+    color: INK,
   },
 
+  /* ---- Shipping ---- */
   shippingCard: {
+    ...surfaceCard,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[3] + 2,
-    borderRadius: radii.xl,
-    borderWidth: 1.5,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
+    gap: 14,
+    padding: 14,
   },
   shippingCardActive: {
-    borderColor: colors.olive[700],
-    backgroundColor: colors.olive[50],
-    shadowColor: colors.olive[900],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+    ...selectedCard,
   },
   shippingIconTile: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: colors.olive[100],
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   shippingIconTileActive: {
-    backgroundColor: colors.olive[800],
+    backgroundColor: INK,
   },
   shippingInfo: {
     flex: 1,
-    minWidth: 0,
+    gap: 3,
   },
   shippingHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   shippingTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontSize: 15.5,
     color: colors.light.foreground,
   },
   fastestBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: radii.full,
-    backgroundColor: colors.accent2.ochre + "25",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    backgroundColor: `${colors.accent2.ochre}22`,
   },
   fastestBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    color: colors.accent2.ochre,
-    letterSpacing: 0.5,
+    fontSize: 8.5,
+    letterSpacing: 1,
+    color: "#8a6d22",
   },
   shippingDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
+    fontSize: 12.5,
     color: colors.light.mutedForeground,
-    marginTop: 1,
   },
   shippingArrivalPill: {
+    marginTop: 4,
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    alignSelf: "flex-start",
-    marginTop: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.warm,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    gap: 5,
   },
-  shippingArrivalPillActive: {
-    backgroundColor: colors.paper.cream,
-    borderColor: colors.olive[300],
-  },
+  shippingArrivalPillActive: {},
   shippingArrivalText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[800],
-    letterSpacing: 0.2,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.olive[700],
   },
   shippingArrivalTextActive: {
-    color: colors.olive[900],
-    fontFamily: fontFamilies.mono.semibold,
+    color: INK,
   },
   shippingRight: {
     alignItems: "flex-end",
-    gap: 8,
+    gap: 10,
   },
   shippingFreeBadge: {
-    backgroundColor: "#EBF6EC",
-    paddingVertical: 2.5,
-    paddingHorizontal: 7,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "#B8E3BB",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 7,
+    backgroundColor: colors.olive[100],
   },
   shippingFreeBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    color: "#227226",
-    letterSpacing: 0.4,
+    letterSpacing: 1,
+    color: colors.olive[800],
   },
   shippingFeeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15,
     color: colors.light.foreground,
   },
   shippingRadio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
   },
   shippingRadioActive: {
-    borderColor: colors.olive[800],
-    backgroundColor: colors.olive[800],
+    backgroundColor: INK,
+    borderColor: INK,
   },
-
   shippingBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2] + 2,
-    paddingVertical: spacing[2] + 2,
-    paddingHorizontal: spacing[3],
-    borderRadius: radii.xl,
-    backgroundColor: "#FFFDF5",
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "#f6efdc",
     borderWidth: 1,
-    borderColor: "#F0E4B8",
+    borderColor: `${colors.accent2.ochre}44`,
   },
   shippingBannerUnlocked: {
-    backgroundColor: "#F3F7F2",
-    borderColor: "#CDE3CB",
+    backgroundColor: colors.olive[50],
+    borderColor: colors.olive[100],
   },
   shippingBannerIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#FEF7DC",
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: SURFACE,
     alignItems: "center",
     justifyContent: "center",
   },
   shippingBannerIconUnlocked: {
-    backgroundColor: colors.olive[100],
+    backgroundColor: SURFACE,
   },
   shippingBannerText: {
     flex: 1,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    lineHeight: 16,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.ink.soft,
   },
   shippingBannerHighlight: {
     fontFamily: fontFamilies.sans.bold,
-    color: colors.olive[900],
+    color: colors.light.foreground,
   },
   shippingBannerTextUnlocked: {
     flex: 1,
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: colors.olive[800],
-    lineHeight: 16,
   },
-
   deliveryDateSection: {
-    marginTop: 2,
-    marginBottom: spacing[2],
+    gap: 12,
   },
   dateScrollContent: {
-    flexDirection: "row",
     gap: 8,
-    paddingVertical: 4,
-    paddingRight: 8,
+    paddingRight: 4,
   },
   dateChipNew: {
+    ...surfaceCard,
+    width: 76,
+    height: 76,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: radii.xl,
-    borderWidth: 1.5,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
-    minWidth: 84,
+    gap: 4,
   },
   dateChipNewActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: INK,
+    borderColor: INK,
   },
   dateChipKicker: {
-    fontFamily: fontFamilies.mono.semibold,
+    ...kickerText,
     fontSize: 9,
-    letterSpacing: 0.8,
-    color: colors.light.mutedForeground,
   },
   dateChipKickerActive: {
-    color: colors.paper.cream,
-    opacity: 0.8,
+    color: colors.accent2.ochre,
   },
   dateChipMain: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
+    fontSize: 13.5,
     color: colors.light.foreground,
   },
   dateChipMainActive: {
-    color: colors.paper.cream,
+    color: CREAM,
   },
+
+  /* ---- Payment ---- */
   paymentCard: {
+    ...surfaceCard,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[3] + 3,
-    borderRadius: radii.xl,
-    borderWidth: 1.5,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
+    gap: 14,
+    padding: 14,
   },
   paymentCardActive: {
-    borderColor: colors.olive[700],
-    backgroundColor: colors.olive[50],
-    shadowColor: colors.olive[900],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+    ...selectedCard,
   },
   paymentIconTile: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: colors.olive[100],
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   paymentIconTileActive: {
-    backgroundColor: colors.olive[800],
+    backgroundColor: INK,
   },
   paymentInfo: {
     flex: 1,
-    minWidth: 0,
     gap: 3,
   },
   paymentHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    flexWrap: "wrap",
+    gap: 7,
   },
   paymentTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontSize: 15.5,
     color: colors.light.foreground,
   },
   paymentBadge: {
     paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: radii.full,
+    paddingVertical: 2,
+    borderRadius: 5,
   },
   paymentBadgeOlive: {
     backgroundColor: colors.olive[100],
   },
   paymentBadgeOchre: {
-    backgroundColor: colors.accent2.ochre + "20",
+    backgroundColor: `${colors.accent2.ochre}22`,
   },
   paymentBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    letterSpacing: 0.5,
+    fontSize: 8.5,
+    letterSpacing: 1,
   },
   paymentBadgeTextOlive: {
     color: colors.olive[800],
   },
   paymentBadgeTextOchre: {
-    color: colors.accent2.ochre,
+    color: "#8a6d22",
   },
   paymentDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
+    fontSize: 12.5,
     color: colors.light.mutedForeground,
   },
   brandRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 6,
   },
   brandPill: {
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 5,
+    backgroundColor: PAGE,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,
-    backgroundColor: colors.paper.warm,
   },
   brandPillText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    color: colors.light.foreground,
-    letterSpacing: 0.3,
+    fontSize: 8.5,
+    letterSpacing: 0.6,
+    color: colors.ink.soft,
   },
   paymentReassurance: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2] + 2,
-    paddingVertical: spacing[2] + 2,
-    paddingHorizontal: spacing[3],
-    borderRadius: radii.xl,
-    backgroundColor: colors.olive[50] + "80",
-    borderWidth: 1,
-    borderColor: colors.olive[200],
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: colors.olive[50],
   },
   paymentReassuranceText: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.olive[900],
-    lineHeight: 16,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.olive[800],
   },
   codNotice: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing[2.5],
-    padding: spacing[3],
-    borderRadius: radii.xl,
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: `${colors.accent2.rust}10`,
     borderWidth: 1,
-    borderColor: "#F4C9B8",
-    backgroundColor: "#FDF5F2",
+    borderColor: `${colors.accent2.rust}30`,
   },
   codNoticeIconWrap: {
-    marginTop: 1,
+    paddingTop: 1,
   },
   codNoticeCopy: {
     flex: 1,
@@ -2870,132 +2906,119 @@ const styles = StyleSheet.create({
   },
   codNoticeTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
+    fontSize: 13.5,
     color: colors.accent2.rust,
   },
   codNoticeDesc: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.accent2.rust,
-    lineHeight: 15,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.ink.soft,
   },
 
+  /* ---- Review ---- */
   orderConfigCard: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
-    overflow: "hidden",
+    ...surfaceCard,
+    paddingVertical: 4,
   },
   orderConfigRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[3] + 2,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   orderConfigIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.olive[100],
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   orderConfigInfo: {
     flex: 1,
-    minWidth: 0,
-    gap: 1,
+    gap: 2,
   },
   orderConfigKicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-    color: colors.olive[700],
-    textTransform: "uppercase",
+    ...kickerText,
   },
   orderConfigValue: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    fontSize: 14.5,
     color: colors.light.foreground,
   },
   orderConfigAction: {
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: PAGE,
   },
   orderConfigActionText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
     color: colors.olive[800],
   },
   orderConfigDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.light.border,
-    marginLeft: 48,
+    marginLeft: 64,
   },
-
   itemsSection: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
-    padding: spacing[3] + 2,
-    gap: spacing[3],
+    ...surfaceCard,
+    padding: 16,
   },
   itemsSectionHead: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
   itemsSectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   itemsSectionLabel: {
-    color: colors.olive[800],
-    fontSize: 10,
-    fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 19,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
   },
   itemsCountBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[100],
+    backgroundColor: PAGE,
   },
   itemsCountText: {
-    color: colors.olive[900],
-    fontSize: 10,
     fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: colors.light.mutedForeground,
   },
   itemDivider: {
-    height: 1,
-    backgroundColor: colors.paper.warm,
-    marginVertical: 4,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.light.border,
+    marginVertical: 12,
   },
   reviewItem: {
     flexDirection: "row",
-    gap: spacing[3],
-    alignItems: "center",
+    gap: 14,
   },
   reviewThumb: {
-    width: 68,
-    height: 80,
-    borderRadius: radii.lg,
+    width: 72,
+    height: 90,
+    borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: colors.paper.warm,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    position: "relative",
+    backgroundColor: "#efede4",
   },
-  reviewImage: { width: "100%", height: "100%" },
+  reviewImage: {
+    width: "100%",
+    height: "100%",
+  },
   reviewImagePlaceholder: {
     flex: 1,
     alignItems: "center",
@@ -3003,224 +3026,205 @@ const styles = StyleSheet.create({
   },
   qtyBadge: {
     position: "absolute",
-    bottom: 4,
-    right: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
+    right: 5,
+    bottom: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 7,
+    backgroundColor: INK,
   },
   qtyBadgeText: {
-    color: colors.paper.cream,
-    fontSize: 9.5,
     fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    color: CREAM,
   },
   reviewItemBody: {
     flex: 1,
-    gap: 3,
+    gap: 6,
+    paddingTop: 2,
   },
   reviewItemName: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    lineHeight: 20,
     color: colors.light.foreground,
-    lineHeight: 18,
   },
   reviewVariantPill: {
     alignSelf: "flex-start",
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-    backgroundColor: colors.paper.warm,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 7,
+    backgroundColor: PAGE,
   },
   reviewVariant: {
-    color: colors.olive[800],
-    fontSize: 9.5,
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 0.3,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.ink.soft,
   },
   reviewItemPriceRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
     gap: 6,
     marginTop: 2,
   },
   reviewItemPrice: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
     color: colors.light.foreground,
   },
   reviewItemUnitPrice: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.light.mutedForeground,
   },
-
   couponCard: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
-    padding: spacing[3] + 2,
-    gap: spacing[2.5],
+    ...surfaceCard,
+    padding: 14,
+    gap: 12,
   },
   couponCardHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
   couponIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.olive[100],
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   couponCardTitle: {
-    color: colors.olive[800],
-    fontSize: 10,
-    fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.light.foreground,
   },
   couponInputRow: {
     flexDirection: "row",
-    gap: spacing[2],
     alignItems: "center",
+    gap: 6,
+    padding: 5,
+    paddingLeft: 14,
+    borderRadius: 14,
+    backgroundColor: PAGE,
   },
   couponInput: {
     flex: 1,
-    height: 44,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.warm,
-    paddingHorizontal: spacing[3] + 2,
+    height: 40,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 13,
-    fontFamily: fontFamilies.mono.medium,
+    letterSpacing: 1.4,
     color: colors.light.foreground,
-    letterSpacing: 0.8,
   },
   couponApplyBtn: {
-    height: 44,
-    paddingHorizontal: spacing[4],
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
+    height: 40,
+    paddingHorizontal: 18,
+    borderRadius: 11,
+    backgroundColor: INK,
     alignItems: "center",
     justifyContent: "center",
   },
   couponApplyBtnDisabled: {
-    opacity: 0.45,
+    backgroundColor: colors.light.border,
   },
   couponApplyText: {
-    color: colors.paper.cream,
-    fontSize: 12,
     fontFamily: fontFamilies.sans.bold,
-    letterSpacing: 0.4,
+    fontSize: 13,
+    color: CREAM,
   },
   couponApplied: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing[2] + 2,
-    paddingHorizontal: spacing[3],
-    borderRadius: radii.lg,
-    backgroundColor: "#F3F8F2",
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: colors.olive[50],
     borderWidth: 1,
-    borderColor: "#C8E2C6",
+    borderStyle: "dashed",
+    borderColor: colors.olive[300],
   },
   couponAppliedLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2] + 2,
-    flex: 1,
+    gap: 10,
   },
   couponAppliedCode: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: colors.olive[900],
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 13.5,
+    letterSpacing: 1.2,
+    color: colors.light.foreground,
   },
   couponAppliedSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#237804",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.olive[700],
   },
   couponRemoveBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.paper.cream,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: SURFACE,
     alignItems: "center",
     justifyContent: "center",
   },
-
   receiptCard: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.paper.DEFAULT,
-    padding: spacing[3] + 2,
-    gap: spacing[2],
+    ...surfaceCard,
+    padding: 16,
+    gap: 10,
   },
   receiptHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
   receiptIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.olive[100],
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
   receiptLabel: {
-    color: colors.olive[800],
-    fontSize: 10,
-    fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.light.foreground,
   },
   receiptRule: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.light.border,
-    marginVertical: spacing[1],
+    marginVertical: 2,
   },
   summaryLine: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 2.5,
+    justifyContent: "space-between",
   },
   summaryLineLabel: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontSize: 13.5,
+    color: colors.ink.soft,
   },
   summaryLineLabelMuted: {
     color: colors.light.mutedForeground,
   },
   summaryLineValue: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    fontSize: 13.5,
     color: colors.light.foreground,
   },
   summaryLineValueAccent: {
-    color: "#237804",
+    color: colors.olive[600],
   },
   summaryLineValueMuted: {
     color: colors.light.mutedForeground,
   },
   totalRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: spacing[1],
+    justifyContent: "space-between",
+    paddingTop: 2,
   },
   totalLabel: {
     fontFamily: fontFamilies.sans.bold,
@@ -3229,94 +3233,83 @@ const styles = StyleSheet.create({
   },
   totalTaxNote: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
     marginTop: 1,
   },
   totalPrice: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 19,
-    color: colors.olive[900],
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    letterSpacing: -0.5,
+    color: INK,
   },
-
   loyaltyCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[3] + 2,
-    borderRadius: radii.xl,
+    gap: 12,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "#f6efdc",
     borderWidth: 1,
-    borderColor: colors.olive[200],
-    backgroundColor: colors.olive[50],
+    borderColor: `${colors.accent2.ochre}44`,
   },
   loyaltyIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.olive[100],
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: SURFACE,
     alignItems: "center",
     justifyContent: "center",
   },
   loyaltyTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.light.foreground,
   },
   loyaltySubtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
+    fontSize: 12.5,
+    color: colors.ink.mute,
     marginTop: 1,
   },
-
   earnPill: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing[2],
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[3],
-    borderRadius: radii.full,
-    backgroundColor: "#FFFDF5",
-    borderWidth: 1,
-    borderColor: "#F0E4B8",
+    gap: 7,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.olive[50],
   },
   earnPillText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12.5,
+    color: colors.olive[800],
   },
   earnPillHighlight: {
     fontFamily: fontFamilies.sans.bold,
-    color: colors.olive[900],
+    color: INK,
   },
-
   trustRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: spacing[2],
-    paddingTop: spacing[1],
+    justifyContent: "space-between",
+    gap: 6,
+    paddingTop: 4,
   },
   trustBadge: {
-    flexDirection: "row",
+    flex: 1,
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.warm,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    gap: 5,
+    paddingVertical: 10,
   },
   trustLabel: {
-    color: colors.olive[800],
-    fontSize: 10,
-    fontFamily: fontFamilies.sans.medium,
-    letterSpacing: 0.2,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.light.mutedForeground,
+    textAlign: "center",
   },
 
+  /* ---- Sticky footer ---- */
   reviewFooter: {
     position: "absolute",
     left: 0,
@@ -3326,32 +3319,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3] + 2,
-    backgroundColor: colors.light.card,
-    borderTopWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    backgroundColor: CREAM,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.light.border,
-    ...shadows.editorial,
+    shadowColor: colors.ink.DEFAULT,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 10,
   },
   reviewFooterTotal: {
-    flex: 1,
-    gap: 1,
+    flexShrink: 1,
   },
   reviewFooterLabel: {
-    color: colors.olive[700],
-    fontSize: 9,
-    letterSpacing: 0.8,
-    fontFamily: fontFamilies.mono.semibold,
-    textTransform: "uppercase",
+    ...kickerText,
   },
   reviewFooterPrice: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 20,
+    marginTop: 2,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    letterSpacing: -0.6,
     color: colors.light.foreground,
   },
   reviewFooterSub: {
-    fontSize: 10,
     fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
   },
   placeOrderBtn: {
@@ -3359,21 +3353,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    height: 50,
-    paddingHorizontal: spacing[5],
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
-    elevation: 3,
+    height: 56,
+    minWidth: 168,
+    paddingHorizontal: 24,
+    borderRadius: 28,
+    backgroundColor: INK,
+    ...shadows.glow,
+    shadowColor: INK,
   },
   placeOrderText: {
-    color: colors.paper.cream,
-    fontSize: 14,
-    letterSpacing: 0.3,
     fontFamily: fontFamilies.sans.bold,
+    fontSize: 15.5,
+    color: CREAM,
+    letterSpacing: 0.2,
   },
   confirmOverlay: {
     ...StyleSheet.absoluteFillObject,

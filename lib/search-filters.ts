@@ -1,6 +1,15 @@
 import { PRICE_BOUNDS, type ProductFilters } from "@/lib/api/facets";
 import { discountPct } from "@/lib/utils";
+import {
+  productColorFamilies, productOccasion, productMaterial,
+  resolveColorParam, resolveOccasionParam, resolveMaterialParam,
+} from "@/lib/facet-vocab";
 import type { Product } from "@/lib/types";
+
+/** Unisex pieces satisfy a men/women filter too (never kids). */
+export function productMatchesGender(p: Pick<Product, "gender">, gender: string): boolean {
+  return p.gender === gender || (p.gender === "unisex" && gender !== "kids");
+}
 
 /**
  * Client-side facet filter for search results. Shared by the Search screen
@@ -16,10 +25,11 @@ export function applySearchFilters(products: Product[], filters: ProductFilters)
   }
 
   if (filters.colors && filters.colors.length > 0) {
-    const wanted = filters.colors.map((c) => c.toLowerCase());
+    // Family match: "blue" covers Cobalt Blue / Ice Blue; legacy "Olive" → green.
+    const wanted = filters.colors.map(resolveColorParam).filter((c): c is string => !!c);
     list = list.filter((p) => {
-      const pColors = (p.variants ?? []).map((v) => (v.color ?? "").toLowerCase()).filter(Boolean);
-      return wanted.some((cl) => pColors.some((pc) => pc.includes(cl) || cl.includes(pc)));
+      const have = productColorFamilies(p);
+      return wanted.some((c) => have.includes(c));
     });
   }
 
@@ -48,20 +58,17 @@ export function applySearchFilters(products: Product[], filters: ProductFilters)
   }
 
   if (filters.gender) {
-    // Unisex pieces satisfy a men/women filter too.
-    list = list.filter(
-      (p) => p.gender === filters.gender || (p.gender === "unisex" && filters.gender !== "kids"),
-    );
+    list = list.filter((p) => productMatchesGender(p, filters.gender!));
   }
 
   if (filters.occasion) {
-    const want = filters.occasion.toLowerCase();
-    list = list.filter((p) => (p as { ai_attrs?: { occasion?: string | null } }).ai_attrs?.occasion?.toLowerCase() === want);
+    const want = resolveOccasionParam(filters.occasion);
+    list = list.filter((p) => productOccasion(p) === want);
   }
 
   if (filters.material) {
-    const want = filters.material.toLowerCase();
-    list = list.filter((p) => (p as { ai_attrs?: { material?: string | null } }).ai_attrs?.material?.toLowerCase() === want);
+    const want = resolveMaterialParam(filters.material);
+    list = list.filter((p) => productMaterial(p) === want);
   }
 
   if (filters.minRating && filters.minRating > 0) {

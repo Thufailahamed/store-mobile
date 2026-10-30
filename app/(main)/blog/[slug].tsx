@@ -1,29 +1,44 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   Share,
+  Animated,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { StatusBar } from "expo-status-bar";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@/components/ui/Icon";
-import { getBlogPostBySlug } from "@/lib/api";
+import { getBlogPostBySlug, getBlogPosts } from "@/lib/api";
 import { Skeleton, useToast } from "@/components/ui";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
+import { blogAuthorName, blogReadingTime, formatBlogDate } from "@/lib/utils/blog";
 import { RichBlogContent } from "@/components/blog/RichBlogContent";
+
+const HAIRLINE = "rgba(22, 23, 15, 0.1)";
+const SHEET_OVERLAP = 28;
 
 export default function BlogPostDetail() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
   const { toast } = useToast();
+  const insets = useSafeAreaInsets();
+  const { width, height: windowH } = useWindowDimensions();
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+  const [contentH, setContentH] = useState(1);
+  const [viewH, setViewH] = useState(windowH);
 
   const postQuery = useQuery({
     queryKey: ["blog-post", slug],
@@ -35,16 +50,45 @@ export default function BlogPostDetail() {
     enabled: !!slug,
   });
 
+  const postsQuery = useQuery({
+    queryKey: ["blog-posts"],
+    queryFn: async () => {
+      const res = await getBlogPosts();
+      return res.ok ? res.data : [];
+    },
+  });
+
   const post = postQuery.data;
+  const heroH = Math.round(Math.min(windowH * 0.58, width * 1.2));
+  const barH = insets.top + 56;
+  const hasCover = !!post?.cover_image;
+  const [overHero, setOverHero] = useState(true);
 
-  // Calculate estimated reading time
-  const readingTime = useMemo(() => {
-    if (!post?.content) return 3;
-    const words = post.content.trim().split(/\s+/).length;
-    return Math.max(1, Math.ceil(words / 200));
-  }, [post?.content]);
+  useEffect(() => {
+    const threshold = heroH - barH - SHEET_OVERLAP;
+    const id = scrollY.addListener(({ value }) => {
+      const next = value < threshold;
+      setOverHero((prev) => (prev === next ? prev : next));
+    });
+    return () => scrollY.removeListener(id);
+  }, [scrollY, heroH, barH]);
 
-  // Handle native share sheet
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [slug]);
+
+  const readingTime = useMemo(() => blogReadingTime(post?.content) ?? 3, [post?.content]);
+
+  const related = useMemo(() => {
+    const all = (postsQuery.data ?? []).filter((p) => p.slug !== slug);
+    const tags = new Set(post?.tags ?? []);
+    return all
+      .map((p) => ({ p, score: (p.tags ?? []).filter((t) => tags.has(t)).length }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map(({ p }) => p);
+  }, [postsQuery.data, post?.tags, slug]);
+
   const handleShare = async () => {
     if (!post) return;
     try {
@@ -57,7 +101,6 @@ export default function BlogPostDetail() {
     }
   };
 
-  // Handle copy link to clipboard
   const handleCopyLink = async () => {
     if (!post) return;
     try {
@@ -69,213 +112,298 @@ export default function BlogPostDetail() {
     }
   };
 
+  // ── Scroll-driven animation values ──
+  const fadeStart = hasCover ? heroH - barH - 80 : 0;
+  const barOpacity = scrollY.interpolate({
+    inputRange: [fadeStart, fadeStart + 60],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+  const heroTranslate = scrollY.interpolate({
+    inputRange: [-heroH, 0, heroH],
+    outputRange: [heroH / 2, 0, -heroH * 0.5],
+    extrapolate: "clamp",
+  });
+  const heroScale = scrollY.interpolate({
+    inputRange: [-heroH, 0],
+    outputRange: [2, 1],
+    extrapolate: "clamp",
+  });
+  const progress = scrollY.interpolate({
+    inputRange: [0, Math.max(1, contentH - viewH)],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+
+  const lightChrome = hasCover && overHero;
+
+  const navButton = (icon: React.ComponentProps<typeof Ionicons>["name"], onPress: () => void) => (
+    <Pressable onPress={onPress} hitSlop={10} style={({ pressed }) => [styles.navBtn, pressed && { opacity: 0.7 }]}>
+      {lightChrome ? <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} /> : null}
+      <View style={[StyleSheet.absoluteFill, lightChrome ? styles.navBtnGlass : styles.navBtnSolid]} />
+      <Ionicons name={icon} size={18} color={colors.ink.DEFAULT} />
+    </Pressable>
+  );
+
+  const topBar = (title?: string) => (
+    <View style={[styles.topBar, { height: barH, paddingTop: insets.top }]} pointerEvents="box-none">
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: hasCover ? barOpacity : 1 }]} pointerEvents="none">
+        <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, styles.topBarTint]} />
+      </Animated.View>
+      {navButton("arrow-back", () => router.back())}
+      <Animated.Text
+        numberOfLines={1}
+        style={[styles.topBarTitle, { opacity: hasCover ? barOpacity : 1 }]}
+      >
+        {title ?? "The Journal"}
+      </Animated.Text>
+      {post ? (
+        <View style={styles.navActions}>
+          {navButton("link-outline", handleCopyLink)}
+          {navButton("share-outline", handleShare)}
+        </View>
+      ) : (
+        <View style={{ width: 40 }} />
+      )}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.progressTrack,
+          { opacity: hasCover ? barOpacity : 1, transform: [{ scaleX: progress }] },
+        ]}
+      />
+    </View>
+  );
+
   if (postQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.navBar}>
-          <TouchableOpacity
-            style={styles.navBackBtn}
-            onPress={() => router.back()}
-            hitSlop={12}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-back" size={18} color={colors.ink.DEFAULT} />
-          </TouchableOpacity>
-          <View style={styles.navJournalBadge}>
-            <Ionicons name="newspaper-outline" size={12} color={colors.olive[700]} />
-            <Text style={styles.navJournalText}>THE LUXE JOURNAL</Text>
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <ScrollView contentContainerStyle={{ paddingBottom: spacing[12] }}>
+          <Skeleton width="100%" height={heroH} style={{ borderRadius: 0 }} />
+          <View style={[styles.sheet, { marginTop: -SHEET_OVERLAP }]}>
+            <Skeleton width={140} height={12} />
+            <Skeleton width="92%" height={34} style={{ marginTop: 16 }} />
+            <Skeleton width="70%" height={34} style={{ marginTop: 8 }} />
+            <Skeleton width="100%" height={18} style={{ marginTop: 24 }} />
+            <Skeleton width="85%" height={18} style={{ marginTop: 8 }} />
+            <Skeleton width="100%" height={56} style={{ marginTop: 28, borderRadius: radii.xl }} />
           </View>
-          <View style={{ width: 38 }} />
-        </View>
-        <ScrollView contentContainerStyle={styles.content}>
-          <Skeleton width="100%" height={240} style={{ borderRadius: radii.xl }} />
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 18 }}>
-            <Skeleton width={80} height={24} style={{ borderRadius: radii.full }} />
-            <Skeleton width={100} height={24} style={{ borderRadius: radii.full }} />
-          </View>
-          <Skeleton width="90%" height={32} style={{ marginTop: 16 }} />
-          <Skeleton width="70%" height={32} style={{ marginTop: 8 }} />
-          <Skeleton width="100%" height={16} style={{ marginTop: 24 }} />
-          <Skeleton width="100%" height={16} style={{ marginTop: 8 }} />
-          <Skeleton width="80%" height={16} style={{ marginTop: 8 }} />
         </ScrollView>
-      </SafeAreaView>
+        {topBar()}
+      </View>
     );
   }
 
   if (!post) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
+      <View style={styles.container}>
+        <StatusBar style="dark" />
         <View style={styles.center}>
-          <Ionicons name="book-outline" size={48} color={colors.ink.mute} style={{ marginBottom: 16 }} />
+          <View style={styles.emptyIcon}>
+            <Ionicons name="book-outline" size={28} color={colors.olive[700]} />
+          </View>
           <Text style={styles.emptyTitle}>Story Not Found</Text>
           <Text style={styles.emptyText}>
             The editorial piece you are looking for may have been archived or moved.
           </Text>
-          <TouchableOpacity
-            style={styles.returnBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="arrow-back" size={16} color="#ffffff" style={{ marginRight: 6 }} />
-            <Text style={styles.returnBtnText}>Return to Journal</Text>
-          </TouchableOpacity>
+          <Pressable style={styles.primaryBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={16} color={colors.paper.cream} style={{ marginRight: 8 }} />
+            <Text style={styles.primaryBtnText}>Return to Journal</Text>
+          </Pressable>
         </View>
-      </SafeAreaView>
+        {topBar()}
+      </View>
     );
   }
 
-  const authorName = post.author || "LUXE Editorial";
+  const authorName = blogAuthorName(post.author);
   const authorInitial = authorName.charAt(0).toUpperCase();
-
-  const formattedDate = post.published_at
-    ? new Date(post.published_at).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      })
-    : null;
+  const formattedDate = formatBlogDate(post.published_at ?? post.created_at, "long");
+  const tags = post.tags ?? [];
+  const coverUri = post.cover_image ? resolveImageUrl(post.cover_image) ?? post.cover_image : null;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* ── Top Editorial Navigation Bar ── */}
-      <View style={styles.navBar}>
-        <TouchableOpacity
-          style={styles.navBackBtn}
-          onPress={() => router.back()}
-          hitSlop={12}
-          activeOpacity={0.8}
+    <View style={styles.container}>
+      <StatusBar style={lightChrome ? "light" : "dark"} animated />
+
+      {/* ── Parallax Hero ── */}
+      {coverUri ? (
+        <Animated.View
+          style={[
+            styles.hero,
+            { height: heroH, transform: [{ translateY: heroTranslate }, { scale: heroScale }] },
+          ]}
+          pointerEvents="none"
         >
-          <Ionicons name="arrow-back" size={18} color={colors.ink.DEFAULT} />
-        </TouchableOpacity>
+          <Image source={{ uri: coverUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={400} priority="high" />
+          <LinearGradient
+            colors={["rgba(12,13,8,0.55)", "rgba(12,13,8,0)"]}
+            style={[styles.heroTopShade, { height: barH + 40 }]}
+          />
+          <LinearGradient
+            colors={["rgba(12,13,8,0)", "rgba(12,13,8,0.35)"]}
+            style={styles.heroBottomShade}
+          />
+        </Animated.View>
+      ) : null}
 
-        <View style={styles.navJournalBadge}>
-          <Ionicons name="newspaper-outline" size={12} color={colors.olive[700]} />
-          <Text style={styles.navJournalText}>THE LUXE JOURNAL</Text>
-        </View>
+      <Animated.ScrollView
+        ref={scrollRef as never}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+        onContentSizeChange={(_, h) => setContentH(h)}
+        onLayout={(e) => setViewH(e.nativeEvent.layout.height)}
+        contentContainerStyle={{ paddingBottom: insets.bottom + spacing[10] }}
+      >
+        <View style={{ height: coverUri ? heroH - SHEET_OVERLAP : barH }} />
 
-        <View style={styles.navActions}>
-          <TouchableOpacity
-            style={styles.navActionBtn}
-            onPress={handleCopyLink}
-            hitSlop={10}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="copy-outline" size={17} color={colors.ink.DEFAULT} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.navActionBtn}
-            onPress={handleShare}
-            hitSlop={10}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="share-outline" size={18} color={colors.ink.DEFAULT} />
-          </TouchableOpacity>
-        </View>
-      </View>
+        <View style={[styles.sheet, !coverUri && styles.sheetFlat]}>
+          {coverUri ? <View style={styles.sheetHandle} /> : null}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* ── Hero Cover Image ── */}
-        {post.cover_image ? (
-          <View style={styles.coverImageWrap}>
-            <Image
-              source={{ uri: resolveImageUrl(post.cover_image) ?? post.cover_image }}
-              style={styles.coverImage}
-              contentFit="cover"
-              transition={300}
-              priority="high"
-            />
-          </View>
-        ) : null}
+          {/* ── Kicker ── */}
+          {tags.length > 0 ? (
+            <View style={styles.kickerRow}>
+              <View style={styles.kickerDot} />
+              <Text style={styles.kicker} numberOfLines={1}>
+                {tags.slice(0, 2).join("  /  ").toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
 
-        {/* ── Editorial Tags ── */}
-        {(post.tags ?? []).length > 0 ? (
-          <View style={styles.tagsRow}>
-            {post.tags!.map((tag) => (
-              <View key={tag} style={styles.tagPill}>
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+          <Text style={styles.title}>{post.title}</Text>
 
-        {/* ── Story Title ── */}
-        <Text style={styles.title}>{post.title}</Text>
+          {post.excerpt ? <Text style={styles.dek}>{post.excerpt}</Text> : null}
 
-        {/* ── Author Byline & Reading Metadata ── */}
-        <View style={styles.bylineCard}>
-          <View style={styles.authorAvatar}>
-            <Text style={styles.authorAvatarText}>{authorInitial}</Text>
-          </View>
-          <View style={styles.bylineMeta}>
-            <Text style={styles.authorName}>By {authorName}</Text>
-            <View style={styles.subMetaRow}>
+          {/* ── Byline ── */}
+          <View style={styles.byline}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{authorInitial}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bylineLabel}>WORDS BY</Text>
+              <Text style={styles.authorName} numberOfLines={1}>{authorName}</Text>
+            </View>
+            <View style={styles.bylineRight}>
               {formattedDate ? <Text style={styles.dateText}>{formattedDate}</Text> : null}
-              {formattedDate ? <Text style={styles.metaDot}>•</Text> : null}
-              <View style={styles.readTimeRow}>
-                <Ionicons name="time-outline" size={11} color={colors.ink.mute} style={{ marginRight: 3 }} />
-                <Text style={styles.readTimeText}>{readingTime} min read</Text>
+              <View style={styles.readPill}>
+                <Ionicons name="time-outline" size={11} color={colors.olive[800]} />
+                <Text style={styles.readPillText}>{readingTime} MIN READ</Text>
               </View>
             </View>
           </View>
-        </View>
 
-        <View style={styles.hairlineDivider} />
-
-        {/* ── Excerpt (The Dek / Lead Intro) ── */}
-        {post.excerpt ? (
-          <View style={styles.excerptContainer}>
-            <Text style={styles.excerptText}>{post.excerpt}</Text>
-          </View>
-        ) : null}
-
-        {/* ── Rich Markdown Article Content ── */}
-        <View style={styles.bodyWrapper}>
-          <RichBlogContent content={post.content} />
-        </View>
-
-        {/* ── Story Footer & Share Section ── */}
-        <View style={styles.footerSection}>
-          <View style={styles.asterism}>
-            <Text style={styles.asterismText}>❖   THE LUXE JOURNAL   ❖</Text>
+          {/* ── Body ── */}
+          <View style={styles.body}>
+            <RichBlogContent content={post.content} />
           </View>
 
-          <View style={styles.shareBanner}>
-            <Text style={styles.shareTitle}>Enjoyed this story?</Text>
+          {/* ── End mark ── */}
+          <View style={styles.endMark}>
+            <View style={styles.endRule} />
+            <Text style={styles.endGlyph}>❖</Text>
+            <View style={styles.endRule} />
+          </View>
+
+          {/* ── Filed Under ── */}
+          {tags.length > 0 ? (
+            <View style={styles.filed}>
+              <Text style={styles.filedLabel}>FILED UNDER</Text>
+              <View style={styles.tagsWrap}>
+                {tags.map((tag) => (
+                  <View key={tag} style={styles.tagPill}>
+                    <Text style={styles.tagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {/* ── Share Card ── */}
+          <View style={styles.shareCard}>
+            <LinearGradient
+              colors={[colors.olive[800], colors.olive[950]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <Text style={styles.shareKicker}>THE LUXE JOURNAL</Text>
+            <Text style={styles.shareTitle}>Pass the story on.</Text>
             <Text style={styles.shareSubtitle}>
               Share it with fellow horology and fashion connoisseurs.
             </Text>
             <View style={styles.shareActions}>
-              <TouchableOpacity
-                style={styles.sharePillBtn}
+              <Pressable
+                style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.85 }]}
                 onPress={handleShare}
-                activeOpacity={0.85}
               >
-                <Ionicons name="share-social-outline" size={16} color="#ffffff" style={{ marginRight: 6 }} />
-                <Text style={styles.sharePillText}>Share Story</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.copyPillBtn}
+                <Ionicons name="share-social-outline" size={16} color={colors.ink.DEFAULT} style={{ marginRight: 8 }} />
+                <Text style={styles.shareBtnText}>Share Story</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.copyBtn, pressed && { opacity: 0.85 }]}
                 onPress={handleCopyLink}
-                activeOpacity={0.85}
               >
-                <Ionicons name="link-outline" size={16} color={colors.ink.DEFAULT} style={{ marginRight: 6 }} />
-                <Text style={styles.copyPillText}>Copy Link</Text>
-              </TouchableOpacity>
+                <Ionicons name="link-outline" size={16} color={colors.paper.cream} style={{ marginRight: 8 }} />
+                <Text style={styles.copyBtnText}>Copy Link</Text>
+              </Pressable>
             </View>
           </View>
-
-          <TouchableOpacity
-            style={styles.backToJournalBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="arrow-back" size={15} color={colors.olive[800]} style={{ marginRight: 6 }} />
-            <Text style={styles.backToJournalText}>Back to Journal</Text>
-          </TouchableOpacity>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+
+        {/* ── More from the Journal ── */}
+        {related.length > 0 ? (
+          <View style={styles.related}>
+            <View style={styles.relatedHead}>
+              <Text style={styles.relatedTitle}>More from the Journal</Text>
+              <View style={styles.relatedRule} />
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={width * 0.68 + spacing[3]}
+              decelerationRate="fast"
+              contentContainerStyle={styles.relatedRow}
+            >
+              {related.map((r) => {
+                const uri = r.cover_image ? resolveImageUrl(r.cover_image) ?? r.cover_image : null;
+                return (
+                  <Pressable
+                    key={r.id}
+                    style={({ pressed }) => [styles.relatedCard, { width: width * 0.68 }, pressed && { opacity: 0.9 }]}
+                    onPress={() => router.push({ pathname: "/(main)/blog/[slug]", params: { slug: r.slug } })}
+                  >
+                    <View style={styles.relatedImageWrap}>
+                      {uri ? (
+                        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+                      ) : (
+                        <View style={[StyleSheet.absoluteFill, styles.relatedPlaceholder]}>
+                          <Ionicons name="image-outline" size={24} color={colors.olive[400]} />
+                        </View>
+                      )}
+                    </View>
+                    {r.tags?.[0] ? <Text style={styles.relatedKicker}>{r.tags[0].toUpperCase()}</Text> : null}
+                    <Text style={styles.relatedCardTitle} numberOfLines={2}>{r.title}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        <Pressable
+          style={({ pressed }) => [styles.backToJournal, pressed && { opacity: 0.7 }]}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={15} color={colors.ink.DEFAULT} style={{ marginRight: 8 }} />
+          <Text style={styles.backToJournalText}>Back to Journal</Text>
+        </Pressable>
+      </Animated.ScrollView>
+
+      {topBar(post.title)}
+    </View>
   );
 }
 
@@ -284,294 +412,404 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.light.background,
   },
-  navBar: {
+
+  // Top bar
+  topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2.5],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(200, 200, 184, 0.35)",
-    backgroundColor: colors.light.background,
+    gap: spacing[3],
   },
-  navBackBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(250, 248, 241, 0.95)",
-    borderWidth: 1,
-    borderColor: "rgba(200, 200, 184, 0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
+  topBarTint: {
+    backgroundColor: "rgba(245, 244, 239, 0.78)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: HAIRLINE,
   },
-  navJournalBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(83, 94, 44, 0.08)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    gap: 5,
+  topBarTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 15.5,
+    color: colors.ink.DEFAULT,
+    letterSpacing: -0.2,
   },
-  navJournalText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    letterSpacing: 1.1,
-    color: colors.olive[800],
-    textTransform: "uppercase",
+  progressTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 2,
+    backgroundColor: colors.accent2.rust,
+    transformOrigin: "left",
   },
   navActions: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 8,
   },
-  navActionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(250, 248, 241, 0.95)",
-    borderWidth: 1,
-    borderColor: "rgba(200, 200, 184, 0.5)",
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
   },
-  content: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[12],
+  navBtnGlass: {
+    backgroundColor: "rgba(250, 248, 241, 0.72)",
+    borderRadius: 20,
   },
-  coverImageWrap: {
-    width: "100%",
-    height: 240,
-    borderRadius: radii["2xl"],
+  navBtnSolid: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(22, 23, 15, 0.14)",
+  },
+
+  // Hero
+  hero: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     overflow: "hidden",
-    marginBottom: spacing[4],
-    backgroundColor: colors.olive[50],
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    backgroundColor: colors.olive[900],
   },
-  coverImage: {
-    width: "100%",
-    height: "100%",
+  heroTopShade: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
   },
-  tagsRow: {
+  heroBottomShade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 120,
+  },
+
+  // Sheet
+  sheet: {
+    backgroundColor: colors.light.background,
+    borderTopLeftRadius: SHEET_OVERLAP,
+    borderTopRightRadius: SHEET_OVERLAP,
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[6],
+  },
+  sheetFlat: {
+    paddingTop: spacing[4],
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(22, 23, 15, 0.12)",
+    marginTop: -spacing[3],
+    marginBottom: spacing[5],
+  },
+  kickerRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: spacing[2.5],
+    alignItems: "center",
+    gap: 8,
+    marginBottom: spacing[3],
   },
-  tagPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    backgroundColor: "rgba(83, 94, 44, 0.09)",
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(83, 94, 44, 0.16)",
+  kickerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent2.rust,
   },
-  tagText: {
+  kicker: {
+    flex: 1,
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: colors.olive[800],
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    fontSize: 10.5,
+    letterSpacing: 2,
+    color: colors.accent2.rust,
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: 34,
+    lineHeight: 39,
+    letterSpacing: -0.9,
     color: colors.ink.DEFAULT,
-    letterSpacing: -0.2,
-    marginBottom: spacing[3.5],
   },
-  bylineCard: {
+  dek: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 18,
+    lineHeight: 27,
+    color: colors.ink.soft,
+    opacity: 0.85,
+    marginTop: spacing[4],
+  },
+  byline: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    marginTop: spacing[6],
+    paddingVertical: spacing[4],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(22, 23, 15, 0.18)",
   },
-  authorAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(83, 94, 44, 0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(83, 94, 44, 0.25)",
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.ink.DEFAULT,
     alignItems: "center",
     justifyContent: "center",
   },
-  authorAvatarText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.olive[900],
+  avatarText: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: colors.paper.cream,
   },
-  bylineMeta: {
-    flex: 1,
+  bylineLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.6,
+    color: colors.ink.mute,
+    marginBottom: 2,
   },
   authorName: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14.5,
     color: colors.ink.DEFAULT,
   },
-  subMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 2,
-    gap: 6,
+  bylineRight: {
+    alignItems: "flex-end",
+    gap: 5,
   },
   dateText: {
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
     color: colors.ink.mute,
   },
-  metaDot: {
-    fontSize: 12,
-    color: colors.ink.mute,
-  },
-  readTimeRow: {
+  readPill: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.olive[200],
   },
-  readTimeText: {
+  readPillText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    color: colors.olive[800],
+  },
+  body: {
+    marginTop: spacing[4],
+  },
+
+  // End matter
+  endMark: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: spacing[6],
+    marginBottom: spacing[8],
+  },
+  endRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(22, 23, 15, 0.25)",
+  },
+  endGlyph: {
+    fontSize: 13,
+    color: colors.accent2.rust,
+  },
+  filed: {
+    marginBottom: spacing[8],
+  },
+  filedLabel: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 11.5,
+    fontSize: 10,
+    letterSpacing: 1.8,
     color: colors.ink.mute,
+    marginBottom: spacing[3],
   },
-  hairlineDivider: {
-    height: 1,
-    backgroundColor: "rgba(200, 200, 184, 0.45)",
-    marginVertical: spacing[4],
+  tagsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  excerptContainer: {
-    borderLeftWidth: 2.5,
-    borderLeftColor: colors.accent2.rust,
-    paddingLeft: spacing[3.5],
-    marginBottom: spacing[5],
-  },
-  excerptText: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 16.5,
-    lineHeight: 26,
-    color: colors.ink.soft,
-  },
-  bodyWrapper: {
-    width: "100%",
-  },
-  footerSection: {
-    marginTop: spacing[8],
-    paddingTop: spacing[4],
-    borderTopWidth: 1,
-    borderTopColor: "rgba(200, 200, 184, 0.45)",
-  },
-  asterism: {
-    alignItems: "center",
-    marginVertical: spacing[5],
-  },
-  asterismText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    letterSpacing: 2,
-    color: colors.olive[600],
-    opacity: 0.75,
-  },
-  shareBanner: {
-    backgroundColor: "rgba(250, 248, 241, 0.95)",
+  tagPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: "rgba(200, 200, 184, 0.45)",
-    borderRadius: radii.xl,
-    padding: spacing[5],
-    alignItems: "center",
-    marginBottom: spacing[6],
+    borderColor: "rgba(22, 23, 15, 0.14)",
+  },
+  tagText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: colors.ink.soft,
+    textTransform: "capitalize",
+  },
+  shareCard: {
+    borderRadius: radii["3xl"],
+    overflow: "hidden",
+    padding: spacing[6],
+  },
+  shareKicker: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 2,
+    color: colors.accent2.ochre,
+    marginBottom: spacing[3],
   },
   shareTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: colors.ink.DEFAULT,
-    marginBottom: 4,
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 28,
+    lineHeight: 33,
+    letterSpacing: -0.5,
+    color: colors.paper.cream,
   },
   shareSubtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13.5,
-    color: colors.ink.mute,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: spacing[4],
+    fontSize: 14,
+    lineHeight: 21,
+    color: "rgba(250, 248, 241, 0.72)",
+    marginTop: spacing[2],
+    marginBottom: spacing[5],
   },
   shareActions: {
     flexDirection: "row",
     gap: 10,
-    width: "100%",
   },
-  sharePillBtn: {
+  shareBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.accent2.rust,
-    paddingVertical: 10,
+    paddingVertical: 13,
     borderRadius: radii.full,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2.5,
-    elevation: 2,
+    backgroundColor: colors.paper.cream,
   },
-  sharePillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: "#ffffff",
-  },
-  copyPillBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderWidth: 1,
-    borderColor: "rgba(200, 200, 184, 0.6)",
-    paddingVertical: 10,
-    borderRadius: radii.full,
-  },
-  copyPillText: {
-    fontFamily: fontFamilies.sans.semibold,
+  shareBtnText: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 13.5,
     color: colors.ink.DEFAULT,
   },
-  backToJournalBtn: {
+  copyBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
+    paddingVertical: 13,
     borderRadius: radii.full,
-    backgroundColor: "rgba(83, 94, 44, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(83, 94, 44, 0.15)",
+    borderColor: "rgba(250, 248, 241, 0.35)",
+  },
+  copyBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13.5,
+    color: colors.paper.cream,
+  },
+
+  // Related
+  related: {
+    marginTop: spacing[10],
+  },
+  relatedHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: spacing[5],
+    marginBottom: spacing[4],
+  },
+  relatedTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: colors.ink.DEFAULT,
+  },
+  relatedRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(22, 23, 15, 0.25)",
+  },
+  relatedRow: {
+    paddingHorizontal: spacing[5],
+    gap: spacing[3],
+  },
+  relatedCard: {},
+  relatedImageWrap: {
+    width: "100%",
+    aspectRatio: 4 / 3,
+    borderRadius: radii["2xl"],
+    overflow: "hidden",
+    backgroundColor: colors.olive[50],
+  },
+  relatedPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  relatedKicker: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    color: colors.accent2.rust,
+    marginTop: spacing[3],
+  },
+  relatedCardTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.3,
+    color: colors.ink.DEFAULT,
+    marginTop: spacing[1.5],
+  },
+  backToJournal: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginTop: spacing[10],
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[3],
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(22, 23, 15, 0.14)",
   },
   backToJournalText: {
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 13.5,
-    color: colors.olive[800],
+    color: colors.ink.DEFAULT,
   },
+
+  // Empty
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: spacing[6],
+    padding: spacing[8],
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: colors.olive[100],
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing[4],
   },
   emptyTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
+    fontSize: 24,
     color: colors.ink.DEFAULT,
     marginBottom: 8,
   },
@@ -581,19 +819,19 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
     textAlign: "center",
     lineHeight: 22,
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  returnBtn: {
+  primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.olive[700],
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    backgroundColor: colors.ink.DEFAULT,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
     borderRadius: radii.full,
   },
-  returnBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
+  primaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 14,
-    color: "#ffffff",
+    color: colors.paper.cream,
   },
 });

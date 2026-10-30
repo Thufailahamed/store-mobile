@@ -9,6 +9,15 @@ import {
   getFromWishlistRail,
   type ForYouResult,
 } from "@/lib/recommender";
+import {
+  getHomeShortcutsBackend,
+  getCouponOffersBackend,
+  listCouponsBackend,
+  type Coupon,
+  type CouponOffer,
+  type HomeShortcutOccasion,
+  type HomeShortcutPriceBand,
+} from "@/lib/api/backend";
 import type { Banner, BlogPost, Brand, Category, Product, Store } from "@/lib/types";
 
 export const HOME_QUERY_ROOT = ["home"] as const;
@@ -65,7 +74,7 @@ export async function fetchHomeCatalogPrimary(): Promise<HomeCatalogPrimary> {
     banners: heroBanners.ok ? heroBanners.data : [],
     saleProducts: dedupedSale,
     newArrivals: dedupedArrivals,
-    flashEndsAt: flash.ok ? flash.data.endsAt : undefined,
+    flashEndsAt: flash.ok ? flash.data.endsAt ?? undefined : undefined,
   };
 }
 
@@ -286,4 +295,84 @@ export function useHomeScreenData(
 /** Back-compat alias — returns the fast primary catalog query. */
 export function useHomeCatalog() {
   return useHomeCatalogPrimary();
+}
+
+/* ---------------------------------------------------------------------------
+ * Shop-by-price / shop-by-occasion shortcuts + live offers rail.
+ * Both live under HOME_QUERY_ROOT so pull-to-refresh re-fetches them.
+ * ------------------------------------------------------------------------- */
+
+export interface HomeShortcuts {
+  occasions: HomeShortcutOccasion[];
+  priceBands: HomeShortcutPriceBand[];
+  /** False when served from the static fallback (no counts/covers). */
+  live: boolean;
+}
+
+const FALLBACK_PRICE_BANDS: HomeShortcutPriceBand[] = [
+  { key: "under-5k", label: "Under 5K", min: 0, max: 5000, count: -1, cover: null },
+  { key: "5k-15k", label: "5K – 15K", min: 5000, max: 15000, count: -1, cover: null },
+  { key: "15k-50k", label: "15K – 50K", min: 15000, max: 50000, count: -1, cover: null },
+  { key: "50k-plus", label: "50K+", min: 50000, max: null, count: -1, cover: null },
+];
+
+export function useHomeShortcuts(enabled = true) {
+  return useQuery({
+    queryKey: [...HOME_QUERY_ROOT, "shortcuts"],
+    queryFn: async (): Promise<HomeShortcuts> => {
+      const res = await getHomeShortcutsBackend();
+      if (res.ok) return { ...res.data, live: true };
+      // Older backend without /shortcuts: price bands still work (the
+      // grid refines by price client-side too); occasions can't be
+      // resolved without the server, so they're hidden.
+      return { occasions: [], priceBands: FALLBACK_PRICE_BANDS, live: false };
+    },
+    staleTime: 10 * 60_000,
+    enabled,
+  });
+}
+
+/** Normalises a raw /api/coupons row into the offers shape (fallback path). */
+function couponToOffer(c: Coupon & Record<string, unknown>): CouponOffer {
+  return {
+    id: c.id,
+    code: c.code,
+    type: (c.type ?? c.discount_type ?? "fixed") as string,
+    scope: (c.scope as string) ?? "platform",
+    value: Number(c.value ?? c.discount_value ?? 0),
+    min_order_value: Number(c.min_order_value ?? c.min_order_amount ?? 0),
+    max_discount: c.max_discount != null ? Number(c.max_discount) : null,
+    expires_at: c.expires_at ?? null,
+    owner_name: null,
+    owner_slug: null,
+    owner_kind: c.store_id ? "store" : c.brand_id ? "brand" : null,
+  };
+}
+
+export function useHomeOffers(enabled = true) {
+  return useQuery({
+    queryKey: [...HOME_QUERY_ROOT, "offers"],
+    queryFn: async (): Promise<CouponOffer[]> => {
+      const res = await getCouponOffersBackend();
+      if (res.ok) return res.data.offers;
+      // Older backend: filter the raw active list down to redeemable-now.
+      const raw = await listCouponsBackend();
+      if (!raw.ok) return [];
+      const now = Date.now();
+      return (raw.data.coupons as Array<Coupon & Record<string, unknown>>)
+        .filter((c) => {
+          const starts = c.starts_at ? Date.parse(String(c.starts_at)) : 0;
+          const ends = c.expires_at ? Date.parse(c.expires_at) : Infinity;
+          const limit = c.usage_limit ?? c.max_uses;
+          const exhausted = limit != null && (c.used_count ?? 0) >= limit;
+          // Only admin-curated coupons belong on the home rail — the flag
+          // is absent on rows from older backends, which correctly hides them.
+          return c.show_on_home === true && c.is_active && starts <= now && ends > now && !exhausted;
+        })
+        .map(couponToOffer)
+        .slice(0, 12);
+    },
+    staleTime: 2 * 60_000,
+    enabled,
+  });
 }

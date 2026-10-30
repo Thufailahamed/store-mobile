@@ -5,10 +5,9 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  Alert,
   StyleSheet,
-  TextInput,
 } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
@@ -19,11 +18,18 @@ import {
   approveProduct,
   getAdminAuditLog,
   getAdminStats,
+  getAdminProducts,
   type AuditEntry,
 } from "@/lib/api";
-import { Card, Skeleton, ConfirmDialog, useToast } from "@/components/ui";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import type { Product } from "@/lib/types";
+import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
+import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import { Skeleton, ConfirmDialog, useToast } from "@/components/ui";
+import { colors, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { formatPrice, resolveImageUrl } from "@/lib/utils";
+import { INK, LIME, HAIRLINE, cardSurface, Chip, SearchBar, Empty, SectionCount, kit } from "@/components/admin/catalog-kit";
 
 function formatRelative(s: string) {
   const d = new Date(s).getTime();
@@ -107,6 +113,21 @@ export default function ApprovalsScreen() {
     refetchInterval: 30_000,
   });
 
+  // The pending-approvals payload is name-only; pull image/price/store for
+  // pending products so queue cards can show what's actually being reviewed.
+  const pendingProductsQ = useQuery({
+    queryKey: ["admin-approvals-products"],
+    queryFn: async () => {
+      const r = await getAdminProducts({ status: "pending", limit: 100 });
+      return r.ok ? r.data.products : [];
+    },
+    refetchInterval: 30_000,
+  });
+  const productDetail = useMemo(
+    () => new Map((pendingProductsQ.data ?? []).map((p) => [p.id, p] as const)),
+    [pendingProductsQ.data],
+  );
+
   const storesCount = q.data?.stores?.length ?? 0;
   const brandsCount = q.data?.brands?.length ?? 0;
   const productsCount = q.data?.products?.length ?? 0;
@@ -175,6 +196,7 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["admin-approvals-audit"] });
+      qc.invalidateQueries({ queryKey: ["admin-approvals-products"] });
     },
   });
 
@@ -189,6 +211,7 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["admin-approvals-audit"] });
+      qc.invalidateQueries({ queryKey: ["admin-approvals-products"] });
     },
   });
 
@@ -203,6 +226,7 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["admin-approvals-audit"] });
+      qc.invalidateQueries({ queryKey: ["admin-approvals-products"] });
     },
   });
 
@@ -217,6 +241,7 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["admin-approvals-audit"] });
+      qc.invalidateQueries({ queryKey: ["admin-approvals-products"] });
     },
   });
 
@@ -231,6 +256,7 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["admin-approvals-audit"] });
+      qc.invalidateQueries({ queryKey: ["admin-approvals-products"] });
     },
   });
 
@@ -245,6 +271,7 @@ export default function ApprovalsScreen() {
       qc.invalidateQueries({ queryKey: ["admin-approvals"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
       qc.invalidateQueries({ queryKey: ["admin-approvals-audit"] });
+      qc.invalidateQueries({ queryKey: ["admin-approvals-products"] });
     },
   });
 
@@ -275,488 +302,326 @@ export default function ApprovalsScreen() {
     q.refetch();
     statsQ.refetch();
     auditQ.refetch();
+    pendingProductsQ.refetch();
   };
 
   const isRefreshing = q.isFetching || statsQ.isFetching || auditQ.isFetching;
+
+  const oldestPending = useMemo(() => {
+    const all = [...(q.data?.stores ?? []), ...(q.data?.brands ?? []), ...(q.data?.products ?? [])];
+    if (all.length === 0) return null;
+    return all.reduce((min, r) => (new Date(r.created_at) < new Date(min.created_at) ? r : min)).created_at;
+  }, [q.data]);
+  const overdueCount = useMemo(() => {
+    const all = [...(q.data?.stores ?? []), ...(q.data?.brands ?? []), ...(q.data?.products ?? [])];
+    return all.filter((r) => hoursSince(r.created_at) >= SLA_HOURS).length;
+  }, [q.data]);
+
+  const modes: { key: ModeTab; label: string; icon: keyof typeof Ionicons.glyphMap; count?: number }[] = [
+    { key: "queue", label: "Queue", icon: "file-tray-full-outline", count: totalCount },
+    { key: "history", label: "Audit Log", icon: "time-outline" },
+    { key: "guidelines", label: "Standards", icon: "document-text-outline" },
+  ];
+
 
   return (
     <View style={styles.container}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} tintColor={colors.light.primary} />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} tintColor={colors.olive[800]} />}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-      {/* ── 1. Header Section ───────────────────────────────────── */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>MODERATION & GOVERNANCE</Text>
-          <Text style={styles.title}>
-            Approvals <Text style={styles.titleAccent}>Center</Text>
-          </Text>
+        {/* ── Masthead ── */}
+        <View style={styles.header}>
+          <View style={{ flex: 1 }}>
+            <View style={styles.eyebrowRow}>
+              <View style={styles.eyebrowDot} />
+              <Text style={styles.eyebrow}>MODERATION & GOVERNANCE</Text>
+            </View>
+            <Text style={styles.title}>Approvals</Text>
+            <Text style={styles.subtitle}>Every store, label and listing passes through here before shoppers see it.</Text>
+          </View>
+          <Pressable
+            onPress={refreshAll}
+            style={({ pressed }) => [styles.roundBtn, pressed && kit.pressed]}
+            accessibilityLabel="Refresh queue"
+          >
+            <Ionicons name="refresh-outline" size={18} color={INK} />
+          </Pressable>
         </View>
-        <View style={[styles.countBadge, totalCount > 0 ? styles.countBadgePending : styles.countBadgeNominal]}>
-          <View style={[styles.statusDot, totalCount > 0 ? styles.statusDotPending : styles.statusDotNominal]} />
-          <Text style={[styles.countText, totalCount > 0 ? styles.countTextPending : styles.countTextNominal]}>
-            {totalCount > 0 ? `${totalCount} pending` : "All settled"}
-          </Text>
-        </View>
-      </View>
 
-      {/* Target SLA Indicator */}
-      <View style={styles.slaStrip}>
-        <View style={styles.slaItem}>
-          <Ionicons name="flash-outline" size={13} color={colors.olive[700]} />
-          <Text style={styles.slaText}>SLA Target: &lt; 24h Review</Text>
-        </View>
-        <View style={styles.slaDivider} />
-        <View style={styles.slaItem}>
-          <Ionicons name="shield-checkmark-outline" size={13} color={colors.olive[700]} />
-          <Text style={styles.slaText}>KYC &amp; Vetting Active</Text>
-        </View>
-      </View>
+        {/* ── Hero ── */}
+        <Animated.View entering={FadeInDown.duration(500)} style={styles.heroShell}>
+          <LinearGradient colors={["#2a2c1f", "#14150f"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Svg width="100%" height="100%">
+                <Defs>
+                  <RadialGradient id="apGlow" cx="95%" cy="0%" r="70%">
+                    <Stop offset="0" stopColor={LIME} stopOpacity="0.22" />
+                    <Stop offset="1" stopColor={LIME} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#apGlow)" />
+                {[70, 115, 160, 205].map((r) => (
+                  <Circle key={r} cx="100%" cy="0" r={r} stroke="rgba(200,224,138,0.07)" strokeWidth={1} fill="none" />
+                ))}
+              </Svg>
+            </View>
 
-      {/* ── 2. Segmented Mode Switcher ──────────────────────────── */}
-      <View style={styles.segmentedContainer}>
-        <Pressable
-          onPress={() => setMode("queue")}
-          style={[styles.segmentBtn, mode === "queue" && styles.segmentBtnActive]}
-        >
-          <Ionicons
-            name="file-tray-full-outline"
-            size={14}
-            color={mode === "queue" ? colors.light.primary : colors.light.mutedForeground}
-          />
-          <Text style={[styles.segmentText, mode === "queue" && styles.segmentTextActive]}>
-            Queue {totalCount > 0 ? `(${totalCount})` : ""}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setMode("history")}
-          style={[styles.segmentBtn, mode === "history" && styles.segmentBtnActive]}
-        >
-          <Ionicons
-            name="time-outline"
-            size={14}
-            color={mode === "history" ? colors.light.primary : colors.light.mutedForeground}
-          />
-          <Text style={[styles.segmentText, mode === "history" && styles.segmentTextActive]}>
-            Audit Log
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setMode("guidelines")}
-          style={[styles.segmentBtn, mode === "guidelines" && styles.segmentBtnActive]}
-        >
-          <Ionicons
-            name="document-text-outline"
-            size={14}
-            color={mode === "guidelines" ? colors.light.primary : colors.light.mutedForeground}
-          />
-          <Text style={[styles.segmentText, mode === "guidelines" && styles.segmentTextActive]}>
-            Standards
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* ── 3. Mode Content Rendering ───────────────────────────── */}
-      {mode === "queue" ? (
-        <>
-          {totalCount > 0 ? (
-            <>
-              {/* Search Bar */}
-              <View style={styles.searchWrap}>
-                <Ionicons name="search-outline" size={18} color={colors.light.mutedForeground} style={styles.searchIcon} />
-                <TextInput
-                  style={styles.search}
-                  placeholder="Search by name, brand, or store…"
-                  placeholderTextColor={colors.light.mutedForeground}
-                  value={search}
-                  onChangeText={setSearch}
-                  returnKeyType="search"
+            <View style={styles.heroTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroEyebrow}>AWAITING REVIEW</Text>
+                <View style={styles.heroValueRow}>
+                  <Text style={styles.heroValue}>{q.isLoading ? "—" : totalCount}</Text>
+                  <Text style={styles.heroValueUnit}>{totalCount === 1 ? "submission" : "submissions"}</Text>
+                </View>
+                <Text style={styles.heroSub} numberOfLines={1}>
+                  {oldestPending ? `Oldest waiting ${formatRelative(oldestPending).toLowerCase()}` : "Queue fully settled"}
+                </Text>
+              </View>
+              <View style={[styles.heroMedal, overdueCount > 0 && styles.heroMedalAlert]}>
+                <Ionicons
+                  name={totalCount > 0 ? "hourglass-outline" : "shield-checkmark"}
+                  size={22}
+                  color={overdueCount > 0 ? "#f3b9a4" : LIME}
                 />
-                {search ? (
-                  <Pressable onPress={() => setSearch("")} hitSlop={10} style={styles.clearBtn}>
-                    <Ionicons name="close-circle" size={18} color={colors.light.mutedForeground} />
-                  </Pressable>
+                {overdueCount > 0 ? (
+                  <View style={styles.heroMedalBadge}>
+                    <Text style={styles.heroMedalBadgeText}>{overdueCount}</Text>
+                  </View>
                 ) : null}
               </View>
+            </View>
 
-              {/* Filter Chips with live counts */}
-              <View style={styles.filtersContainer}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-                  {filters.map((f) => {
-                    const isActive = filter === f.key;
-                    return (
-                      <Pressable
-                        key={f.key}
-                        onPress={() => setFilter(f.key)}
-                        style={[styles.chip, isActive && styles.chipActive]}
-                      >
-                        <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{f.label}</Text>
-                        <View style={[styles.chipCountBadge, isActive && styles.chipCountBadgeActive]}>
-                          <Text style={[styles.chipCountText, isActive && styles.chipCountTextActive]}>{f.count}</Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+            {/* Mix bar */}
+            {totalCount > 0 && (
+              <View style={styles.mixBar}>
+                {[
+                  [storesCount, KIND.store.bar],
+                  [brandsCount, KIND.brand.bar],
+                  [productsCount, KIND.product.bar],
+                ].map(([n, c], i) =>
+                  (n as number) > 0 ? <View key={i} style={{ flex: n as number, backgroundColor: c as string }} /> : null,
+                )}
               </View>
+            )}
 
-              {/* Pending List */}
-              {q.isLoading ? (
-                <View style={styles.list}>
-                  {[1, 2, 3].map((i) => (
-                    <Card key={i} style={styles.rowCard}>
-                      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-                        <Skeleton width={36} height={36} style={{ borderRadius: 10 }} />
-                        <View style={{ flex: 1, gap: 6 }}>
-                          <Skeleton width="60%" height={14} />
-                          <Skeleton width="40%" height={10} />
-                        </View>
+            <View style={styles.heroStats}>
+              <HeroStat kind="store" label="STORES" value={storesCount} active={filter === "store"} onPress={() => { setMode("queue"); setFilter(filter === "store" ? "all" : "store"); }} />
+              <HeroStat kind="brand" label="BRANDS" value={brandsCount} active={filter === "brand"} onPress={() => { setMode("queue"); setFilter(filter === "brand" ? "all" : "brand"); }} />
+              <HeroStat kind="product" label="PRODUCTS" value={productsCount} active={filter === "product"} onPress={() => { setMode("queue"); setFilter(filter === "product" ? "all" : "product"); }} />
+            </View>
+
+            <View style={styles.heroChips}>
+              <View style={styles.heroChip}>
+                <Ionicons name="flash" size={11} color={LIME} />
+                <Text style={styles.heroChipText}>SLA &lt; 24H</Text>
+              </View>
+              <View style={styles.heroChip}>
+                <Ionicons name="shield-checkmark" size={11} color={LIME} />
+                <Text style={styles.heroChipText}>KYC ACTIVE</Text>
+              </View>
+              {overdueCount > 0 ? (
+                <View style={[styles.heroChip, styles.heroChipAlert]}>
+                  <Ionicons name="alert-circle" size={11} color="#f3b9a4" />
+                  <Text style={[styles.heroChipText, { color: "#f3b9a4" }]}>{overdueCount} OVERDUE</Text>
+                </View>
+              ) : null}
+            </View>
+          </LinearGradient>
+        </Animated.View>
+
+        <View style={styles.body}>
+          {/* ── Mode switch ── */}
+          <View style={styles.segment}>
+            {modes.map((m) => {
+              const on = mode === m.key;
+              return (
+                <Pressable
+                  key={m.key}
+                  onPress={() => setMode(m.key)}
+                  style={[styles.segmentItem, on && styles.segmentItemOn]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                >
+                  <View style={styles.segmentIconRow}>
+                    <Ionicons name={m.icon} size={16} color={on ? LIME : colors.ink.mute} />
+                    {m.count ? (
+                      <View style={[styles.segmentCount, on && styles.segmentCountOn]}>
+                        <Text style={[styles.segmentCountText, on && { color: INK }]}>{m.count}</Text>
                       </View>
-                      <Skeleton width="100%" height={36} style={{ marginTop: 14, borderRadius: radii.md }} />
-                    </Card>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
+                    {m.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {mode === "queue" ? (
+            totalCount > 0 || q.isLoading ? (
+              <>
+                <SearchBar value={search} onChange={setSearch} placeholder="Search by name, brand, or store…" />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                  {filters.map((f) => (
+                    <Chip
+                      key={f.key}
+                      label={f.label}
+                      count={f.count}
+                      dot={f.key !== "all" ? KIND[f.key as Kind].bar : undefined}
+                      active={filter === f.key}
+                      onPress={() => setFilter(f.key)}
+                    />
                   ))}
+                </ScrollView>
+
+                {q.isLoading ? (
+                  <View style={{ gap: 12 }}>
+                    {[0, 1, 2].map((i) => (
+                      <Skeleton key={i} width="100%" height={168} style={{ borderRadius: 24 }} />
+                    ))}
+                  </View>
+                ) : rows.length === 0 ? (
+                  <Empty
+                    icon="search-outline"
+                    title="No matches"
+                    body={search ? `Nothing pending matches “${search}”.` : "Nothing pending in this category."}
+                    onReset={search || filter !== "all" ? () => { setSearch(""); setFilter("all"); } : undefined}
+                  />
+                ) : (
+                  <>
+                    <SectionCount>
+                      {rows.length} PENDING · OLDEST FIRST
+                    </SectionCount>
+                    {[...rows]
+                      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                      .map((row, i) => (
+                        <QueueCard
+                          key={`${row.kind}-${row.id}`}
+                          row={row}
+                          index={i}
+                          detail={row.kind === "product" ? productDetail.get(row.id) : undefined}
+                          onInspect={() => router.push(row.route as any)}
+                          onApprove={() => handle(row, "approve")}
+                          onReject={() => handle(row, "reject")}
+                        />
+                      ))}
+                  </>
+                )}
+              </>
+            ) : (
+              /* Zero-inbox */
+              <>
+                <View style={[styles.card, styles.zeroCard]}>
+                  <View style={styles.zeroTop}>
+                    <View style={styles.livePill}>
+                      <View style={styles.liveDot} />
+                      <Text style={styles.livePillText}>QUEUE CLEAR</Text>
+                    </View>
+                    <Pressable onPress={refreshAll} style={({ pressed }) => [styles.syncBtn, pressed && kit.pressed]}>
+                      <Ionicons name="sync-outline" size={13} color={INK} />
+                      <Text style={styles.syncText}>Sync</Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.medal}>
+                    <Ionicons name="shield-checkmark" size={28} color={LIME} />
+                  </View>
+                  <Text style={styles.zeroTitle}>
+                    All <Text style={styles.zeroTitleItalic}>settled</Text>
+                  </Text>
+                  <Text style={styles.zeroSub}>
+                    Every seller application, brand certification and catalogue submission has been reviewed.
+                  </Text>
+                  <View style={styles.zeroStats}>
+                    <ZeroStat
+                      value={statsQ.data?.totalStores ? statsQ.data.totalStores - (statsQ.data.pendingStores ?? 0) : 0}
+                      label="LIVE STORES"
+                    />
+                    <View style={styles.zeroDivider} />
+                    <ZeroStat value={statsQ.data?.totalStores ?? 0} label="ALL STORES" />
+                    <View style={styles.zeroDivider} />
+                    <ZeroStat value={statsQ.data?.totalProducts ?? 0} label="SKUS" />
+                  </View>
                 </View>
-              ) : rows.length === 0 ? (
-                <View style={styles.emptyFilteredWrap}>
-                  <Ionicons name="search-outline" size={32} color={colors.light.mutedForeground} />
-                  <Text style={styles.emptyFilteredTitle}>No Matching Submissions</Text>
-                  <Text style={styles.emptyFilteredSub}>No pending items match “{search}”. Try clearing your search.</Text>
+
+                <View style={[styles.card, styles.sectionCard]}>
+                  <SectionHead index="01" eyebrow="COMPLIANCE LOG" title="Recent decisions" linkLabel="All" onLink={() => setMode("history")} />
+                  {(auditQ.data ?? []).length === 0 ? (
+                    <Empty icon="time-outline" title="No decisions yet" body="Moderation actions will appear here." />
+                  ) : (
+                    <Timeline entries={(auditQ.data ?? []).slice(0, 5)} />
+                  )}
                 </View>
+
+                <SectionHead index="02" eyebrow="DIRECTORIES" title="Approved assets" />
+                <View style={styles.tileGrid}>
+                  <Tile icon="storefront-outline" title="Stores" sub="Approved boutiques" onPress={() => router.push("/(admin)/products" as any)} />
+                  <Tile icon="cube-outline" title="Catalogue" sub="Live listings" onPress={() => router.push("/(admin)/catalogue" as any)} />
+                  <Tile icon="wallet-outline" title="Commissions" sub="Seller tiers" onPress={() => router.push("/(admin)/commissions" as any)} />
+                  <Tile icon="document-text-outline" title="Standards" sub="Vetting rules" onPress={() => setMode("guidelines")} />
+                </View>
+              </>
+            )
+          ) : mode === "history" ? (
+            <>
+              <SearchBar value={search} onChange={setSearch} placeholder="Search by action or admin…" />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                <Chip label="All actions" active={historyFilter === "all"} onPress={() => setHistoryFilter("all")} />
+                <Chip label="Approvals" dot="#22a35a" active={historyFilter === "approved"} onPress={() => setHistoryFilter("approved")} />
+                <Chip label="Rejections" dot="#e05252" active={historyFilter === "rejected"} onPress={() => setHistoryFilter("rejected")} />
+              </ScrollView>
+              {auditEntries.length === 0 ? (
+                <Empty icon="time-outline" title="No matching events" body="No recorded decisions match your filters." />
               ) : (
-                <View style={styles.list}>
-                  {rows.map((row) => (
-                    <Card key={`${row.kind}-${row.id}`} style={styles.rowCard}>
-                      <View style={styles.rowHead}>
-                        <View style={styles.rowHeadLeft}>
-                          <View style={[styles.kindIcon, { backgroundColor: kindBg(row.kind) }]}>
-                            <Ionicons name={row.icon} size={16} color={kindFg(row.kind)} />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.rowName} numberOfLines={1}>
-                              {row.name}
-                            </Text>
-                            <Text style={styles.rowMeta}>
-                              {row.kindLabel} · Submitted {formatRelative(row.created_at)}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={[styles.kindPill, { backgroundColor: kindBg(row.kind) }]}>
-                          <Text style={[styles.kindPillText, { color: kindFg(row.kind) }]}>{row.kindLabel}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.rowActions}>
-                        <Pressable onPress={() => handle(row, "approve")} style={[styles.btn, styles.btnApprove]}>
-                          <Ionicons name="checkmark" size={14} color="#fff" />
-                          <Text style={styles.btnApproveText}>Approve</Text>
-                        </Pressable>
-                        <Pressable onPress={() => handle(row, "reject")} style={[styles.btn, styles.btnReject]}>
-                          <Ionicons name="close" size={14} color={colors.light.destructive} />
-                          <Text style={styles.btnRejectText}>Reject</Text>
-                        </Pressable>
-                        <Pressable onPress={() => router.push(row.route as any)} style={[styles.btn, styles.btnView]}>
-                          <Ionicons name="open-outline" size={14} color={colors.light.foreground} />
-                          <Text style={styles.btnViewText}>Inspect</Text>
-                        </Pressable>
-                      </View>
-                    </Card>
-                  ))}
-                </View>
+                <>
+                  <SectionCount>{auditEntries.length} EVENTS</SectionCount>
+                  <View style={[styles.card, styles.sectionCard]}>
+                    <Timeline entries={auditEntries} detailed />
+                  </View>
+                </>
               )}
             </>
           ) : (
-            /* Zero Inbox Luxury Experience */
-            <View style={styles.zeroStateContainer}>
-              {/* Hero Status Card */}
-              <Card style={styles.heroCard}>
-                <View style={styles.heroBadgeRow}>
-                  <View style={styles.heroPulseBadge}>
-                    <View style={styles.pulseDot} />
-                    <Text style={styles.heroPulseText}>QUEUE NOMINAL</Text>
-                  </View>
-                  <Pressable onPress={refreshAll} style={styles.heroRefreshBtn}>
-                    <Ionicons name="sync-outline" size={13} color={colors.olive[800]} />
-                    <Text style={styles.heroRefreshText}>Sync</Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.heroIconCircle}>
-                  <Ionicons name="shield-checkmark" size={32} color={colors.olive[700]} />
-                </View>
-
-                <Text style={styles.heroTitle}>Queue Fully Settled</Text>
-                <Text style={styles.heroSub}>
-                  All incoming seller applications, brand certifications, and catalog submissions have been reviewed and processed.
-                </Text>
-
-                {/* Telemetry Strip */}
-                <View style={styles.telemetryStrip}>
-                  <View style={styles.telemetryCol}>
-                    <Text style={styles.telemetryNum}>
-                      {statsQ.data?.totalStores ? statsQ.data.totalStores - (statsQ.data.pendingStores ?? 0) : 0}
-                    </Text>
-                    <Text style={styles.telemetryLbl}>Live Ateliers</Text>
-                  </View>
-                  <View style={styles.telemetryDivider} />
-                  <View style={styles.telemetryCol}>
-                    <Text style={styles.telemetryNum}>{statsQ.data?.totalStores ?? 0}</Text>
-                    <Text style={styles.telemetryLbl}>Total Stores</Text>
-                  </View>
-                  <View style={styles.telemetryDivider} />
-                  <View style={styles.telemetryCol}>
-                    <Text style={styles.telemetryNum}>{statsQ.data?.totalProducts ?? 0}</Text>
-                    <Text style={styles.telemetryLbl}>Live SKUs</Text>
-                  </View>
-                </View>
-              </Card>
-
-              {/* Recent Decisions Audit Preview */}
-              <Card style={styles.sectionCard}>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <Text style={styles.sectionEyebrow}>COMPLIANCE LOG</Text>
-                    <Text style={styles.sectionTitle}>Recent Decisions</Text>
-                  </View>
-                  <Pressable onPress={() => setMode("history")} hitSlop={10}>
-                    <Text style={styles.headerLink}>View all →</Text>
-                  </Pressable>
-                </View>
-
-                {(auditQ.data ?? []).length === 0 ? (
-                  <View style={styles.emptyLogWrap}>
-                    <Ionicons name="time-outline" size={24} color={colors.light.mutedForeground} />
-                    <Text style={styles.emptyLogText}>No recent moderation actions recorded.</Text>
-                  </View>
-                ) : (
-                  (auditQ.data ?? []).slice(0, 5).map((e: AuditEntry) => (
-                    <View key={e.id} style={styles.decisionRow}>
-                      <View style={[styles.decisionDot, { backgroundColor: auditActionColor(e.action) }]} />
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={styles.decisionActor}>{e.actor_name ?? "Administrator"}</Text>
-                        <Text style={styles.decisionAction}>{humanize(e.action)}</Text>
-                      </View>
-                      <Text style={styles.decisionTime}>{formatRelative(e.created_at)}</Text>
-                    </View>
-                  ))
-                )}
-              </Card>
-
-              {/* Quick Directory Shortcuts */}
-              <Card style={styles.sectionCard}>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <Text style={styles.sectionEyebrow}>DIRECTORIES</Text>
-                    <Text style={styles.sectionTitle}>Manage Approved Assets</Text>
-                  </View>
-                </View>
-
-                <View style={styles.shortcutsGrid}>
-                  <Pressable
-                    onPress={() => router.push("/(admin)/catalogue" as any)}
-                    style={styles.shortcutTile}
-                  >
-                    <View style={[styles.shortcutIcon, { backgroundColor: "#dde4d6" }]}>
-                      <Ionicons name="storefront-outline" size={16} color={colors.olive[800]} />
-                    </View>
-                    <Text style={styles.shortcutTitle}>Active Ateliers</Text>
-                    <Text style={styles.shortcutSub}>Review approved stores</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => router.push("/(admin)/catalogue" as any)}
-                    style={styles.shortcutTile}
-                  >
-                    <View style={[styles.shortcutIcon, { backgroundColor: "#fdf3d7" }]}>
-                      <Ionicons name="cube-outline" size={16} color="#7a5b1a" />
-                    </View>
-                    <Text style={styles.shortcutTitle}>Catalog Items</Text>
-                    <Text style={styles.shortcutSub}>Browse live listings</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => router.push("/(admin)/commissions" as any)}
-                    style={styles.shortcutTile}
-                  >
-                    <View style={[styles.shortcutIcon, { backgroundColor: "#e6e6d0" }]}>
-                      <Ionicons name="wallet-outline" size={16} color={colors.olive[700]} />
-                    </View>
-                    <Text style={styles.shortcutTitle}>Commissions</Text>
-                    <Text style={styles.shortcutSub}>Manage seller tiers</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => setMode("guidelines")}
-                    style={styles.shortcutTile}
-                  >
-                    <View style={[styles.shortcutIcon, { backgroundColor: "#efece2" }]}>
-                      <Ionicons name="shield-checkmark-outline" size={16} color="#5c5b52" />
-                    </View>
-                    <Text style={styles.shortcutTitle}>Vetting Rules</Text>
-                    <Text style={styles.shortcutSub}>SOP &amp; compliance</Text>
-                  </Pressable>
-                </View>
-              </Card>
-            </View>
-          )}
-        </>
-      ) : mode === "history" ? (
-        /* Audit & History Mode */
-        <View style={styles.historyContainer}>
-          <View style={styles.searchWrap}>
-            <Ionicons name="search-outline" size={18} color={colors.light.mutedForeground} style={styles.searchIcon} />
-            <TextInput
-              style={styles.search}
-              placeholder="Search audit trail by action or admin…"
-              placeholderTextColor={colors.light.mutedForeground}
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-            />
-            {search ? (
-              <Pressable onPress={() => setSearch("")} hitSlop={10} style={styles.clearBtn}>
-                <Ionicons name="close-circle" size={18} color={colors.light.mutedForeground} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          <View style={styles.filtersContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-              <Pressable
-                onPress={() => setHistoryFilter("all")}
-                style={[styles.chip, historyFilter === "all" && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, historyFilter === "all" && styles.chipTextActive]}>All Actions</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setHistoryFilter("approved")}
-                style={[styles.chip, historyFilter === "approved" && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, historyFilter === "approved" && styles.chipTextActive]}>Approvals</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setHistoryFilter("rejected")}
-                style={[styles.chip, historyFilter === "rejected" && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, historyFilter === "rejected" && styles.chipTextActive]}>Rejections</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-
-          {auditEntries.length === 0 ? (
-            <View style={styles.emptyFilteredWrap}>
-              <Ionicons name="time-outline" size={32} color={colors.light.mutedForeground} />
-              <Text style={styles.emptyFilteredTitle}>No Matching Audit Events</Text>
-              <Text style={styles.emptyFilteredSub}>No recorded decisions match your query filter.</Text>
-            </View>
-          ) : (
-            <View style={styles.list}>
-              {auditEntries.map((e: AuditEntry) => (
-                <Card key={e.id} style={styles.historyCard}>
-                  <View style={styles.historyHead}>
-                    <View style={styles.historyBadgeWrap}>
-                      <View style={[styles.historyDot, { backgroundColor: auditActionColor(e.action) }]} />
-                      <Text style={[styles.historyActionText, { color: auditActionColor(e.action) }]}>
-                        {humanize(e.action)}
-                      </Text>
-                    </View>
-                    <Text style={styles.historyDate}>{formatRelative(e.created_at)}</Text>
-                  </View>
-                  <Text style={styles.historyActor}>
-                    Moderated by <Text style={styles.historyActorBold}>{e.actor_name ?? "Administrator"}</Text>
-                  </Text>
-                  {e.target_type ? (
-                    <Text style={styles.historyTarget}>
-                      Target: {e.target_type} {e.target_id ? `(#${e.target_id.slice(0, 8)})` : ""}
-                    </Text>
-                  ) : null}
-                </Card>
-              ))}
-            </View>
+            <>
+              <GuidelineCard
+                index="01"
+                icon="storefront-outline"
+                title="Store criteria"
+                sub="Mandatory standards for merchant activation"
+                bullets={[
+                  "Registered business entity or verified artisan credentials.",
+                  "High-resolution editorial hero banners and a clear logo asset.",
+                  "Return and fulfilment policy adherence (< 48h dispatch).",
+                ]}
+              />
+              <GuidelineCard
+                index="02"
+                icon="cube-outline"
+                title="Listing quality"
+                sub="Product curation rules"
+                bullets={[
+                  "Minimum 3 high-resolution studio photos on clean backgrounds.",
+                  "Accurate material, sizing and origin disclosure.",
+                  "Pricing within verified retail market ranges.",
+                ]}
+              />
+              <GuidelineCard
+                index="03"
+                icon="timer-outline"
+                title="Service level"
+                sub="Turnaround and rejection process"
+                bullets={[
+                  "Review target: 24 hours from submission.",
+                  "Every rejection gives a specific, actionable reason.",
+                ]}
+              />
+            </>
           )}
         </View>
-      ) : (
-        /* Vetting Guidelines Mode */
-        <View style={styles.guidelinesContainer}>
-          <Card style={styles.guidelineCard}>
-            <View style={styles.guidelineHead}>
-              <View style={[styles.guidelineIcon, { backgroundColor: "#dde4d6" }]}>
-                <Ionicons name="storefront-outline" size={18} color={colors.olive[800]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.guidelineTitle}>Atelier &amp; Boutique Criteria</Text>
-                <Text style={styles.guidelineSub}>Mandatory standards for merchant activation</Text>
-              </View>
-            </View>
-            <View style={styles.bulletList}>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>Registered business entity or verified artisan credentials.</Text>
-              </View>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>High-resolution editorial hero banners and clear logo asset.</Text>
-              </View>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>Clear return and fulfillment policy adherence (&lt; 48h dispatch).</Text>
-              </View>
-            </View>
-          </Card>
-
-          <Card style={styles.guidelineCard}>
-            <View style={styles.guidelineHead}>
-              <View style={[styles.guidelineIcon, { backgroundColor: "#fdf3d7" }]}>
-                <Ionicons name="cube-outline" size={18} color="#7a5b1a" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.guidelineTitle}>Catalog &amp; Product Quality</Text>
-                <Text style={styles.guidelineSub}>Product listing curation rules</Text>
-              </View>
-            </View>
-            <View style={styles.bulletList}>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>Minimum 3 high-resolution studio photos on clean backgrounds.</Text>
-              </View>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>Accurate material composition, sizing specs, and origin disclosure.</Text>
-              </View>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>Authentic pricing conforming to verified retail market ranges.</Text>
-              </View>
-            </View>
-          </Card>
-
-          <Card style={styles.guidelineCard}>
-            <View style={styles.guidelineHead}>
-              <View style={[styles.guidelineIcon, { backgroundColor: "#e6e6d0" }]}>
-                <Ionicons name="timer-outline" size={18} color={colors.olive[700]} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.guidelineTitle}>Service Level &amp; Escalation</Text>
-                <Text style={styles.guidelineSub}>Turnaround commitments &amp; rejection process</Text>
-              </View>
-            </View>
-            <View style={styles.bulletList}>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>Review target SLA: 24 hours from initial submission timestamp.</Text>
-              </View>
-              <View style={styles.bulletRow}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.olive[700]} />
-                <Text style={styles.bulletText}>All rejections must provide specific, actionable remediation reasons.</Text>
-              </View>
-            </View>
-          </Card>
-        </View>
-      )}
       </ScrollView>
 
       <ConfirmDialog
@@ -774,610 +639,462 @@ export default function ApprovalsScreen() {
   );
 }
 
-function kindBg(k: string) {
-  if (k === "store") return "#dde4d6";
-  if (k === "brand") return "#fdf3d7";
-  return "#e6e6d0";
+/* ───────────────────────── Pieces ───────────────────────── */
+
+const SLA_HOURS = 24;
+
+type Kind = "store" | "brand" | "product";
+const KIND: Record<Kind, { bar: string; tint: string; fg: string }> = {
+  store: { bar: "#a8b06b", tint: "#eef0dc", fg: colors.olive[700] },
+  brand: { bar: "#e0b040", tint: "#fbf1d6", fg: "#8a6116" },
+  product: { bar: "#d27a5a", tint: "#f9e6dd", fg: "#a14a2c" },
+};
+
+function hoursSince(s: string) {
+  return (Date.now() - new Date(s).getTime()) / 3_600_000;
 }
 
-function kindFg(k: string) {
-  if (k === "store") return colors.olive[800];
-  if (k === "brand") return "#7a5b1a";
-  return colors.light.foreground;
+function rowImage(row: any, detail?: Product): string | undefined {
+  const fromDetail = detail?.images?.find((i) => i.is_primary)?.url ?? detail?.images?.[0]?.url;
+  const img = row?.images?.[0];
+  const candidates = [fromDetail, typeof img === "string" ? img : img?.url, row?.image_url, row?.thumbnail, row?.logo_url, row?.logo];
+  const hit = candidates.find((c) => typeof c === "string" && c.length > 0);
+  return hit ? resolveImageUrl(hit) || hit : undefined;
 }
+
+function rowLabel(row: any, detail?: Product): string {
+  if (row.kind === "product") {
+    return detail?.store?.name ?? row.store?.name ?? row.store_name ?? detail?.brand?.name ?? row.brand?.name ?? "Product";
+  }
+  return row.owner?.full_name ?? row.owner_name ?? row.email ?? (row.slug ? `@${row.slug}` : row.kind === "store" ? "Store" : "Brand");
+}
+
+function HeroStat({ kind, label, value, active, onPress }: { kind: Kind; label: string; value: number; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.heroStat, active && styles.heroStatActive, pressed && kit.pressed]}>
+      <View style={styles.heroStatTop}>
+        <View style={[styles.heroStatDot, { backgroundColor: KIND[kind].bar }]} />
+        <Text style={styles.heroStatLabel} numberOfLines={1}>{label}</Text>
+      </View>
+      <Text style={[styles.heroStatValue, value === 0 && { color: "rgba(244,242,234,0.35)" }]}>{value}</Text>
+    </Pressable>
+  );
+}
+
+function QueueCard({
+  row,
+  index,
+  detail,
+  onInspect,
+  onApprove,
+  onReject,
+}: {
+  row: any;
+  index: number;
+  detail?: Product;
+  onInspect: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const kind = row.kind as Kind;
+  const img = rowImage(row, detail);
+  const label = rowLabel(row, detail);
+  const hours = hoursSince(row.created_at);
+  const overdue = hours >= SLA_HOURS;
+  const slaPct = Math.min(100, (hours / SLA_HOURS) * 100);
+  const slaTone = overdue ? "#c4472f" : hours >= SLA_HOURS / 2 ? "#d39a1c" : "#22a35a";
+  const slaLabel = overdue ? `OVERDUE · ${Math.floor(hours - SLA_HOURS) + 1}H` : `${Math.max(1, Math.ceil(SLA_HOURS - hours))}H LEFT`;
+  const price = detail?.price ?? row.price;
+  const mrp = detail?.mrp ?? row.mrp;
+  const discount = mrp && price && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(380).delay(Math.min(index, 8) * 50)}>
+      <View style={[styles.card, styles.queueCard, overdue && styles.queueCardOverdue]}>
+        <Pressable onPress={onInspect} style={({ pressed }) => [styles.queueRow, pressed && { opacity: 0.85 }]}>
+          <View style={[styles.thumb, kind !== "product" && styles.thumbSquare, { backgroundColor: KIND[kind].tint }]}>
+            {img ? (
+              <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+            ) : kind === "product" ? (
+              <Ionicons name="cube-outline" size={24} color={KIND[kind].fg} />
+            ) : (
+              <Text style={[styles.thumbInitials, { color: KIND[kind].fg }]}>{initialsOf(row.name)}</Text>
+            )}
+          </View>
+
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.queueTop}>
+              <View style={[styles.kindTag, { backgroundColor: KIND[kind].tint }]}>
+                <View style={[styles.kindDot, { backgroundColor: KIND[kind].bar }]} />
+                <Text style={[styles.kindTagText, { color: KIND[kind].fg }]}>{row.kindLabel.toUpperCase()}</Text>
+              </View>
+              <Text style={styles.queueTime}>{formatRelative(row.created_at)}</Text>
+            </View>
+            <Text style={styles.queueName} numberOfLines={2}>{row.name}</Text>
+            <Text style={styles.queueLabel} numberOfLines={1}>{label.toUpperCase()}</Text>
+            {typeof price === "number" && (
+              <View style={styles.priceRow}>
+                <Text style={styles.price}>{formatPrice(price)}</Text>
+                {discount > 0 && (
+                  <>
+                    <Text style={styles.mrp}>{formatPrice(mrp)}</Text>
+                    <Text style={styles.discount}>−{discount}%</Text>
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+          <Ionicons name="arrow-forward" size={14} color="rgba(22,23,15,0.35)" style={{ alignSelf: "center" }} />
+        </Pressable>
+
+        {/* SLA meter */}
+        <View style={styles.slaRow}>
+          <Ionicons name="time-outline" size={11} color={slaTone} />
+          <View style={styles.slaTrack}>
+            <View style={[styles.slaFill, { width: `${slaPct}%`, backgroundColor: slaTone }]} />
+          </View>
+          <Text style={[styles.slaLabel, { color: slaTone }]}>{slaLabel}</Text>
+        </View>
+
+        {/* Decision bar */}
+        <View style={[styles.decision, overdue && styles.decisionOverdue]}>
+          <Pressable onPress={onReject} style={({ pressed }) => [styles.rejectBtn, pressed && kit.pressed]} accessibilityLabel="Reject">
+            <Ionicons name="close" size={15} color="#b03a3a" />
+            <Text style={styles.rejectText}>Reject</Text>
+          </Pressable>
+          <Pressable onPress={onApprove} style={({ pressed }) => [styles.approveBtn, pressed && kit.pressed]}>
+            <Ionicons name="checkmark" size={15} color={LIME} />
+            <Text style={styles.approveText}>Approve {row.kindLabel.toLowerCase()}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
+function SectionHead({
+  index,
+  eyebrow,
+  title,
+  linkLabel,
+  onLink,
+}: {
+  index?: string;
+  eyebrow: string;
+  title: string;
+  linkLabel?: string;
+  onLink?: () => void;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={{ flex: 1 }}>
+        <View style={styles.sectionEyebrowRow}>
+          {index ? <Text style={styles.sectionIndex}>{index}</Text> : null}
+          {index ? <View style={styles.sectionRule} /> : null}
+          <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
+        </View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {linkLabel && onLink ? (
+        <Pressable onPress={onLink} hitSlop={10} style={({ pressed }) => [styles.linkPill, pressed && kit.pressed]}>
+          <Text style={styles.linkPillText}>{linkLabel}</Text>
+          <Ionicons name="arrow-forward" size={12} color={INK} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function Timeline({ entries, detailed }: { entries: AuditEntry[]; detailed?: boolean }) {
+  return (
+    <View>
+      {entries.map((e, i) => {
+        const tone = auditActionColor(e.action);
+        return (
+          <View key={e.id} style={styles.tlRow}>
+            <View style={styles.tlRail}>
+              <View style={[styles.tlDotOuter, { borderColor: tone + "40" }]}>
+                <View style={[styles.tlDot, { backgroundColor: tone }]} />
+              </View>
+              {i < entries.length - 1 ? <View style={styles.tlLine} /> : null}
+            </View>
+            <View style={styles.tlBody}>
+              <View style={styles.tlHead}>
+                <Text style={[styles.tlAction, detailed && { color: tone }]} numberOfLines={1}>
+                  {humanize(e.action)}
+                </Text>
+                <Text style={styles.tlTime}>{formatRelative(e.created_at)}</Text>
+              </View>
+              <Text style={styles.tlActor} numberOfLines={1}>
+                by <Text style={styles.tlActorBold}>{e.actor_name ?? "Administrator"}</Text>
+              </Text>
+              {detailed && e.target_type ? (
+                <View style={styles.tlTarget}>
+                  <Text style={styles.tlTargetText}>
+                    {e.target_type.toUpperCase()}
+                    {e.target_id ? ` · #${e.target_id.slice(0, 8)}` : ""}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ZeroStat({ value, label }: { value: number; label: string }) {
+  return (
+    <View style={{ flex: 1, alignItems: "center" }}>
+      <Text style={styles.zeroStatValue}>{value.toLocaleString()}</Text>
+      <Text style={styles.zeroStatLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function Tile({ icon, title, sub, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, styles.tile, pressed && kit.pressedCard]}>
+      <View style={styles.tileTop}>
+        <View style={styles.tileIcon}>
+          <Ionicons name={icon} size={17} color={colors.olive[700]} />
+        </View>
+        <Ionicons name="arrow-forward" size={14} color="rgba(22,23,15,0.35)" style={{ transform: [{ rotate: "-45deg" }] }} />
+      </View>
+      <Text style={styles.tileTitle} numberOfLines={1}>{title}</Text>
+      <Text style={styles.tileSub} numberOfLines={1}>{sub}</Text>
+    </Pressable>
+  );
+}
+
+function GuidelineCard({
+  index,
+  icon,
+  title,
+  sub,
+  bullets,
+}: {
+  index: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  sub: string;
+  bullets: string[];
+}) {
+  return (
+    <View style={[styles.card, styles.guideCard]}>
+      <View style={styles.guideHead}>
+        <View style={styles.guideIcon}>
+          <Ionicons name={icon} size={18} color={LIME} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.guideIndex}>STANDARD {index}</Text>
+          <Text style={styles.guideTitle}>{title}</Text>
+          <Text style={styles.guideSub}>{sub}</Text>
+        </View>
+      </View>
+      <View style={styles.guideList}>
+        {bullets.map((b, i) => (
+          <View key={i} style={styles.guideBullet}>
+            <View style={styles.guideCheck}>
+              <Ionicons name="checkmark" size={11} color={colors.olive[700]} />
+            </View>
+            <Text style={styles.guideText}>{b}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const initialsOf = (name?: string | null) =>
+  (name ?? "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+/* ───────────────────────── Styles ───────────────────────── */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
   scroll: { flex: 1 },
-  content: { paddingBottom: 120 },
+  content: { paddingBottom: 140 },
+  body: { paddingHorizontal: 18 },
+  card: { ...cardSurface, borderRadius: 24, marginBottom: 12, overflow: "hidden" },
 
-  /* 1. Header */
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  headerLeft: { flex: 1 },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.primary,
-    letterSpacing: 1.4,
-  },
-  title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: colors.light.foreground,
-    marginTop: 2,
-    letterSpacing: -0.6,
-  },
-  titleAccent: {
-    fontFamily: fontFamilies.display.regular,
-    fontStyle: "italic",
-    color: colors.olive[600],
-  },
-  countBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    borderWidth: 1,
-  },
-  countBadgePending: {
-    backgroundColor: "#fdf3d7",
-    borderColor: "#e0d0a5",
-  },
-  countBadgeNominal: {
-    backgroundColor: colors.paper.DEFAULT,
-    borderColor: colors.light.border,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusDotPending: { backgroundColor: "#c8a44a" },
-  statusDotNominal: { backgroundColor: colors.olive[600] },
-  countText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-  },
-  countTextPending: { color: "#7a5b1a" },
-  countTextNominal: { color: colors.olive[700] },
-
-  /* SLA Strip */
-  slaStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginTop: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: "#dde4d6" + "66",
-    borderRadius: radii.md,
-    gap: 10,
-  },
-  slaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  slaText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.olive[800],
-  },
-  slaDivider: {
-    width: 1,
-    height: 10,
-    backgroundColor: colors.olive[400],
+  /* Masthead */
+  header: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 18, paddingTop: 18, marginBottom: 18 },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
+  eyebrowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[600] },
+  eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 2.2, color: colors.olive[700] },
+  title: { fontFamily: fontFamilies.display.regular, fontSize: 44, lineHeight: 46, letterSpacing: -1.6, color: INK },
+  subtitle: { marginTop: 8, fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 19, color: colors.ink.mute, maxWidth: 300 },
+  roundBtn: {
+    width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.85)", borderWidth: 1, borderColor: HAIRLINE, ...shadows.soft,
   },
 
-  /* 2. Segmented Mode Switcher */
-  segmentedContainer: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 14,
-    marginBottom: 10,
-    padding: 3,
-    backgroundColor: colors.paper.DEFAULT,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  /* Hero */
+  heroShell: { marginHorizontal: 18, marginBottom: 16, borderRadius: 28, ...shadows.editorial },
+  hero: { borderRadius: 28, padding: 20, overflow: "hidden" },
+  heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  heroEyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 2, color: "rgba(244,242,234,0.55)" },
+  heroValueRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 6 },
+  heroValue: { fontFamily: fontFamilies.display.regular, fontSize: 60, lineHeight: 62, letterSpacing: -2, color: colors.paper.cream },
+  heroValueUnit: { fontFamily: fontFamilies.display.italic, fontSize: 20, color: LIME },
+  heroSub: { marginTop: 4, fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: "rgba(244,242,234,0.55)" },
+  heroMedal: {
+    width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(200,224,138,0.08)", borderWidth: 1, borderColor: "rgba(200,224,138,0.25)",
   },
-  segmentBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: radii.lg,
+  heroMedalAlert: { backgroundColor: "rgba(243,185,164,0.08)", borderColor: "rgba(243,185,164,0.3)" },
+  heroMedalBadge: {
+    position: "absolute", top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5,
+    backgroundColor: "#c4472f", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#1d1f15",
   },
-  segmentBtnActive: {
-    backgroundColor: colors.light.card,
-    ...shadows.soft,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  heroMedalBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 10, color: "#fff" },
+  mixBar: { flexDirection: "row", height: 5, gap: 3, borderRadius: 3, overflow: "hidden", marginTop: 18 },
+  heroStats: { flexDirection: "row", gap: 8, marginTop: 14 },
+  heroStat: {
+    flex: 1, padding: 12, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.07)",
   },
-  segmentText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
+  heroStatActive: { borderColor: "rgba(200,224,138,0.55)", backgroundColor: "rgba(200,224,138,0.08)" },
+  heroStatTop: { flexDirection: "row", alignItems: "center", gap: 6 },
+  heroStatDot: { width: 6, height: 6, borderRadius: 3 },
+  heroStatLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 8.5, letterSpacing: 1.5, color: "rgba(244,242,234,0.55)" },
+  heroStatValue: { marginTop: 6, fontFamily: fontFamilies.display.regular, fontSize: 30, lineHeight: 32, color: colors.paper.cream },
+  heroChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 14 },
+  heroChip: {
+    flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
   },
-  segmentTextActive: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: colors.light.foreground,
-  },
+  heroChipAlert: { backgroundColor: "rgba(196,71,47,0.2)", borderColor: "rgba(243,185,164,0.3)" },
+  heroChipText: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.2, color: "rgba(244,242,234,0.8)" },
 
-  /* Search & Filter */
-  searchWrap: {
-    marginHorizontal: 16,
-    marginTop: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    paddingHorizontal: 14,
-    height: 42,
+  /* Segment */
+  segment: {
+    flexDirection: "row", padding: 4, borderRadius: 24, marginBottom: 14, gap: 2,
+    backgroundColor: "rgba(239,236,226,0.8)", borderWidth: 1, borderColor: HAIRLINE,
   },
-  searchIcon: { marginRight: 8 },
-  search: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: fontFamilies.sans.regular,
-    color: colors.light.foreground,
-    height: "100%",
-  },
-  clearBtn: { padding: 4 },
+  segmentItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, height: 56, borderRadius: 20 },
+  segmentItemOn: { backgroundColor: INK, ...shadows.soft },
+  segmentIconRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  segmentText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: colors.ink.mute },
+  segmentTextOn: { color: colors.paper.cream },
+  segmentCount: { minWidth: 18, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(22,23,15,0.08)" },
+  segmentCountOn: { backgroundColor: LIME },
+  segmentCountText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9.5, color: colors.ink.mute },
+  chips: { gap: 7, paddingBottom: 14 },
 
-  filtersContainer: { marginTop: 10, marginBottom: 4 },
-  filters: { paddingHorizontal: 16, gap: 6, paddingBottom: 6 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  /* Queue card */
+  queueCard: { padding: 0 },
+  queueCardOverdue: { borderColor: "rgba(196,71,47,0.3)" },
+  queueRow: { flexDirection: "row", gap: 13, padding: 10, paddingRight: 14 },
+  thumb: { width: 80, height: 100, borderRadius: 18, overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  thumbSquare: { height: 80, borderRadius: 22 },
+  thumbInitials: { fontFamily: fontFamilies.display.regular, fontSize: 26 },
+  queueTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 4 },
+  kindTag: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  kindDot: { width: 5, height: 5, borderRadius: 3 },
+  kindTagText: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.2 },
+  queueTime: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: "rgba(22,23,15,0.45)" },
+  queueName: { marginTop: 6, fontFamily: fontFamilies.display.regular, fontSize: 17, lineHeight: 21, letterSpacing: -0.3, color: INK },
+  queueLabel: { marginTop: 4, fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.4, color: colors.olive[700] },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 7, marginTop: 5 },
+  price: { fontFamily: fontFamilies.sans.bold, fontSize: 14.5, color: INK },
+  mrp: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "rgba(22,23,15,0.4)", textDecorationLine: "line-through" },
+  discount: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.accent2.rust },
+  slaRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingBottom: 10 },
+  slaTrack: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(22,23,15,0.06)", overflow: "hidden" },
+  slaFill: { height: "100%", borderRadius: 2 },
+  slaLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.2 },
+  decision: {
+    flexDirection: "row", gap: 8, padding: 10, backgroundColor: "rgba(239,236,226,0.55)",
+    borderTopWidth: 1, borderTopColor: HAIRLINE,
   },
-  chipActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
+  decisionOverdue: { backgroundColor: "rgba(250,232,226,0.6)", borderTopColor: "rgba(196,71,47,0.15)" },
+  rejectBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, height: 42, borderRadius: 21,
+    backgroundColor: "#fff", borderWidth: 1, borderColor: "rgba(176,58,58,0.22)",
   },
-  chipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
+  rejectText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: "#b03a3a" },
+  approveBtn: {
+    flex: 1.7, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 42, borderRadius: 21, backgroundColor: INK,
   },
-  chipTextActive: { color: "#fff" },
-  chipCountBadge: {
-    backgroundColor: colors.light.background,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: radii.full,
-  },
-  chipCountBadgeActive: {
-    backgroundColor: "rgba(255,255,255,0.25)",
-  },
-  chipCountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-  chipCountTextActive: { color: "#fff" },
+  approveText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.paper.cream },
 
-  /* List & Cards */
-  list: { paddingHorizontal: 16, gap: 10, paddingTop: 6 },
-  rowCard: {
-    padding: 16,
-    gap: 14,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
+  /* Sections */
+  sectionCard: { padding: 16 },
+  sectionHeader: { flexDirection: "row", alignItems: "flex-end", gap: 12, marginBottom: 12, marginTop: 4 },
+  sectionEyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  sectionIndex: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.olive[600] },
+  sectionRule: { width: 18, height: 1, backgroundColor: "rgba(22,23,15,0.18)" },
+  sectionEyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.8, color: "rgba(22,23,15,0.45)" },
+  sectionTitle: { fontFamily: fontFamilies.display.regular, fontSize: 22, letterSpacing: -0.4, color: INK },
+  linkPill: {
+    flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, height: 30, borderRadius: 15,
+    borderWidth: 1, borderColor: "rgba(22,23,15,0.12)",
   },
-  rowHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  rowHeadLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  kindIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowName: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  rowMeta: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-  kindPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  kindPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
+  linkPillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK },
 
-  rowActions: { flexDirection: "row", gap: 8 },
-  btn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-  },
-  btnApprove: {
-    backgroundColor: colors.olive[600],
-    borderColor: colors.olive[600],
-  },
-  btnApproveText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#fff",
-  },
-  btnReject: {
-    backgroundColor: colors.light.card,
-    borderColor: colors.light.border,
-  },
-  btnRejectText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.destructive,
-  },
-  btnView: {
-    backgroundColor: colors.light.card,
-    borderColor: colors.light.border,
-  },
-  btnViewText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
-  },
+  /* Timeline */
+  tlRow: { flexDirection: "row", gap: 12 },
+  tlRail: { width: 18, alignItems: "center" },
+  tlDotOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, alignItems: "center", justifyContent: "center", marginTop: 2 },
+  tlDot: { width: 8, height: 8, borderRadius: 4 },
+  tlLine: { flex: 1, width: 1, backgroundColor: "rgba(22,23,15,0.08)", marginVertical: 2 },
+  tlBody: { flex: 1, paddingBottom: 16 },
+  tlHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tlAction: { flex: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: INK },
+  tlTime: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: "rgba(22,23,15,0.4)" },
+  tlActor: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+  tlActorBold: { fontFamily: fontFamilies.sans.semibold, color: INK },
+  tlTarget: { alignSelf: "flex-start", marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: "rgba(239,236,226,0.8)" },
+  tlTargetText: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1, color: colors.ink.mute },
 
-  /* Empty Filtered */
-  emptyFilteredWrap: {
-    padding: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+  /* Zero state */
+  zeroCard: { padding: 20, alignItems: "center" },
+  zeroTop: { alignSelf: "stretch", flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  livePill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: "#ecf6ec" },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#22a35a" },
+  livePillText: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.4, color: "#2e5a27" },
+  syncBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, height: 30, borderRadius: 15, borderWidth: 1, borderColor: "rgba(22,23,15,0.12)" },
+  syncText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK },
+  medal: {
+    width: 76, height: 76, borderRadius: 38, alignItems: "center", justifyContent: "center", marginTop: 18,
+    backgroundColor: INK, borderWidth: 6, borderColor: "rgba(200,224,138,0.18)",
   },
-  emptyFilteredTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
-    marginTop: 4,
+  zeroTitle: { marginTop: 16, fontFamily: fontFamilies.display.regular, fontSize: 30, letterSpacing: -0.8, color: INK },
+  zeroTitleItalic: { fontFamily: fontFamilies.display.italic, color: colors.olive[600] },
+  zeroSub: { marginTop: 6, textAlign: "center", fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 19, color: colors.ink.mute, maxWidth: 280 },
+  zeroStats: {
+    alignSelf: "stretch", flexDirection: "row", marginTop: 18, paddingVertical: 12, borderRadius: 18,
+    backgroundColor: "rgba(239,236,226,0.6)", borderWidth: 1, borderColor: "rgba(22,23,15,0.04)",
   },
-  emptyFilteredSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    maxWidth: 260,
-  },
+  zeroDivider: { width: 1, backgroundColor: "rgba(22,23,15,0.07)" },
+  zeroStatValue: { fontFamily: fontFamilies.display.regular, fontSize: 24, color: INK },
+  zeroStatLabel: { marginTop: 2, fontFamily: fontFamilies.mono.medium, fontSize: 8.5, letterSpacing: 1.4, color: "rgba(22,23,15,0.4)" },
 
-  /* Zero State Luxury Layout */
-  zeroStateContainer: {
-    paddingHorizontal: 16,
-    gap: 14,
-    marginTop: 4,
+  /* Tiles */
+  tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  tile: { flexBasis: "47%", flexGrow: 1, padding: 14, marginBottom: 0 },
+  tileTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  tileIcon: {
+    width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.olive[50], borderWidth: 1, borderColor: "rgba(83,94,44,0.12)",
   },
-  heroCard: {
-    backgroundColor: colors.paper.DEFAULT,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 20,
-    alignItems: "center",
-    ...shadows.soft,
-  },
-  heroBadgeRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  heroPulseBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "#dde4d6",
-  },
-  pulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[600],
-  },
-  heroPulseText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[800],
-    letterSpacing: 0.8,
-  },
-  heroRefreshBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-  },
-  heroRefreshText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[800],
-  },
-  heroIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: radii.full,
-    backgroundColor: "#dde4d6" + "99",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#c8c8b8",
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: colors.light.foreground,
-    letterSpacing: -0.4,
-    textAlign: "center",
-  },
-  heroSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    lineHeight: 18,
-    marginTop: 6,
-    paddingHorizontal: 12,
-  },
-  telemetryStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  telemetryCol: { flex: 1, alignItems: "center" },
-  telemetryNum: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: colors.light.foreground,
-  },
-  telemetryLbl: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-    letterSpacing: 0.4,
-  },
-  telemetryDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: colors.light.border,
-  },
+  tileTitle: { marginTop: 14, fontFamily: fontFamilies.display.regular, fontSize: 18, color: INK },
+  tileSub: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.ink.mute },
 
-  /* Section Card (Decisions & Directories) */
-  sectionCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 16,
-    ...shadows.soft,
+  /* Guidelines */
+  guideCard: { padding: 16 },
+  guideHead: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+  guideIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: INK },
+  guideIndex: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.6, color: colors.olive[600] },
+  guideTitle: { marginTop: 2, fontFamily: fontFamilies.display.regular, fontSize: 20, letterSpacing: -0.4, color: INK },
+  guideSub: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
+  guideList: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: HAIRLINE, gap: 10 },
+  guideBullet: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  guideCheck: {
+    width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: colors.olive[50], marginTop: 1,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  sectionEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: colors.light.primary,
-    letterSpacing: 1.2,
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    color: colors.light.foreground,
-    marginTop: 1,
-  },
-  headerLink: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.olive[700],
-  },
-  emptyLogWrap: {
-    paddingVertical: 18,
-    alignItems: "center",
-    gap: 6,
-  },
-  emptyLogText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  decisionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.light.border,
-  },
-  decisionDot: { width: 7, height: 7, borderRadius: 4 },
-  decisionActor: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
-  },
-  decisionAction: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  decisionTime: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-
-  /* Shortcuts Grid */
-  shortcutsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  shortcutTile: {
-    width: "48%",
-    flexGrow: 1,
-    backgroundColor: colors.paper.DEFAULT,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 12,
-    gap: 3,
-  },
-  shortcutIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  shortcutTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  shortcutSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-
-  /* History Tab */
-  historyContainer: { gap: 10 },
-  historyCard: {
-    padding: 14,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: 6,
-    ...shadows.soft,
-  },
-  historyHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  historyBadgeWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
-  historyDot: { width: 6, height: 6, borderRadius: 3 },
-  historyActionText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    letterSpacing: 0.4,
-  },
-  historyDate: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-  historyActor: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.foreground,
-  },
-  historyActorBold: { fontFamily: fontFamilies.sans.semibold },
-  historyTarget: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-  },
-
-  /* Guidelines Tab */
-  guidelinesContainer: { paddingHorizontal: 16, gap: 12 },
-  guidelineCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    padding: 16,
-    gap: 12,
-    ...shadows.soft,
-  },
-  guidelineHead: { flexDirection: "row", alignItems: "center", gap: 12 },
-  guidelineIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  guidelineTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
-  guidelineSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-    marginTop: 1,
-  },
-  bulletList: { gap: 8, paddingLeft: 4 },
-  bulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  bulletText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.foreground,
-    lineHeight: 18,
-  },
+  guideText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 19, color: INK },
 });
-

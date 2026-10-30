@@ -19,16 +19,6 @@ import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
 import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows, mapFlatProductRow } from "@/lib/api/product-mapper";
 import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
-import {
-  tokenizeQuery,
-  buildSearchOrParts,
-  expandColorTerms,
-  fuzzyMatch,
-  scoreProduct,
-  isColorWord,
-  expandQueryTerms,
-  inferGenderFromWords,
-} from "@/lib/utils/search-utils";
 import type {
   Product, ProductVariant, ProductImage, Brand, Store, Category,
   Review, Order, OrderItem, Address, Banner, Notification, User,
@@ -106,8 +96,14 @@ export async function getProducts(opts: {
   storeSlug?: string;
   gender?: string;
   search?: string;
+  /** Inclusive lower price bound. */
+  minPrice?: number;
+  /** Exclusive upper price bound. */
+  maxPrice?: number;
+  /** Occasion key (wedding/office/vacation/party/gym) or free-text term. */
+  occasion?: string;
 } = {}): Promise<Result<{ products: Product[]; total: number }>> {
-  const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search } = opts;
+  const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search, minPrice, maxPrice, occasion } = opts;
   let gender = opts.gender;
   // Resolve slug → id via backend list endpoints so callers don't need to
   // hit Supabase directly. The backend's /api/catalog/products expects ids.
@@ -140,12 +136,20 @@ export async function getProducts(opts: {
     category: category_id,
     gender,
     search,
-    sort: sort as "newest" | "price_asc" | "price_desc" | "rating" | "popularity" | undefined,
+    sort: sort as B.CatalogSort,
+    min_price: minPrice,
+    max_price: maxPrice,
+    occasion,
     limit,
     offset,
   });
   if (!res.ok) return fail(res.error);
-  return ok({ products: mapProducts(res.data.products as unknown[]) ?? [], total: res.data.count });
+  // `total` is the real catalogue count (backend ≥ facet-vocab release). Older
+  // backends only return the page length — then assume more pages exist
+  // while pages come back full, so infinite scroll keeps going.
+  const page = res.data.count;
+  const total = res.data.total ?? (page >= limit ? offset + page + 1 : offset + page);
+  return ok({ products: mapProducts(res.data.products as unknown[]) ?? [], total });
 }
 
 export async function getBrands(opts: { limit?: number; search?: string; offset?: number } = {}): Promise<Result<Brand[]>> {
@@ -385,8 +389,12 @@ export async function getHeroMeta(): Promise<Result<HeroMeta | null>> {
   return ok((res.data.hero as HeroMeta | undefined) ?? null);
 }
 
-export async function getFlashSaleRail(limit = 5): Promise<Result<{ products: Product[]; endsAt: string }>> {
-  const fallbackEnds = () => new Date(Date.now() + 6 * 3600_000).toISOString();
+/**
+ * Flash-sale rail. `endsAt` is the earliest *future* drop deadline, or null
+ * when no drop has one — callers must not invent a countdown in that case
+ * (a timer that silently resets every launch is fake urgency).
+ */
+export async function getFlashSaleRail(limit = 5): Promise<Result<{ products: Product[]; endsAt: string | null }>> {
   const res = await B.getHomepageBackend();
   if (!res.ok) return fail(res.error);
   const drops = (res.data.drops ?? []) as Array<{ product: any; ends_at?: string | null }>;
@@ -394,13 +402,14 @@ export async function getFlashSaleRail(limit = 5): Promise<Result<{ products: Pr
     .map((d) => d.product)
     .filter(Boolean)
     .map(mapProduct);
+  const now = Date.now();
   const times = drops
     .map((d) => d.ends_at)
-    .filter((t): t is string => typeof t === "string" && t.length > 0)
-    .sort();
+    .filter((t): t is string => typeof t === "string" && t.length > 0 && Date.parse(t) > now)
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
   return ok({
     products: products.slice(0, limit),
-    endsAt: times[0] ?? fallbackEnds(),
+    endsAt: times[0] ?? null,
   });
 }
 
@@ -410,185 +419,83 @@ export async function getFlashSaleProducts(limit = 5): Promise<Result<Product[]>
   return ok(res.data.products);
 }
 
-export async function getFlashSaleEndsAt(): Promise<string> {
+export async function getFlashSaleEndsAt(): Promise<string | null> {
   const res = await getFlashSaleRail(1);
-  if (res.ok) return res.data.endsAt;
-  return new Date(Date.now() + 6 * 3600_000).toISOString();
+  return res.ok ? res.data.endsAt : null;
 }
 
 // ============================================================================
 // Search
 // ============================================================================
 
+// Backend zod caps `limit` at 60 on /api/catalog/search and /products —
+// anything above 422s and silently empties the results.
+const CATALOG_MAX_LIMIT = 60;
+
 export async function searchProducts(
   query: string,
   limit = 20,
-  opts?: { gender?: "men" | "women" | "kids" | "unisex" },
+  opts?: { gender?: "men" | "women" | "kids" | "unisex"; spell?: "auto" | "off" },
 ): Promise<Result<Product[]>> {
   const r = await searchProductsWithMeta(query, limit, opts);
   if (!r.ok) return fail(r.error);
   return ok(r.data.products);
 }
 
-/** Same as searchProducts plus backend smart-search metadata (additive). */
+/**
+ * Same as searchProducts plus backend smart-search metadata.
+ *
+ * The backend parses the query (type / colour / material / occasion /
+ * gender / price), matches AI-extracted product attributes and ranks — its
+ * order is final. The client only hydrates full product rows and drops
+ * anything from a store that is not browsable. Gender is inferred server-side
+ * from the query; pass `opts.gender` only for an explicit filter.
+ */
 export async function searchProductsWithMeta(
   query: string,
   limit = 20,
-  opts?: { gender?: "men" | "women" | "kids" | "unisex" },
-): Promise<Result<{ products: Product[]; parsed_attrs: B.SearchParsedAttrs | null; rescued: boolean; dropped_attrs: string[] }>> {
+  opts?: { gender?: "men" | "women" | "kids" | "unisex"; spell?: "auto" | "off" },
+): Promise<Result<{ products: Product[]; parsed_attrs: B.SearchParsedAttrs | null; rescued: boolean; dropped_attrs: string[]; corrected_query: string | null }>> {
   const term = query.trim();
-  if (!term) return ok({ products: [], parsed_attrs: null, rescued: false, dropped_attrs: [] });
-  const words = tokenizeQuery(term);
-  if (words.length === 0) return ok({ products: [], parsed_attrs: null, rescued: false, dropped_attrs: [] });
-  // Backend attr-boost reasons by product id (for display + local re-rank).
-  const reasonById = new Map<string, string>();
-  let parsedAttrs: B.SearchParsedAttrs | null = null;
-  let rescued = false;
-  let droppedAttrs: string[] = [];
-  const ingestSearchRes = (res: Awaited<ReturnType<typeof B.searchProductsBackend>>) => {
-    if (!res.ok) return;
-    if (!parsedAttrs && res.data.parsed_attrs) parsedAttrs = res.data.parsed_attrs;
-    if (!rescued && res.data.rescued) { rescued = res.data.rescued; droppedAttrs = res.data.dropped_attrs ?? []; }
-    for (const p of res.data.products ?? []) {
-      if (p?.id && p.match_reason && !reasonById.has(p.id)) reasonById.set(p.id, p.match_reason);
-    }
-  };
+  const empty = { products: [], parsed_attrs: null, rescued: false, dropped_attrs: [], corrected_query: null };
+  if (!term) return ok(empty);
 
-  // Infer gender intent from the query itself ("womans dress" → women) so
-  // gender-tagged products rank correctly even when the caller didn't pass
-  // an explicit gender filter. An explicit opts.gender always wins.
-  const inferredGender = inferGenderFromWords(words) ?? expandQueryTerms(term).gender ?? null;
-  const effectiveGender = opts?.gender ?? inferredGender ?? undefined;
-
-  // Use backend's /api/catalog/search RPC. The backend runs
-  // expand_search_query server-side and forwards synonyms to
-  // search_products so "girls dress" → kids+dresses matches.
   const res = await B.searchProductsBackend({
     q: term,
     sort: "relevance",
-    limit: Math.max(limit * 2, 40),
-    gender: effectiveGender as "men" | "women" | "kids" | "unisex" | undefined,
+    limit: Math.min(limit, CATALOG_MAX_LIMIT),
+    gender: opts?.gender,
+    spell: opts?.spell,
   });
 
-  let rawProducts: Array<{ id: string }> = [];
-  if (res.ok) {
-    ingestSearchRes(res);
-    rawProducts = res.data.products ?? [];
+  if (!res.ok) {
+    // Backend search down: plain text match so the screen is not empty.
+    const fallback = await B.getProductsBackend({ search: term, limit: Math.min(limit, CATALOG_MAX_LIMIT) });
+    if (!fallback.ok) return fail(res.error);
+    return ok({ ...empty, products: mapProducts(fallback.data.products) ?? [] });
   }
 
-  // Per-word OR fallback: when the full query returns nothing and
-  // contains multiple words (e.g. "girls dress"), retry each word
-  // individually and merge the results so partial matches surface.
-  // Skip pure demographic words ("womans") — they rarely match alone and
-  // just add noise; the garment word ("dress") carries the recall.
-  if (rawProducts.length === 0 && words.length >= 2) {
-    const seen = new Set<string>();
-    const expanded = expandQueryTerms(term);
-    const hasNonDemographic = words.some((w) => !inferGenderFromWords([w]));
-    for (const word of words) {
-      // Demographic-only token ("womans") rarely matches alone — skip its
-      // solo lookup when a garment word ("dress") can carry the recall.
-      if (hasNonDemographic && inferGenderFromWords([word]) && expanded.garment) continue;
-      const wordRes = await B.searchProductsBackend({
-        q: word,
-        sort: "relevance",
-        limit: Math.max(limit * 2, 40),
-      });
-      if (wordRes.ok) {
-        ingestSearchRes(wordRes);
-        for (const p of (wordRes.data.products ?? [])) {
-          if (!seen.has(p.id)) {
-            seen.add(p.id);
-            rawProducts.push(p);
-          }
-        }
-      }
-    }
-  }
-
-  if (!res.ok && rawProducts.length === 0) {
-    // Fuzzy fallback via /api/catalog/products with text search.
-    const fallback = await B.getProductsBackend({ search: term, limit });
-    if (!fallback.ok) return fail(fallback.error);
-    return ok({ products: mapProducts(fallback.data.products) ?? [], parsed_attrs: parsedAttrs, rescued, dropped_attrs: droppedAttrs });
-  }
-
-  const matchedIds = rawProducts.map((p) => p.id);
-
-  let backendProducts: Product[] = [];
-  if (matchedIds.length > 0) {
-    const detailsRes = await B.getProductsByIdsBackend(matchedIds);
+  const rows = res.data.products ?? [];
+  const reasonById = new Map(rows.filter((p) => p.match_reason).map((p) => [p.id, p.match_reason as string]));
+  let products: Product[] = [];
+  if (rows.length > 0) {
+    const detailsRes = await B.getProductsByIdsBackend(rows.map((p) => p.id));
     if (!detailsRes.ok) return fail(detailsRes.error);
     const browsableStoreIds = await getBrowsableStoreIds();
-    backendProducts = (mapProducts(detailsRes.data.products) ?? []).filter((p) =>
-      isPublicCatalogProduct(p, browsableStoreIds)
-    );
+    const byId = new Map((mapProducts(detailsRes.data.products) ?? []).map((p) => [p.id, p]));
+    products = rows
+      .map((r) => byId.get(r.id))
+      .filter((p): p is Product => !!p && isPublicCatalogProduct(p, browsableStoreIds))
+      .map((p) => (reasonById.has(p.id) ? { ...p, match_reason: reasonById.get(p.id) } : p));
   }
 
-  // Color expansion: also fetch products whose variants match colour terms.
-  const colorTerms = new Set<string>();
-  for (const word of words) {
-    if (isColorWord(word)) {
-      for (const variantVal of expandColorTerms(word)) {
-        colorTerms.add(variantVal);
-      }
-    }
-  }
-  const colorHits: Product[] = [];
-  if (colorTerms.size > 0) {
-    const colorQ = [...colorTerms].join(" ");
-    const extra = await B.getProductsBackend({ search: colorQ, limit });
-    if (extra.ok) {
-      for (const p of mapProducts(extra.data.products) ?? []) {
-        if (!backendProducts.find((b) => b.id === p.id)) colorHits.push(p);
-      }
-    }
-  }
-
-  // Fuzzy fallback if too few — try individual words for broader coverage.
-  if (backendProducts.length + colorHits.length < 3 && term.length >= 3) {
-    const searchTerms = words.length >= 2 ? [term, ...words] : [term];
-    const seen = new Set([...backendProducts, ...colorHits].map((p) => p.id));
-    for (const searchTerm of searchTerms) {
-      const all = await B.getProductsBackend({ search: searchTerm, limit: 80 });
-      if (all.ok) {
-        const lower = searchTerm.toLowerCase();
-        const mapped = mapProducts(all.data.products) ?? [];
-        const fuzzy = mapped.filter((p) => {
-          const name = (p.name ?? "").toLowerCase();
-          const desc = (p.description ?? "").toLowerCase();
-          const short = (p.short_description ?? "").toLowerCase();
-          return fuzzyMatch(name, lower, 2) || fuzzyMatch(desc, lower, 2) || fuzzyMatch(short, lower, 2);
-        });
-        for (const p of fuzzy) {
-          if (!seen.has(p.id)) {
-            colorHits.push(p);
-            seen.add(p.id);
-          }
-        }
-      }
-      if (backendProducts.length + colorHits.length >= limit) break;
-    }
-  }
-
-  // Rank locally by scoring utility, then cap to limit. Backend attr-boosted
-  // ids get +50 so the server-side smart-search order survives local rank.
-  const combined = [...backendProducts, ...colorHits];
-  const scored = combined.map((p) => ({
-    product: p,
-    score: scoreProduct(p, words, term.toLowerCase()) + (reasonById.has(p.id) ? 50 : 0),
-  }));
-  const ranked = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).map((s) => s.product);
   return ok({
-    products: ranked.slice(0, limit).map((p) => {
-      const reason = reasonById.get(p.id);
-      return reason ? { ...p, match_reason: reason } : p;
-    }),
-    parsed_attrs: parsedAttrs,
-    rescued,
-    dropped_attrs: droppedAttrs,
+    products,
+    parsed_attrs: res.data.parsed_attrs ?? null,
+    rescued: res.data.rescued ?? false,
+    dropped_attrs: res.data.dropped_attrs ?? [],
+    corrected_query: res.data.corrected_query ?? null,
   });
-
 }
 
 export type SearchSuggestion = {
@@ -837,8 +744,12 @@ function slugFromName(name: string): string {
 }
 
 function scopeOrderToStore(order: Order, storeId: string): Order | null {
-  const items = (order.items ?? []).filter((i) => (i as { store_id?: string }).store_id === storeId);
+  const all = order.items ?? [];
+  const items = all.filter((i) => (i as { store_id?: string }).store_id === storeId);
   if (items.length === 0) return null;
+  // Single-store order: every line is ours, so keep the real customer totals
+  // (tax, shipping, discount) — otherwise detail disagrees with the list.
+  if (items.length === all.length) return order;
   const subtotal = items.reduce((s, i) => s + ((i as { total?: number }).total ?? 0), 0);
   return {
     ...order,
@@ -1290,7 +1201,10 @@ export async function getSellerOrderById(orderId: string, storeId: string): Prom
     raw = res.data.order;
   }
   if (!raw) return ok(null);
-  return ok(scopeOrderToStore(loose<Order>(raw), storeId));
+  // Same row mapper as the list → product images + address fallbacks resolve.
+  const __r = raw as Record<string, unknown>;
+  console.log("[DBG-ORDER]", seller.ok, JSON.stringify({ total: __r.total, subtotal: __r.subtotal, tax: __r.tax, items: (__r.items as unknown[] | undefined)?.map((i) => { const x = i as Record<string, unknown>; return { store_id: x.store_id, image_url: x.image_url, product: x.product }; }) }).slice(0, 900));
+  return ok(scopeOrderToStore(mapSellerOrderRow(raw), storeId));
 }
 
 export async function transitionOrderStatus(
@@ -2197,6 +2111,12 @@ export async function getAdminBrands(opts: {
   }
 }
 
+export async function createAdminBrand(input: B.AdminBrandCreateInput): Promise<Result<Brand>> {
+  const res = await B.createAdminBrandBackend(input);
+  if (!res.ok) return fail(res.error);
+  return ok(loose<Brand>(mapBrand(res.data.brand as Parameters<typeof mapBrand>[0])));
+}
+
 export async function approveBrand(brandId: string, status: "approved" | "rejected"): Promise<Result<void>> {
   try {
     const res = await B.approveBrandBackend(brandId, status);
@@ -2588,12 +2508,17 @@ export async function toggleBlogPost(id: string, status: "draft" | "published"):
 export interface ModerationReview {
   id: string;
   product_id: string;
-  product_name?: string;
+  product?: { name: string; slug?: string } | null;
   user_id: string;
-  user_name?: string;
+  user?: { full_name: string | null; avatar_url: string | null } | null;
   rating: number;
-  title?: string;
-  body: string;
+  title?: string | null;
+  content?: string | null;
+  body?: string | null;
+  photos?: string[] | null;
+  helpful_count?: number;
+  is_verified_purchase?: boolean;
+  seller_reply?: string | null;
   status: "pending" | "approved" | "rejected";
   created_at: string;
 }
@@ -2602,22 +2527,26 @@ export interface ModerationQA {
   id: string;
   product_id: string;
   product_name?: string;
+  product?: { name: string; slug?: string } | null;
   user_id: string;
   user_name?: string;
+  user?: { full_name: string | null; avatar_url: string | null } | null;
   question: string;
-  answer?: string;
+  answer?: string | null;
+  answered_at?: string | null;
+  helpful_count?: number;
   status: "pending" | "answered" | "rejected";
   created_at: string;
 }
 
-export async function getAdminReviews(status = "pending"): Promise<Result<ModerationReview[]>> {
+export async function getAdminReviews(status = "all"): Promise<Result<ModerationReview[]>> {
   const res = await B.getAdminReviewsBackend(status);
   if (!res.ok) return fail(res.error);
   return ok((res.data.reviews as unknown[] as ModerationReview[]) ?? []);
 }
 
-export async function moderateReview(id: string, status: "approved" | "rejected"): Promise<Result<void>> {
-  const res = await B.moderateReviewBackend(id, status);
+export async function deleteAdminReview(id: string): Promise<Result<void>> {
+  const res = await B.deleteAdminReviewBackend(id);
   if (!res.ok) return fail(res.error);
   return ok(undefined);
 }
@@ -3359,11 +3288,19 @@ export async function cancelReturn(returnGroupId: string): Promise<Result<{ ok: 
   return ok({ ok: true, returns: [{ id: returnGroupId, status: "cancelled", cancelled_at: new Date().toISOString() }] });
 }
 
+/** Backend `CreateReturnSchema.reason` enum (store-backend returns.ts). */
+export type ReturnReasonCode =
+  | "defective" | "wrong_item" | "size_issue" | "not_as_described" | "changed_mind" | "other";
+
 export interface CreateReturnInput {
   orderId: string;
-  reason: string;
-  items: { orderItemId: string; quantity: number }[];
+  reason: ReturnReasonCode;
+  description?: string;
+  items: { productId: string; variantId?: string; quantity: number }[];
 }
+
+/** Fragment of the backend's 409 message when the order's store is final-sale (0357). */
+export const RETURNS_NOT_ACCEPTED_MESSAGE = "doesn't accept returns";
 
 export interface CreateReturnResult {
   returnGroupId: string;
@@ -3374,16 +3311,26 @@ export interface CreateReturnResult {
 export async function createReturnRequest(_userId: string, input: CreateReturnInput): Promise<Result<CreateReturnResult>> {
   const res = await B.createReturnRequestBackend({
     order_id: input.orderId,
+    reason: input.reason,
+    ...(input.description ? { description: input.description } : {}),
     items: input.items.map((i) => ({
-      order_item_id: i.orderItemId,
-      reason: input.reason,
+      product_id: i.productId,
+      ...(i.variantId ? { variant_id: i.variantId } : {}),
       quantity: i.quantity,
     })),
   });
   if (!res.ok) return fail(res.error);
+  // The backend returns the create_return_request RPC payload; older
+  // builds wrapped rows in { returns: [...] } — accept both.
+  const data = (res.data ?? {}) as {
+    return_group_id?: string;
+    return_number?: string;
+    returns?: Array<{ return_group_id?: string; return_number?: string }>;
+  };
+  const first = data.returns?.[0];
   return ok({
-    returnGroupId: (res.data.returns as unknown[] as Array<{ return_group_id?: string; id: string }>)[0]?.return_group_id ?? "",
-    returnNumber: "",
+    returnGroupId: data.return_group_id ?? first?.return_group_id ?? "",
+    returnNumber: data.return_number ?? first?.return_number ?? "",
     items: [],
   });
 }
@@ -4138,6 +4085,23 @@ export async function quickCreateProduct(input: QuickProductInput): Promise<Resu
   });
   if (!res.ok) return fail(res.error);
   return ok(res.data);
+}
+
+export type { QuickAnalyzeDraft, QuickAnalyzeResult } from "@/lib/api/backend";
+
+/** Quick analyze — upload photo, then POST quick-analyze (no DB insert). Returns a review-ready draft. */
+export async function quickAnalyzeProduct(input: QuickProductInput): Promise<Result<B.QuickAnalyzeResult & { imageUrl: string }>> {
+  const { uploadSellerProductPhoto } = await import("@/lib/upload");
+  const up = await uploadSellerProductPhoto(input.uri, { mimeType: input.mimeType ?? null });
+  if (!up.url) return fail(up.error ?? "Upload failed");
+  const res = await B.quickAnalyzeProductBackend({
+    image_url: up.url,
+    price: input.price,
+    ...(input.mrp ? { mrp: input.mrp } : {}),
+    ...(input.name ? { name: input.name } : {}),
+  });
+  if (!res.ok) return fail(res.error);
+  return ok({ ...res.data, imageUrl: up.url });
 }
 export { searchProductsBackend } from "@/lib/api/backend";
 export type { SearchResultRow } from "@/lib/api/backend";

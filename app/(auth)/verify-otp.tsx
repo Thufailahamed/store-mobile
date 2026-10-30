@@ -1,28 +1,34 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
-  View,
-  StyleSheet,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
-  TouchableOpacity,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  View,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@/components/ui/Icon";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { supabase } from "@/lib/supabase/client";
+import { FIXED_LOGIN_CODE, FIXED_LOGIN_CODE_ENABLED } from "@/lib/supabase/fixed-login-code";
 import { mergeAnonSessionOnLogin } from "@/lib/recommender";
-import { Button, useToast } from "@/components/ui";
-import { colors, typography, spacing, radii } from "@/lib/theme/tokens";
-import { Display, Label, Body } from "@/components/ui/Typography";
+import { applyReferralCodeBackend, verifyPhoneOtpBackend } from "@/lib/api/backend";
+import { acceptDriverInvite, hasStoreApi } from "@/lib/api/delivery-company-api";
+import { useToast } from "@/components/ui";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { colors } from "@/lib/theme/tokens";
+import { C } from "@/components/orders/parcel-track";
+import { AuthBackButton, PrimaryButton, authStyles } from "@/components/auth/auth-ui";
 
 export default function VerifyOtpScreen() {
   const router = useRouter();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ email?: string; phone?: string }>();
+  const params = useLocalSearchParams<{ email?: string; phone?: string; referral?: string; invite?: string }>();
   const email = params.email || "";
   const phone = params.phone || "";
 
@@ -46,6 +52,15 @@ export default function VerifyOtpScreen() {
   }, []);
 
   const handleChange = (text: string, index: number) => {
+    // A pasted / autofilled code arrives as several digits in one cell.
+    const digits = text.replace(/\D/g, "");
+    if (digits.length > 1) {
+      const nextCode = [...code];
+      for (let i = 0; i < digits.length && index + i < 6; i++) nextCode[index + i] = digits[i];
+      setCode(nextCode);
+      refs.current[Math.min(index + digits.length, 5)]?.focus();
+      return;
+    }
     // Only accept numeric input
     if (text && !/^\d$/.test(text)) return;
 
@@ -79,11 +94,11 @@ export default function VerifyOtpScreen() {
     let error;
 
     if (phone) {
-      const { error: err } = await supabase.auth.verifyOtp({
-        phone,
-        token,
-        type: "sms",
-      });
+      // Fixed login code (backend flag): exchange a magic-link token instead.
+      const fixed = await verifyPhoneOtpBackend(phone, token);
+      const { error: err } = fixed.ok
+        ? await supabase.auth.verifyOtp({ token_hash: fixed.data.token_hash, type: "magiclink" })
+        : await supabase.auth.verifyOtp({ phone, token, type: "sms" });
       error = err;
     } else {
       const { error: err } = await supabase.auth.verifyOtp({
@@ -104,12 +119,31 @@ export default function VerifyOtpScreen() {
       } catch {
         // ignore
       }
+      // Post-signup extras captured on the register screen (best-effort).
+      try {
+        if (params.referral && (await hasStoreApi())) await applyReferralCodeBackend(params.referral);
+        if (params.invite && (await hasStoreApi())) {
+          const accept = await acceptDriverInvite(params.invite);
+          if (accept.ok) await supabase.auth.refreshSession();
+          else toast(`Invite could not be redeemed: ${accept.error}`, "error");
+        }
+      } catch {
+        // non-blocking
+      }
       toast("Welcome back!", "success");
       // Auth state listener in _layout.tsx will handle redirection to main flow
     }
   };
 
   const handleResend = async () => {
+    if (FIXED_LOGIN_CODE_ENABLED && phone) {
+      setTimer(30);
+      setCode(["", "", "", "", "", ""]);
+      refs.current[0]?.focus();
+      toast(`Use the test code ${FIXED_LOGIN_CODE}`, "info");
+      return;
+    }
+
     setLoading(true);
     let error;
 
@@ -142,168 +176,104 @@ export default function VerifyOtpScreen() {
 
   const targetIdentifier = email || phone || "your contact details";
 
+  const [focused, setFocused] = useState(0);
+  const filled = code.every((d) => d !== "");
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace("/(auth)/login"));
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <KeyboardAvoidingView style={authStyles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: insets.top > 0 ? insets.top + spacing[4] : spacing[8],
-            paddingBottom: insets.bottom > 0 ? insets.bottom + spacing[4] : spacing[8],
-          },
+          authStyles.scroll,
+          { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) + 8 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Header section with luxury editorial brand details */}
-        <View style={styles.header}>
-          <Label style={styles.kicker}>— Verification</Label>
-          <View style={styles.titleRow}>
-            <Display size="4xl" style={styles.titleText}>Verify </Display>
-            <Display italic size="4xl" style={styles.titleTextItalic}>code</Display>
-            <Display size="4xl" style={styles.titleText}>.</Display>
-          </View>
-          <Body muted style={styles.subtitle}>
-            Enter the 6-digit code sent to{" "}
-            <Body style={{ fontWeight: "600" }}>{targetIdentifier}</Body>.
-          </Body>
-        </View>
+        <AuthBackButton onPress={goBack} />
 
-        {/* Verification code fields */}
-        <View style={styles.codeRow}>
+        <Animated.View entering={FadeInDown.duration(450)}>
+          <Text style={authStyles.title} accessibilityRole="header">
+            OTP Verification
+          </Text>
+          <Text style={authStyles.subtitle}>
+            Enter the 6-digit code we just sent to{" "}
+            <Text style={styles.strong}>{targetIdentifier}</Text>
+          </Text>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.duration(450).delay(80)} style={styles.codeRow}>
           {code.map((val, idx) => (
             <TextInput
               key={idx}
               ref={(el) => {
                 refs.current[idx] = el;
               }}
-              style={styles.codeCell}
+              style={[
+                styles.cell,
+                val !== "" && styles.cellFilled,
+                focused === idx && styles.cellFocused,
+              ]}
               keyboardType="number-pad"
-              maxLength={1}
+              textContentType={idx === 0 ? "oneTimeCode" : "none"}
+              autoComplete={idx === 0 ? "sms-otp" : "off"}
+              maxLength={idx === 0 ? 6 : 1}
               value={val}
               onChangeText={(text) => handleChange(text, idx)}
               onKeyPress={(e) => handleKeyPress(e, idx)}
-              placeholderTextColor={colors.light.mutedForeground}
+              onFocus={() => setFocused(idx)}
+              selectionColor={colors.olive[600]}
               selectTextOnFocus
+              accessibilityLabel={`Digit ${idx + 1}`}
             />
           ))}
+        </Animated.View>
+
+        <PrimaryButton
+          label="Verify"
+          onPress={handleVerify}
+          disabled={!filled}
+          loading={loading}
+          style={{ marginTop: 28 }}
+        />
+
+        <View style={{ flex: 1, minHeight: 24 }} />
+        <View style={styles.resend}>
+          <Text style={styles.resendPrompt}>Didn’t receive the code? </Text>
+          {timer > 0 ? (
+            <Text style={styles.resendTimer}>Resend in 0:{String(timer).padStart(2, "0")}</Text>
+          ) : (
+            <Pressable onPress={handleResend} disabled={loading} hitSlop={8} accessibilityRole="button">
+              <Text style={styles.resendAction}>Resend</Text>
+            </Pressable>
+          )}
         </View>
-
-        <View style={styles.actions}>
-          <Button
-            onPress={handleVerify}
-            loading={loading}
-            variant="brand"
-            style={styles.submitButton}
-          >
-            Verify
-          </Button>
-
-          <View style={styles.resendContainer}>
-            {timer > 0 ? (
-              <Body size="sm" muted>Resend code in {timer}s</Body>
-            ) : (
-              <TouchableOpacity onPress={handleResend} disabled={loading}>
-                <Label style={styles.resendText}>Resend code</Label>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {/* Back Link */}
-        <TouchableOpacity
-          style={styles.backLink}
-          onPress={() => router.replace("/(auth)/login")}
-        >
-          <Ionicons name="arrow-back" size={14} color={colors.light.mutedForeground} style={{ marginRight: 4 }} />
-          <Label style={styles.backText}>Back to Sign In</Label>
-        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  strong: { fontFamily: fontFamilies.sans.bold, color: C.text },
+  codeRow: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 32 },
+  cell: {
     flex: 1,
-    backgroundColor: colors.light.background,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  header: {
-    marginBottom: 32,
-  },
-  kicker: {
-    color: colors.olive[600],
-    marginBottom: 8,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  titleText: {
-    color: colors.light.foreground,
-    lineHeight: 46,
-  },
-  titleTextItalic: {
-    color: colors.olive[700],
-    lineHeight: 46,
-  },
-  subtitle: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.light.mutedForeground,
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  codeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 32,
-  },
-  codeCell: {
-    width: 44,
-    height: 52,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.light.card,
-    fontSize: 22,
-    fontFamily: fontFamilies.sans.semibold,
-    color: colors.light.foreground,
+    maxWidth: 56,
+    height: 62,
+    borderRadius: 16,
+    backgroundColor: "#efede4",
+    borderWidth: 1.5,
+    borderColor: "transparent",
     textAlign: "center",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 22,
+    color: C.text,
   },
-  actions: {
-    gap: 16,
-  },
-  submitButton: {
-    width: "100%",
-  },
-  resendContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    height: 24,
-  },
-  resendText: {
-    color: colors.olive[700],
-    fontSize: 10,
-    textDecorationLine: "underline",
-  },
-  backLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 40,
-    paddingVertical: 8,
-  },
-  backText: {
-    color: colors.light.mutedForeground,
-    fontSize: 10,
-  },
+  cellFilled: { backgroundColor: "#FFFFFF", borderColor: "rgba(22,23,15,0.14)" },
+  cellFocused: { backgroundColor: "#FFFFFF", borderColor: colors.olive[600] },
+  resend: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 8 },
+  resendPrompt: { fontFamily: fontFamilies.sans.regular, fontSize: 14.5, color: C.text },
+  resendTimer: { fontFamily: fontFamilies.sans.semibold, fontSize: 14.5, color: C.muted },
+  resendAction: { fontFamily: fontFamilies.sans.bold, fontSize: 14.5, color: colors.olive[600] },
 });

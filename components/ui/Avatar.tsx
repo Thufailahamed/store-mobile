@@ -11,6 +11,10 @@ interface AvatarProps {
   name?: string;
   size?: number;
   style?: any;
+  /** Fallback circle background (default: olive shade hashed from name). */
+  backgroundColor?: string;
+  /** Fallback initials/icon colour (default: cream). */
+  iconColor?: string;
 }
 
 function getInitials(name: string): string {
@@ -37,10 +41,12 @@ function hashColor(name: string): string {
   return oliveShades[Math.abs(hash) % oliveShades.length];
 }
 
-export function Avatar({ uri, name = "", size = 40, style }: AvatarProps) {
+export function Avatar({ uri, name = "", size = 40, style, backgroundColor, iconColor }: AvatarProps) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [uri]);
   const initials = getInitials(name);
-  const bgColor = hashColor(name);
-  const imageUri = uri ? resolveImageUrl(uri) : "";
+  const bgColor = backgroundColor ?? hashColor(name);
+  const imageUri = uri && !failed ? resolveImageUrl(uri) : "";
 
   if (imageUri) {
     return (
@@ -57,6 +63,7 @@ export function Avatar({ uri, name = "", size = 40, style }: AvatarProps) {
         contentFit="cover"
         transition={200}
         cachePolicy="memory-disk"
+        onError={() => setFailed(true)}
       />
     );
   }
@@ -79,12 +86,13 @@ export function Avatar({ uri, name = "", size = 40, style }: AvatarProps) {
           style={[
             styles.initials,
             { fontSize: size * 0.38 },
+            iconColor ? { color: iconColor } : null,
           ]}
         >
           {initials}
         </Text>
       ) : (
-        <Ionicons name="person" size={size * 0.44} color="#FAF8F5" />
+        <Ionicons name="person" size={size * 0.44} color={iconColor ?? "#FAF8F5"} />
       )}
     </View>
   );

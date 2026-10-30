@@ -10,136 +10,55 @@ import {
   Pressable,
 } from "react-native";
 import { Image } from "expo-image";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground } from "@/components/layout";
 import { Skeleton } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { getOrders } from "@/lib/api";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import {
+  C,
+  CLOSED,
+  PROCESS,
+  RIBBON,
+  TRANSIT,
+  ParcelArt,
+  TrackRail,
+  etaFor,
+  routeStyles,
+  shortDate,
+} from "@/components/orders/parcel-track";
 import { formatPrice } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
 
-type Tab = "all" | "active" | "shipped" | "delivered" | "cancelled";
+
+type Tab = "all" | "transit" | "process" | "delivered" | "closed";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "shipped", label: "Shipped" },
+  { key: "transit", label: "Transit" },
+  { key: "process", label: "On Process" },
   { key: "delivered", label: "Delivered" },
-  { key: "cancelled", label: "Cancelled" },
+  { key: "closed", label: "Cancelled" },
 ];
 
-const STATUS_TONE: Record<
-  OrderStatus,
-  {
-    label: string;
-    bg: string;
-    fg: string;
-    border: string;
-    icon: keyof typeof Ionicons.glyphMap;
-  }
-> = {
-  pending: {
-    label: "Awaiting confirmation",
-    bg: "rgba(232, 169, 56, 0.12)",
-    fg: "#9a6700",
-    border: "rgba(232, 169, 56, 0.3)",
-    icon: "time-outline",
-  },
-  confirmed: {
-    label: "Confirmed",
-    bg: "rgba(83, 94, 44, 0.12)",
-    fg: colors.olive[800],
-    border: "rgba(83, 94, 44, 0.25)",
-    icon: "checkmark-circle-outline",
-  },
-  processing: {
-    label: "Preparing",
-    bg: "rgba(83, 94, 44, 0.12)",
-    fg: colors.olive[800],
-    border: "rgba(83, 94, 44, 0.25)",
-    icon: "cube-outline",
-  },
-  shipped: {
-    label: "In transit",
-    bg: "rgba(59, 130, 246, 0.1)",
-    fg: "#1d4ed8",
-    border: "rgba(59, 130, 246, 0.25)",
-    icon: "airplane-outline",
-  },
-  out_for_delivery: {
-    label: "Out for delivery",
-    bg: "rgba(16, 185, 129, 0.12)",
-    fg: "#047857",
-    border: "rgba(16, 185, 129, 0.3)",
-    icon: "bicycle-outline",
-  },
-  delivered: {
-    label: "Delivered",
-    bg: "rgba(16, 185, 129, 0.12)",
-    fg: "#047857",
-    border: "rgba(16, 185, 129, 0.3)",
-    icon: "sparkles-outline",
-  },
-  cancelled: {
-    label: "Cancelled",
-    bg: "rgba(192, 57, 43, 0.08)",
-    fg: colors.light.destructive,
-    border: "rgba(192, 57, 43, 0.2)",
-    icon: "close-circle-outline",
-  },
-  returned: {
-    label: "Returned",
-    bg: "rgba(200, 164, 74, 0.12)",
-    fg: "#8a6d1a",
-    border: "rgba(200, 164, 74, 0.25)",
-    icon: "return-down-back-outline",
-  },
-  refunded: {
-    label: "Refund processed",
-    bg: "rgba(200, 164, 74, 0.12)",
-    fg: "#8a6d1a",
-    border: "rgba(200, 164, 74, 0.25)",
-    icon: "cash-outline",
-  },
-  failed_attempt: {
-    label: "Delivery rescheduled",
-    bg: "rgba(220, 38, 38, 0.1)",
-    fg: "#b91c1c",
-    border: "rgba(220, 38, 38, 0.25)",
-    icon: "alert-circle-outline",
-  },
-};
 
-const ACTIVE_STATUSES: OrderStatus[] = ["pending", "confirmed", "processing"];
-const TRACKABLE: OrderStatus[] = ["confirmed", "processing", "shipped", "out_for_delivery", "delivered"];
-
-function formatRelative(dateStr: string) {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+function inTab(status: OrderStatus, tab: Tab) {
+  if (tab === "all") return true;
+  if (tab === "transit") return TRANSIT.includes(status);
+  if (tab === "process") return PROCESS.includes(status);
+  if (tab === "delivered") return status === "delivered";
+  return CLOSED.includes(status);
 }
 
-function paymentLabel(method?: string) {
-  if (!method) return "Card";
-  if (method === "cod") return "Cash on Delivery";
-  if (method === "paymentslk") return "Online Card Payment";
-  return method.replace(/_/g, " ");
-}
 
 export default function OrdersScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,578 +80,387 @@ export default function OrdersScreen() {
     loadOrders();
   }, [loadOrders]);
 
-  const counts = useMemo(
-    () => ({
-      all: orders.length,
-      active: orders.filter((o) => ACTIVE_STATUSES.includes(o.status)).length,
-      shipped: orders.filter((o) => o.status === "shipped" || o.status === "out_for_delivery").length,
-      delivered: orders.filter((o) => o.status === "delivered").length,
-      cancelled: orders.filter(
-        (o) => o.status === "cancelled" || o.status === "returned" || o.status === "refunded",
-      ).length,
-    }),
-    [orders],
-  );
-
-  const lifetimeSpend = useMemo(
-    () => orders.reduce((sum, o) => sum + (o.status !== "cancelled" ? o.total ?? 0 : 0), 0),
-    [orders],
-  );
+  const counts = useMemo(() => {
+    const c = { all: 0, transit: 0, process: 0, delivered: 0, closed: 0 } as Record<Tab, number>;
+    for (const o of orders) {
+      for (const t of TABS) if (inTab(o.status, t.key)) c[t.key] += 1;
+    }
+    return c;
+  }, [orders]);
 
   const filtered = useMemo(() => {
-    let list = orders;
-    if (tab === "active") list = list.filter((o) => ACTIVE_STATUSES.includes(o.status));
-    else if (tab === "shipped") list = list.filter((o) => o.status === "shipped" || o.status === "out_for_delivery");
-    else if (tab === "delivered") list = list.filter((o) => o.status === "delivered");
-    else if (tab === "cancelled") {
-      list = list.filter((o) => o.status === "cancelled" || o.status === "returned" || o.status === "refunded");
-    }
-
-    if (query.trim()) {
-      const q = query.toLowerCase();
+    let list = orders.filter((o) => inTab(o.status, tab));
+    const q = query.trim().toLowerCase();
+    if (q) {
       list = list.filter(
         (o) =>
           o.order_number.toLowerCase().includes(q) ||
-          o.items?.some((i) => i.product_name.toLowerCase().includes(q)),
+          o.items?.some(
+            (i) =>
+              i.product_name.toLowerCase().includes(q) ||
+              (i.store?.name ?? "").toLowerCase().includes(q),
+          ),
       );
     }
     return list;
   }, [orders, tab, query]);
 
-  if (loading) {
-    return (
-      <PaperBackground style={styles.flex}>
-        <SafeAreaView style={styles.flex} edges={["top"]}>
-          <View style={styles.topBar}>
-            <TouchableOpacity style={styles.navBtn} onPress={() => router.back()} activeOpacity={0.7}>
-              <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-            </TouchableOpacity>
-            <View style={styles.topBarCenter}>
-              <Text style={styles.topBarKicker}>ACCOUNT</Text>
-              <Text style={styles.topBarTitle}>My orders</Text>
-            </View>
-            <View style={styles.navBtnPlaceholder} />
-          </View>
-          <View style={styles.loading}>
-            <Skeleton height={140} borderRadius={radii["2xl"]} style={{ marginBottom: 12 }} />
-            <Skeleton height={88} borderRadius={radii.xl} style={{ marginBottom: 16 }} />
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} height={160} borderRadius={radii["2xl"]} style={{ marginTop: 12 }} />
-            ))}
-          </View>
-        </SafeAreaView>
-      </PaperBackground>
-    );
-  }
+  const visibleTabs = TABS.filter((t) => t.key !== "closed" || counts.closed > 0);
 
   return (
-    <PaperBackground style={styles.flex}>
+    <View style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.55, 1]}
+        style={styles.headerGlow}
+      />
       <SafeAreaView style={styles.flex} edges={["top"]}>
-        {/* Top Navigation Bar */}
-        <View style={styles.topBar}>
+        <View style={styles.header}>
           <TouchableOpacity
-            style={styles.navBtn}
+            style={styles.circleBtn}
             onPress={() => router.back()}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
             accessibilityLabel="Back"
           >
-            <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
+            <Ionicons name="chevron-back" size={20} color={C.text} />
           </TouchableOpacity>
-
-          <View style={styles.topBarCenter}>
-            <Text style={styles.topBarKicker}>ACCOUNT</Text>
-            <Text style={styles.topBarTitle}>My orders</Text>
-          </View>
-
+          <Text style={styles.title} accessibilityRole="header">My Orders</Text>
           <TouchableOpacity
-            style={styles.navBtn}
-            onPress={() => loadOrders(true)}
-            activeOpacity={0.7}
-            accessibilityLabel="Refresh"
+            style={styles.circleBtn}
+            onPress={() => router.push("/(main)/account/returns" as never)}
+            activeOpacity={0.8}
+            accessibilityLabel="Returns and refunds"
           >
-            <Ionicons name="refresh-outline" size={18} color={colors.olive[700]} />
+            <Ionicons name="return-up-back-outline" size={19} color={C.text} />
           </TouchableOpacity>
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => loadOrders(true)}
-              tintColor={colors.olive[700]}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={() => loadOrders(true)} tintColor={C.accent} />
           }
         >
-          {/* Summary */}
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryTop}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.summaryLabel}>Total spent</Text>
-                <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {formatPrice(lifetimeSpend)}
-                </Text>
-                <Text style={styles.summarySub}>
-                  across {counts.all} order{counts.all === 1 ? "" : "s"}
-                </Text>
-              </View>
-              <View style={styles.summaryIcon}>
-                <Ionicons name="bag-handle-outline" size={18} color="#E8CF8F" />
-              </View>
-            </View>
-            <View style={styles.summaryStats}>
-              {([
-                { key: "active", label: "In progress", value: counts.active, dot: "#E8A938" },
-                { key: "shipped", label: "On the way", value: counts.shipped, dot: "#7FB3E8" },
-                { key: "delivered", label: "Delivered", value: counts.delivered, dot: "#7ACF9E" },
-              ] as const).map((m) => (
-                <TouchableOpacity
-                  key={m.key}
-                  style={[styles.summaryStat, tab === m.key && styles.summaryStatActive]}
-                  onPress={() => setTab(tab === m.key ? "all" : m.key)}
-                  activeOpacity={0.75}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: tab === m.key }}
-                  accessibilityLabel={`${m.value} ${m.label}`}
-                >
-                  <Text style={styles.summaryStatValue}>{m.value}</Text>
-                  <View style={styles.summaryStatLabelRow}>
-                    <View style={[styles.summaryDot, { backgroundColor: m.dot }]} />
-                    <Text style={styles.summaryStatLabel} numberOfLines={1}>{m.label}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Search Bar */}
-          <View style={styles.searchBarWrap}>
-            <Ionicons name="search-outline" size={17} color={colors.olive[700]} />
+          <View style={styles.search}>
+            <Ionicons name="search-outline" size={20} color={C.muted} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search orders, items, or numbers…"
-              placeholderTextColor="#9ca3af"
+              placeholder="Search your parcel"
+              placeholderTextColor="#A1A1A6"
               value={query}
               onChangeText={setQuery}
+              returnKeyType="search"
             />
             {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery("")} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color="#9ca3af" />
+              <TouchableOpacity onPress={() => setQuery("")} hitSlop={8} accessibilityLabel="Clear search">
+                <Ionicons name="close-circle" size={18} color={C.faint} />
               </TouchableOpacity>
             )}
           </View>
 
-          {/* Filter Status Chips */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsRow}
-            style={styles.tabsScroll}
+            style={styles.chipsScroll}
+            contentContainerStyle={styles.chipsRow}
           >
-            {TABS.map((t) => {
-              const active = tab === t.key;
-              const count = counts[t.key];
+            {visibleTabs.map((t) => {
+              const on = tab === t.key;
               return (
                 <Pressable
                   key={t.key}
                   onPress={() => setTab(t.key)}
-                  style={[styles.tabChip, active && styles.tabChipActive]}
+                  style={[styles.chip, on && styles.chipOn]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
                 >
-                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
-                  {count > 0 && (
-                    <View style={[styles.tabCount, active && styles.tabCountActive]}>
-                      <Text style={[styles.tabCountText, active && styles.tabCountTextActive]}>
-                        {count}
-                      </Text>
-                    </View>
-                  )}
+                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{t.label}</Text>
+                  <View style={[styles.chipCount, on && styles.chipCountOn]}>
+                    <Text style={[styles.chipCountText, on && styles.chipCountTextOn]}>{counts[t.key]}</Text>
+                  </View>
                 </Pressable>
               );
             })}
           </ScrollView>
 
-          {/* Orders List */}
-          {filtered.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="bag-outline" size={30} color={colors.olive[700]} />
-              </View>
-              <Text style={styles.emptyTitle}>No acquisitions found</Text>
-              <Text style={styles.emptySub}>
-                {orders.length === 0
-                  ? "Your order history will appear here once you place your first purchase."
-                  : "Try adjusting your filters or search keywords."}
-              </Text>
-              {orders.length === 0 && (
-                <TouchableOpacity
-                  style={styles.shopNowBtn}
-                  onPress={() => router.push("/(main)/products" as never)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.shopNowBtnText}>Browse collection</Text>
-                  <Ionicons name="arrow-forward" size={14} color="#faf8f1" />
-                </TouchableOpacity>
-              )}
+          {loading ? (
+            <View style={styles.list}>
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} height={232} borderRadius={26} />
+              ))}
             </View>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              hasOrders={orders.length > 0}
+              onShop={() => router.push("/(main)/products" as never)}
+            />
           ) : (
-            <View style={styles.ordersList}>
-              {filtered.map((o) => (
-                <LuxuryOrderCard key={o.id} order={o} router={router} />
+            <View style={styles.list}>
+              {filtered.map((o, i) => (
+                <Animated.View key={o.id} entering={FadeInDown.delay(Math.min(i, 6) * 70).duration(420)}>
+                  <ParcelCard
+                    order={o}
+                    onPress={() => router.push(`/(main)/account/orders/${o.id}` as never)}
+                  />
+                </Animated.View>
               ))}
             </View>
           )}
         </ScrollView>
       </SafeAreaView>
-    </PaperBackground>
+    </View>
   );
 }
 
-function LuxuryOrderCard({ order: o, router }: { order: Order; router: ReturnType<typeof useRouter> }) {
-  const tone = STATUS_TONE[o.status] || STATUS_TONE.pending;
+function ParcelCard({ order: o, onPress }: { order: Order; onPress: () => void }) {
   const items = o.items ?? [];
-  const itemCount = items.reduce((s, i) => s + i.quantity, 0);
-  const firstItem = items[0];
-  const firstImg =
-    firstItem?.product?.images?.find((i) => i.is_primary)?.url ?? firstItem?.product?.images?.[0]?.url;
-  const moreCount = items.length - 1;
-  const canTrack = TRACKABLE.includes(o.status);
+  const first = items[0];
+  const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
+  const thumb =
+    first?.image_url ??
+    first?.product?.images?.find((i) => i.is_primary)?.url ??
+    first?.product?.images?.[0]?.url ??
+    null;
+  const ribbon = RIBBON[o.status] ?? RIBBON.pending;
 
-  const brand = firstItem?.product?.brand?.name || firstItem?.product?.store?.name || null;
+  const stores = Array.from(new Set(items.map((i) => i.store?.name).filter((n): n is string => !!n)));
+  const from = stores.length === 0 ? "LUXE" : stores.length === 1 ? stores[0] : `${stores[0]} +${stores.length - 1}`;
+  const ship = o.shipping_address ?? o.address;
+  const to = ship ? [ship.city, ship.state].filter(Boolean).join(", ") || ship.line1 : "Your address";
+
+  let toSub: string;
+  if (o.status === "delivered") toSub = `Delivered ${shortDate(o.delivered_at ?? o.placed_at)}`;
+  else if (o.status === "cancelled") toSub = "Order cancelled";
+  else if (o.status === "returned") toSub = "Returned";
+  else if (o.status === "refunded") toSub = "Refunded";
+  else toSub = `Estimated ${shortDate(etaFor(o).eta)}`;
+
+  const more = items.length - 1;
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.orderCard, pressed && { opacity: 0.94 }]}
-      onPress={() => router.push(`/(main)/account/orders/${o.id}` as never)}
-      accessibilityRole="button"
-      accessibilityLabel={`Order ${o.order_number}, ${tone.label}, ${formatPrice(o.total, o.currency)}`}
-    >
-      <View style={styles.cardHeader}>
-        <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
-          <Ionicons name={tone.icon} size={12} color={tone.fg} />
-          <Text style={[styles.statusBadgeText, { color: tone.fg }]}>{tone.label}</Text>
-        </View>
-        <Text style={styles.orderDateText}>{formatRelative(o.placed_at)}</Text>
-      </View>
+    <View style={styles.cardShadow}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Order ${o.order_number}, ${ribbon.label.toLowerCase()}, ${formatPrice(o.total, o.currency)}`}
+      >
+        <ParcelArt />
 
-      {firstItem ? (
-        <View style={styles.itemRow}>
-          <View style={styles.itemThumbWrap}>
-            {firstImg ? (
-              <Image source={{ uri: firstImg }} style={styles.itemThumbImage} contentFit="cover" transition={200} />
+        <View pointerEvents="none" style={styles.ribbonClip}>
+          <View style={[styles.ribbon, { backgroundColor: ribbon.bg }]}>
+            <Text style={[styles.ribbonText, { color: ribbon.fg }]} numberOfLines={1}>{ribbon.label}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardHead}>
+          <View style={styles.thumb}>
+            {thumb ? (
+              <Image source={{ uri: thumb }} style={styles.thumbImg} contentFit="cover" transition={200} />
             ) : (
-              <View style={styles.itemThumbPlaceholder}>
-                <Ionicons name="shirt-outline" size={22} color={colors.light.mutedForeground} />
-              </View>
+              <Ionicons name="shirt-outline" size={24} color={C.muted} />
             )}
-            {moreCount > 0 ? (
-              <View style={styles.itemQtyBadge}>
-                <Text style={styles.itemQtyBadgeText}>+{moreCount}</Text>
+            {more > 0 ? (
+              <View style={styles.moreBadge}>
+                <Text style={styles.moreBadgeText}>+{more}</Text>
               </View>
             ) : null}
           </View>
-
-          <View style={styles.itemMetaColumn}>
-            {brand ? (
-              <Text style={styles.itemBrandName} numberOfLines={1}>{brand}</Text>
-            ) : null}
-            <Text style={styles.itemTitleName} numberOfLines={2}>
-              {firstItem.product_name}
+          <View style={styles.headText}>
+            <Text style={styles.orderId} numberOfLines={1}>
+              ID: {o.order_number}
             </Text>
-            <Text style={styles.itemVariantText} numberOfLines={1}>
-              {[firstItem.variant_label, `${itemCount} item${itemCount === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+            <Text style={styles.productName} numberOfLines={1}>
+              {first?.product_name ?? "Order"}
+            </Text>
+            <Text style={styles.metaLine} numberOfLines={1}>
+              {formatPrice(o.total, o.currency)} · {itemCount} item{itemCount === 1 ? "" : "s"}
             </Text>
           </View>
-
-          <Text style={styles.orderPriceText}>{formatPrice(o.total, o.currency)}</Text>
         </View>
-      ) : null}
 
-      <View style={styles.cardFooter}>
-        <Text style={styles.orderNumberText} numberOfLines={1}>
-          #{o.order_number} · {paymentLabel(o.payment_method)}
-        </Text>
-        {canTrack ? (
-          <TouchableOpacity
-            style={styles.trackLogisticsBtn}
-            onPress={() => router.push(`/(main)/account/orders/${o.id}/track` as never)}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Track order ${o.order_number}`}
-          >
-            <Ionicons name="navigate-outline" size={12} color={colors.olive[800]} />
-            <Text style={styles.trackLogisticsBtnText}>Track</Text>
-          </TouchableOpacity>
-        ) : (
-          <Ionicons name="chevron-forward" size={15} color={colors.light.mutedForeground} />
-        )}
+        <TrackRail order={o} />
+
+        <View style={routeStyles.route}>
+          <View style={routeStyles.routeCol}>
+            <Text style={routeStyles.routeLabel}>FROM</Text>
+            <Text style={routeStyles.routeValue} numberOfLines={1}>{from}</Text>
+            <Text style={routeStyles.routeSub} numberOfLines={1}>{shortDate(o.placed_at)}</Text>
+          </View>
+          <View style={routeStyles.routeCol}>
+            <Text style={routeStyles.routeLabel}>TO</Text>
+            <Text style={routeStyles.routeValue} numberOfLines={1}>{to}</Text>
+            <Text style={routeStyles.routeSub} numberOfLines={1}>{toSub}</Text>
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+function EmptyState({ hasOrders, onShop }: { hasOrders: boolean; onShop: () => void }) {
+  return (
+    <View style={styles.empty}>
+      <View style={styles.emptyArt}>
+        <MaterialCommunityIcons name="package-variant" size={34} color={C.accent} />
       </View>
-    </Pressable>
+      <Text style={styles.emptyTitle}>{hasOrders ? "No parcels here" : "No orders yet"}</Text>
+      <Text style={styles.emptySub}>
+        {hasOrders
+          ? "Try another filter or search for a different order number."
+          : "When you place an order, you can follow every step of its journey here."}
+      </Text>
+      {!hasOrders && (
+        <TouchableOpacity style={styles.emptyBtn} onPress={onShop} activeOpacity={0.85}>
+          <Text style={styles.emptyBtnText}>Start shopping</Text>
+          <Ionicons name="arrow-forward" size={15} color={C.lime} />
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.paper },
   flex: { flex: 1 },
-  loading: { padding: spacing[5], paddingTop: spacing[2] },
-  content: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[10],
-  },
+  headerGlow: { position: "absolute", top: 0, left: 0, right: 0, height: 320 },
 
-  /* Top Navigation Bar */
-  topBar: {
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
-    backgroundColor: "#f8f7f2",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 14,
   },
-  navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    ...shadows.soft,
-  },
-  navBtnPlaceholder: {
-    width: 38,
-    height: 38,
-  },
-  topBarCenter: {
-    alignItems: "center",
-    gap: 1,
-  },
-  topBarKicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.8,
-    color: colors.olive[700],
-    textTransform: "uppercase",
-  },
-  topBarTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 19,
-    color: colors.light.foreground,
-    letterSpacing: -0.3,
-  },
-
-  /* Summary */
-  summaryCard: {
-    backgroundColor: colors.olive[950],
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: spacing[4],
-  },
-  summaryTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  summaryLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: "rgba(250,248,241,0.6)",
-  },
-  summaryValue: {
-    marginTop: 4,
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    lineHeight: 40,
-    color: "#FAF8F1",
-    fontVariant: ["tabular-nums"],
-  },
-  summarySub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "rgba(250,248,241,0.6)" },
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: "rgba(200,164,74,0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  summaryStats: { flexDirection: "row", gap: 8, marginTop: 16 },
-  summaryStat: {
+  title: {
     flex: 1,
-    minWidth: 0,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    backgroundColor: "rgba(250,248,241,0.06)",
-    borderWidth: 1,
-    borderColor: "transparent",
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
+    letterSpacing: -0.8,
+    color: C.text,
   },
-  summaryStatActive: { borderColor: "rgba(232,207,143,0.6)", backgroundColor: "rgba(250,248,241,0.1)" },
-  summaryStatValue: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
-  summaryStatLabelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
-  summaryDot: { width: 6, height: 6, borderRadius: 3 },
-  summaryStatLabel: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "rgba(250,248,241,0.65)" },
+  circleBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
 
-  /* Search Bar */
-  searchBarWrap: {
+  content: { paddingHorizontal: 20, paddingTop: 4 },
+
+  search: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
-    backgroundColor: "#ffffff",
-    borderRadius: radii.xl,
-    paddingHorizontal: spacing[4],
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    marginBottom: spacing[3],
-    ...shadows.soft,
+    gap: 10,
+    height: 56,
+    borderRadius: 28,
+    paddingHorizontal: 20,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    elevation: 3,
   },
   searchInput: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13.5,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 15,
+    color: C.text,
     padding: 0,
   },
 
-  /* Filter Tabs */
-  tabsScroll: {
-    marginHorizontal: -spacing[5],
-    marginBottom: spacing[4],
-  },
-  tabsRow: {
-    paddingHorizontal: spacing[5],
-    gap: 8,
-    flexDirection: "row",
-  },
-  tabChip: {
+  chipsScroll: { marginHorizontal: -20, marginTop: 18, marginBottom: 18 },
+  chipsRow: { paddingHorizontal: 20, gap: 10 },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: "#ffffff",
+    gap: 8,
+    height: 46,
+    paddingLeft: 18,
+    paddingRight: 12,
+    borderRadius: 23,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
+    borderColor: C.line,
   },
-  tabChipActive: {
-    backgroundColor: "#2c3119",
-    borderColor: "#2c3119",
-    ...shadows.soft,
-  },
-  tabLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-  },
-  tabLabelActive: {
-    color: "#faf8f1",
-  },
-  tabCount: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.olive[50],
+  chipOn: { backgroundColor: C.ink, borderColor: C.ink },
+  chipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  chipTextOn: { color: C.cream },
+  chipCount: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 6,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    backgroundColor: C.accentSoft,
   },
-  tabCountActive: {
-    backgroundColor: "rgba(200, 164, 74, 0.3)",
+  chipCountOn: { backgroundColor: "rgba(200,224,138,0.18)" },
+  chipCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: C.muted },
+  chipCountTextOn: { color: C.lime },
+
+  list: { gap: 16 },
+
+  cardShadow: {
+    borderRadius: 26,
+    backgroundColor: C.card,
+    shadowColor: "#1A1A1A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  tabCountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: colors.olive[800],
+  card: {
+    borderRadius: 26,
+    overflow: "hidden",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
-  tabCountTextActive: {
-    color: "#E8CF8F",
+  cardPressed: { transform: [{ scale: 0.985 }] },
+
+  ribbonClip: { position: "absolute", top: 0, right: 0, width: 116, height: 116, overflow: "hidden" },
+  ribbon: {
+    position: "absolute",
+    top: 24,
+    right: -44,
+    width: 170,
+    paddingVertical: 6,
+    alignItems: "center",
+    transform: [{ rotate: "35deg" }],
+  },
+  ribbonText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    letterSpacing: 1.6,
   },
 
-  /* Empty State */
-  emptyCard: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: radii["2xl"],
-    padding: spacing[8],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: spacing[2],
-    ...shadows.soft,
-  },
-  emptyIconWrap: {
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 14, paddingRight: 64 },
+  thumb: {
     width: 60,
     height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.olive[50],
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing[1],
-  },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: colors.light.foreground,
-    letterSpacing: -0.3,
-  },
-  emptySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    lineHeight: 18,
-    marginBottom: spacing[2],
-  },
-  shopNowBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: colors.olive[700],
-    borderRadius: radii.full,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    ...shadows.soft,
-  },
-  shopNowBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#faf8f1",
-  },
-
-  /* Order Cards */
-  ordersList: { gap: 12 },
-  orderCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(22,23,15,0.08)",
-    padding: 14,
-    gap: 12,
-  },
-  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  statusBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12 },
-  orderDateText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
-  itemRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  itemThumbWrap: { width: 64, height: 64, borderRadius: 14, overflow: "visible" },
-  itemThumbImage: { width: 64, height: 64, borderRadius: 14, backgroundColor: "#f0ede2" },
-  itemThumbPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 14,
+    borderRadius: 18,
     backgroundColor: "#f0ede2",
     alignItems: "center",
     justifyContent: "center",
   },
-  itemQtyBadge: {
+  thumbImg: { width: 60, height: 60, borderRadius: 18 },
+  moreBadge: {
     position: "absolute",
     right: -6,
     bottom: -6,
@@ -740,53 +468,72 @@ const styles = StyleSheet.create({
     height: 22,
     paddingHorizontal: 5,
     borderRadius: 11,
-    backgroundColor: colors.olive[900],
+    backgroundColor: C.ink,
     borderWidth: 2,
     borderColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
-  itemQtyBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 10, color: "#FAF8F1" },
-  itemMetaColumn: { flex: 1, minWidth: 0, gap: 2 },
-  itemBrandName: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: colors.olive[700],
+  moreBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 10, color: C.cream },
+  headText: { flex: 1, minWidth: 0, gap: 2 },
+  orderId: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, letterSpacing: -0.3, color: C.text },
+  productName: { fontFamily: fontFamilies.sans.regular, fontSize: 14, color: C.muted },
+  metaLine: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted, marginTop: 1 },
+
+  route: { flexDirection: "row", gap: 14, marginTop: 18, paddingRight: 62 },
+  routeCol: { flex: 1, minWidth: 0 },
+  routeLabel: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    color: C.muted,
   },
-  itemTitleName: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, lineHeight: 19, color: colors.light.foreground },
-  moreItemsText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
-  itemVariantText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
-  orderPriceText: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
-    color: colors.light.foreground,
-    fontVariant: ["tabular-nums"],
+  routeValue: {
+    marginTop: 4,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
+    color: C.text,
   },
-  cardFooter: {
+  routeSub: { marginTop: 2, fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted },
+
+
+  empty: {
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 28,
+    borderRadius: 26,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
+    gap: 8,
+  },
+  emptyArt: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  emptyTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+  emptySub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: C.muted,
+    textAlign: "center",
+  },
+  emptyBtn: {
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(22,23,15,0.1)",
+    gap: 8,
+    height: 46,
+    paddingHorizontal: 22,
+    borderRadius: 23,
+    backgroundColor: C.ink,
   },
-  orderNumberText: {
-    flex: 1,
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  trackLogisticsBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-  },
-  trackLogisticsBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
+  emptyBtnText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.cream },
 });

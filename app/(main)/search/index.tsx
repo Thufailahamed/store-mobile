@@ -16,7 +16,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ProductCard } from "@/components/product/ProductCard";
+import { SearchResultCard, SearchResultRow } from "@/components/search/SearchResultCard";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
 import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
 import { SearchDiscover } from "@/components/search/SearchDiscover";
@@ -48,8 +48,8 @@ import {
   matchBrands,
 } from "@/lib/search/suggestion-engine";
 
-const GRID_GAP = 10;
-const GRID_PADDING = 20;
+const GRID_GAP = 12;
+const GRID_PADDING = 16;
 
 const INK = "#1b1c1c";
 const MUTED = "#5e5e5d";
@@ -83,6 +83,7 @@ export default function SearchScreen() {
   const [parsedAttrs, setParsedAttrs] = useState<import("@/lib/api/backend").SearchParsedAttrs | null>(null);
   const [rescued, setRescued] = useState(false);
   const [droppedAttrs, setDroppedAttrs] = useState<string[]>([]);
+  const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -158,7 +159,8 @@ export default function SearchScreen() {
     } catch {}
   };
 
-  const doSearch = useCallback(async (term: string) => {
+  // `spell: "off"` = "Search instead for <original>" (no typo correction).
+  const doSearch = useCallback(async (term: string, opts?: { spell?: "auto" | "off" }) => {
     const q = term.trim();
     if (!q) return;
     setQuery(q);
@@ -168,7 +170,8 @@ export default function SearchScreen() {
     saveRecent(q);
 
     const [productRes, brandRes, storeRes, catRes] = await Promise.all([
-      api.searchProductsWithMeta(q),
+      // Facets refine this set client-side — fetch the backend max so they see it all.
+      api.searchProductsWithMeta(q, 60, { spell: opts?.spell }),
       api.getBrands({ search: q }),
       api.getFeaturedStores(20),
       api.getCategories(20),
@@ -180,6 +183,9 @@ export default function SearchScreen() {
       setParsedAttrs(productRes.data.parsed_attrs);
       setRescued(productRes.data.rescued);
       setDroppedAttrs(productRes.data.dropped_attrs);
+      setCorrectedQuery(productRes.data.corrected_query);
+    } else {
+      setCorrectedQuery(null);
     }
     if (brandRes.ok) setBrands(brandRes.data.filter((b) => b.name.toLowerCase().includes(q.toLowerCase())));
     if (storeRes.ok) setStores(storeRes.data.filter((s) => s.name.toLowerCase().includes(q.toLowerCase())));
@@ -475,7 +481,6 @@ export default function SearchScreen() {
         onClear={resetSearch}
         searched={searched}
         query={query}
-        totalCount={totalCount}
         onImageSearch={() => runScan("library")}
         onCameraSearch={() => runScan("camera")}
       />
@@ -649,52 +654,140 @@ export default function SearchScreen() {
         ) : (
           /* ─── Results ─── */
           <View style={styles.resultsContainer}>
-            {/* Tabs */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.tabBarBleed}
-              contentContainerStyle={styles.tabBar}
+            <AnimatedScrollView
+              showsVerticalScrollIndicator={false}
+              onScroll={tabBarScrollHandler}
+              scrollEventThrottle={16}
+              keyboardDismissMode="on-drag"
+              contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
             >
-              {TABS.map((t) => {
-                const count =
-                  t.key === "all" ? totalCount :
-                  t.key === "products" ? productCount :
-                  t.key === "brands" ? brandCount :
-                  storeCount;
-                const isActive = tab === t.key;
-                // Empty facets are noise — keep only "All", the active tab, and tabs with hits.
-                if (count === 0 && t.key !== "all" && !isActive) return null;
-                return (
-                  <TouchableOpacity
-                    key={t.key}
-                    style={[styles.tab, isActive && styles.tabActive]}
-                    onPress={() => setTab(t.key)}
-                  >
-                    <Ionicons
-                      name={t.icon}
-                      size={14}
-                      color={isActive ? colors.light.primaryForeground : colors.light.mutedForeground}
-                    />
-                    <Body
-                      size="sm"
-                      style={[styles.tabText, isActive && styles.tabTextActive]}
-                    >
-                      {t.label}
-                    </Body>
-                    <Body
-                      size="xs"
-                      style={[styles.tabCount, isActive && styles.tabCountActive]}
-                    >
-                      {count}
-                    </Body>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+              {/* Editorial results header */}
+              <View style={styles.resultsHero}>
+                <View style={styles.resultsKickerRow}>
+                  <View style={styles.resultsKickerDot} />
+                  <Text style={styles.resultsKicker}>
+                    {totalCount} {totalCount === 1 ? "result" : "results"}
+                    {brandCount + storeCount > 0 ? ` · ${productCount} pieces` : ""}
+                  </Text>
+                </View>
+                <Text style={styles.resultsQuery} numberOfLines={2}>
+                  “{query}”
+                </Text>
 
-            {showingProducts ? (
-              <View style={styles.quickRefineBleed}>
+                {/* Smart-search: what we understood from the query */}
+                {parsedAttrs && (parsedAttrs.colors.length > 0 || parsedAttrs.garment || parsedAttrs.material) ? (
+                  <View style={styles.understoodRow}>
+                    <View style={styles.understoodLabel}>
+                      <Ionicons name="sparkles" size={11} color={colors.accent2.ochre} />
+                      <Text style={styles.understoodText}>Understood as</Text>
+                    </View>
+                    {parsedAttrs.colors.map((c) =>
+                      droppedAttrs.includes(c) ? (
+                        <View key={`dropped-${c}`} style={[styles.attrPill, styles.attrPillDropped]}>
+                          <Text style={[styles.attrPillText, styles.attrPillTextDropped]}>{c}</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          key={`color-${c}`}
+                          style={styles.attrPill}
+                          onPress={() => removeAttrToken(c)}
+                          activeOpacity={0.8}
+                          accessibilityLabel={`Remove ${c} from search`}
+                        >
+                          <View style={[styles.attrSwatch, { backgroundColor: c }]} />
+                          <Text style={styles.attrPillText}>{c}</Text>
+                          <Ionicons name="close" size={11} color={colors.olive[200]} />
+                        </TouchableOpacity>
+                      ),
+                    )}
+                    {[parsedAttrs.garment, parsedAttrs.material].filter(Boolean).map((t) => (
+                      <TouchableOpacity
+                        key={`attr-${t}`}
+                        style={styles.attrPill}
+                        onPress={() => removeAttrToken(t!)}
+                        activeOpacity={0.8}
+                        accessibilityLabel={`Remove ${t} from search`}
+                      >
+                        <Text style={styles.attrPillText}>{t}</Text>
+                        <Ionicons name="close" size={11} color={colors.olive[200]} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* Spell-correction banner — backend fixed a typo ("sneekers" → "sneakers") */}
+                {correctedQuery ? (
+                  <View style={styles.rescueBanner} accessibilityLiveRegion="polite">
+                    <Ionicons name="sparkles-outline" size={14} color={colors.olive[700]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rescueText} numberOfLines={1}>
+                        Showing results for <Text style={styles.correctedTerm}>{correctedQuery}</Text>
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => void doSearch(query, { spell: "off" })}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Search instead for ${query}`}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={styles.searchInsteadText} numberOfLines={1}>
+                          Search instead for <Text style={styles.searchInsteadTerm}>{query}</Text>
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Rescue banner — results were found after relaxing attrs */}
+                {rescued && parsedAttrs ? (
+                  <View style={styles.rescueBanner}>
+                    <Ionicons name="compass-outline" size={14} color={colors.olive[700]} />
+                    <Text style={styles.rescueText} numberOfLines={2}>
+                      No exact matches — showing the closest pieces
+                      {parsedAttrs.garment ? ` for ${[...parsedAttrs.colors.filter((c) => !droppedAttrs.includes(c)), parsedAttrs.garment].filter(Boolean).join(" ")}` : ""}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Tabs — only worth showing when brands/stores also matched */}
+              {brandCount + storeCount > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tabBar}
+                >
+                  <View style={styles.tabTrack}>
+                    {TABS.map((t) => {
+                      const count =
+                        t.key === "all" ? totalCount :
+                        t.key === "products" ? productCount :
+                        t.key === "brands" ? brandCount :
+                        storeCount;
+                      const isActive = tab === t.key;
+                      if (count === 0 && t.key !== "all" && !isActive) return null;
+                      return (
+                        <TouchableOpacity
+                          key={t.key}
+                          style={[styles.tab, isActive && styles.tabActive]}
+                          onPress={() => setTab(t.key)}
+                          activeOpacity={0.85}
+                          accessibilityState={{ selected: isActive }}
+                        >
+                          <Ionicons
+                            name={t.icon}
+                            size={13}
+                            color={isActive ? colors.olive[200] : colors.light.mutedForeground}
+                          />
+                          <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{t.label}</Text>
+                          <Text style={[styles.tabCount, isActive && styles.tabCountActive]}>{count}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              ) : null}
+
+              {showingProducts ? (
                 <ProductGridControls
                   sort={sort}
                   setSort={handleSearchSortChange}
@@ -706,305 +799,136 @@ export default function SearchScreen() {
                   openFilter={() => setFilterVisible(true)}
                   filters={filters}
                   setFilters={setFilters}
-                  summary={`${productCount} product${productCount === 1 ? "" : "s"}`}
+                  summary={`${productCount} ${productCount === 1 ? "piece" : "pieces"} · ${SORTS.find((s) => s.value === sort)?.label ?? "Newest"}`}
                 />
-              </View>
-            ) : null}
+              ) : null}
 
-            {/* Scrollable results list */}
-            <AnimatedScrollView
-              showsVerticalScrollIndicator={false}
-              onScroll={tabBarScrollHandler}
-              scrollEventThrottle={16}
-              contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
-            >
-              {/* Active filter chips */}
-              {showingProducts && activeFilterCount > 0 && (
-                <View style={styles.activeChipsRow}>
-                  {filters.colors?.map((c) => (
-                    <TouchableOpacity
-                      key={`c-${c}`}
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, colors: filters.colors!.filter((x) => x !== c) })}
-                    >
-                      <Body size="xs">{c}</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
+              <View style={styles.resultsBody}>
+                {/* Products */}
+                {showingProducts && productCount === 0 ? (
+                  <View style={styles.filteredEmpty}>
+                    <Ionicons name="funnel-outline" size={18} color={colors.olive[700]} />
+                    <Text style={styles.filteredEmptyTitle}>Nothing matches these filters</Text>
+                    <TouchableOpacity onPress={() => setFilters({ ...EMPTY_FILTERS })} activeOpacity={0.8}>
+                      <Text style={styles.filteredEmptyCta}>Clear filters</Text>
                     </TouchableOpacity>
-                  ))}
-                  {filters.sizes?.map((s) => (
-                    <TouchableOpacity
-                      key={`s-${s}`}
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, sizes: filters.sizes!.filter((x) => x !== s) })}
-                    >
-                      <Body size="xs">{s}</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ))}
-                  {filters.minDiscount ? (
-                    <TouchableOpacity
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, minDiscount: 0 })}
-                    >
-                      <Body size="xs">{filters.minDiscount}%+ off</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {filters.minRating ? (
-                    <TouchableOpacity
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, minRating: 0 })}
-                    >
-                      <Body size="xs">{filters.minRating}★+</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {filters.price && (filters.price[0] > PRICE_BOUNDS.min || filters.price[1] < PRICE_BOUNDS.max) ? (
-                    <TouchableOpacity
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max] })}
-                    >
-                      <Body size="xs">
-                        {formatPrice(filters.price[0])} – {filters.price[1] >= PRICE_BOUNDS.max ? "any" : formatPrice(filters.price[1])}
-                      </Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {filters.gender ? (
-                    <TouchableOpacity
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, gender: undefined })}
-                    >
-                      <Body size="xs" style={{ textTransform: "capitalize" }}>{filters.gender}</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {filters.brands?.length ? (
-                    <TouchableOpacity
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, brands: [] })}
-                    >
-                      <Body size="xs">
-                        {filters.brands.length === 1
-                          ? results.find((p) => (p.brand_id ?? p.brand?.id) === filters.brands![0])?.brand?.name ?? "1 brand"
-                          : `${filters.brands.length} brands`}
-                      </Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {filters.categories?.length ? (
-                    <TouchableOpacity
-                      style={styles.activeChip}
-                      onPress={() => setFilters({ ...filters, categories: [] })}
-                    >
-                      <Body size="xs">
-                        {filters.categories.length === 1
-                          ? results.find((p) => (p.category_id ?? p.category?.id) === filters.categories![0])?.category?.name ?? "1 category"
-                          : `${filters.categories.length} categories`}
-                      </Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  <TouchableOpacity onPress={() => setFilters({ ...EMPTY_FILTERS })}>
-                    <Label style={styles.clearChipLabel}>Clear all</Label>
-                  </TouchableOpacity>
-                </View>
-              )}
+                  </View>
+                ) : null}
 
-              {/* Rescue banner — results were found after relaxing attrs */}
-              {rescued && parsedAttrs && (
-                <View style={styles.rescueBanner}>
-                  <Ionicons name="sparkles-outline" size={13} color={colors.olive[700]} />
-                  <Body size="xs" muted numberOfLines={2}>
-                    No exact matches — showing closest matches
-                    {parsedAttrs.garment ? ` for ${[...parsedAttrs.colors.filter((c) => !droppedAttrs.includes(c)), parsedAttrs.garment].filter(Boolean).join(" ")}` : ""}
-                  </Body>
-                </View>
-              )}
-
-              {/* Smart-search attr pills */}
-              {parsedAttrs && (parsedAttrs.colors.length > 0 || parsedAttrs.garment || parsedAttrs.material) && (
-                <View style={styles.attrPills}>
-                  {parsedAttrs.colors.map((c) => (
-                    droppedAttrs.includes(c) ? (
-                      <View key={`dropped-${c}`} style={[styles.attrPill, styles.attrPillDropped]}>
-                        <Body size="xs" muted>{c}</Body>
-                        <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                      </View>
+                {showingProducts && productCount > 0 && (
+                  <View style={styles.productSection}>
+                    {tab === "all" && brandCount + storeCount > 0 && (
+                      <SectionHeader title="Pieces" count={productCount} />
+                    )}
+                    {view === "list" ? (
+                      filtered.map((p, i) => (
+                        <SearchResultRow key={p.id} product={p} index={i} onPress={handleResultPress} />
+                      ))
                     ) : (
-                      <TouchableOpacity key={`color-${c}`} style={styles.attrPill} onPress={() => removeAttrToken(c)} activeOpacity={0.8}>
-                        <Body size="xs">{c}</Body>
-                        <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                      </TouchableOpacity>
-                    )
-                  ))}
-                  {parsedAttrs.garment ? (
-                    <TouchableOpacity style={styles.attrPill} onPress={() => removeAttrToken(parsedAttrs.garment!)} activeOpacity={0.8}>
-                      <Body size="xs">{parsedAttrs.garment}</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                  {parsedAttrs.material ? (
-                    <TouchableOpacity style={styles.attrPill} onPress={() => removeAttrToken(parsedAttrs.material!)} activeOpacity={0.8}>
-                      <Body size="xs">{parsedAttrs.material}</Body>
-                      <Ionicons name="close" size={10} color={colors.light.mutedForeground} />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              )}
+                      <View style={styles.grid}>
+                        {filtered.map((p, i) => (
+                          <SearchResultCard
+                            key={p.id}
+                            product={p}
+                            width={cardWidth}
+                            index={i}
+                            onPress={handleResultPress}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
 
-              {/* Products */}
-              {(tab === "all" || tab === "products") && productCount > 0 && (
-                <View style={styles.productSection}>
-                  {tab === "all" && brandCount + storeCount > 0 && (
-                    <View style={styles.resultSectionHeader}>
-                      <Display size="lg">Products</Display>
-                      <Body size="sm" muted>{productCount}</Body>
-                    </View>
-                  )}
-                  {view === "list" ? (
-                    filtered.map((p) => (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={styles.listItem}
-                        onPress={() => handleResultPress(p)}
-                      >
-                        <View style={styles.listImage}>
-                          {p.images?.[0]?.url ? (
-                            <Image source={{ uri: p.images[0].url }} style={styles.listImageInner} contentFit="cover" />
-                          ) : (
-                            <View style={[styles.listImageInner, { backgroundColor: colors.light.muted }]} />
-                          )}
-                          {discountPct(p.mrp, p.price) > 0 && (
-                            <View style={styles.listDiscount}>
-                              <Label style={styles.listDiscountText}>{discountPct(p.mrp, p.price)}% OFF</Label>
-                            </View>
-                          )}
-                        </View>
-                        <View style={styles.listInfo}>
-                          {p.brand && <Label style={styles.listBrand}>{p.brand.name}</Label>}
-                          <Body size="sm" numberOfLines={1}>{p.name}</Body>
-                          {(p as Product & { match_reason?: string | null }).match_reason ? (
-                            <Text style={styles.matchReason} numberOfLines={1}>{(p as Product & { match_reason?: string | null }).match_reason}</Text>
-                          ) : null}
-                          <Body size="xs" muted numberOfLines={1}>{p.short_description}</Body>
-                          <View style={styles.listMeta}>
-                            {p.rating > 0 && (
-                              <View style={styles.listRating}>
-                                <Ionicons name="star" size={10} color={colors.olive[600]} />
-                                <Body size="xs">{p.rating.toFixed(1)}</Body>
-                              </View>
-                            )}
-                            <Body size="xs" muted>{p.total_reviews} reviews</Body>
-                            <Body size="xs" muted>·</Body>
-                            <Body size="xs" muted>{p.total_sales} sold</Body>
+                {/* Brands */}
+                {(tab === "all" || tab === "brands") && brandCount > 0 && (
+                  <View style={styles.productSection}>
+                    {tab === "all" && <SectionHeader title="Brands" count={brandCount} />}
+                    <View style={styles.brandGrid}>
+                      {matchedBrands.map((b) => (
+                        <TouchableOpacity
+                          key={b.id}
+                          style={styles.entityCard}
+                          activeOpacity={0.85}
+                          onPress={() => router.push(`/(main)/brands/${b.slug}` as never)}
+                        >
+                          <View style={styles.entityAvatarRing}>
+                            <Avatar name={b.name} uri={b.logo_url} size={46} />
                           </View>
-                        </View>
-                        <View style={styles.listPriceCol}>
-                          <Price size="sm">{formatPrice(p.price)}</Price>
-                          {discountPct(p.mrp, p.price) > 0 && (
-                            <Body muted size="xs" style={{ textDecorationLine: "line-through" }}>
-                              {formatPrice(p.mrp)}
-                            </Body>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    ))
-                  ) : (
-                    <View style={styles.grid}>
-                      {filtered.map((p) => (
-                        <View key={p.id} style={[styles.gridItem, { width: cardWidth }]}>
-                          <ProductCard product={p} />
-                          {(p as Product & { match_reason?: string | null }).match_reason ? (
-                            <Text style={[styles.matchReason, { paddingHorizontal: 2 }]} numberOfLines={1}>{(p as Product & { match_reason?: string | null }).match_reason}</Text>
-                          ) : null}
-                        </View>
+                          <View style={styles.entityInfo}>
+                            <Text style={styles.entityName} numberOfLines={1}>{b.name}</Text>
+                            <Text style={styles.entityMeta}>{b.total_followers} followers</Text>
+                          </View>
+                          <View style={styles.resultChevron}>
+                            <Ionicons name="arrow-forward" size={14} color={colors.paper.cream} />
+                          </View>
+                        </TouchableOpacity>
                       ))}
                     </View>
-                  )}
-                </View>
-              )}
+                  </View>
+                )}
 
-              {/* Brands */}
-              {(tab === "all" || tab === "brands") && brandCount > 0 && (
-                <View style={styles.productSection}>
-                  {tab === "all" && (
-                    <View style={styles.resultSectionHeader}>
-                      <Display size="lg">Brands</Display>
-                      <Body size="sm" muted>{brandCount}</Body>
+                {/* Stores */}
+                {(tab === "all" || tab === "stores") && storeCount > 0 && (
+                  <View style={styles.productSection}>
+                    {tab === "all" && <SectionHeader title="Ateliers" count={storeCount} />}
+                    <View style={styles.brandGrid}>
+                      {matchedStores.map((s) => (
+                        <TouchableOpacity
+                          key={s.id}
+                          style={styles.entityCard}
+                          activeOpacity={0.85}
+                          onPress={() => router.push(`/(main)/stores/${s.slug}` as never)}
+                        >
+                          <View style={styles.entityAvatarRing}>
+                            <Avatar name={s.name} uri={s.logo_url} size={46} />
+                          </View>
+                          <View style={styles.entityInfo}>
+                            <Text style={styles.entityName} numberOfLines={1}>{s.name}</Text>
+                            {s.description ? (
+                              <Text style={styles.entityMeta} numberOfLines={1}>{s.description}</Text>
+                            ) : null}
+                            <View style={styles.storeMeta}>
+                              <Ionicons name="star" size={10} color={colors.accent2.ochre} />
+                              <Text style={styles.entityMetaStrong}>{s.rating.toFixed(1)}</Text>
+                              <Text style={styles.entityMeta}>· {s.total_products} pieces</Text>
+                            </View>
+                          </View>
+                          <View style={styles.resultChevron}>
+                            <Ionicons name="arrow-forward" size={14} color={colors.paper.cream} />
+                          </View>
+                        </TouchableOpacity>
+                      ))}
                     </View>
-                  )}
-                  <View style={styles.brandGrid}>
-                    {matchedBrands.map((b) => (
+                  </View>
+                )}
+
+                {/* Related searches */}
+                <LinearGradient
+                  colors={[colors.olive[950], "#22261a"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.relatedSection}
+                >
+                  <View style={styles.resultsKickerRow}>
+                    <View style={[styles.resultsKickerDot, { backgroundColor: colors.accent2.ochre }]} />
+                    <Text style={[styles.resultsKicker, { color: colors.olive[300] }]}>Keep exploring</Text>
+                  </View>
+                  <Text style={styles.relatedTitle}>Related searches</Text>
+                  <View style={styles.relatedChips}>
+                    {SUGGESTIONS.filter((s) => s.toLowerCase() !== query.toLowerCase()).slice(0, 5).map((s) => (
                       <TouchableOpacity
-                        key={b.id}
-                        style={styles.brandCard}
+                        key={s}
+                        style={styles.relatedChip}
+                        onPress={() => doSearch(s)}
                         activeOpacity={0.8}
-                        onPress={() => router.push(`/(main)/brands/${b.slug}` as never)}
                       >
-                        <Avatar name={b.name} uri={b.logo_url} size={44} />
-                        <View style={styles.brandInfo}>
-                          <Body size="sm" style={{ fontWeight: "600" }}>{b.name}</Body>
-                          <Body size="xs" muted>{b.total_followers} followers</Body>
-                        </View>
-                        <View style={styles.resultChevron}>
-                          <Ionicons name="chevron-forward" size={13} color={colors.olive[700]} />
-                        </View>
+                        <Text style={styles.relatedChipText}>{s}</Text>
+                        <Ionicons name="arrow-forward" size={12} color={colors.olive[300]} />
                       </TouchableOpacity>
                     ))}
                   </View>
-                </View>
-              )}
-
-              {/* Stores */}
-              {(tab === "all" || tab === "stores") && storeCount > 0 && (
-                <View style={styles.productSection}>
-                  {tab === "all" && (
-                    <View style={styles.resultSectionHeader}>
-                      <Display size="lg">Stores</Display>
-                      <Body size="sm" muted>{storeCount}</Body>
-                    </View>
-                  )}
-                  {matchedStores.map((s) => (
-                    <TouchableOpacity
-                      key={s.id}
-                      style={styles.storeCard}
-                      activeOpacity={0.8}
-                      onPress={() => router.push(`/(main)/stores/${s.slug}` as never)}
-                    >
-                      <Avatar name={s.name} uri={s.logo_url} size={48} />
-                      <View style={styles.storeInfo}>
-                        <Body size="sm" style={{ fontWeight: "600" }}>{s.name}</Body>
-                        <Body size="xs" muted numberOfLines={1}>{s.description}</Body>
-                        <View style={styles.storeMeta}>
-                          <Ionicons name="star" size={10} color={colors.olive[600]} />
-                          <Body size="xs">{s.rating.toFixed(1)}</Body>
-                          <Body size="xs" muted>·</Body>
-                          <Body size="xs" muted>{s.total_products} products</Body>
-                        </View>
-                      </View>
-                      <View style={styles.resultChevron}>
-                        <Ionicons name="chevron-forward" size={13} color={colors.olive[700]} />
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              {/* Related searches */}
-              <View style={styles.relatedSection}>
-                <Label style={styles.sectionKicker}>Related searches</Label>
-                <View style={styles.chipRow}>
-                  {SUGGESTIONS.filter((s) => s.toLowerCase() !== query.toLowerCase()).slice(0, 5).map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={styles.suggestionChip}
-                      onPress={() => doSearch(s)}
-                    >
-                      <Body size="sm">{s}</Body>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                </LinearGradient>
               </View>
             </AnimatedScrollView>
           </View>
@@ -1039,25 +963,13 @@ function ScrollViewWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ─── Price component ─── */
-function Price({ size = "base", style, children }: { size?: string; style?: any; children: React.ReactNode }) {
-  const sizeMap: Record<string, number> = {
-    xs: 11, sm: 13, base: 15, lg: 18, xl: 20, "2xl": 24,
-  };
+/* ─── Section header (All tab) ─── */
+function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
-    <Body
-      size={size as any}
-      style={[
-        {
-          fontFamily: fontFamilies.display.semibold,
-          fontSize: sizeMap[size] || 15,
-          letterSpacing: -0.02,
-        },
-        style,
-      ]}
-    >
-      {children}
-    </Body>
+    <View style={styles.resultSectionHeader}>
+      <Display size="lg">{title}</Display>
+      <Text style={styles.sectionCount}>{String(count).padStart(2, "0")}</Text>
+    </View>
   );
 }
 
@@ -1350,128 +1262,194 @@ const styles = StyleSheet.create({
 
   /* Results */
   resultsContainer: {
-    gap: spacing[4],
-    paddingHorizontal: spacing[5],
+    flex: 1,
   },
-  quickRefineBleed: {
-    marginHorizontal: -spacing[5],
-  },
-
-  /* Tabs */
-  tabBarBleed: {
-    marginHorizontal: -spacing[5],
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  tabBar: {
-    flexDirection: "row",
+  resultsHero: {
+    paddingHorizontal: GRID_PADDING,
+    paddingTop: spacing[5],
+    paddingBottom: spacing[4],
     gap: spacing[2],
-    paddingHorizontal: spacing[5],
-    paddingRight: spacing[7],
   },
-  tab: {
+  resultsKickerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    height: 38,
-    paddingHorizontal: 14,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    gap: 7,
   },
-  tabActive: {
-    backgroundColor: INK,
-    borderColor: INK,
+  resultsKickerDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.olive[500],
   },
-  tabText: {
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.sans.medium,
-    lineHeight: 18,
+  resultsKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
   },
-  tabTextActive: {
-    color: colors.light.primaryForeground,
-  },
-  tabCount: {
-    color: `${colors.light.mutedForeground}99`,
-    fontSize: 11,
-    lineHeight: 18,
-  },
-  tabCountActive: {
-    color: `${colors.light.primaryForeground}80`,
-  },
-
-
-  /* Active chips */
-  activeChipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing[2],
-    alignItems: "center",
-  },
-  activeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-  },
-  clearChipLabel: {
+  resultsQuery: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.6,
     color: INK,
-    textDecorationLine: "underline",
   },
-  attrPills: {
+  understoodRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing[2],
     alignItems: "center",
-    paddingHorizontal: spacing[4],
-    marginBottom: spacing[1],
+    gap: 6,
+    marginTop: spacing[1],
   },
-  attrPillDropped: {
-    backgroundColor: colors.light.muted,
-    borderColor: colors.light.border,
-  },
-  rescueBanner: {
+  understoodLabel: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginHorizontal: spacing[4],
-    marginBottom: spacing[1],
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-    alignSelf: "flex-start",
+    gap: 4,
+    marginRight: 2,
+  },
+  understoodText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
   attrPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    height: 28,
+    paddingLeft: 11,
+    paddingRight: 9,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[100],
+    backgroundColor: colors.olive[950],
+  },
+  attrPillDropped: {
+    backgroundColor: "transparent",
     borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.light.border,
+  },
+  attrPillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.paper.cream,
+    textTransform: "capitalize",
+  },
+  attrPillTextDropped: {
+    color: colors.light.mutedForeground,
+    textDecorationLine: "line-through",
+  },
+  attrSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "rgba(250,248,241,0.6)",
+  },
+  rescueBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: spacing[1],
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radii.lg,
+    backgroundColor: colors.olive[50],
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.olive[200],
   },
-  matchReason: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.olive[700],
+  rescueText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.olive[800],
+  },
+  correctedTerm: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontStyle: "italic",
+    color: colors.olive[900],
+  },
+  searchInsteadText: {
     marginTop: 2,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.olive[700],
+  },
+  searchInsteadTerm: {
+    textDecorationLine: "underline",
+    color: colors.olive[800],
+  },
+  resultsBody: {
+    paddingHorizontal: GRID_PADDING,
+  },
+  filteredEmpty: {
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: spacing[8],
+    borderRadius: 22,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.light.border,
+  },
+  filteredEmptyTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: INK,
+  },
+  filteredEmptyCta: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.accent2.rust,
+    textDecorationLine: "underline",
+  },
+
+  /* Tabs */
+  tabBar: {
+    paddingHorizontal: GRID_PADDING,
+    paddingBottom: spacing[4],
+  },
+  tabTrack: {
+    flexDirection: "row",
+    padding: 4,
+    gap: 2,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[900]}0D`,
+  },
+  tab: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+  },
+  tabActive: {
+    backgroundColor: colors.olive[950],
+  },
+  tabText: {
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+  },
+  tabTextActive: {
+    color: colors.paper.cream,
+  },
+  tabCount: {
+    color: `${colors.light.mutedForeground}99`,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10.5,
+  },
+  tabCountActive: {
+    color: colors.olive[300],
   },
 
   /* Product section */
   productSection: {
     gap: spacing[3],
-    marginTop: spacing[2],
+    marginTop: spacing[1],
+    marginBottom: spacing[4],
   },
   resultSectionHeader: {
     flexDirection: "row",
@@ -1481,119 +1459,73 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.light.border,
   },
+  sectionCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: colors.light.mutedForeground,
+  },
 
   /* Grid */
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    // ProductCard carries its own bottom margin, so only space the columns.
     columnGap: GRID_GAP,
-  },
-  gridItem: {},
-
-  /* List */
-  listItem: {
-    flexDirection: "row",
-    gap: spacing[3],
-    borderRadius: radii.xl,
-    padding: spacing[3],
-    marginBottom: spacing[2],
-    ...GLASS,
-  },
-  listImage: {
-    width: 90,
-    height: 120,
-    borderRadius: radii.lg,
-    overflow: "hidden",
-    backgroundColor: colors.light.muted,
-  },
-  listImageInner: {
-    width: "100%",
-    height: "100%",
-  },
-  listDiscount: {
-    position: "absolute",
-    top: 4,
-    left: 4,
-    backgroundColor: colors.accent2.rust,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
-  },
-  listDiscountText: {
-    color: "#fff",
-    fontSize: 9,
-  },
-  listInfo: {
-    flex: 1,
-    gap: 2,
-    justifyContent: "center",
-  },
-  listBrand: {
-    color: colors.light.mutedForeground,
-  },
-  listMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-  },
-  listRating: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  listPriceCol: {
-    alignItems: "flex-end",
-    justifyContent: "center",
-    gap: 2,
+    rowGap: GRID_GAP + 4,
   },
 
-  /* Brands */
+  /* Brands + stores */
   brandGrid: {
     gap: spacing[2],
   },
-  brandCard: {
+  entityCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    padding: spacing[3],
-    borderRadius: radii.xl,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
+    padding: 10,
+    paddingRight: 12,
+    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: `${colors.olive[900]}14`,
+    shadowColor: colors.ink.DEFAULT,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 2,
   },
-  brandInfo: {
+  entityAvatarRing: {
+    padding: 2,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: colors.olive[200],
+  },
+  entityInfo: {
     flex: 1,
     gap: 2,
+  },
+  entityName: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
+    color: INK,
+  },
+  entityMeta: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+  },
+  entityMetaStrong: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    color: INK,
   },
   resultChevron: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.paper.cream,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.olive[950],
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  /* Stores */
-  storeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[3],
-    borderRadius: radii.xl,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
-  },
-  storeInfo: {
-    flex: 1,
-    gap: 2,
   },
   storeMeta: {
     flexDirection: "row",
@@ -1604,13 +1536,38 @@ const styles = StyleSheet.create({
 
   /* Related */
   relatedSection: {
-    marginTop: spacing[5],
-    padding: spacing[4],
-    borderRadius: radii.xl,
-    backgroundColor: colors.paper.warm,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    gap: spacing[3],
+    marginTop: spacing[3],
+    padding: spacing[5],
+    borderRadius: 26,
+    gap: spacing[2],
+    overflow: "hidden",
+  },
+  relatedTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 24,
+    color: colors.paper.cream,
+    marginBottom: spacing[2],
+  },
+  relatedChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  relatedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(250,248,241,0.07)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(250,248,241,0.22)",
+  },
+  relatedChipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.paper.cream,
   },
 
   /* Recs (no-results fallback) */

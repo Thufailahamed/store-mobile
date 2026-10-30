@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Modal,
+
   KeyboardAvoidingView,
   Platform,
   TextInput,
@@ -14,9 +14,12 @@ import {
   ActionSheetIOS,
   Linking,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
+import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@/components/ui/Icon";
 import { getSellerStore, getSellerOrderById, transitionOrderStatus, cancelOrder } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
@@ -28,6 +31,7 @@ import { CUSTOMER_STATUS_STEPS, getSellerNextStatus } from "@/lib/order-lifecycl
 import { formatCheckoutPayment, formatOrderStatusLabel, formatPaymentStatus } from "@/lib/orders/seller-list";
 import { orderStatusTone } from "@/lib/seller/status-tones";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
+import { HERO, LuxeHero } from "@/components/seller/luxe";
 import { Skeleton, SkeletonListRow } from "@/components/ui/Skeleton";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -47,6 +51,7 @@ function formatDate(dateStr: string) {
 
 export default function SellerOrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +60,7 @@ export default function SellerOrderDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [refundModalOpen, setRefundModalOpen] = useState(false);
   const [refundReason, setRefundReason] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     if (!id || !user) return;
@@ -225,7 +231,8 @@ export default function SellerOrderDetail() {
   const nextStatus = getSellerNextStatus(order.status);
   const sc = orderStatusTone(order.status);
   const itemsCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-  const ship = order.shipping_address;
+  // Sellers see their products only — buyer-side fees and delivery stay off this screen.
+  const itemsTotal = order.items?.reduce((s, i) => s + i.total, 0) ?? 0;
   const statusIndex = STATUSES.indexOf(order.status as OrderStatus);
   // cancelled / refunded / returned are not points on the fulfilment
   // track, so a step bar with nothing highlighted would just look broken.
@@ -237,6 +244,13 @@ export default function SellerOrderDetail() {
   // once there is no next step (e.g. delivered).
   const hasMoreActions = canCancel || (canRefund && !!nextStatus);
   const showActionBar = !!nextStatus || canRefund;
+
+  const copyOrderNumber = async () => {
+    if (!order.order_number) return;
+    await Clipboard.setStringAsync(order.order_number);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
 
   const openMoreActions = () => {
     const options: { label: string; run: () => void }[] = [];
@@ -283,7 +297,7 @@ export default function SellerOrderDetail() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[700]} />
       }
     >
-      <View style={styles.orderHero}>
+      <LuxeHero style={styles.orderHero}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroStatus}>
             <View style={[styles.heroStatusDot, isTerminal && styles.heroStatusDotMuted]} />
@@ -291,17 +305,28 @@ export default function SellerOrderDetail() {
           </View>
           <Text style={styles.orderDate} numberOfLines={1}>{formatDate(order.placed_at)}</Text>
         </View>
-        <Text style={styles.orderNumber} numberOfLines={1} adjustsFontSizeToFit>{order.order_number}</Text>
+        <TouchableOpacity
+          style={styles.orderNumberRow}
+          onPress={() => void copyOrderNumber()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`Copy order number ${order.order_number}`}
+        >
+          <Text style={styles.orderNumber} numberOfLines={1} adjustsFontSizeToFit>{order.order_number}</Text>
+          <View style={[styles.copyChip, copied && styles.copyChipDone]}>
+            <Ionicons name={copied ? "checkmark" : "copy-outline"} size={12} color={copied ? "#FAF8F1" : HERO.text} />
+          </View>
+        </TouchableOpacity>
         <View style={styles.heroFooter}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroMetaLabel}>ORDER TOTAL · {itemsCount} {itemsCount === 1 ? "ITEM" : "ITEMS"}</Text>
-            <Text style={styles.heroTotal}>{formatPrice(order.total)}</Text>
+          <View>
+            <Text style={styles.heroMetaLabel}>TOTAL · {itemsCount} {itemsCount === 1 ? "ITEM" : "ITEMS"}</Text>
+            <Text style={styles.heroTotal} numberOfLines={1}>{formatPrice(itemsTotal)}</Text>
           </View>
           <View style={[styles.heroPayment, codUnpaid && styles.heroPaymentWarn]}>
             <Ionicons
               name={isPaid ? "checkmark-circle" : "time-outline"}
-              size={15}
-              color={codUnpaid ? "#FFB89E" : "#E8CF8F"}
+              size={13}
+              color={codUnpaid ? colors.accent2.rust : HERO.text}
             />
             <Text style={[styles.heroPaymentText, codUnpaid && styles.heroPaymentTextWarn]}>
               {formatCheckoutPayment(order.payment_method)} · {formatPaymentStatus(order.payment_status)}
@@ -319,7 +344,7 @@ export default function SellerOrderDetail() {
                   <View style={styles.stepTrackRow}>
                     <View style={[styles.stepLine, i === 0 && styles.stepLineHidden, (done || current) && i > 0 && styles.stepLineDone]} />
                     <View style={[styles.stepDot, done && styles.stepDotDone, current && styles.stepDotCurrent]}>
-                      {done ? <Ionicons name="checkmark" size={10} color="#1A1915" /> : null}
+                      {done ? <Ionicons name="checkmark" size={9} color="#FAF8F1" /> : null}
                     </View>
                     <View style={[styles.stepLine, i === STATUSES.length - 1 && styles.stepLineHidden, done && styles.stepLineDone]} />
                   </View>
@@ -334,7 +359,7 @@ export default function SellerOrderDetail() {
             })}
           </View>
         ) : null}
-      </View>
+      </LuxeHero>
 
       {isTerminal ? (
         <View style={[styles.terminalNotice, { backgroundColor: sc.bg }]}>
@@ -347,51 +372,32 @@ export default function SellerOrderDetail() {
         <View style={styles.codBanner}>
           <Ionicons name="cash-outline" size={18} color={colors.accent2.rust} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.codTitle}>Collect {formatPrice(order.total)} on delivery</Text>
-            <Text style={styles.codBody}>Once cash is collected, the order can be marked through its status flow.</Text>
+            <Text style={styles.codTitle}>Cash on delivery</Text>
+            <Text style={styles.codBody}>The customer pays in cash at delivery. Once it is collected, the order can be marked through its status flow.</Text>
           </View>
         </View>
       ) : null}
 
-      {ship ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionEyebrow}>SHIP TO</Text>
-          <View style={styles.card}>
-            <View style={styles.customerRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(ship.full_name?.trim()?.[0] ?? "?").toUpperCase()}</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.addressName} numberOfLines={1}>{ship.full_name || "Customer"}</Text>
-                {ship.phone ? <Text style={styles.addressPhone}>{ship.phone}</Text> : null}
-              </View>
-              {ship.phone ? (
-                <TouchableOpacity
-                  style={styles.callButton}
-                  onPress={() => void Linking.openURL(`tel:${ship.phone.replace(/[^+\d]/g, "")}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Call ${ship.full_name || "customer"}`}
-                >
-                  <Ionicons name="call-outline" size={17} color={colors.olive[900]} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-            <View style={styles.cardDivider} />
-            <View style={styles.addressRow}>
-              <Ionicons name="location-outline" size={16} color={colors.ink.mute} style={{ marginTop: 2 }} />
-              <Text style={styles.addressLine}>
-                {[ship.line1, ship.line2, [ship.city, ship.state, ship.postal_code].filter(Boolean).join(", "), ship.country]
-                  .filter(Boolean)
-                  .join("\n")}
-              </Text>
-            </View>
-          </View>
+      <TouchableOpacity
+        style={[styles.card, styles.invoiceRow]}
+        onPress={() => router.push(`/(seller)/orders/${order.id}/invoice` as never)}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Open customer invoice"
+      >
+        <Ionicons name="document-text-outline" size={20} color={colors.olive[800]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.invoiceTitle}>Customer invoice</Text>
+          <Text style={styles.invoiceSub}>
+            {isPaid ? "Paid · view or save as PDF" : codUnpaid ? "Unpaid until cash is collected · view or save as PDF" : "View or save as PDF"}
+          </Text>
         </View>
-      ) : null}
+        <Ionicons name="chevron-forward" size={18} color={colors.olive[800]} />
+      </TouchableOpacity>
 
       {order.notes ? (
         <View style={styles.section}>
-          <Text style={styles.sectionEyebrow}>CUSTOMER NOTE</Text>
+          <SectionEyebrow index="01" label="CUSTOMER NOTE" />
           <View style={[styles.card, styles.notesCard]}>
             <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.olive[700]} style={{ marginTop: 2 }} />
             <Text style={styles.notesText}>{order.notes}</Text>
@@ -400,7 +406,10 @@ export default function SellerOrderDetail() {
       ) : null}
 
       <View style={styles.section}>
-        <Text style={styles.sectionEyebrow}>ITEMS · {itemsCount} {itemsCount === 1 ? "UNIT" : "UNITS"}</Text>
+        <SectionEyebrow
+          index={String(1 + (order.notes ? 1 : 0)).padStart(2, "0")}
+          label={`ITEMS · ${itemsCount} ${itemsCount === 1 ? "UNIT" : "UNITS"}`}
+        />
         <View style={styles.card}>
           {order.items?.map((item) => (
             <View key={item.id} style={styles.itemCard}>
@@ -425,14 +434,9 @@ export default function SellerOrderDetail() {
             </View>
           ))}
 
-          <View style={styles.cardDivider} />
-          <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
-          <SummaryRow label="Shipping" value={order.shipping_fee > 0 ? formatPrice(order.shipping_fee) : "Free"} />
-          {order.tax > 0 ? <SummaryRow label="Platform fee" value={formatPrice(order.tax)} /> : null}
-          {order.discount > 0 ? <SummaryRow label="Discount" value={`−${formatPrice(order.discount)}`} accent /> : null}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatPrice(order.total)}</Text>
+            <Text style={styles.totalValue}>{formatPrice(itemsTotal)}</Text>
           </View>
         </View>
       </View>
@@ -485,6 +489,8 @@ export default function SellerOrderDetail() {
     </Modal>
     {showActionBar ? (
       <View style={styles.actionBar}>
+        <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={styles.actionBarTint} />
         {nextStatus ? (
           <TouchableOpacity
             style={[styles.primaryAction, updating && styles.actionDisabled]}
@@ -493,8 +499,15 @@ export default function SellerOrderDetail() {
             accessibilityRole="button"
             accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
           >
-            <Text style={styles.primaryActionText}>{updating ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}</Text>
-            {updating ? null : <Ionicons name="arrow-forward" size={17} color={CREAM} />}
+            <View>
+              <Text style={styles.primaryActionKicker}>NEXT STEP</Text>
+              <Text style={styles.primaryActionText}>{updating ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}</Text>
+            </View>
+            {updating ? null : (
+              <View style={styles.primaryActionArrow}>
+                <Ionicons name="arrow-forward" size={18} color="#1A1915" />
+              </View>
+            )}
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -514,11 +527,12 @@ export default function SellerOrderDetail() {
   );
 }
 
-function SummaryRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function SectionEyebrow({ index, label }: { index: string; label: string }) {
   return (
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={[styles.summaryValue, accent && styles.summaryValueAccent]}>{value}</Text>
+    <View style={styles.eyebrowRow}>
+      <Text style={styles.eyebrowIndex}>{index}</Text>
+      <View style={styles.eyebrowRule} />
+      <Text style={styles.sectionEyebrow}>{label}</Text>
     </View>
   );
 }
@@ -596,34 +610,37 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 },
   moreButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "rgba(83,94,44,0.14)", alignItems: "center", justifyContent: "center" },
 
-  orderHero: { backgroundColor: "#1A1915", borderRadius: 26, padding: 20, marginBottom: 14 },
+  orderHero: { marginBottom: 14 },
+  orderNumberRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
+  copyChip: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: HERO.chip, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.chipBorder },
+  copyChipDone: { backgroundColor: HERO.ink, borderColor: HERO.ink },
   heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  heroStatus: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 11, paddingVertical: 6, borderRadius: radii.full, backgroundColor: "rgba(232,207,143,0.14)" },
-  heroStatusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#E8CF8F" },
-  heroStatusDotMuted: { backgroundColor: "#8F897D" },
-  heroStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#F1E4BF" },
-  orderDate: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396" },
-  orderNumber: { marginTop: 16, fontFamily: fontFamilies.mono.semibold, fontSize: 20, color: "#FAF8F1", letterSpacing: -0.2 },
-  heroFooter: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginTop: 14 },
-  heroMetaLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1, color: "#8F897D" },
-  heroTotal: { marginTop: 4, fontFamily: fontFamilies.display.semibold, fontSize: 32, lineHeight: 38, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
-  heroPayment: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 11, paddingVertical: 7, borderRadius: radii.full, backgroundColor: "rgba(232,207,143,0.12)", marginBottom: 4 },
-  heroPaymentWarn: { backgroundColor: "rgba(184,92,58,0.22)" },
-  heroPaymentText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#E8CF8F" },
-  heroPaymentTextWarn: { color: "#FFB89E" },
+  heroStatus: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 9, paddingVertical: 4, borderRadius: radii.full, backgroundColor: HERO.chip, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.chipBorder },
+  heroStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent2.ochre },
+  heroStatusDotMuted: { backgroundColor: "rgba(83,94,44,0.35)" },
+  heroStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: HERO.text },
+  orderDate: { flexShrink: 1, fontFamily: fontFamilies.display.italic, fontSize: 12.5, color: HERO.mute },
+  orderNumber: { flexShrink: 1, fontFamily: fontFamilies.mono.semibold, fontSize: 16, color: HERO.ink, letterSpacing: 0.2 },
+  heroFooter: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  heroMetaLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.5, color: HERO.kicker },
+  heroTotal: { marginTop: 2, fontFamily: fontFamilies.display.regular, fontSize: 30, lineHeight: 36, color: HERO.ink, letterSpacing: -0.8, fontVariant: ["tabular-nums"] },
+  heroPayment: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: radii.full, backgroundColor: HERO.tile, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.tileBorder },
+  heroPaymentWarn: { backgroundColor: "rgba(184,92,58,0.08)", borderColor: "rgba(184,92,58,0.28)" },
+  heroPaymentText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: HERO.text },
+  heroPaymentTextWarn: { color: colors.accent2.rust },
 
-  stepper: { flexDirection: "row", marginTop: 20, paddingTop: 18, marginHorizontal: -6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.13)" },
-  step: { flex: 1, alignItems: "center", gap: 8 },
+  stepper: { flexDirection: "row", marginTop: 12, paddingTop: 12, marginHorizontal: -6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: HERO.divider },
+  step: { flex: 1, alignItems: "center", gap: 6 },
   stepTrackRow: { flexDirection: "row", alignItems: "center", alignSelf: "stretch" },
-  stepLine: { flex: 1, height: 2, backgroundColor: "rgba(255,255,255,0.12)" },
-  stepLineDone: { backgroundColor: "#E8CF8F" },
+  stepLine: { flex: 1, height: 2, backgroundColor: "rgba(83,94,44,0.12)" },
+  stepLineDone: { backgroundColor: colors.olive[600] },
   stepLineHidden: { backgroundColor: "transparent" },
-  stepDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: "rgba(255,255,255,0.2)", backgroundColor: "#1A1915", alignItems: "center", justifyContent: "center" },
-  stepDotDone: { borderColor: "#E8CF8F", backgroundColor: "#E8CF8F" },
-  stepDotCurrent: { width: 18, height: 18, borderRadius: 9, borderWidth: 5, borderColor: "#E8CF8F", backgroundColor: "#1A1915" },
-  stepLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 10, lineHeight: 13, color: "#6F6A60", textAlign: "center", paddingHorizontal: 2 },
-  stepLabelActive: { color: "#AAA396" },
-  stepLabelCurrent: { fontFamily: fontFamilies.sans.semibold, color: "#F1E4BF" },
+  stepDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: "rgba(83,94,44,0.25)", backgroundColor: "#fffdf8", alignItems: "center", justifyContent: "center" },
+  stepDotDone: { borderColor: colors.olive[600], backgroundColor: colors.olive[600] },
+  stepDotCurrent: { width: 18, height: 18, borderRadius: 9, borderWidth: 5, borderColor: colors.accent2.ochre, backgroundColor: "#fffdf8" },
+  stepLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 9.5, lineHeight: 12, color: "rgba(83,94,44,0.45)", textAlign: "center", paddingHorizontal: 2 },
+  stepLabelActive: { color: HERO.mute },
+  stepLabelCurrent: { fontFamily: fontFamilies.sans.semibold, color: HERO.ink },
 
   terminalNotice: { flexDirection: "row", alignItems: "flex-start", gap: 9, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: "rgba(83,94,44,0.08)" },
   terminalNoticeText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 13, lineHeight: 19 },
@@ -697,9 +714,15 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
 
-  section: { marginTop: 22 },
-  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.3, color: colors.olive[600], marginBottom: 10, marginLeft: 4 },
-  card: { backgroundColor: "#FFFFFF", borderRadius: 22, borderWidth: 1, borderColor: "rgba(83,94,44,0.12)", padding: 16 },
+  section: { marginTop: 26 },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12, marginLeft: 4 },
+  eyebrowIndex: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: colors.olive[600] },
+  eyebrowRule: { width: 18, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(26,25,21,0.25)" },
+  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: colors.ink.mute },
+  invoiceRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 20, paddingVertical: 14 },
+  invoiceTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: "#16150F" },
+  invoiceSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "rgba(22,21,15,0.55)", marginTop: 2 },
+  card: { backgroundColor: "#FFFFFF", borderRadius: 24, borderWidth: 1, borderColor: "rgba(83,94,44,0.1)", padding: 18, shadowColor: "#16150F", shadowOpacity: 0.05, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   cardDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(83,94,44,0.14)", marginVertical: 14 },
 
   codBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "rgba(184,92,58,0.08)", borderWidth: 1, borderColor: "rgba(184,92,58,0.24)", borderRadius: 18, padding: 14 },
@@ -707,8 +730,8 @@ const styles = StyleSheet.create({
   codBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 3, lineHeight: 17 },
 
   customerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center" },
-  avatarText: { fontFamily: fontFamilies.display.semibold, fontSize: 17, color: CREAM },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#1A1915", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#E8CF8F" },
+  avatarText: { fontFamily: fontFamilies.display.semibold, fontSize: 18, color: "#E8CF8F" },
   addressName: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: INK },
   addressPhone: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.mutedForeground, marginTop: 2 },
   callButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
@@ -719,7 +742,7 @@ const styles = StyleSheet.create({
   notesText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: INK },
 
   itemCard: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 6 },
-  itemThumb: { width: 60, height: 60, borderRadius: 15, backgroundColor: colors.olive[50] },
+  itemThumb: { width: 68, height: 68, borderRadius: 18, backgroundColor: colors.olive[50] },
   itemThumbEmpty: { alignItems: "center", justifyContent: "center" },
   qtyBadge: { position: "absolute", right: -5, top: -5, minWidth: 24, height: 22, borderRadius: 11, paddingHorizontal: 5, backgroundColor: INK, borderWidth: 2, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
   qtyBadgeText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: CREAM },
@@ -729,17 +752,16 @@ const styles = StyleSheet.create({
   itemUnitPrice: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
   itemPrice: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: INK, fontVariant: ["tabular-nums"] },
 
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5 },
-  summaryLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 14, color: colors.light.mutedForeground },
-  summaryValue: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: INK, fontVariant: ["tabular-nums"] },
-  summaryValueAccent: { color: colors.olive[700] },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginTop: 8, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.14)" },
   totalLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: INK },
-  totalValue: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: INK, fontVariant: ["tabular-nums"] },
+  totalValue: { fontFamily: fontFamilies.display.semibold, fontSize: 26, color: INK, letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
 
-  actionBar: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "rgba(250,249,245,0.97)", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.14)" },
-  primaryAction: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: radii.full, backgroundColor: colors.olive[900], paddingHorizontal: 20 },
+  actionBar: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, overflow: "hidden", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.12)" },
+  actionBarTint: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(250,249,245,0.72)" },
+  primaryAction: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderRadius: radii.full, backgroundColor: "#1A1915", paddingLeft: 24, paddingRight: 7, shadowColor: "#16150F", shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
+  primaryActionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.6, color: "#8F897D", marginBottom: 2 },
   primaryActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, color: CREAM },
+  primaryActionArrow: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#E8CF8F", alignItems: "center", justifyContent: "center" },
   refundAction: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: radii.full, borderWidth: 1, borderColor: "rgba(184,92,58,0.3)", backgroundColor: "rgba(184,92,58,0.05)" },
   refundActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 16, color: colors.accent2.rust },
   actionDisabled: { opacity: 0.6 },

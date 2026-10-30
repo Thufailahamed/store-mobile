@@ -17,10 +17,8 @@ import {
   getSellerPayoutSettingsBackend,
   updatePayoutSettingsBackend,
 } from "@/lib/api/backend";
-import {
-  MethodPicker,
-  describePayout,
-} from "@/components/payouts/MethodPicker";
+import { MethodPicker } from "@/components/payouts/MethodPicker";
+import { PayoutAccountCard } from "@/components/payouts/PayoutSurfaces";
 import { useToast } from "@/components/ui";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { SellerStateView } from "@/components/seller/chrome";
@@ -100,18 +98,7 @@ export default function SettingsScreen() {
     if (!hydrated) {
       setDraft(data);
       setHydrated(true);
-      return;
     }
-    setDraft((prev) => {
-      if (!prev) return data;
-      if (
-        data.stripe_account_id &&
-        data.stripe_account_id !== prev.stripe_account_id
-      ) {
-        return { ...prev, stripe_account_id: data.stripe_account_id };
-      }
-      return prev;
-    });
   }, [data, hydrated]);
 
   const mutation = useMutation({
@@ -182,7 +169,6 @@ export default function SettingsScreen() {
   }
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(data);
-  const summary = describePayout(draft);
 
   return (
     <View style={styles.container}>
@@ -195,24 +181,17 @@ export default function SettingsScreen() {
       >
         {header}
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>
-            {dirty ? "After you save" : "Currently paying out to"}
-          </Text>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryIcon}>
-              <Ionicons name={summary.icon} size={18} color={GOLD} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.summaryTitle} numberOfLines={1}>
-                {summary.title}
-              </Text>
-              <Text style={styles.summaryDetail} numberOfLines={2}>
-                {summary.detail}
-              </Text>
-            </View>
+        <PayoutAccountCard
+          settings={draft}
+          kicker={dirty ? "PREVIEW · AFTER YOU SAVE" : "CURRENTLY PAYING OUT TO"}
+          style={styles.accountCard}
+        />
+        {dirty ? (
+          <View style={styles.dirtyPill}>
+            <View style={styles.dirtyDot} />
+            <Text style={styles.dirtyText}>Preview updates as you edit</Text>
           </View>
-        </View>
+        ) : null}
 
         <View style={styles.sections}>
           <MethodPicker value={draft} onChange={setDraft} />
@@ -289,50 +268,38 @@ const styles = StyleSheet.create({
     color: colors.ink.mute,
     marginTop: 3,
   },
-  summaryCard: {
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
-    borderRadius: 22,
-    backgroundColor: colors.olive[900],
-    padding: 16,
-  },
-  summaryKicker: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: "rgba(250,248,241,0.6)",
-    marginBottom: 10,
-  },
-  summaryRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  summaryIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: "rgba(200,164,74,0.16)",
+  accountCard: { marginHorizontal: spacing[5], marginBottom: spacing[4] },
+  dirtyPill: {
+    alignSelf: "center",
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    marginTop: -4,
+    marginBottom: spacing[4],
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(200,164,74,0.14)",
   },
-  summaryTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: CREAM,
-  },
-  summaryDetail: {
-    marginTop: 2,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: "rgba(250,248,241,0.7)",
-  },
+  dirtyDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GOLD },
+  dirtyText: { fontFamily: fontFamilies.sans.medium, fontSize: 11.5, color: "#8a6a2a" },
   sections: { marginHorizontal: spacing[5] },
   footer: {
-    paddingHorizontal: spacing[5],
-    paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: colors.paper.DEFAULT,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(83,94,44,0.16)",
-    gap: 8,
+    marginHorizontal: spacing[3],
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    gap: 10,
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 8,
   },
   footerActions: { flexDirection: "row", gap: 10 },
   discardBtn: {

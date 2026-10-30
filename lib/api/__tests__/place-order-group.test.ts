@@ -50,7 +50,7 @@ describe("placeOrderGroupBackend", () => {
     expect(body).not.toHaveProperty("points_redeemed");
   });
 
-  it("forwards delivery_date and gift wrap on items", async () => {
+  it("forwards delivery_date on the group order", async () => {
     fetchJsonMock.mockResolvedValueOnce({ ok: true, data: { group_id: "g1" } });
     await placeOrderGroupBackend({
       orders: [{
@@ -60,8 +60,6 @@ describe("placeOrderGroupBackend", () => {
           variant_id: "00000000-0000-0000-0000-000000000003",
           quantity: 1,
           unit_price: 2500,
-          is_gift: true,
-          gift_message: "Happy birthday",
         }],
       }],
       payment_method: "cod",
@@ -69,13 +67,11 @@ describe("placeOrderGroupBackend", () => {
     });
     const body = fetchJsonMock.mock.calls[0][1].body as Record<string, unknown>;
     expect(body.delivery_date).toBe("2026-09-10");
-    const orders = body.orders as Array<{ items: Array<{ is_gift?: boolean }> }>;
-    expect(orders[0].items[0].is_gift).toBe(true);
   });
 });
 
 describe("placeGuestOrderBackend", () => {
-  it("POSTs /api/orders/guest without auth and forwards gift wrap + delivery date", async () => {
+  it("POSTs /api/orders/guest without auth and forwards delivery date", async () => {
     fetchJsonMock.mockResolvedValueOnce({ ok: true, data: { guest_token: "tok", orders: [] } });
     await placeGuestOrderBackend({
       guest_email: "guest@example.com",
@@ -86,8 +82,6 @@ describe("placeGuestOrderBackend", () => {
           variant_id: "00000000-0000-0000-0000-000000000003",
           quantity: 1,
           unit_price: 2500,
-          is_gift: true,
-          gift_message: "Congrats",
         }],
       }],
       payment_method: "cod",
@@ -101,9 +95,6 @@ describe("placeGuestOrderBackend", () => {
     const body = fetchJsonMock.mock.calls[0][1].body as Record<string, unknown>;
     expect(body.guest_email).toBe("guest@example.com");
     expect(body.delivery_date).toBe("2026-09-12");
-    const orders = body.orders as Array<{ items: Array<{ is_gift?: boolean; gift_message?: string }> }>;
-    expect(orders[0].items[0].is_gift).toBe(true);
-    expect(orders[0].items[0].gift_message).toBe("Congrats");
   });
 });
 

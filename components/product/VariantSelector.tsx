@@ -1,8 +1,10 @@
 import React from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { Ionicons } from "@/components/ui/Icon";
 import { Label, Body } from "@/components/ui/Typography";
-import { colors, spacing, radii } from "@/lib/theme/tokens";
+import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { sortSizes } from "@/lib/size-presets";
 import type { ProductVariant } from "@/lib/types";
 
 interface VariantSelectorProps {
@@ -14,6 +16,16 @@ interface VariantSelectorProps {
   /** Live sellable units per size label (overrides variant.stock when set). */
   stockForSize?: (size: string) => number;
   onOpenSizeGuide?: () => void;
+}
+
+/** True when a swatch is light enough that a dark checkmark reads better. */
+function isLightHex(hex: string): boolean {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full.slice(0, 6), 16);
+  if (Number.isNaN(n)) return false;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 170;
 }
 
 export function VariantSelector({
@@ -33,7 +45,7 @@ export function VariantSelector({
     ).values()
   );
 
-  const sizesForColor = Array.from(
+  const sizesForColor = sortSizes(
     new Set(
       variants
         .filter((v) => v.size && v.is_active && (!selectedColor || v.color === selectedColor))
@@ -55,7 +67,12 @@ export function VariantSelector({
       {uniqueColors.length > 0 && (
         <View style={styles.section}>
           <View style={styles.colorHeader}>
-            <Label style={styles.sectionLabel}>COLOR</Label>
+            <View style={styles.headerLeft}>
+              <Label style={styles.sectionLabel}>COLOR</Label>
+              {selectedColor ? (
+                <Body size="sm" style={styles.selectedValue}>{selectedColor}</Body>
+              ) : null}
+            </View>
             <Body size="xs" muted style={styles.colorCountInline}>
               {uniqueColors.length} shade{uniqueColors.length !== 1 ? "s" : ""}
             </Body>
@@ -69,8 +86,19 @@ export function VariantSelector({
                     style={[styles.colorCircle, isActive && styles.colorCircleActive]}
                     onPress={() => onColorChange(color)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
+                    accessibilityLabel={`Color ${color}`}
                   >
-                    <View style={[styles.colorFill, { backgroundColor: hex }]} />
+                    <View style={[styles.colorFill, { backgroundColor: hex }]}>
+                      {isActive && (
+                        <Ionicons
+                          name="checkmark"
+                          size={16}
+                          color={isLightHex(hex) ? colors.olive[900] : colors.paper.cream}
+                        />
+                      )}
+                    </View>
                   </TouchableOpacity>
                   <Body
                     size="xs"
@@ -89,12 +117,21 @@ export function VariantSelector({
       {sizesForColor.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sizeHeader}>
-            <Label style={styles.sectionLabel}>SIZE</Label>
+            <View style={styles.headerLeft}>
+              <Label style={styles.sectionLabel}>SIZE</Label>
+              {selectedSize ? (
+                <Body size="sm" style={styles.selectedValue}>{selectedSize}</Body>
+              ) : null}
+            </View>
             {onOpenSizeGuide && (
-              <TouchableOpacity activeOpacity={0.6} onPress={onOpenSizeGuide} hitSlop={6}>
-                <Body size="xs" style={styles.sizeChart}>
-                  Size chart →
-                </Body>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={onOpenSizeGuide}
+                hitSlop={6}
+                style={styles.sizeChartBtn}
+              >
+                <Ionicons name="resize-outline" size={13} color={colors.olive[800]} />
+                <Body size="xs" style={styles.sizeChart}>Size guide</Body>
               </TouchableOpacity>
             )}
           </View>
@@ -114,7 +151,10 @@ export function VariantSelector({
                   ]}
                   onPress={() => onSizeChange(s)}
                   disabled={soldOut}
-                  activeOpacity={0.7}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive, disabled: soldOut }}
+                  accessibilityLabel={`Size ${s}${soldOut ? ", sold out" : ""}`}
                 >
                   <Body
                     size="sm"
@@ -129,6 +169,7 @@ export function VariantSelector({
                   {isLow && !isActive && (
                     <View style={styles.chipLowDot} />
                   )}
+                  {isActive && <View style={styles.chipActiveDot} />}
                 </TouchableOpacity>
               );
             })}
@@ -157,11 +198,16 @@ export function VariantSelector({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing[4],
-    gap: spacing[5],
+    paddingHorizontal: spacing[5],
+    gap: spacing[6],
   },
   section: {
-    gap: spacing[2.5],
+    gap: spacing[3],
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing[2],
   },
   colorHeader: {
     flexDirection: "row",
@@ -169,8 +215,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sectionLabel: {
-    color: colors.olive[700],
+    color: colors.light.mutedForeground,
     fontSize: 10,
+    letterSpacing: 2,
+    fontFamily: fontFamilies.sans.bold,
+  },
+  selectedValue: {
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 16,
   },
   colorCountInline: {
     fontFamily: fontFamilies.sans.regular,
@@ -178,19 +231,18 @@ const styles = StyleSheet.create({
   },
   colorRow: {
     flexDirection: "row",
-    gap: spacing[4],
+    gap: spacing[5],
     flexWrap: "wrap",
     alignItems: "flex-start",
   },
   colorItem: {
     alignItems: "center",
-    gap: spacing[1],
+    gap: spacing[1.5],
   },
   colorItemName: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: colors.light.mutedForeground,
     fontFamily: fontFamilies.sans.regular,
-    marginTop: 2,
     textAlign: "center",
   },
   colorItemNameActive: {
@@ -198,70 +250,109 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.semibold,
   },
   colorCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1.5,
-    borderColor: "transparent",
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 1,
+    borderColor: `${colors.olive[900]}14`,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#ffffff",
+    shadowColor: colors.ink.DEFAULT,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
   colorCircleActive: {
-    borderColor: colors.light.primary,
+    borderWidth: 2,
+    borderColor: colors.olive[950],
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   colorFill: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1.2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
     borderColor: "rgba(22, 23, 15, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   sizeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  sizeChart: {
-    color: colors.olive[700],
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+  sizeChartBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radii.full,
-    backgroundColor: `${colors.olive[500]}10`,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: `${colors.olive[600]}1F`,
+  },
+  sizeChart: {
+    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
   },
   sizeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing[2],
+    gap: spacing[2.5],
   },
   sizeChip: {
-    minWidth: 52,
-    height: 44,
-    borderRadius: radii.lg,
+    minWidth: 64,
+    height: 54,
+    borderRadius: radii["2xl"],
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: `${colors.olive[900]}1A`,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing[3],
-    backgroundColor: colors.light.card,
+    paddingHorizontal: spacing[4],
+    backgroundColor: "#ffffff",
+    shadowColor: colors.ink.DEFAULT,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
   sizeChipActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
+    backgroundColor: colors.olive[950],
+    borderColor: colors.olive[950],
+    ...shadows.glow,
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  chipActiveDot: {
+    position: "absolute",
+    bottom: 7,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.accent2.ochre,
   },
   sizeChipSoldOut: {
-    opacity: 0.35,
+    opacity: 0.4,
     backgroundColor: "transparent",
+    borderStyle: "dashed",
   },
   sizeText: {
     color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    letterSpacing: 0.4,
   },
   sizeTextActive: {
-    color: colors.light.primaryForeground,
-    fontFamily: fontFamilies.sans.semibold,
+    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.bold,
   },
   sizeTextSoldOut: {
     textDecorationLine: "line-through",
@@ -269,8 +360,8 @@ const styles = StyleSheet.create({
   },
   chipLowDot: {
     position: "absolute",
-    top: 4,
-    right: 4,
+    top: 6,
+    right: 6,
     width: 5,
     height: 5,
     borderRadius: 2.5,
@@ -281,9 +372,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[2],
     backgroundColor: `${colors.accent2.rust}12`,
+    borderWidth: 1,
+    borderColor: `${colors.accent2.rust}22`,
     paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1.5],
-    borderRadius: radii.md,
+    paddingVertical: spacing[2],
+    borderRadius: radii.full,
     alignSelf: "flex-start",
     marginTop: 2,
   },

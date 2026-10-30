@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share, Platform } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { PaperBackground } from "@/components/layout";
 import { SectionHeader } from "@/components/layout";
 import { ProductImageGallery } from "@/components/product/ProductImageGallery";
@@ -16,7 +18,6 @@ import { ProductQA } from "@/components/product/ProductQA";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ReviewForm } from "@/components/product/ReviewForm";
 import { PriceAlertPill } from "@/components/product/PriceAlertPill";
-import { PincodeChecker } from "@/components/delivery/PincodeChecker";
 import { OverlapWarningBanner } from "@/components/wardrobe/OverlapWarningBanner";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { useCart, useWishlist, useUI } from "@/lib/stores";
@@ -264,11 +265,14 @@ export default function ProductDetailScreen() {
           styles.topBar,
           {
             paddingTop: insets.top + 8,
-            backgroundColor: colors.light.background,
             borderBottomColor: headerBorder,
           },
         ]}
       >
+        {Platform.OS === "ios" ? (
+          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+        ) : null}
+        <View style={[StyleSheet.absoluteFill, styles.topBarTint]} pointerEvents="none" />
         <TouchableOpacity
           style={styles.topBtn}
           onPress={() => {
@@ -371,8 +375,20 @@ export default function ProductDetailScreen() {
 
         {/* Variant selectors */}
         <View style={styles.purchasePanel}>
+          <LinearGradient
+            colors={[`${colors.paper.warm}`, "#ffffff00"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.purchaseGlow}
+            pointerEvents="none"
+          />
           <View style={styles.purchaseHeader}>
-            <Label style={styles.purchaseEyebrow}>SELECT OPTIONS</Label>
+            <View style={styles.purchaseTitleWrap}>
+              <Label style={styles.purchaseEyebrow}>MAKE IT YOURS</Label>
+              <Display size="lg" style={styles.purchaseTitle}>
+                Select <Display size="lg" style={styles.purchaseTitleItalic}>options</Display>
+              </Display>
+            </View>
             <View style={[styles.stockPill, (soldOut || lowStock) && styles.stockPillSoldOut]}>
               <View style={[styles.stockDot, (soldOut || lowStock) && styles.stockDotSoldOut]} />
               <Label style={[styles.stockText, (soldOut || lowStock) && styles.stockTextSoldOut]}>
@@ -419,7 +435,16 @@ export default function ProductDetailScreen() {
             onOpenWardrobe={() => router.push("/(main)/account/wardrobe" as never)}
           />
           <View style={styles.qtyControlRow}>
-            <Label style={styles.qtyLabelText}>QUANTITY</Label>
+            <View style={styles.qtyLabelWrap}>
+              <Label style={styles.qtyLabelText}>QUANTITY</Label>
+              <Body size="xs" style={styles.qtyHint}>
+                {soldOut
+                  ? "Currently unavailable"
+                  : lowStock
+                    ? `Only ${currentStock} left — order soon`
+                    : "Ships in 1–3 business days"}
+              </Body>
+            </View>
             <View style={styles.qtyContainer}>
               <TouchableOpacity
                 style={[styles.qtyPillBtn, quantity <= 1 && styles.qtyPillBtnDisabled]}
@@ -441,15 +466,15 @@ export default function ProductDetailScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          <View style={styles.purchaseDivider} />
-
-          <PincodeChecker />
           </View>
         </View>
 
         {/* Trust & highlights */}
         <View style={styles.section}>
-          <TrustHighlights />
+          <TrustHighlights
+            acceptsReturns={product.store?.accepts_returns !== false}
+            returnWindowDays={product.store?.return_window_days}
+          />
         </View>
 
         {/* Store card */}
@@ -568,37 +593,58 @@ export default function ProductDetailScreen() {
         )}
 
         {/* Bottom spacer for sticky bar & insets */}
-        <View style={{ height: Math.max(insets.bottom, 12) + 110 }} />
+        <View style={{ height: Math.max(insets.bottom, 12) + 150 }} />
       </ScrollView>
 
       {/* Fixed bottom purchase bar */}
       <View style={[styles.stickyBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <Body size="xs" muted numberOfLines={1} style={styles.stickyVariant}>
-          {[selectedSize && `Size ${selectedSize}`, selectedColor, quantity > 1 && `Qty ${quantity}`]
-            .filter(Boolean)
-            .join(" · ") || "Select your options"}
-        </Body>
+        {Platform.OS === "ios" ? (
+          <BlurView intensity={70} tint="light" style={StyleSheet.absoluteFill} />
+        ) : null}
+        <View style={[StyleSheet.absoluteFill, styles.stickyTint]} pointerEvents="none" />
+        <View style={styles.stickySummary}>
+          <View style={styles.stickySummaryLeft}>
+            <Label style={styles.stickyEyebrow}>YOUR SELECTION</Label>
+            <Body size="xs" numberOfLines={1} style={styles.stickyVariant}>
+              {[selectedSize && `Size ${selectedSize}`, selectedColor, quantity > 1 && `Qty ${quantity}`]
+                .filter(Boolean)
+                .join("  ·  ") || "Select your options"}
+            </Body>
+          </View>
+          <View style={styles.stickySummaryRight}>
+            <Label style={styles.stickyEyebrow}>TOTAL</Label>
+            <Price size="sm" style={styles.stickyTotal}>
+              {formatPrice(unitPrice * quantity, product.currency)}
+            </Price>
+          </View>
+        </View>
         <View style={styles.stickyBottomInner}>
-          <Button
-            variant="outline"
+          <TouchableOpacity
             onPress={handleAddToCart}
             disabled={!isInCart && soldOut}
-            style={[styles.stickyBtn, styles.stickyAddBtn]}
-            textStyle={styles.stickyAddText}
-            size="md"
+            style={[styles.stickyBtn, styles.stickyAddBtn, !isInCart && soldOut && styles.stickyBtnDisabled]}
+            activeOpacity={0.8}
+            accessibilityRole="button"
           >
-            {isInCart ? "Go to basket" : soldOut ? "Sold out" : "Add to basket"}
-          </Button>
-          <Button
-            variant="brand"
+            <Ionicons
+              name={isInCart ? "bag-check-outline" : "bag-add-outline"}
+              size={17}
+              color={colors.olive[900]}
+            />
+            <Body style={styles.stickyAddText}>
+              {isInCart ? "Go to basket" : soldOut ? "Sold out" : "Add to basket"}
+            </Body>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={handleBuyNow}
             disabled={soldOut}
-            style={[styles.stickyBtn, styles.stickyBuyBtn]}
-            textStyle={styles.stickyBuyText}
-            size="md"
+            style={[styles.stickyBtn, styles.stickyBuyBtn, soldOut && styles.stickyBtnDisabled]}
+            activeOpacity={0.85}
+            accessibilityRole="button"
           >
-            Buy now
-          </Button>
+            <Body style={styles.stickyBuyText}>Buy now</Body>
+            <Ionicons name="arrow-forward" size={16} color="#ffffff" />
+          </TouchableOpacity>
         </View>
       </View>
     </PaperBackground>
@@ -608,6 +654,8 @@ export default function ProductDetailScreen() {
       onClose={() => setShowReviewForm(false)}
       productId={product.id}
       productName={product.name}
+      productImage={images.find((i) => i.is_primary)?.url || images[0]?.url}
+      brandName={product.brand?.name}
       onSubmitted={() => {
         fetchReviews();
       }}
@@ -643,7 +691,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[3],
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  topBarTint: {
+    backgroundColor: Platform.OS === "ios" ? `${colors.light.background}C8` : colors.light.background,
   },
   headerCenter: {
     flex: 1,
@@ -671,14 +723,19 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   topBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 1,
-    borderColor: `${colors.light.primary}18`,
-    backgroundColor: colors.light.card,
+    borderColor: `${colors.ink.DEFAULT}0F`,
+    backgroundColor: "rgba(255,255,255,0.94)",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
   cartBtn: {
     position: "relative",
@@ -689,9 +746,11 @@ const styles = StyleSheet.create({
     right: -4,
     backgroundColor: colors.accent2.rust,
     borderRadius: 8,
-    minWidth: 16,
-    height: 16,
+    minWidth: 17,
+    height: 17,
     paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: colors.light.background,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -709,72 +768,126 @@ const styles = StyleSheet.create({
   purchasePanel: {
     marginTop: spacing[6],
     marginHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    backgroundColor: colors.paper.cream,
-    borderRadius: radii["2xl"],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[5],
+    backgroundColor: "#ffffff",
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: `${colors.olive[700]}1A`,
-    ...shadows.soft,
+    borderColor: `${colors.ink.DEFAULT}0D`,
+    ...shadows.editorial,
+    shadowOpacity: 0.08,
+    shadowRadius: 28,
+  },
+  purchaseGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 110,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   purchaseHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing[3],
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[5],
+  },
+  purchaseTitleWrap: {
+    gap: 2,
+    flexShrink: 1,
   },
   purchaseEyebrow: {
-    color: colors.olive[700],
+    color: colors.olive[600],
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 2.4,
+    fontFamily: fontFamilies.sans.bold,
+  },
+  purchaseTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.4,
+    color: colors.light.foreground,
+  },
+  purchaseTitleItalic: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 24,
+    lineHeight: 30,
+    color: colors.olive[600],
   },
   stockPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: radii.full,
-    backgroundColor: `${colors.olive[500]}12`,
+    backgroundColor: colors.olive[50],
+    borderWidth: 1,
+    borderColor: `${colors.olive[500]}2E`,
   },
   stockPillSoldOut: {
-    backgroundColor: `${colors.accent2.rust}12`,
+    borderColor: `${colors.accent2.rust}33`,
+    backgroundColor: `${colors.accent2.rust}0D`,
   },
   stockDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: colors.olive[500],
+    shadowColor: colors.olive[400],
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
   },
   stockDotSoldOut: {
     backgroundColor: colors.accent2.rust,
+    shadowColor: colors.accent2.rust,
   },
   stockText: {
     color: colors.olive[700],
-    fontSize: 9,
+    fontSize: 10,
+    letterSpacing: 1,
+    fontFamily: fontFamilies.sans.bold,
   },
   stockTextSoldOut: {
     color: colors.accent2.rust,
   },
   purchaseDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: `${colors.olive[900]}12`,
-    marginVertical: spacing[4],
+    backgroundColor: `${colors.olive[900]}1A`,
+    marginVertical: spacing[5],
+    marginHorizontal: spacing[5],
   },
   qtySection: {
-    paddingHorizontal: spacing[4],
-    gap: spacing[3],
+    paddingHorizontal: spacing[5],
+    marginTop: spacing[6],
+    gap: spacing[4],
   },
   qtyControlRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing[3],
+    paddingTop: spacing[5],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: `${colors.olive[900]}1A`,
+  },
+  qtyLabelWrap: {
+    flexShrink: 1,
+    gap: 3,
   },
   qtyLabelText: {
-    color: colors.light.foreground,
-    fontSize: 11,
-    letterSpacing: 1.2,
+    color: colors.olive[600],
+    fontSize: 10,
+    letterSpacing: 2,
+  },
+  qtyHint: {
+    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
   },
   qtyContainer: {
     flexDirection: "row",
@@ -782,24 +895,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper.warm,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    paddingHorizontal: 3,
-    paddingVertical: 3,
+    borderColor: `${colors.olive[900]}10`,
+    padding: 5,
   },
   qtyPillBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.card,
+    backgroundColor: "#ffffff",
+    ...shadows.soft,
+    shadowOpacity: 0.08,
   },
   qtyPillBtnDisabled: {
     opacity: 0.4,
   },
   qtyValue: {
-    paddingHorizontal: spacing[4],
-    fontWeight: "600",
+    minWidth: 44,
+    textAlign: "center",
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
     color: colors.light.foreground,
   },
   relatedSection: {
@@ -824,44 +940,87 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.paper.cream,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: `${colors.olive[700]}30`,
-    paddingTop: spacing[2],
+    borderTopColor: `${colors.ink.DEFAULT}1A`,
+    paddingTop: spacing[4],
     paddingHorizontal: spacing[4],
-    gap: spacing[2],
+    gap: spacing[3],
+    overflow: "hidden",
     ...shadows.editorial,
   },
+  stickyTint: {
+    backgroundColor: Platform.OS === "ios" ? "rgba(255,255,255,0.86)" : "#ffffff",
+  },
+  stickySummary: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing[3],
+    paddingHorizontal: spacing[1],
+  },
+  stickySummaryLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  stickySummaryRight: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  stickyEyebrow: {
+    color: colors.light.mutedForeground,
+    fontSize: 9,
+    letterSpacing: 1.8,
+    fontFamily: fontFamilies.sans.bold,
+  },
   stickyVariant: {
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.medium,
-    textAlign: "center",
+    fontSize: 13,
+    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  stickyTotal: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
   },
   stickyBottomInner: {
     flexDirection: "row",
-    gap: spacing[3],
+    gap: spacing[2.5],
   },
   stickyBtn: {
     flex: 1,
-    height: 50,
-    borderRadius: radii.xl,
-    paddingHorizontal: spacing[2],
+    height: 54,
+    borderRadius: radii.full,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+    overflow: "hidden",
+  },
+  stickyBtnDisabled: {
+    opacity: 0.45,
   },
   stickyAddBtn: {
-    borderWidth: 1.5,
-    borderColor: colors.olive[800],
-    backgroundColor: colors.paper.cream,
+    borderWidth: 1,
+    borderColor: `${colors.olive[900]}2E`,
+    backgroundColor: colors.paper.DEFAULT,
   },
   stickyBuyBtn: {
-    backgroundColor: colors.olive[900],
+    backgroundColor: colors.ink.DEFAULT,
   },
   stickyAddText: {
     color: colors.olive[900],
-    fontSize: 13,
-    letterSpacing: 0.6,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13.5,
+    letterSpacing: 0.4,
   },
   stickyBuyText: {
-    fontSize: 13,
-    letterSpacing: 0.6,
+    color: "#ffffff",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13.5,
+    letterSpacing: 0.4,
   },
 });

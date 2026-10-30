@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Modal,
   View,
   StyleSheet,
   TouchableOpacity,
@@ -8,6 +7,7 @@ import {
   Dimensions,
   StatusBar,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 

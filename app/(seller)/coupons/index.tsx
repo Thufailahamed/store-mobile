@@ -9,11 +9,14 @@ import {
   RefreshControl,
   Alert,
   Switch,
-  Modal,
+
   KeyboardAvoidingView,
   Platform,
   StatusBar,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
+import { LinearGradient } from "expo-linear-gradient";
+import { HERO, LuxeHero, LuxeSectionHeader } from "@/components/seller/luxe";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -414,21 +417,39 @@ export default function SellerCoupons() {
           <View style={s.body}>
             {/* Stats */}
             {coupons.length > 0 ? (
-              <View style={s.statsStrip}>
-                {[
-                  { label: "Live", value: stats.active, dot: colors.olive[500] },
-                  { label: "Paused / ended", value: stats.inactive, dot: colors.ink.mute },
-                  { label: "Redeemed", value: stats.redemptions, dot: GOLD },
-                ].map((st, i) => (
-                  <View key={st.label} style={[s.statCell, i > 0 && s.statCellDivider]}>
-                    <Text style={s.statValue}>{st.value}</Text>
-                    <View style={s.statLabelRow}>
-                      <View style={[s.statDot, { backgroundColor: st.dot }]} />
-                      <Text style={s.statLabel} numberOfLines={1}>{st.label}</Text>
-                    </View>
+              <LuxeHero style={s.hero}>
+                <View style={s.heroTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.heroKicker}>TOTAL REDEMPTIONS</Text>
+                    <Text style={s.heroValue}>{stats.redemptions.toLocaleString("en-US")}</Text>
+                    <Text style={s.heroSub}>
+                      across {stats.total} {pluralize(stats.total, "code")}
+                    </Text>
                   </View>
-                ))}
-              </View>
+                  <View style={s.heroIcon}>
+                    <Ionicons name="pricetags-outline" size={15} color={HERO.text} />
+                  </View>
+                </View>
+                <View style={s.heroTiles}>
+                  {[
+                    { label: "Live", value: stats.active, dot: colors.olive[500] },
+                    { label: "Paused", value: stats.inactive, dot: "rgba(83,94,44,0.3)" },
+                    { label: "Total codes", value: stats.total, dot: GOLD },
+                  ].map((st) => (
+                    <View key={st.label} style={s.heroTile}>
+                      <View style={s.statLabelRow}>
+                        <View style={[s.statDot, { backgroundColor: st.dot }]} />
+                        <Text style={s.heroTileLabel} numberOfLines={1}>{st.label}</Text>
+                      </View>
+                      <Text style={s.heroTileValue}>{st.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              </LuxeHero>
+            ) : null}
+
+            {coupons.length > 0 ? (
+              <LuxeSectionHeader eyebrow="PROMOTIONS" title="Your codes" />
             ) : null}
 
             {/* Coupons list */}
@@ -466,6 +487,7 @@ export default function SellerCoupons() {
                   coupon.type === "free_shipping" ? "shipping"
                   : coupon.type === "bxgy" ? "bundle"
                   : "off";
+                const typeMeta = COUPON_TYPES.find((t) => t.key === coupon.type) ?? COUPON_TYPES[0];
                 const endsLabel = coupon.ends_at
                   ? `${expired ? "Ended" : "Ends"} ${new Date(coupon.ends_at).toLocaleDateString("en-LK", { month: "short", day: "numeric", year: "numeric" })}`
                   : "No expiry";
@@ -479,20 +501,34 @@ export default function SellerCoupons() {
                     accessibilityLabel={`Coupon ${coupon.code}, ${status}. Tap to edit`}
                   >
                     <View style={[s.ticketMain, !live && s.dim]}>
-                      <View style={[s.stub, !live && s.stubMuted]}>
+                      <LinearGradient
+                        colors={live ? [colors.olive[800], colors.olive[950]] : ["#8a8c78", "#5e604f"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={s.stub}
+                      >
+                        <View style={s.stubGlow} pointerEvents="none" />
+                        <View style={s.stubIcon}>
+                          <Ionicons name={typeMeta.icon} size={12} color={GOLD} />
+                        </View>
                         <Text style={s.stubValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                           {heroValue}
                         </Text>
                         <Text style={s.stubSub}>{heroSub}</Text>
-                      </View>
+                      </LinearGradient>
                       <View style={s.perf}>
                         <View style={[s.notch, s.notchTop]} />
                         <View style={s.perfLine} />
                         <View style={[s.notch, s.notchBottom]} />
                       </View>
                       <View style={s.ticketBody}>
+                        <Text style={s.typeEyebrow}>{typeMeta.label.toUpperCase()}</Text>
                         <View style={s.codeRow}>
-                          <Text style={s.couponCode} numberOfLines={1}>{coupon.code}</Text>
+                          <View style={s.codeBox}>
+                            <Text style={s.couponCode} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                              {coupon.code}
+                            </Text>
+                          </View>
                           <TouchableOpacity
                             onPress={() => void copyCode(coupon.code)}
                             hitSlop={8}
@@ -500,15 +536,20 @@ export default function SellerCoupons() {
                             accessibilityRole="button"
                             accessibilityLabel={`Copy ${coupon.code}`}
                           >
-                            <Ionicons name="copy-outline" size={14} color={colors.olive[700]} />
+                            <Ionicons name="copy-outline" size={14} color={CREAM} />
                           </TouchableOpacity>
                         </View>
-                        <Text style={s.couponMetaText} numberOfLines={1}>
-                          {coupon.min_order_total ? `Min. order ${formatPrice(coupon.min_order_total)}` : "No minimum order"}
-                        </Text>
-                        <View style={s.metaItem}>
-                          <Ionicons name="calendar-outline" size={11} color={expired ? RUST : colors.ink.mute} />
-                          <Text style={[s.couponMetaText, expired && { color: RUST }]}>{endsLabel}</Text>
+                        <View style={s.metaChips}>
+                          <View style={s.metaChip}>
+                            <Ionicons name="bag-handle-outline" size={11} color={colors.olive[700]} />
+                            <Text style={s.metaChipText} numberOfLines={1}>
+                              {coupon.min_order_total ? `Min ${formatPrice(coupon.min_order_total)}` : "No minimum"}
+                            </Text>
+                          </View>
+                          <View style={[s.metaChip, expired && s.metaChipRust]}>
+                            <Ionicons name="calendar-outline" size={11} color={expired ? RUST : colors.olive[700]} />
+                            <Text style={[s.metaChipText, expired && { color: RUST }]} numberOfLines={1}>{endsLabel}</Text>
+                          </View>
                         </View>
                       </View>
                     </View>
@@ -537,9 +578,15 @@ export default function SellerCoupons() {
                     </View>
 
                     <View style={s.couponActions}>
-                      <View style={[s.statusPill, { backgroundColor: statusTone.bg }]}>
-                        <View style={[s.liveDot, { backgroundColor: statusTone.fg }]} />
-                        <Text style={[s.statusText, { color: statusTone.fg }]}>{status}</Text>
+                      <View style={s.statusGroup}>
+                        <View style={[s.statusPill, { backgroundColor: statusTone.bg }]}>
+                          <View style={[s.liveDot, { backgroundColor: statusTone.fg }]} />
+                          <Text style={[s.statusText, { color: statusTone.fg }]}>{status}</Text>
+                        </View>
+                        <View style={s.editHint}>
+                          <Ionicons name="create-outline" size={12} color={colors.ink.mute} />
+                          <Text style={s.editHintText}>Edit</Text>
+                        </View>
                       </View>
                       <View style={s.actionGroup}>
                         <View style={s.switchWrap}>
@@ -875,45 +922,50 @@ const s = StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: colors.olive[900],
     marginBottom: 4,
+    shadowColor: INK,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   addBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: CREAM },
 
-  statsStrip: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
-    paddingVertical: 12,
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  statCell: { flex: 1, paddingHorizontal: 14 },
-  statCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(83,94,44,0.16)" },
-  statValue: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: INK, fontVariant: ["tabular-nums"] },
-  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
+  hero: { marginTop: 4 },
+  heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  heroKicker: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.6, color: HERO.kicker },
+  heroValue: { marginTop: 6, fontFamily: fontFamilies.display.regular, fontSize: 34, lineHeight: 40, color: HERO.ink, letterSpacing: -0.9, fontVariant: ["tabular-nums"] },
+  heroSub: { marginTop: 1, fontFamily: fontFamilies.display.italic, fontSize: 13, color: HERO.mute },
+  heroIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: HERO.chip, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.chipBorder, alignItems: "center", justifyContent: "center" },
+  heroTiles: { flexDirection: "row", gap: 6, marginTop: 12 },
+  heroTile: { flex: 1, minWidth: 0, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: HERO.tile, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.tileBorder },
+  heroTileLabel: { flexShrink: 1, fontFamily: fontFamilies.sans.medium, fontSize: 10.5, color: HERO.mute },
+  heroTileValue: { marginTop: 3, fontFamily: fontFamilies.display.semibold, fontSize: 19, color: HERO.ink, fontVariant: ["tabular-nums"] },
+  statLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   statDot: { width: 6, height: 6, borderRadius: 3 },
-  statLabel: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
 
   ticket: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
-    marginBottom: 12,
+    borderColor: "rgba(83,94,44,0.12)",
+    marginBottom: 14,
     overflow: "hidden",
+    shadowColor: INK,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
   dim: { opacity: 0.55 },
-  ticketMain: { flexDirection: "row", alignItems: "stretch", minHeight: 104 },
+  ticketMain: { flexDirection: "row", alignItems: "stretch", minHeight: 124 },
   stub: {
-    width: 104,
-    backgroundColor: colors.olive[900],
+    width: 108,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
+    overflow: "hidden",
   },
-  stubMuted: { backgroundColor: colors.ink.mute },
-  stubValue: { fontFamily: fontFamilies.display.semibold, fontSize: 28, color: CREAM, letterSpacing: -0.5 },
+  stubGlow: { position: "absolute", width: 120, height: 120, borderRadius: 60, top: -60, right: -50, backgroundColor: "rgba(200,164,74,0.14)" },
+  stubIcon: { width: 24, height: 24, borderRadius: 12, marginBottom: 8, backgroundColor: "rgba(200,164,74,0.16)", alignItems: "center", justifyContent: "center" },
+  stubValue: { fontFamily: fontFamilies.display.semibold, fontSize: 30, color: CREAM, letterSpacing: -0.6 },
   stubSub: {
     marginTop: 2,
     fontFamily: fontFamilies.mono.semibold,
@@ -934,20 +986,35 @@ const s = StyleSheet.create({
     borderColor: "rgba(83,94,44,0.25)",
     marginVertical: 4,
   },
-  ticketBody: { flex: 1, minWidth: 0, justifyContent: "center", paddingVertical: 14, paddingRight: 14, paddingLeft: 6, gap: 4 },
+  ticketBody: { flex: 1, minWidth: 0, justifyContent: "center", paddingVertical: 14, paddingRight: 14, paddingLeft: 6, gap: 8 },
+  typeEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8.5, letterSpacing: 1.4, color: colors.olive[600] },
+  codeBox: {
+    flexShrink: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1.2,
+    borderStyle: "dashed",
+    borderColor: "rgba(200,164,74,0.7)",
+    backgroundColor: "rgba(200,164,74,0.08)",
+  },
+  metaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  metaChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.olive[50], maxWidth: "100%" },
+  metaChipRust: { backgroundColor: "rgba(184,92,58,0.08)" },
+  metaChipText: { flexShrink: 1, fontFamily: fontFamilies.sans.medium, fontSize: 11, color: colors.olive[800] },
   codeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   couponCode: {
     flexShrink: 1,
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 18,
-    letterSpacing: 1.6,
+    fontSize: 16,
+    letterSpacing: 1.8,
     color: INK,
   },
   copyBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
-    backgroundColor: colors.olive[50],
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -956,9 +1023,9 @@ const s = StyleSheet.create({
 
   usageBlock: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 14,
     paddingBottom: 4,
-    gap: 7,
+    gap: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(83,94,44,0.12)",
   },
@@ -966,7 +1033,7 @@ const s = StyleSheet.create({
   usageLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
   usageStrong: { fontFamily: fontFamilies.sans.semibold, color: INK },
   usageBarBg: { height: 6, borderRadius: 3, backgroundColor: "rgba(83,94,44,0.1)", overflow: "hidden" },
-  usageBarFill: { height: "100%", borderRadius: 3, backgroundColor: colors.olive[600] },
+  usageBarFill: { height: "100%", borderRadius: 3, backgroundColor: GOLD },
   usageBarFull: { backgroundColor: RUST },
 
   couponActions: {
@@ -987,6 +1054,9 @@ const s = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12 },
   actionGroup: { flexDirection: "row", alignItems: "center", gap: 6 },
+  statusGroup: { flexDirection: "row", alignItems: "center", gap: 10 },
+  editHint: { flexDirection: "row", alignItems: "center", gap: 3 },
+  editHintText: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: colors.ink.mute },
   switchWrap: { flexDirection: "row", alignItems: "center", gap: 2 },
   switchLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: colors.ink.mute },
   iconAction: {

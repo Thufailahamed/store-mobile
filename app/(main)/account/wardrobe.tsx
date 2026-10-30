@@ -42,7 +42,6 @@ import {
   type WardrobeGarmentFilter,
   type WardrobeStatusFilter,
 } from "@/components/wardrobe/WardrobeFilterBar";
-import { WardrobeStatsBar } from "@/components/wardrobe/WardrobeStatsBar";
 import { formatPrice } from "@/lib/utils";
 import { WardrobeEmptyState } from "@/components/wardrobe/WardrobeEmptyState";
 import { LogWearSheet } from "@/components/wardrobe/LogWearSheet";
@@ -232,6 +231,8 @@ export default function WardrobeScreen() {
     { label: "Outfits", value: outfits.length },
     { label: "Wears", value: stats?.totals.total_wears ?? 0 },
   ];
+  const totalSpent = stats?.totals.total_spent ?? 0;
+  const avgCpw = stats?.totals.avg_cost_per_wear;
 
   if (!user?.id) {
     return (
@@ -317,7 +318,10 @@ export default function WardrobeScreen() {
       >
         {/* Page heading */}
         <View style={styles.pageHead}>
-          <Text style={styles.eyebrow}>Capsule archive</Text>
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowRule} />
+            <Text style={styles.eyebrow}>Capsule archive</Text>
+          </View>
           <Text style={styles.pageTitle}>
             Things you <Text style={styles.pageTitleAccent}>own.</Text>
           </Text>
@@ -329,16 +333,35 @@ export default function WardrobeScreen() {
         {/* Summary card */}
         <View style={styles.heroSection}>
           <LinearGradient
-            colors={["#1f2418", "#14170e"]}
+            colors={["#232a19", "#14170e"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.heroCard}
           >
+            <View style={styles.heroGlow} pointerEvents="none" />
+
+            <View style={styles.heroValueRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroKicker}>Closet value</Text>
+                <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+                  {formatPrice(totalSpent)}
+                </Text>
+              </View>
+              <View style={styles.cpwChip}>
+                <Text style={styles.cpwLabel}>Per wear</Text>
+                <Text style={styles.cpwValue}>
+                  {typeof avgCpw === "number" ? formatPrice(avgCpw) : "Log a wear"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.heroRule} />
+
             <View style={styles.heroStats}>
               {heroStats.map((s, i) => (
                 <View key={s.label} style={[styles.heroStatCell, i > 0 && styles.heroStatDivider]}>
                   <Text style={[styles.heroStatValue, s.value === 0 && styles.heroStatValueMuted]}>
-                    {s.value}
+                    {String(s.value).padStart(2, "0")}
                   </Text>
                   <Text style={styles.heroStatLabel}>{s.label}</Text>
                 </View>
@@ -347,8 +370,8 @@ export default function WardrobeScreen() {
 
             <View style={styles.heroFoot}>
               <View style={styles.heroFootText}>
-                <Ionicons name="cube-outline" size={13} color="rgba(250, 248, 241, 0.6)" />
-                <Text style={styles.heroFootLabel}>Synced from delivered orders</Text>
+                <View style={styles.liveDot} />
+                <Text style={styles.heroFootLabel}>Auto-synced from delivered orders</Text>
               </View>
               <TouchableOpacity
                 style={styles.heroSyncBtn}
@@ -362,7 +385,7 @@ export default function WardrobeScreen() {
                   <ActivityIndicator size="small" color={colors.olive[900]} />
                 ) : (
                   <>
-                    <Ionicons name="sync" size={13} color={colors.olive[900]} />
+                    <Ionicons name="sync" size={12} color={colors.olive[900]} />
                     <Text style={styles.heroSyncText}>Sync</Text>
                   </>
                 )}
@@ -371,17 +394,15 @@ export default function WardrobeScreen() {
           </LinearGradient>
         </View>
 
-        {/* 2. Stats Rail (when items exist) */}
-        {items.length > 0 && tab !== "stats" && (
-          <View style={{ marginTop: 6, paddingHorizontal: WARDROBE_H_PAD }}>
-            <WardrobeStatsBar stats={stats} />
-          </View>
-        )}
-
-        {/* 3. Insights Strip (when items exist) */}
+        {/* Insights Strip (when items exist) */}
         {items.length > 0 && (
-          <View style={{ marginTop: 20 }}>
-            <Text style={styles.sectionEyebrow}>Wardrobe insights</Text>
+          <View style={{ marginTop: 32 }}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionKicker}>01</Text>
+              <Text style={styles.sectionTitle}>
+                Closet <Text style={styles.pageTitleAccent}>insights</Text>
+              </Text>
+            </View>
             <InsightsSection onLogWear={(it) => setWearItem(it)} />
           </View>
         )}
@@ -402,7 +423,7 @@ export default function WardrobeScreen() {
                 <Ionicons
                   name={t.icon}
                   size={14}
-                  color={active ? colors.olive[900] : colors.light.mutedForeground}
+                  color={active ? "#E8CF8F" : colors.light.mutedForeground}
                 />
                 <Text
                   style={[styles.tabButtonText, active && styles.tabButtonTextActive]}
@@ -847,19 +868,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     marginBottom: spacing[5],
   },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  eyebrowRule: { width: 22, height: 1, backgroundColor: GOLD_DEEP },
   eyebrow: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 2.2,
     textTransform: "uppercase",
     color: GOLD_DEEP,
-    marginBottom: 4,
   },
   pageTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.7,
+    fontSize: 38,
+    lineHeight: 44,
+    letterSpacing: -1,
     color: colors.light.foreground,
   },
   pageTitleAccent: {
@@ -880,68 +902,124 @@ const styles = StyleSheet.create({
     paddingHorizontal: WARDROBE_H_PAD,
   },
   heroCard: {
-    borderRadius: 24,
+    borderRadius: 26,
     paddingTop: spacing[5],
-    paddingHorizontal: spacing[2],
-    paddingBottom: spacing[2],
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[3],
+    overflow: "hidden",
     ...shadows.editorial,
+  },
+  heroGlow: {
+    position: "absolute",
+    top: -90,
+    right: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(232, 207, 143, 0.045)",
+  },
+  heroValueRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing[3] },
+  heroKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: "rgba(232, 207, 143, 0.85)",
+    marginBottom: 6,
+  },
+  heroValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.8,
+    color: colors.paper.cream,
+  },
+  cpwChip: {
+    alignItems: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(232, 207, 143, 0.35)",
+    backgroundColor: "rgba(232, 207, 143, 0.06)",
+  },
+  cpwLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 8.5,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(250, 248, 241, 0.55)",
+  },
+  cpwValue: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 15,
+    color: "#E8CF8F",
+    marginTop: 2,
+  },
+  heroRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(250, 248, 241, 0.14)",
+    marginVertical: spacing[4],
   },
   heroStats: {
     flexDirection: "row",
-    paddingBottom: spacing[5],
+    paddingBottom: spacing[4],
   },
   heroStatCell: {
     flex: 1,
-    alignItems: "center",
     gap: 2,
   },
   heroStatDivider: {
-    borderLeftWidth: 1,
-    borderLeftColor: "rgba(250, 248, 241, 0.1)",
+    paddingLeft: spacing[4],
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "rgba(250, 248, 241, 0.14)",
   },
   heroStatValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 26,
+    letterSpacing: -0.4,
     color: colors.paper.cream,
   },
   heroStatValueMuted: {
-    color: "rgba(250, 248, 241, 0.35)",
+    color: "rgba(250, 248, 241, 0.32)",
   },
   heroStatLabel: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1.2,
+    fontSize: 9,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
-    color: "rgba(232, 207, 143, 0.85)",
+    color: "rgba(250, 248, 241, 0.55)",
   },
   heroFoot: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(250, 248, 241, 0.06)",
-    borderRadius: 18,
-    paddingLeft: spacing[3.5],
-    paddingRight: 6,
-    paddingVertical: 6,
+    marginHorizontal: -spacing[2],
+    backgroundColor: "rgba(250, 248, 241, 0.05)",
+    borderRadius: radii.full,
+    paddingLeft: spacing[4],
+    paddingRight: 5,
+    paddingVertical: 5,
   },
   heroFootText: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     flex: 1,
   },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[300] },
   heroFootLabel: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: "rgba(250, 248, 241, 0.7)",
+    fontSize: 11.5,
+    color: "rgba(250, 248, 241, 0.65)",
   },
   heroSyncBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    minWidth: 78,
-    height: 34,
+    minWidth: 72,
+    height: 32,
     paddingHorizontal: 14,
     borderRadius: radii.full,
     backgroundColor: "#E8CF8F",
@@ -963,16 +1041,37 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 10,
+    paddingHorizontal: WARDROBE_H_PAD,
+    marginBottom: 14,
+  },
+  sectionKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: colors.accent2.rust,
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    letterSpacing: -0.4,
+    color: colors.light.foreground,
+  },
+
   /* Segmented tabs */
   tabsContainer: {
     flexDirection: "row",
     marginHorizontal: WARDROBE_H_PAD,
-    marginTop: 20,
+    marginTop: 32,
     padding: 4,
     borderRadius: radii.full,
-    backgroundColor: colors.paper.warm,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
+    backgroundColor: colors.paper.cream,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    ...shadows.soft,
   },
   tabButton: {
     flex: 1,
@@ -980,12 +1079,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    height: 38,
+    height: 40,
     borderRadius: radii.full,
   },
   tabButtonActive: {
-    backgroundColor: colors.paper.cream,
-    ...shadows.soft,
+    backgroundColor: colors.ink.DEFAULT,
   },
   tabButtonText: {
     fontSize: 12.5,
@@ -993,7 +1091,7 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
   },
   tabButtonTextActive: {
-    color: colors.olive[900],
+    color: colors.paper.cream,
     fontFamily: fontFamilies.sans.bold,
   },
 

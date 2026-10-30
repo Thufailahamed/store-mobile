@@ -1,12 +1,15 @@
 import React from "react";
-import { View, StyleSheet, TouchableOpacity } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui";
 import { Label, Body } from "@/components/ui/Typography";
-import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { spacing, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
+
+const INK = "#141414";
+const MUTED = "#6b6b6b";
 
 interface ProductStoreCardProps {
   store: Store;
@@ -21,136 +24,166 @@ export function ProductStoreCard({ store }: ProductStoreCardProps) {
       params: { slug: store.slug, id: store.id },
     });
   };
+  const hasRating = store.total_reviews > 0;
+  const hasProducts = store.total_products > 0;
+
   return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.85}
+    <Pressable
+      style={({ pressed }) => [styles.shadow, pressed && { transform: [{ scale: 0.985 }], opacity: 0.95 }]}
       onPress={handlePress}
       disabled={!store.slug}
+      accessibilityRole="button"
+      accessibilityLabel={`Visit ${store.name}`}
     >
-      <Avatar
-        name={store.name}
-        uri={store.logo_url}
-        size={48}
-        style={styles.avatar}
-      />
-      <View style={styles.info}>
-        <Label style={styles.soldBy}>SOLD BY</Label>
-        <View style={styles.nameRow}>
-          <Body size="sm" style={styles.storeName}>{store.name}</Body>
-          <View style={styles.verifiedBadge}>
-            <Ionicons name="checkmark-circle" size={11} color={colors.olive[600]} />
-            <Label style={styles.verifiedText}>Verified</Label>
+      <View style={styles.card}>
+        <View style={styles.topRow}>
+          <View style={styles.avatarRing}>
+            <Avatar name={store.name} uri={store.logo_url} size={52} style={styles.avatar} />
+          </View>
+          <View style={styles.info}>
+            <Label style={styles.soldBy}>SOLD BY</Label>
+            <View style={styles.nameRow}>
+              <Body style={styles.storeName} numberOfLines={1}>{store.name}</Body>
+              <Ionicons name="checkmark-circle" size={15} color={INK} />
+            </View>
+            <Body size="xs" style={styles.verifiedText}>Verified seller</Body>
+          </View>
+          <View style={styles.visitBtn}>
+            <Body size="xs" style={styles.visitText}>Visit</Body>
+            <Ionicons name="arrow-forward" size={13} color="#ffffff" />
           </View>
         </View>
-        <View style={styles.statsRow}>
-          {store.total_reviews > 0 && (
-            <View style={styles.ratingBadge}>
-              <Ionicons name="star" size={10} color={colors.accent2.ochre} />
-              <Body size="xs" style={styles.ratingText}>{store.rating?.toFixed(1)}</Body>
-            </View>
-          )}
-          {store.total_reviews > 0 && store.total_products > 0 && <View style={styles.miniDot} />}
-          {store.total_products > 0 && (
-            <Body size="xs" muted>
-              {store.total_products} {store.total_products === 1 ? "product" : "products"}
-            </Body>
-          )}
-        </View>
+
+        {(hasRating || hasProducts) && (
+          <View style={styles.statsRow}>
+            {hasRating && (
+              <View style={styles.stat}>
+                <View style={styles.statValueRow}>
+                  <Ionicons name="star" size={12} color={INK} />
+                  <Body style={styles.statValue}>{store.rating?.toFixed(1)}</Body>
+                </View>
+                <Body size="xs" style={styles.statLabel}>{store.total_reviews} reviews</Body>
+              </View>
+            )}
+            {hasRating && hasProducts && <View style={styles.statDivider} />}
+            {hasProducts && (
+              <View style={styles.stat}>
+                <Body style={styles.statValue}>{store.total_products}</Body>
+                <Body size="xs" style={styles.statLabel}>
+                  {store.total_products === 1 ? "Product" : "Products"}
+                </Body>
+              </View>
+            )}
+          </View>
+        )}
       </View>
-      <View style={styles.visitLink}>
-        <Body size="xs" style={styles.visitText}>Visit</Body>
-        <Ionicons name="arrow-forward" size={12} color={colors.paper.cream} />
-      </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  shadow: {
+    marginHorizontal: spacing[4],
+    borderRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 22,
+    elevation: 3,
+  },
   card: {
+    padding: spacing[4],
+    gap: spacing[4],
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  topRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    marginHorizontal: spacing[4],
-    padding: spacing[4],
-    backgroundColor: colors.paper.cream,
-    borderRadius: radii["2xl"],
+  },
+  avatarRing: {
+    padding: 2,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: `${colors.olive[700]}20`,
-    ...shadows.soft,
+    borderColor: "rgba(0,0,0,0.08)",
   },
   avatar: {
-    borderRadius: radii.xl,
+    borderRadius: 16,
   },
   info: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   soldBy: {
-    color: colors.olive[600],
-    fontSize: 8,
-    letterSpacing: 1.2,
+    color: MUTED,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    fontFamily: fontFamilies.sans.bold,
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
-    flexWrap: "wrap",
+    gap: 5,
   },
   storeName: {
-    fontWeight: "600",
-    fontFamily: fontFamilies.sans.semibold,
-    color: colors.light.foreground,
-  },
-  verifiedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: `${colors.olive[600]}10`,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.full,
+    flexShrink: 1,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    letterSpacing: -0.2,
+    color: INK,
   },
   verifiedText: {
-    color: colors.olive[600],
-    fontSize: 9,
-    fontFamily: fontFamilies.mono.semibold,
+    color: MUTED,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+  },
+  visitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: INK,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.full,
+  },
+  visitText: {
+    color: "#ffffff",
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    paddingVertical: spacing[3],
+    borderRadius: 16,
+    backgroundColor: "#f6f6f4",
   },
-  ratingBadge: {
-    flexDirection: "row",
+  stat: {
+    flex: 1,
     alignItems: "center",
-    gap: 2,
+    gap: 1,
   },
-  ratingText: {
-    color: colors.accent2.ochre,
-    fontWeight: "600",
-    fontSize: 11,
-  },
-  miniDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: colors.light.mutedForeground,
-  },
-  visitLink: {
+  statValueRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.olive[900],
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: radii.full,
   },
-  visitText: {
-    color: colors.paper.cream,
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+  statValue: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: INK,
+  },
+  statLabel: {
+    color: MUTED,
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.regular,
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: "stretch",
+    backgroundColor: "rgba(0,0,0,0.12)",
   },
 });

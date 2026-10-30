@@ -1,18 +1,15 @@
-import React, { useState } from "react";
+import React from "react";
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, Text } from "react-native";
 import { Image } from "expo-image";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { useCart, useWishlist } from "@/lib/stores";
 import { Label, Price, Body } from "@/components/ui/Typography";
 import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
-import { useTrackEvent } from "@/lib/recommender";
-import { getVariantAvailableStock } from "@/lib/inventory";
-import { useToast } from "@/components/ui";
 import { QuickSizeModal } from "./QuickSizeModal";
-import type { Product, ProductVariant } from "@/lib/types";
+import { useProductActions } from "./useProductActions";
+import type { Product } from "@/lib/types";
 
 interface ProductCardProps {
   product: Product;
@@ -31,33 +28,17 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = (screenWidth - 32 - 12) / 2;
   const imageHeight = cardWidth * (4 / 3);
-  const { toast } = useToast();
-  const addItem = useCart((s) => s.addItem);
-  const isWishlisted = useWishlist((s) => !!s.items[product.id]);
-  const toggle = useWishlist((s) => s.toggle);
-  const tracker = useTrackEvent();
-  const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-  const storeOrBrandName = product.store?.name || product.brand?.name;
-  const discount =
-    product.mrp > product.price
-      ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
-      : 0;
-
-  const colorSwatches = Array.from(
-    new Map(
-      (product.variants ?? [])
-        .filter((v) => v.color_hex)
-        .map((v) => [v.color_hex as string, v.color as string])
-    ).keys()
-  ).slice(0, 4);
-
-  /** Aggregate stock across every variant. If no variants exist we assume the
-   *  product is always available (matches web WishlistPage.totalStock). */
-  const aggregateStock = (product.variants ?? []).reduce(
-    (sum, v) => sum + getVariantAvailableStock(v, v.stock ?? 0),
-    0,
-  );
-  const isSoldOut = (product.variants?.length ?? 0) > 0 && aggregateStock <= 0;
+  const {
+    primaryImage,
+    discount,
+    colorSwatches,
+    isSoldOut,
+    isWishlisted,
+    handleAdd,
+    handleWishlist,
+    quickSize,
+  } = useProductActions(product);
+  const storeOrBrandName = product.brand?.name || product.store?.name;
 
   const handlePress = () => {
     router.push(`/(main)/products/${product.slug}`);
@@ -84,139 +65,143 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
     );
   };
 
-  const [showQuickSize, setShowQuickSize] = useState(false);
-  const sizeVariants = (product.variants ?? []).filter((v) => v.is_active && v.size);
+  const priceLabel = product.price ? formatPrice(product.price) : "Price on request";
 
-  const addVariantToCart = (variant: ProductVariant) => {
-    const stock = getVariantAvailableStock(variant, variant.stock ?? 0);
-    if (stock <= 0) {
-      toast("Out of stock", "error");
-      return;
-    }
-    addItem({
-      productId: product.id,
-      variantId: variant.id,
-      storeId: product.store_id,
-      name: product.name,
-      variantLabel: `${variant.color ?? ""} ${variant.size ?? ""}`.trim() || undefined,
-      price: variant.price ?? product.price,
-      image: primaryImage,
-      stock,
-      quantity: 1,
-    });
-    tracker.cartAdd(product);
-    toast(`Added size ${variant.size} to basket`, "success");
+  const renderPrice = (size: "sm" | "base" = "base") => (
+    <View style={styles.priceRow}>
+      <Price size={size} style={styles.price} numberOfLines={1}>
+        {priceLabel}
+      </Price>
+      {discount > 0 ? (
+        <Text style={styles.mrp} numberOfLines={1}>
+          {formatPrice(product.mrp)}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const renderMetaRow = () => {
+    const hasRating = product.rating > 0;
+    if (colorSwatches.length === 0 && !hasRating) return null;
+    return (
+      <View style={styles.metaRow}>
+        <View style={styles.swatches}>
+          {colorSwatches.map((hex, i) => (
+            <View
+              key={hex}
+              style={[styles.swatch, { backgroundColor: hex, marginLeft: i === 0 ? 0 : 4 }]}
+            />
+          ))}
+        </View>
+        {hasRating ? (
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={10} color={colors.accent2.ochre} />
+            <Text style={styles.rating}>{product.rating.toFixed(1)}</Text>
+            {product.total_reviews ? (
+              <Text style={styles.ratingCount}>({product.total_reviews})</Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    );
   };
 
-  const handleAdd = () => {
-    if (isSoldOut) {
-      toast("Out of stock", "error");
-      return;
-    }
-    if (sizeVariants.length > 1) {
-      setShowQuickSize(true);
-      return;
-    }
-    const variants = product.variants ?? [];
-    const variant =
-      variants.find((v) => getVariantAvailableStock(v, v.stock ?? 0) > 0) ?? variants[0];
-    const stock = variant ? getVariantAvailableStock(variant, variant.stock ?? 0) : 0;
-    if (stock <= 0) {
-      toast("Out of stock", "error");
-      return;
-    }
-    addItem({
-      productId: product.id,
-      variantId: variant?.id ?? null,
-      storeId: product.store_id,
-      name: product.name,
-      variantLabel: variant ? `${variant.color ?? ""} ${variant.size ?? ""}`.trim() : undefined,
-      price: variant?.price ?? product.price,
-      image: primaryImage,
-      stock,
-      quantity: 1,
-    });
-    tracker.cartAdd(product);
-    toast("Added to basket", "success");
-  };
+  const renderDiscountTag = () =>
+    discount > 0 ? (
+      <View style={styles.discountTag}>
+        <Text style={styles.discountText}>−{discount}%</Text>
+      </View>
+    ) : null;
 
-  const handleWishlist = () => {
-    tracker.wishlist(product, isWishlisted ? "remove" : "add");
-    toggle(product.id);
-  };
+  const renderSoldOut = () =>
+    isSoldOut ? (
+      <View style={styles.soldOutOverlay}>
+        <View style={styles.soldOutPill}>
+          <Text style={styles.soldOutText}>Sold out</Text>
+        </View>
+      </View>
+    ) : null;
+
+  const renderImage = (iconSize = 26) =>
+    primaryImage ? (
+      <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={300} />
+    ) : (
+      <View style={styles.placeholderWrap}>
+        <Ionicons name="shirt-outline" size={iconSize} color={colors.light.mutedForeground} />
+      </View>
+    );
+
+  const renderWishlist = (size = 15) => (
+    <TouchableOpacity
+      style={styles.wishlistBtn}
+      onPress={handleWishlist}
+      activeOpacity={0.7}
+      hitSlop={6}
+      accessibilityLabel={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
+    >
+      <Ionicons
+        name={isWishlisted ? "heart" : "heart-outline"}
+        size={size}
+        color={isWishlisted ? colors.accent2.rust : colors.light.foreground}
+      />
+    </TouchableOpacity>
+  );
 
   if (listMode) {
     return (
       <>
-      <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={styles.listCard}>
+      <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={styles.listCard}>
         <View style={styles.listImageWrap}>
-          {primaryImage ? (
-            <Image source={{ uri: primaryImage }} style={styles.listImage} contentFit="cover" transition={300} />
-          ) : (
-            <View style={styles.placeholderWrap}>
-              <Ionicons name="shirt-outline" size={24} color={colors.light.mutedForeground} />
-            </View>
-          )}
-          {discount > 0 ? (
-            <View style={[styles.discountBadge, { top: 6, right: 6 }]}>
-              <Label style={styles.discountText}>-{discount}%</Label>
-            </View>
-          ) : null}
-          {isSoldOut ? (
-            <View style={styles.soldOutOverlay}>
-              <Label style={styles.soldOutText}>Out of stock</Label>
-            </View>
-          ) : null}
+          {renderImage(24)}
+          {renderDiscountTag()}
+          {renderSoldOut()}
         </View>
         <View style={styles.listInfo}>
           <View>
-            <Body size="sm" numberOfLines={1} style={[styles.listName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
-              {product.name || "Untitled Piece"}
-            </Body>
             {storeOrBrandName ? (
               <View style={styles.storeRow}>{renderBrandLabel()}</View>
             ) : null}
+            <Text numberOfLines={2} style={styles.listName}>
+              {product.name || "Untitled Piece"}
+            </Text>
             {product.short_description ? (
-              <Body muted size="xs" numberOfLines={1} style={styles.listDesc}>
+              <Text numberOfLines={1} style={styles.listDesc}>
                 {product.short_description}
-              </Body>
+              </Text>
             ) : null}
+            {renderMetaRow()}
           </View>
           <View style={styles.listPriceRow}>
-            <View style={styles.priceRow}>
-              {discount > 0 ? (
-                <>
-                  <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
-                  <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-                </>
-              ) : (
-                <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-              )}
-            </View>
+            <View style={{ flex: 1 }}>{renderPrice("base")}</View>
             <View style={styles.listActions}>
               <TouchableOpacity
                 style={styles.listActionBtn}
                 onPress={handleWishlist}
                 activeOpacity={0.7}
+                accessibilityLabel={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
               >
                 <Ionicons
                   name={isWishlisted ? "heart" : "heart-outline"}
                   size={16}
-                  color={isWishlisted ? colors.light.destructive : colors.light.foreground}
+                  color={isWishlisted ? colors.accent2.rust : colors.light.foreground}
                 />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.listAddBtn} onPress={handleAdd} activeOpacity={0.8}>
-                <Ionicons name="add" size={18} color={colors.light.primaryForeground} />
+              <TouchableOpacity
+                style={[styles.listAddBtn, isSoldOut && styles.addBtnDisabled]}
+                onPress={handleAdd}
+                activeOpacity={0.8}
+                disabled={isSoldOut}
+                accessibilityLabel="Add to basket"
+              >
+                <Ionicons name="bag-add-outline" size={16} color={colors.light.primaryForeground} />
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </TouchableOpacity>
       <QuickSizeModal
-        visible={showQuickSize}
-        onClose={() => setShowQuickSize(false)}
+        {...quickSize}
         product={product}
-        onSelectVariant={addVariantToCart}
       />
       </>
     );
@@ -225,61 +210,21 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
   if (horizontal) {
     const w = 160;
     return (
-      <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={[styles.horizontalCard, { width: w }]}>
-        <View style={[styles.imageWrap, { width: w, height: 200 }]}>
-          {primaryImage ? (
-            <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={300} />
-          ) : (
-            <View style={styles.placeholderWrap}>
-              <Ionicons name="shirt-outline" size={24} color={colors.light.mutedForeground} />
-            </View>
-          )}
-          {discount > 0 && (
-            <View style={styles.discountBadge}>
-              <Label style={styles.discountText}>-{discount}%</Label>
-            </View>
-          )}
-          {isSoldOut ? (
-            <View style={styles.soldOutOverlay}>
-              <Label style={styles.soldOutText}>Out of stock</Label>
-            </View>
-          ) : null}
-          <TouchableOpacity
-            style={styles.wishlistBtn}
-            onPress={handleWishlist}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isWishlisted ? "heart" : "heart-outline"}
-              size={14}
-              color={isWishlisted ? colors.light.destructive : colors.light.foreground}
-            />
-          </TouchableOpacity>
+      <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={[styles.horizontalCard, { width: w }]}>
+        <View style={[styles.imageWrap, { width: w, height: 208 }]}>
+          {renderImage(24)}
+          {renderDiscountTag()}
+          {renderSoldOut()}
+          {renderWishlist(14)}
         </View>
         <View style={styles.info}>
-          <Body size="sm" numberOfLines={1} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
-            {product.name || "Untitled Piece"}
-          </Body>
           {storeOrBrandName ? (
             <View style={styles.storeRow}>{renderBrandLabel()}</View>
           ) : null}
-          <View style={styles.priceRow}>
-            {discount > 0 ? (
-              <>
-                <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
-                <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-              </>
-            ) : (
-              <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-            )}
-          </View>
-          {product.rating > 0 && (
-            <View style={styles.ratingRow}>
-              <Ionicons name="star" size={12} color={colors.olive[600]} />
-              <Body size="xs" style={styles.rating}>{product.rating.toFixed(1)}</Body>
-              <Body muted size="xs">({product.total_reviews})</Body>
-            </View>
-          )}
+          <Text numberOfLines={1} style={styles.productName}>
+            {product.name || "Untitled Piece"}
+          </Text>
+          {renderPrice("sm")}
         </View>
       </TouchableOpacity>
     );
@@ -287,98 +232,55 @@ export function ProductCard({ product, horizontal, listMode, surface }: ProductC
 
   return (
     <>
-    <TouchableOpacity activeOpacity={0.85} onPress={handlePress} style={[styles.card, surface && styles.cardSurface]}>
+    <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={[styles.card, surface && styles.cardSurface]}>
       <View style={[styles.imageWrap, { height: imageHeight }]}>
-        {primaryImage ? (
-          <Image source={{ uri: primaryImage }} style={styles.image} contentFit="cover" transition={300} />
-        ) : (
-          <View style={styles.placeholderWrap}>
-            <Ionicons name="shirt-outline" size={24} color={colors.light.mutedForeground} />
-          </View>
-        )}
-        {discount > 0 && (
-          <View style={styles.discountBadge}>
-            <Label style={styles.discountText}>-{discount}%</Label>
-          </View>
-        )}
-        {isSoldOut ? (
-          <View style={styles.soldOutOverlay}>
-            <Label style={styles.soldOutText}>Out of stock</Label>
-          </View>
+        {renderImage()}
+        {renderDiscountTag()}
+        {renderSoldOut()}
+        {renderWishlist()}
+        {!isSoldOut ? (
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={handleAdd}
+            activeOpacity={0.8}
+            hitSlop={6}
+            accessibilityLabel="Add to basket"
+          >
+            <Ionicons name="bag-add-outline" size={15} color={colors.light.primaryForeground} />
+          </TouchableOpacity>
         ) : null}
-        <TouchableOpacity
-          style={styles.wishlistBtn}
-          onPress={handleWishlist}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={isWishlisted ? "heart" : "heart-outline"}
-            size={16}
-            color={isWishlisted ? colors.light.destructive : colors.light.foreground}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.addBtn, isSoldOut && styles.addBtnDisabled]}
-          onPress={handleAdd}
-          activeOpacity={0.8}
-          disabled={isSoldOut}
-        >
-          <Ionicons name="add" size={16} color={colors.light.primaryForeground} />
-        </TouchableOpacity>
       </View>
       <View style={styles.info}>
-        <Body size="sm" numberOfLines={1} style={[styles.productName, { fontFamily: fontFamilies.sans.bold, fontWeight: "700" }]}>
-          {product.name || "Untitled Piece"}
-        </Body>
         {storeOrBrandName ? (
           <View style={styles.storeRow}>{renderBrandLabel()}</View>
         ) : null}
-        <View style={styles.priceRow}>
-          {discount > 0 ? (
-            <>
-              <Body muted size="xs" style={styles.mrp}>{formatPrice(product.mrp)}</Body>
-              <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-            </>
-          ) : (
-            <Price size="base">{product.price ? formatPrice(product.price) : "Price on Request"}</Price>
-          )}
-        </View>
-        {colorSwatches.length > 0 && (
-          <View style={styles.swatches}>
-            {colorSwatches.map((hex) => (
-              <View key={hex} style={[styles.swatch, { backgroundColor: hex }]} />
-            ))}
-          </View>
-        )}
-        {product.rating > 0 && (
-          <View style={styles.ratingRow}>
-            <Ionicons name="star" size={12} color={colors.olive[600]} />
-            <Body size="xs" style={styles.rating}>{product.rating.toFixed(1)}</Body>
-            <Body muted size="xs">({product.total_reviews})</Body>
-          </View>
-        )}
+        <Text numberOfLines={1} style={styles.productName}>
+          {product.name || "Untitled Piece"}
+        </Text>
+        {renderPrice()}
+        {renderMetaRow()}
       </View>
     </TouchableOpacity>
     <QuickSizeModal
-      visible={showQuickSize}
-      onClose={() => setShowQuickSize(false)}
+      {...quickSize}
       product={product}
-      onSelectVariant={addVariantToCart}
     />
     </>
   );
 }
 
+const IMAGE_BG = "#efede4";
+
 const styles = StyleSheet.create({
   card: {
     width: "100%",
-    marginBottom: 24,
+    marginBottom: spacing[6],
   },
   cardSurface: {
     marginBottom: 4,
     padding: 5,
     paddingBottom: 10,
-    borderRadius: radii.xl,
+    borderRadius: radii["2xl"],
     backgroundColor: colors.light.card,
     borderWidth: 1,
     borderColor: colors.light.border,
@@ -386,14 +288,11 @@ const styles = StyleSheet.create({
   },
   imageWrap: {
     width: "100%",
-    borderRadius: radii.xl,
-    backgroundColor: colors.light.card,
-    borderWidth: 0.5,
-    borderColor: "rgba(200, 200, 184, 0.4)",
+    borderRadius: radii["2xl"],
+    backgroundColor: IMAGE_BG,
     overflow: "hidden",
-    marginBottom: 8,
+    marginBottom: spacing[2.5],
     position: "relative",
-    ...shadows.soft,
   },
   image: {
     width: "100%",
@@ -402,50 +301,43 @@ const styles = StyleSheet.create({
   placeholderWrap: {
     width: "100%",
     height: "100%",
-    backgroundColor: "#eaeade",
+    backgroundColor: IMAGE_BG,
     alignItems: "center",
     justifyContent: "center",
   },
-  discountBadge: {
+  discountTag: {
     position: "absolute",
     top: 10,
-    right: 10,
+    left: 10,
     backgroundColor: colors.accent2.rust,
-    paddingHorizontal: 7.5,
-    paddingVertical: 3.5,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.18,
-    shadowRadius: 2.5,
-    elevation: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radii.md,
   },
   discountText: {
     color: "#fff",
-    fontSize: 9.5,
+    fontSize: 10,
     fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 0.4,
-    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   soldOutOverlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: "rgba(22, 23, 15, 0.78)",
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(245, 244, 239, 0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
+  soldOutPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.ink.DEFAULT,
+  },
   soldOutText: {
-    color: "#fff",
+    color: colors.paper.cream,
     fontSize: 10,
-    letterSpacing: 0.6,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    fontFamily: fontFamilies.sans.bold,
+    fontFamily: fontFamilies.mono.semibold,
   },
   addBtnDisabled: {
     backgroundColor: colors.light.muted,
@@ -453,82 +345,91 @@ const styles = StyleSheet.create({
   },
   wishlistBtn: {
     position: "absolute",
-    top: 12,
-    left: 12,
+    top: 8,
+    right: 8,
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    backgroundColor: "rgba(250, 248, 241, 0.92)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   addBtn: {
     position: "absolute",
-    bottom: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.light.primary,
+    bottom: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.light.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    borderWidth: 2,
+    borderColor: "rgba(250, 248, 241, 0.9)",
+    shadowColor: colors.ink.DEFAULT,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
     shadowRadius: 6,
-    elevation: 3,
+    elevation: 4,
   },
   info: {
-    paddingHorizontal: 4,
-    gap: 4,
-  },
-  brandName: {
-    color: colors.light.mutedForeground,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.wider,
-    marginBottom: 1,
+    paddingHorizontal: 2,
+    gap: 3,
   },
   productName: {
-    fontFamily: fontFamilies.sans.medium,
-    lineHeight: 18,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    lineHeight: 19,
     color: colors.light.foreground,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "baseline",
     gap: 6,
-    flexWrap: "wrap",
+    marginTop: 1,
+  },
+  price: {
+    flexShrink: 1,
   },
   mrp: {
-    fontSize: 11,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
     textDecorationLine: "line-through",
     color: colors.light.mutedForeground,
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    marginTop: 4,
+  },
   swatches: {
     flexDirection: "row",
-    gap: 6,
-    marginTop: 2,
+    alignItems: "center",
+    flexShrink: 1,
   },
   swatch: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1,
-    borderColor: "rgba(22, 26, 10, 0.15)",
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(22, 23, 15, 0.35)",
   },
   ratingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    marginTop: 2,
+    gap: 3,
   },
   rating: {
-    color: colors.olive[600],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.light.foreground,
+  },
+  ratingCount: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    color: colors.light.mutedForeground,
   },
   horizontalCard: {
     marginRight: 12,
@@ -536,41 +437,45 @@ const styles = StyleSheet.create({
   listCard: {
     flexDirection: "row",
     backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 0.5,
-    borderColor: "rgba(200, 200, 184, 0.4)",
-    overflow: "hidden",
+    borderRadius: radii["2xl"],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    padding: 8,
+    gap: spacing[3],
     marginBottom: spacing[3],
     ...shadows.soft,
   },
   listImageWrap: {
-    width: 110,
-    height: 140,
+    width: 108,
+    height: 136,
+    borderRadius: radii.xl,
+    overflow: "hidden",
     position: "relative",
-    backgroundColor: colors.light.muted,
-  },
-  listImage: {
-    width: "100%",
-    height: "100%",
+    backgroundColor: IMAGE_BG,
   },
   listInfo: {
     flex: 1,
-    padding: spacing[3],
+    paddingVertical: 4,
+    paddingRight: 4,
     justifyContent: "space-between",
   },
   listName: {
-    fontFamily: fontFamilies.sans.medium,
-    lineHeight: 18,
-    marginTop: 2,
-    marginBottom: 4,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14.5,
+    lineHeight: 20,
+    color: colors.light.foreground,
   },
   listDesc: {
     marginTop: 2,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
   },
   listPriceRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: spacing[2],
     marginTop: spacing[2],
   },
   listActions: {
@@ -579,38 +484,32 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   listActionBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
+    backgroundColor: colors.paper.cream,
   },
   listAddBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.light.primary,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.glow,
   },
   storeRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 2,
   },
   storeName: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
     color: colors.light.mutedForeground,
-  },
-  discountPct: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: colors.accent2.rust,
-    marginLeft: 4,
   },
 });

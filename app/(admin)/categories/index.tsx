@@ -7,9 +7,10 @@ import {
   RefreshControl,
   StyleSheet,
   Alert,
-  Modal,
+
   Switch,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import {
@@ -21,7 +22,9 @@ import {
   type AdminCategory,
 } from "@/lib/api";
 import { EmptyState, Skeleton, Input, Button, Chip } from "@/components/ui";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import { colors, radii } from "@/lib/theme/tokens";
+import { LinearGradient } from "expo-linear-gradient";
+import { AdminMasthead, StatBand, SearchField, SectionLabel, premiumCard, RUST } from "@/components/admin/premium-kit";
 import { fontFamilies } from "@/lib/theme/fonts";
 import {
   buildCategoryTree,
@@ -48,6 +51,8 @@ export default function AdminCategories() {
   const [editing, setEditing] = useState<AdminCategory | null>(null);
   const [parentForCreate, setParentForCreate] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AdminCategory | null>(null);
+  const [search, setSearch] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const q = useQuery({
     queryKey: ["admin-categories"],
@@ -62,9 +67,36 @@ export default function AdminCategories() {
     () =>
       flattenCategoryTree(
         buildCategoryTree((q.data ?? []) as Parameters<typeof buildCategoryTree>[0]) as Parameters<typeof flattenCategoryTree>[0],
-      ) as (AdminCategory & { depth: number })[],
+      ) as FlatCategory[],
     [q.data],
   );
+
+  // Split the depth-first list into one block per root so each top-level
+  // category renders as its own card with descendants nested inside.
+  const roots = useMemo(() => {
+    const out: { root: FlatCategory; children: FlatCategory[] }[] = [];
+    for (const c of flat) {
+      if (c.depth === 0 || !out.length) out.push({ root: c, children: [] });
+      else out[out.length - 1].children.push(c);
+    }
+    return out;
+  }, [flat]);
+
+  const term = search.trim().toLowerCase();
+  const matches = useMemo(
+    () => (term ? flat.filter((c) => `${c.name} ${c.slug}`.toLowerCase().includes(term)) : []),
+    [flat, term],
+  );
+
+  const totals = useMemo(() => {
+    let products = 0;
+    let inactive = 0;
+    for (const c of flat) {
+      products += c.product_count ?? 0;
+      if (!c.is_active) inactive += 1;
+    }
+    return { products, inactive };
+  }, [flat]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["admin-categories"] });
@@ -83,49 +115,115 @@ export default function AdminCategories() {
     setEditing(item);
   };
 
+  const openActions = (item: AdminCategory) => {
+    Alert.alert(item.name, `/${item.slug}`, [
+      { text: "Add subcategory", onPress: () => openCreate(item.id) },
+      { text: "Delete…", style: "destructive", onPress: () => setDeleting(item) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const toggle = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const rowProps = (item: FlatCategory) => ({
+    item,
+    onEdit: () => openEdit(item),
+    onMore: () => openActions(item),
+  });
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>STRUCTURE</Text>
-          <Text style={styles.title}>Categories</Text>
-          <Text style={styles.subtitle}>
-            {flat.length ? `${flat.length} categories in the tree` : "Build the catalogue tree"}
-          </Text>
-        </View>
-        <Pressable onPress={() => openCreate(null)} style={styles.addBtn}>
-          <Ionicons name="add" size={20} color="#fff" />
-        </Pressable>
-      </View>
-
       <ScrollView
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} />}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={q.isFetching && !q.isLoading} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
       >
-        {q.isLoading ? (
-          <Skeleton height={80} />
-        ) : q.isError ? (
-          <View style={styles.errorWrap}>
-            <EmptyState
-              icon="alert-circle-outline"
-              title="Failed to load categories"
-              description={(q.error as Error)?.message ?? "Pull to refresh or tap retry"}
-            />
-            <Button onPress={() => q.refetch()}>Retry</Button>
-          </View>
-        ) : !flat.length ? (
-          <EmptyState icon="folder-outline" title="No categories" />
-        ) : (
-          flat.map((item) => (
-            <CategoryRow
-              key={item.id}
-              item={item}
-              onEdit={() => openEdit(item)}
-              onDelete={() => setDeleting(item)}
-              onAddChild={() => openCreate(item.id)}
-            />
-          ))
-        )}
+        <AdminMasthead
+          eyebrow="Structure"
+          title="Category"
+          italic="Tree"
+          subtitle="Shape how shoppers browse the catalogue. Tap a row to edit."
+          onAdd={() => openCreate(null)}
+        />
+
+        {flat.length ? (
+          <StatBand
+            items={[
+              { label: "Categories", value: flat.length },
+              { label: "Top level", value: roots.length },
+              { label: "Products", value: totals.products },
+              { label: "Hidden", value: totals.inactive, accent: totals.inactive > 0 },
+            ]}
+          />
+        ) : null}
+
+        {flat.length ? (
+          <SearchField value={search} onChangeText={setSearch} placeholder="Find a category or slug…" />
+        ) : null}
+
+        <View style={styles.body}>
+          {q.isLoading ? (
+            <View style={{ gap: 12 }}>
+              <Skeleton height={150} style={{ borderRadius: radii["2xl"] }} />
+              <Skeleton height={150} style={{ borderRadius: radii["2xl"] }} />
+            </View>
+          ) : q.isError ? (
+            <View style={styles.errorWrap}>
+              <EmptyState
+                icon="alert-circle-outline"
+                title="Failed to load categories"
+                description={(q.error as Error)?.message ?? "Pull to refresh or tap retry"}
+              />
+              <Button onPress={() => q.refetch()}>Retry</Button>
+            </View>
+          ) : !flat.length ? (
+            <EmptyState icon="folder-outline" title="No categories" description="Tap + to plant the first branch." />
+          ) : term ? (
+            <>
+              <SectionLabel label="Results" count={matches.length} />
+              {matches.length ? (
+                <View style={styles.card}>
+                  {matches.map((c, i) => (
+                    <CategoryRow key={c.id} {...rowProps(c)} flatMode last={i === matches.length - 1} />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.noMatch}>Nothing matches “{search.trim()}”.</Text>
+              )}
+            </>
+          ) : (
+            roots.map(({ root, children }) => {
+              const isCollapsed = collapsed.has(root.id);
+              return (
+                <View key={root.id} style={styles.card}>
+                  <RootHeader
+                    item={root}
+                    collapsed={isCollapsed}
+                    hasChildren={children.length > 0}
+                    onToggle={() => toggle(root.id)}
+                    onEdit={() => openEdit(root)}
+                    onAddChild={() => openCreate(root.id)}
+                    onMore={() => openActions(root)}
+                  />
+                  {!isCollapsed && children.length ? (
+                    <View style={styles.childWrap}>
+                      {children.map((c, i) => (
+                        <CategoryRow key={c.id} {...rowProps(c)} last={i === children.length - 1} />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
+          )}
+        </View>
       </ScrollView>
 
       <CategoryModal
@@ -147,52 +245,102 @@ export default function AdminCategories() {
   );
 }
 
+type FlatCategory = AdminCategory & { depth: number };
+
+function InactiveTag() {
+  return (
+    <View style={styles.inactivePill}>
+      <Text style={styles.inactivePillText}>Hidden</Text>
+    </View>
+  );
+}
+
+function RootHeader({
+  item,
+  collapsed,
+  hasChildren,
+  onToggle,
+  onEdit,
+  onAddChild,
+  onMore,
+}: {
+  item: FlatCategory;
+  collapsed: boolean;
+  hasChildren: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onAddChild: () => void;
+  onMore: () => void;
+}) {
+  return (
+    <Pressable onPress={onEdit} onLongPress={onMore} style={({ pressed }) => [styles.rootRow, pressed && styles.pressed]}>
+      <LinearGradient colors={["#f2f3e2", "#e0e4c6"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rootIcon}>
+        <Text style={styles.rootEmoji}>{item.icon || "📁"}</Text>
+      </LinearGradient>
+      <View style={{ flex: 1, gap: 3 }}>
+        <View style={styles.nameRow}>
+          <Text style={styles.rootName} numberOfLines={1}>{item.name}</Text>
+          {!item.is_active ? <InactiveTag /> : null}
+        </View>
+        <Text style={styles.rootMeta} numberOfLines={1}>
+          {item.child_count} sub · {item.product_count} products · /{item.slug}
+        </Text>
+      </View>
+      <Pressable onPress={onAddChild} hitSlop={8} style={styles.ghostBtn} accessibilityLabel={`Add subcategory to ${item.name}`}>
+        <Ionicons name="add" size={16} color={colors.olive[800]} />
+      </Pressable>
+      {hasChildren ? (
+        <Pressable onPress={onToggle} hitSlop={8} style={styles.ghostBtn} accessibilityLabel={collapsed ? "Expand" : "Collapse"}>
+          <Ionicons name={collapsed ? "chevron-down" : "chevron-up"} size={15} color={colors.olive[800]} />
+        </Pressable>
+      ) : (
+        <Pressable onPress={onMore} hitSlop={8} style={styles.ghostBtn} accessibilityLabel="More actions">
+          <Ionicons name="ellipsis-horizontal" size={15} color={colors.olive[800]} />
+        </Pressable>
+      )}
+    </Pressable>
+  );
+}
+
 function CategoryRow({
   item,
   onEdit,
-  onDelete,
-  onAddChild,
+  onMore,
+  last,
+  flatMode,
 }: {
-  item: AdminCategory & { depth: number };
+  item: FlatCategory;
   onEdit: () => void;
-  onDelete: () => void;
-  onAddChild: () => void;
+  onMore: () => void;
+  last: boolean;
+  flatMode?: boolean;
 }) {
+  const indent = flatMode ? 0 : Math.max(0, item.depth - 1) * 20;
   return (
-    <Pressable onPress={onEdit} onLongPress={onEdit} style={({ pressed }) => [pressed && styles.pressed]}>
-      <View style={[styles.card, { marginLeft: item.depth * 16 }] as never}>
-        {item.depth > 0 ? <View style={styles.depthBar} /> : null}
-        <View style={styles.row}>
-          <View style={styles.iconTile}>
-            <Text style={styles.icon}>{item.icon || "📁"}</Text>
-          </View>
-          <View style={styles.body}>
-            <View style={styles.nameRow}>
-              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-              {!item.is_active ? (
-                <View style={styles.inactivePill}>
-                  <Text style={styles.inactivePillText}>Inactive</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={styles.meta} numberOfLines={1}>/{item.slug}</Text>
-            <View style={styles.statsRow}>
-              <Ionicons name="cube-outline" size={11} color={colors.light.mutedForeground} />
-              <Text style={styles.statText}>{item.product_count}</Text>
-              <Ionicons name="git-branch-outline" size={11} color={colors.light.mutedForeground} />
-              <Text style={styles.statText}>{item.child_count}</Text>
-              <Text style={styles.positionText}>#{item.position}</Text>
-            </View>
-          </View>
-          <View style={styles.actions}>
-            <Pressable onPress={onAddChild} hitSlop={8} style={styles.actionBtn}>
-              <Ionicons name="add" size={15} color={colors.olive[800]} />
-            </Pressable>
-            <Pressable onPress={onDelete} hitSlop={8} style={styles.actionBtn}>
-              <Ionicons name="trash-outline" size={14} color={colors.accent2.rust} />
-            </Pressable>
-          </View>
+    <Pressable onPress={onEdit} onLongPress={onMore} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+      {!flatMode ? (
+        <View style={[styles.branch, { marginLeft: indent }]}>
+          <View style={[styles.branchStem, last && styles.branchStemLast]} />
+          <View style={styles.branchElbow} />
         </View>
+      ) : null}
+      <View style={styles.iconTile}>
+        <Text style={styles.icon}>{item.icon || "📁"}</Text>
+      </View>
+      <View style={[styles.rowBody, !last && styles.rowDivider]}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            {!item.is_active ? <InactiveTag /> : null}
+          </View>
+          <Text style={styles.meta} numberOfLines={1}>/{item.slug}</Text>
+        </View>
+        <View style={[styles.countPill, !item.product_count && styles.countPillEmpty]}>
+          <Text style={[styles.countText, !item.product_count && styles.countTextEmpty]}>{item.product_count}</Text>
+        </View>
+        <Pressable onPress={onMore} hitSlop={10} style={styles.moreBtn} accessibilityLabel="More actions">
+          <Ionicons name="ellipsis-horizontal" size={15} color={colors.light.mutedForeground} />
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -480,77 +628,84 @@ function DeleteModal({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  header: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", padding: 20, paddingBottom: 12 },
-  eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.primary, letterSpacing: 1.4 },
-  title: { fontFamily: fontFamilies.display.regular, fontSize: 28, color: colors.light.foreground, marginTop: 4, letterSpacing: -0.5 },
-  subtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 4 },
-  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center", ...shadows.soft },
-  list: { padding: 20, paddingBottom: 100, gap: 10 },
-  pressed: { opacity: 0.75 },
-  card: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    overflow: "hidden",
-    ...shadows.soft,
+  list: { paddingBottom: 140 },
+  body: { paddingHorizontal: 16, gap: 14 },
+  pressed: { opacity: 0.8 },
+  card: { ...premiumCard, overflow: "hidden" },
+
+  rootRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  rootIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#cfd3b0",
   },
-  depthBar: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: "rgba(83,94,44,0.35)",
-  },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, paddingLeft: 16 },
-  iconTile: {
-    width: 42,
-    height: 42,
-    borderRadius: 11,
-    backgroundColor: "#eef0e2",
-    borderWidth: 1,
-    borderColor: "#dde0c9",
+  rootEmoji: { fontSize: 24 },
+  rootName: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: colors.light.foreground, letterSpacing: -0.3, flexShrink: 1 },
+  rootMeta: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground, letterSpacing: 0.3 },
+  ghostBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f1f0e6",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#d6d4c4",
     alignItems: "center",
     justifyContent: "center",
   },
-  icon: { fontSize: 19 },
-  body: { flex: 1, gap: 2 },
+
+  childWrap: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#dddccd", backgroundColor: "rgba(239,236,226,0.45)", paddingLeft: 14 },
+  row: { flexDirection: "row", alignItems: "center", paddingLeft: 14 },
+  rowPressed: { backgroundColor: "rgba(83,94,44,0.06)" },
+  branch: { width: 22, alignSelf: "stretch", flexDirection: "row", alignItems: "center", marginRight: 6 },
+  branchStem: { position: "absolute", left: 10, top: 0, bottom: 0, width: 1, backgroundColor: "#cfcdb9" },
+  branchStemLast: { bottom: "50%" },
+  branchElbow: { position: "absolute", left: 10, width: 12, height: 1, backgroundColor: "#cfcdb9" },
+  iconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: colors.light.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#d6d4c4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  icon: { fontSize: 17 },
+  rowBody: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 12, paddingVertical: 12, paddingRight: 12 },
+  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#dddccd" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  name: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.light.foreground, flexShrink: 1 },
+  name: { fontFamily: fontFamilies.sans.semibold, fontSize: 14.5, color: colors.light.foreground, flexShrink: 1 },
+  meta: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground },
+  countPill: {
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(83,94,44,0.12)",
+    alignItems: "center",
+  },
+  countPillEmpty: { backgroundColor: "transparent", borderWidth: StyleSheet.hairlineWidth, borderColor: "#d6d4c4" },
+  countText: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: colors.olive[800] },
+  countTextEmpty: { color: colors.light.mutedForeground },
+  moreBtn: { paddingVertical: 4, paddingLeft: 2 },
   inactivePill: {
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
+    backgroundColor: "rgba(184,92,58,0.1)",
   },
   inactivePillText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 8,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.5,
+    color: RUST,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   },
-  meta: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground },
-  statsRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 },
-  statText: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.mutedForeground, marginRight: 6 },
-  positionText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.olive[700],
-    marginLeft: 2,
-  },
-  actions: { flexDirection: "row", gap: 6 },
-  actionBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#f8f6f0",
-    borderWidth: 1,
-    borderColor: "#e4dfd3",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  noMatch: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.mutedForeground, textAlign: "center", paddingVertical: 24 },
   modal: { flex: 1, backgroundColor: colors.light.background },
   modalContent: { padding: 20, paddingTop: 60, paddingBottom: 40 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },

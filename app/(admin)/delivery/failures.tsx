@@ -7,10 +7,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  Modal,
+
   TextInput,
   Pressable,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useRouter } from "expo-router";
 import {
   getAdminOrders,

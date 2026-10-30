@@ -22,6 +22,8 @@
  *   EXPO_PUBLIC_LUXE_AI_STUDIO             — paid AI Product Studio (0250)
  *   EXPO_PUBLIC_LUXE_STOREFRONT_BUILDER    — Shopify-style builder (0201-0203)
  *   EXPO_PUBLIC_LUXE_TWO_FACTOR            — mobile 2FA enrollment surface
+ *   EXPO_PUBLIC_BRAND_PORTAL               — brand-owner portal (default OFF;
+ *                                            brands are admin-created)
  *
  * Implemented LUXE surfaces default ON so a local Expo build shows working
  * storefront / AI studio / payouts / withdraw UI. Set EXPO_PUBLIC_*=false to
@@ -51,6 +53,8 @@ export const MOBILE_FEATURE_FLAGS = {
   luxeAiStudio: readBool("EXPO_PUBLIC_LUXE_AI_STUDIO", true),
   luxeStorefrontBuilder: readBool("EXPO_PUBLIC_LUXE_STOREFRONT_BUILDER", true),
   luxeTwoFactor: readBool("EXPO_PUBLIC_LUXE_TWO_FACTOR", true),
+  // Brand portal is disabled: admins create brands, sellers attach them.
+  brandPortal: readBool("EXPO_PUBLIC_BRAND_PORTAL", false),
 } as const;
 
 export function isInternalDeliveryVisibleMobile(): boolean {
@@ -79,4 +83,8 @@ export function isLuxeStorefrontBuilderMobile(): boolean {
 
 export function isLuxeTwoFactorMobile(): boolean {
   return MOBILE_FEATURE_FLAGS.luxeTwoFactor;
+}
+
+export function isBrandPortalEnabledMobile(): boolean {
+  return MOBILE_FEATURE_FLAGS.brandPortal;
 }

@@ -168,6 +168,15 @@ export default function AdminProductDetail() {
             ) : null}
             {p.sku ? <Text style={styles.sku}>SKU {p.sku}</Text> : null}
           </View>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() => router.push({ pathname: "/(admin)/products/edit/[id]", params: { id: p.id } } as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit product details"
+          >
+            <Ionicons name="create-outline" size={15} color={CREAM} />
+            <Text style={styles.editBtnText}>Edit details</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Pending review banner */}
@@ -385,6 +394,22 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
   },
   retryLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: CREAM,
+  },
+  editBtn: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    backgroundColor: colors.olive[900],
+    borderRadius: radii.full,
+  },
+  editBtnText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
     color: CREAM,

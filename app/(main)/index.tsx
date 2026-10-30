@@ -21,14 +21,17 @@ import {
   ContinueBrowsingRow,
   ShopTheLookSection,
   TrustStrip,
+  FlashSaleSection,
+  OffersRail,
+  ShopByPrice,
+  ShopByOccasion,
 } from "@/components/home/premium";
-import { PinnedDrop } from "@/components/home/sections/PinnedDrop";
 import { createSeenSet } from "@/components/home/premium/dedupe";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { useAuth } from "@/lib/supabase/auth";
-import { useCart, useUI, useWishlist } from "@/lib/stores";
-import { useHomeScreenData } from "@/lib/hooks/useHomeScreen";
+import { useWishlist } from "@/lib/stores";
+import { useHomeScreenData, useHomeShortcuts, useHomeOffers } from "@/lib/hooks/useHomeScreen";
 import type { Product } from "@/lib/types";
 
 /** Rails with fewer items than this are hidden rather than shown half-empty. */
@@ -60,8 +63,7 @@ export default function HomeScreen() {
   const tabBarScrollHandler = useHideTabBarOnScroll(scrollY);
   const { user } = useAuth();
   const wishlistIdsKey = useWishlist((s) => Object.keys(s.items).sort().join(","));
-  const wishlistCount = useWishlist((s) => Object.keys(s.items).length);
-  const cartCount = useCart((s) => s.itemCount());
+
 
   const {
     catalog,
@@ -75,6 +77,8 @@ export default function HomeScreen() {
   } = useHomeScreenData(user?.id, wishlistIdsKey);
 
   const catalogData = catalog.data;
+  const offers = useHomeOffers();
+  const shortcuts = useHomeShortcuts();
   const wishlistRailData = wishlistRail.data ?? { wishlist: [], companions: [] };
 
   // Prefetch above-the-fold images into expo-image's memory + disk cache
@@ -177,17 +181,9 @@ export default function HomeScreen() {
         {/* Zone 1 — discovery: browse entry points + the personalised feed */}
         <CategoryScroller categories={catalogData?.categories ?? []} />
 
-        {user ? (
-          <MemberGreeting
-            firstName={user.user_metadata?.full_name?.split(" ")[0] || "Member"}
-            cartCount={cartCount}
-            wishlistCount={wishlistCount}
-            onOpenBag={() => useUI.getState().setCartDrawer(true)}
-            onOpenWishlist={() => router.push("/(main)/wishlist")}
-          />
-        ) : null}
-
         <PromoCarousel banners={catalogData?.banners ?? []} />
+
+        <OffersRail offers={offers.data ?? []} />
 
         {showForYouRail ? (
           <PersonalisedSection
@@ -227,15 +223,19 @@ export default function HomeScreen() {
             </>
           ) : null}
 
-          <PinnedDrop
+          <FlashSaleSection
             products={rails.flash}
             endsAt={catalogData?.flashEndsAt}
+            onExpired={() => {
+              void refreshAll();
+            }}
           />
           <ProductRail
             title="New arrivals"
             products={rails.newArrivals}
             onSeeAll={() => router.push("/(main)/products?sort=newest")}
           />
+          <ShopByPrice bands={shortcuts.data?.priceBands ?? []} />
           {(recentlyViewed.data?.length ?? 0) > 0 ? (
             <ProductRail
               kicker="Pick up where you left off"
@@ -245,6 +245,8 @@ export default function HomeScreen() {
             />
           ) : null}
         </View>
+
+        <ShopByOccasion occasions={shortcuts.data?.occasions ?? []} />
 
         {/* Lookbook Feature */}
         <ShopTheLookSection products={[...(catalogData?.newArrivals ?? []), ...(catalogData?.saleProducts ?? [])]} />
@@ -356,84 +358,9 @@ export default function HomeScreen() {
   );
 }
 
-/**
- * Greeting pill that doubles as a shortcut: bag first (closest to checkout),
- * then saved pieces, otherwise just a greeting.
- */
-function MemberGreeting({
-  firstName,
-  cartCount,
-  wishlistCount,
-  onOpenBag,
-  onOpenWishlist,
-}: {
-  firstName: string;
-  cartCount: number;
-  wishlistCount: number;
-  onOpenBag: () => void;
-  onOpenWishlist: () => void;
-}) {
-  const action =
-    cartCount > 0
-      ? { text: `${cartCount} item${cartCount === 1 ? "" : "s"} in your bag`, onPress: onOpenBag }
-      : wishlistCount > 0
-        ? { text: `${wishlistCount} saved piece${wishlistCount === 1 ? "" : "s"}`, onPress: onOpenWishlist }
-        : null;
-
-  const body = (
-    <>
-      <View style={styles.greetingDot} />
-      <Text style={styles.greetingText} numberOfLines={1}>
-        Welcome back, <Text style={styles.greetingName}>{firstName}</Text>
-        {action ? ` · ${action.text}` : " · Discover the new seasonal edit"}
-      </Text>
-      {action ? <Ionicons name="chevron-forward" size={12} color={colors.olive[700]} /> : null}
-    </>
-  );
-
-  return action ? (
-    <TouchableOpacity style={styles.memberGreeting} onPress={action.onPress} activeOpacity={0.75}>
-      {body}
-    </TouchableOpacity>
-  ) : (
-    <View style={styles.memberGreeting}>{body}</View>
-  );
-}
-
 const styles = StyleSheet.create({
   scroll: {
     paddingTop: 4,
-  },
-  memberGreeting: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    marginHorizontal: spacing[5],
-    marginTop: spacing[1],
-    marginBottom: spacing[3],
-    paddingHorizontal: spacing[3.5],
-    paddingVertical: spacing[2],
-    borderRadius: radii.full,
-    backgroundColor: `${colors.olive[500]}12`,
-    borderWidth: 1,
-    borderColor: `${colors.olive[500]}22`,
-    alignSelf: "flex-start",
-  },
-  greetingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[600],
-  },
-  greetingText: {
-    flexShrink: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.foreground,
-  },
-  greetingName: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: colors.olive[700],
   },
   zone: {
     paddingTop: spacing[2],

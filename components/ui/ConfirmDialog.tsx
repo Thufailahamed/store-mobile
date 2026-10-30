@@ -1,12 +1,12 @@
 import React from "react";
 import {
-  Modal,
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Pressable,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";

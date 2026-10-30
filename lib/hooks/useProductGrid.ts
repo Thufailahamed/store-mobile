@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import type { Product } from "@/lib/types";
 import { getPersonalizedSearch } from "@/lib/recommender";
 import { productMatchesGender } from "@/lib/search-filters";
+import {
+  productColorFamilies, productOccasion, productMaterial,
+  resolveColorParam, resolveOccasionParam, resolveMaterialParam,
+} from "@/lib/facet-vocab";
 import { useAuth } from "@/lib/supabase/auth";
-import { EMPTY_FILTERS, type ProductFilters, type SortOption, type ViewMode } from "@/lib/api/facets";
+import { EMPTY_FILTERS, PRICE_BOUNDS, priceFilterFor, type ProductFilters, type SortOption, type ViewMode } from "@/lib/api/facets";
 
 const LIMIT = 20;
 
@@ -13,6 +17,11 @@ export interface ProductGridScope {
   brand?: string;
   search?: string;
   initialSort?: SortOption["value"] | string;
+  /** Seeds the price refinement (e.g. a "Shop by price" deep link). */
+  minPrice?: number;
+  maxPrice?: number;
+  /** Server-side occasion scope (wedding/office/vacation/party/gym). */
+  occasion?: string;
 }
 
 /**
@@ -23,7 +32,7 @@ export interface ProductGridScope {
  * loaded page, mirroring the split used by the Shop screen.
  */
 export function useProductGrid(scope: ProductGridScope = {}) {
-  const { category, brand, search, initialSort = "newest" } = scope;
+  const { category, brand, search, initialSort = "newest", minPrice, maxPrice, occasion } = scope;
   const { user } = useAuth();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -32,7 +41,28 @@ export function useProductGrid(scope: ProductGridScope = {}) {
   const [sort, setSort] = useState<string>(initialSort);
   const [offset, setOffset] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [filters, setFilters] = useState<ProductFilters>({ ...EMPTY_FILTERS });
+  const [filters, setFilters] = useState<ProductFilters>(() => ({
+    ...EMPTY_FILTERS,
+    price: priceFilterFor(minPrice, maxPrice),
+  }));
+
+  // The products tab stays mounted, so a new "Shop by price" tap changes
+  // these params on a live hook. Re-apply the band whenever they change.
+  const appliedPriceScope = useRef({ minPrice, maxPrice });
+  useEffect(() => {
+    const applied = appliedPriceScope.current;
+    if (applied.minPrice === minPrice && applied.maxPrice === maxPrice) return;
+    appliedPriceScope.current = { minPrice, maxPrice };
+    setFilters((f) => ({ ...f, price: priceFilterFor(minPrice, maxPrice) }));
+  }, [minPrice, maxPrice]);
+
+  // Price runs server-side so a narrow band paginates through the whole
+  // catalog instead of thinning out the first loaded page. Max is
+  // exclusive server-side, matching the shortcut band counts.
+  const priceMin = filters.price?.[0] ?? PRICE_BOUNDS.min;
+  const priceMax = filters.price?.[1] ?? PRICE_BOUNDS.max;
+  const serverMinPrice = priceMin > PRICE_BOUNDS.min ? priceMin : undefined;
+  const serverMaxPrice = priceMax < PRICE_BOUNDS.max ? priceMax : undefined;
   const [view, setView] = useState<ViewMode>("grid");
 
   // Filtered list — server applies the primary filter (category, brand,
@@ -53,13 +83,19 @@ export function useProductGrid(scope: ProductGridScope = {}) {
       );
     }
     if (filters.colors?.length) {
+      const wanted = filters.colors.map(resolveColorParam).filter((c): c is string => !!c);
       list = list.filter((p) => {
-        const pColors = (p.variants ?? []).map((v) => (v.color ?? "").toLowerCase());
-        return filters.colors!.some((c) => {
-          const cl = c.toLowerCase();
-          return pColors.some((pc) => pc.includes(cl) || cl.includes(pc));
-        });
+        const have = productColorFamilies(p);
+        return wanted.some((c) => have.includes(c));
       });
+    }
+    if (filters.occasion) {
+      const want = resolveOccasionParam(filters.occasion);
+      list = list.filter((p) => productOccasion(p) === want);
+    }
+    if (filters.material) {
+      const want = resolveMaterialParam(filters.material);
+      list = list.filter((p) => productMaterial(p) === want);
     }
     if (filters.sizes?.length) {
       list = list.filter((p) => {
@@ -77,13 +113,16 @@ export function useProductGrid(scope: ProductGridScope = {}) {
           Math.round(((p.mrp - p.price) / p.mrp) * 100) >= filters.minDiscount!
       );
     }
-    if (filters.price && (filters.price[0] > 0 || filters.price[1] < 500000)) {
+    // Safety net only — the server already applies the band (max exclusive).
+    if (serverMinPrice != null || serverMaxPrice != null) {
       list = list.filter(
-        (p) => p.price >= filters.price![0] && p.price <= filters.price![1]
+        (p) =>
+          (serverMinPrice == null || p.price >= serverMinPrice) &&
+          (serverMaxPrice == null || p.price < serverMaxPrice)
       );
     }
     return list;
-  }, [products, filters]);
+  }, [products, filters, serverMinPrice, serverMaxPrice]);
 
   const fetchProducts = useCallback(
     // `explicitOffset` lets loadMore pass the just-computed next page offset
@@ -103,6 +142,9 @@ export function useProductGrid(scope: ProductGridScope = {}) {
         brandSlug: brand,
         gender: filters.gender,
         search: search,
+        minPrice: serverMinPrice,
+        maxPrice: serverMaxPrice,
+        occasion,
       });
       if (res.ok) {
         let page = res.data.products;
@@ -128,7 +170,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
       setLoadingMore(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sort, category, brand, search, filters.gender, offset, user?.id]
+    [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, offset, user?.id]
   );
 
   useEffect(() => {
@@ -137,7 +179,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
     setProducts([]);
     fetchProducts(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, category, brand, search, filters.gender]);
+  }, [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion]);
 
   const loadMore = () => {
     if (loadingMore || products.length >= total) return;

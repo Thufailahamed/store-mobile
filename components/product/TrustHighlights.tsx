@@ -2,64 +2,105 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Body } from "@/components/ui/Typography";
-import { colors, spacing, radii } from "@/lib/theme/tokens";
+import { spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const TRUST_ITEMS = [
-  { icon: "car-outline" as const, label: "Free Shipping", sub: "Islandwide" },
-  { icon: "shield-checkmark-outline" as const, label: "Secure Pay", sub: "256-bit SSL" },
-  { icon: "refresh-outline" as const, label: "30-Day Returns", sub: "Easy exchanges" },
-];
+const INK = "#141414";
+const MUTED = "#6b6b6b";
 
-export function TrustHighlights() {
+type TrustItem = { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; sub: string };
+
+/**
+ * `acceptsReturns` / `returnWindowDays` come from the product's store
+ * (0357). Undefined = accepts returns, so older payloads keep the old tile.
+ */
+export function TrustHighlights({
+  acceptsReturns = true,
+  returnWindowDays,
+}: {
+  acceptsReturns?: boolean;
+  returnWindowDays?: number | null;
+} = {}) {
+  const items: TrustItem[] = [
+    { icon: "car-outline", label: "Free Shipping", sub: "Islandwide" },
+    { icon: "shield-checkmark-outline", label: "Secure Pay", sub: "256-bit SSL" },
+    acceptsReturns
+      ? { icon: "refresh-outline", label: "Returns available", sub: `Within ${returnWindowDays ?? 30} days` }
+      : { icon: "ban-outline", label: "Returns not available", sub: "Final sale" },
+  ];
   return (
-    <View style={styles.container}>
-      {TRUST_ITEMS.map((item, i) => (
-        <React.Fragment key={item.label}>
-          {i > 0 && <View style={styles.separator} />}
-          <View style={styles.item}>
-            <Ionicons name={item.icon} size={20} color={colors.olive[700]} />
-            <Body size="xs" style={styles.label}>{item.label}</Body>
-            <Body size="xs" muted style={styles.sub}>{item.sub}</Body>
-          </View>
-        </React.Fragment>
-      ))}
+    <View style={styles.shadow}>
+      <View style={styles.container}>
+        {items.map((item, i) => (
+          <React.Fragment key={item.label}>
+            {i > 0 && <View style={styles.separator} />}
+            <View style={styles.item}>
+              <View style={styles.iconBadge}>
+                <Ionicons name={item.icon} size={19} color={INK} />
+              </View>
+              <Body size="xs" style={styles.label} numberOfLines={2}>{item.label}</Body>
+              <Body size="xs" style={styles.sub} numberOfLines={1}>{item.sub}</Body>
+            </View>
+          </React.Fragment>
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shadow: {
+    marginHorizontal: spacing[4],
+    borderRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 22,
+    elevation: 3,
+  },
   container: {
     flexDirection: "row",
     alignItems: "stretch",
-    marginHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-    borderRadius: radii["2xl"],
-    backgroundColor: colors.paper.cream,
+    paddingVertical: spacing[5],
+    paddingHorizontal: spacing[1],
+    borderRadius: 24,
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: `${colors.olive[700]}18`,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  iconBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f4f4f2",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+    marginBottom: 4,
   },
   item: {
     flex: 1,
     alignItems: "center",
-    gap: 3,
+    gap: 2,
     paddingHorizontal: spacing[1],
   },
   separator: {
     width: StyleSheet.hairlineWidth,
-    backgroundColor: `${colors.olive[900]}20`,
-    marginVertical: spacing[1],
+    backgroundColor: "rgba(0,0,0,0.1)",
+    marginVertical: spacing[2],
   },
   label: {
     marginTop: 4,
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
+    color: INK,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12.5,
     textAlign: "center",
   },
   sub: {
     textAlign: "center",
     fontSize: 11,
+    color: MUTED,
     fontFamily: fontFamilies.sans.regular,
   },
 });

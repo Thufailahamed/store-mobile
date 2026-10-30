@@ -1,19 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
+  Text,
   StyleSheet,
-
   ScrollView,
   TouchableOpacity,
   TextInput,
   useWindowDimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@/components/ui/Icon";
-import { Display, Body } from "@/components/ui/Typography";
-import { Button } from "@/components/ui";
-import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
+import { Ionicons, type IonIconName } from "@/components/ui/Icon";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import {
   COLORS,
@@ -25,9 +24,11 @@ import {
   EMPTY_FILTERS,
   activeFilterCount,
 } from "@/lib/api/facets";
-import type { ProductFilters, OCCASIONS, MATERIALS } from "@/lib/api/facets";
+import type { ProductFilters } from "@/lib/api/facets";
+import { productColorFamilies, productOccasion, productMaterial } from "@/lib/facet-vocab";
 import { OCCASIONS as OCCASION_CHIPS, MATERIALS as MATERIAL_CHIPS } from "@/lib/api/facets";
 import { applySearchFilters } from "@/lib/search-filters";
+import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
 const GENDERS = [
@@ -51,27 +52,64 @@ interface SearchFilterSheetProps {
   products: Product[];
 }
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+const SORT_ICONS: Record<string, IonIconName> = {
+  newest: "time-outline",
+  for_you: "sparkles",
+  rating: "star-outline",
+  sale: "flame-outline",
+  price_asc: "trending-up-outline",
+  price_desc: "trending-down-outline",
+};
+
+function Chip({
+  label,
+  active,
+  onPress,
+  count,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  count?: number;
+}) {
   return (
     <TouchableOpacity
       style={[styles.chip, active && styles.chipActive]}
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
       accessibilityState={{ selected: active }}
     >
-      <Body size="sm" style={[styles.chipText, active && styles.chipTextActive]}>
-        {label}
-      </Body>
+      {active ? <Ionicons name="checkmark" size={13} color={colors.olive[200]} /> : null}
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+      {typeof count === "number" ? (
+        <Text style={[styles.chipCount, active && styles.chipCountActive]}>{count}</Text>
+      ) : null}
     </TouchableOpacity>
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({
+  index,
+  title,
+  hint,
+  children,
+}: {
+  index: number;
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
-        <Body style={styles.sectionTitle}>{title}</Body>
-        {hint ? <Body size="xs" muted>{hint}</Body> : null}
+        <Text style={styles.sectionIndex}>{String(index).padStart(2, "0")}</Text>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={{ flex: 1 }} />
+        {hint ? (
+          <View style={styles.sectionHint}>
+            <Text style={styles.sectionHintText} numberOfLines={1}>{hint}</Text>
+          </View>
+        ) : null}
       </View>
       {children}
     </View>
@@ -166,30 +204,48 @@ export function SearchFilterSheet({
     onClose();
   };
 
+  const sortLabel = SORTS.find((s) => s.value === draftSort)?.label;
+  const priceActive = priceMin > PRICE_BOUNDS.min || priceMax < PRICE_BOUNDS.max;
+  // Canonical facet keys present in these results (AI attrs + colour families).
+  const presentOccasions = new Set(products.map(productOccasion).filter(Boolean));
+  const presentMaterials = new Set(products.map(productMaterial).filter(Boolean));
+  const presentColors = new Set(products.flatMap(productColorFamilies));
+  const occasionChips = OCCASION_CHIPS.filter((o) => draft.occasion === o.key || presentOccasions.has(o.key));
+  const materialChips = MATERIAL_CHIPS.filter((m) => draft.material === m.key || presentMaterials.has(m.key));
+  const colorChips = products.length
+    ? COLORS.filter((c) => presentColors.has(c.key) || !!draft.colors?.includes(c.key))
+    : COLORS;
+  let n = 0;
+  const next = () => ++n;
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={onClose} />
         {/* Fixed height (not maxHeight): the ScrollView below uses flex:1 and
             collapses to zero inside a parent with no definite height. */}
-        <View style={[styles.sheet, { height: screenHeight * 0.86 }]}>
+        <View style={[styles.sheet, { height: screenHeight * 0.88 }]}>
+          {/* Header */}
           <View style={styles.sheetHeader}>
             <View style={styles.handle} />
             <View style={styles.headerRow}>
-              <Display size="lg">Filters</Display>
-              {activeCount > 0 && (
-                <View style={styles.activeBadge}>
-                  <Body style={styles.activeBadgeText}>{activeCount}</Body>
+              <View style={{ flex: 1 }}>
+                <View style={styles.kickerRow}>
+                  <View style={[styles.kickerDot, activeCount > 0 && { backgroundColor: colors.accent2.ochre }]} />
+                  <Text style={styles.kicker}>
+                    Refine{activeCount > 0 ? ` · ${activeCount} active` : ""}
+                  </Text>
                 </View>
-              )}
-              <View style={{ flex: 1 }} />
+                <Text style={styles.title}>Filters</Text>
+              </View>
               {activeCount > 0 || draftSort !== "newest" ? (
-                <TouchableOpacity onPress={handleClear} hitSlop={8} style={styles.resetBtn}>
-                  <Body size="sm" style={styles.resetText}>Reset</Body>
+                <TouchableOpacity onPress={handleClear} hitSlop={8} style={styles.resetBtn} activeOpacity={0.8}>
+                  <Ionicons name="refresh" size={13} color={colors.accent2.rust} />
+                  <Text style={styles.resetText}>Reset</Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close filters">
-                <Ionicons name="close" size={18} color={colors.light.foreground} />
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close filters" activeOpacity={0.8}>
+                <Ionicons name="close" size={18} color={colors.ink.DEFAULT} />
               </TouchableOpacity>
             </View>
           </View>
@@ -200,66 +256,102 @@ export function SearchFilterSheet({
             contentContainerStyle={styles.sheetBodyContent}
             keyboardShouldPersistTaps="handled"
           >
-            <Section title="Sort by">
-              <View style={styles.chipWrap}>
-                {SORTS.map((s) => (
-                  <Chip key={s.value} label={s.label} active={draftSort === s.value} onPress={() => setDraftSort(s.value)} />
-                ))}
+            {/* Sort — icon tiles, two per row */}
+            <Section index={next()} title="Sort by" hint={sortLabel}>
+              <View style={styles.sortGrid}>
+                {SORTS.map((s) => {
+                  const on = draftSort === s.value;
+                  return (
+                    <TouchableOpacity
+                      key={s.value}
+                      style={[styles.sortTile, on && styles.sortTileActive]}
+                      onPress={() => setDraftSort(s.value)}
+                      activeOpacity={0.85}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <View style={[styles.sortIcon, on && styles.sortIconActive]}>
+                        <Ionicons
+                          name={SORT_ICONS[s.value] ?? "swap-vertical"}
+                          size={14}
+                          color={on ? colors.olive[950] : s.value === "for_you" ? colors.accent2.ochre : colors.ink.mute}
+                        />
+                      </View>
+                      <Text style={[styles.sortText, on && styles.sortTextActive]} numberOfLines={1}>
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </Section>
 
-            <Section title="Price" hint="LKR">
-              <View style={styles.priceRow}>
-                <View style={styles.priceField}>
-                  <Body size="xs" muted style={styles.priceFieldLabel}>Min</Body>
+            {/* Price — one joined range field + presets */}
+            <Section
+              index={next()}
+              title="Price"
+              hint={priceActive ? `${formatPrice(priceMin)} – ${priceMax >= PRICE_BOUNDS.max ? "any" : formatPrice(priceMax)}` : "LKR"}
+            >
+              <View style={styles.rangeField}>
+                <View style={styles.rangeSide}>
+                  <Text style={styles.rangeLabel}>Min</Text>
                   <TextInput
                     value={priceMinInput}
                     onChangeText={setPriceMinInput}
                     keyboardType="number-pad"
                     placeholder="0"
-                    placeholderTextColor={colors.light.mutedForeground}
-                    style={styles.priceInput}
+                    placeholderTextColor={`${colors.ink.mute}88`}
+                    style={styles.rangeInput}
                   />
                 </View>
-                <View style={styles.priceDash} />
-                <View style={styles.priceField}>
-                  <Body size="xs" muted style={styles.priceFieldLabel}>Max</Body>
+                <View style={styles.rangeDivider}>
+                  <Ionicons name="arrow-forward" size={13} color={colors.ink.mute} />
+                </View>
+                <View style={styles.rangeSide}>
+                  <Text style={styles.rangeLabel}>Max</Text>
                   <TextInput
                     value={priceMaxInput}
                     onChangeText={setPriceMaxInput}
                     keyboardType="number-pad"
                     placeholder="No limit"
-                    placeholderTextColor={colors.light.mutedForeground}
-                    style={styles.priceInput}
+                    placeholderTextColor={`${colors.ink.mute}88`}
+                    style={styles.rangeInput}
                   />
                 </View>
               </View>
-              <View style={styles.chipWrap}>
+              <View style={styles.segment}>
                 {PRICE_PRESETS.map((preset) => {
                   const on = priceMin === preset.range[0] && priceMax === preset.range[1];
                   return (
-                    <Chip
+                    <TouchableOpacity
                       key={preset.label}
-                      label={preset.label}
-                      active={on}
+                      style={[styles.segmentItem, on && styles.segmentItemActive]}
                       onPress={() =>
-                        on
-                          ? priceToInputs(undefined)
-                          : priceToInputs([preset.range[0], preset.range[1]])
+                        on ? priceToInputs(undefined) : priceToInputs([preset.range[0], preset.range[1]])
                       }
-                    />
+                      activeOpacity={0.85}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.segmentText, on && styles.segmentTextActive]} numberOfLines={1}>
+                        {preset.label}
+                      </Text>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
             </Section>
 
             {categoryFacets.length > 1 ? (
-              <Section title="Category">
+              <Section
+                index={next()}
+                title="Category"
+                hint={draft.categories?.length ? `${draft.categories.length} selected` : undefined}
+              >
                 <View style={styles.chipWrap}>
                   {categoryFacets.map((c) => (
                     <Chip
                       key={c.id}
-                      label={`${c.name} · ${c.count}`}
+                      label={c.name}
+                      count={c.count}
                       active={(draft.categories ?? []).includes(c.id)}
                       onPress={() => toggleIn("categories", c.id)}
                     />
@@ -269,12 +361,17 @@ export function SearchFilterSheet({
             ) : null}
 
             {brandFacets.length > 1 ? (
-              <Section title="Brand">
+              <Section
+                index={next()}
+                title="Brand"
+                hint={draft.brands?.length ? `${draft.brands.length} selected` : undefined}
+              >
                 <View style={styles.chipWrap}>
                   {brandFacets.map((b) => (
                     <Chip
                       key={b.id}
-                      label={`${b.name} · ${b.count}`}
+                      label={b.name}
+                      count={b.count}
                       active={(draft.brands ?? []).includes(b.id)}
                       onPress={() => toggleIn("brands", b.id)}
                     />
@@ -283,133 +380,187 @@ export function SearchFilterSheet({
               </Section>
             ) : null}
 
-            <Section title="Colour" hint={draft.colors?.length ? `${draft.colors.length} selected` : undefined}>
+            {/* Colour — 4-up swatch grid */}
+            <Section
+              index={next()}
+              title="Colour"
+              hint={draft.colors?.length ? `${draft.colors.length} selected` : undefined}
+            >
               <View style={styles.colorGrid}>
-                {COLORS.map((c) => {
-                  const on = !!draft.colors?.includes(c.name);
-                  const light = c.name === "White" || c.name === "Sand";
+                {colorChips.map((c) => {
+                  const on = !!draft.colors?.includes(c.key);
+                  const light = c.light;
                   return (
                     <TouchableOpacity
-                      key={c.name}
-                      style={styles.colorItem}
-                      onPress={() => toggleIn("colors", c.name)}
-                      activeOpacity={0.8}
+                      key={c.key}
+                      style={[styles.colorItem, on && styles.colorItemActive]}
+                      onPress={() => toggleIn("colors", c.key)}
+                      activeOpacity={0.85}
                       accessibilityLabel={c.name}
                       accessibilityState={{ selected: on }}
                     >
-                      <View style={[styles.colorRing, on && styles.colorRingActive]}>
-                        <View style={[styles.colorSwatch, { backgroundColor: c.hex }, light && styles.colorSwatchLight]}>
-                          {on && <Ionicons name="checkmark" size={14} color={light ? colors.light.foreground : "#fff"} />}
-                        </View>
+                      <View style={[styles.colorSwatch, { backgroundColor: c.hex }, light && styles.colorSwatchLight]}>
+                        {on ? (
+                          <Ionicons name="checkmark" size={15} color={light ? colors.ink.DEFAULT : "#fff"} />
+                        ) : null}
                       </View>
-                      <Body size="xs" style={[styles.colorName, on && styles.colorNameActive]}>{c.name}</Body>
+                      <Text style={[styles.colorName, on && styles.colorNameActive]}>{c.name}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </Section>
 
-            <Section title="Size">
-              <View style={styles.chipWrap}>
-                {SIZES.map((s) => (
-                  <Chip key={s} label={s} active={!!draft.sizes?.includes(s)} onPress={() => toggleIn("sizes", s)} />
-                ))}
-              </View>
-            </Section>
-
-            <Section title="Occasion">
-              <View style={styles.chipWrap}>
-                {OCCASION_CHIPS.map((o) => {
-                  // Reveal-if-present: chip shows when ≥1 loaded product carries it,
-                  // or while it is the active selection.
-                  const present = products.some((p) => p.ai_attrs?.occasion?.toLowerCase() === o.toLowerCase());
-                  if (!present && draft.occasion !== o) return null;
+            {/* Size — equal tiles */}
+            <Section
+              index={next()}
+              title="Size"
+              hint={draft.sizes?.length ? draft.sizes.join(", ") : undefined}
+            >
+              <View style={styles.sizeGrid}>
+                {SIZES.map((sz) => {
+                  const on = !!draft.sizes?.includes(sz);
                   return (
-                    <Chip
-                      key={o}
-                      label={o}
-                      active={draft.occasion === o}
-                      onPress={() => setDraft({ ...draft, occasion: draft.occasion === o ? undefined : o })}
-                    />
+                    <TouchableOpacity
+                      key={sz}
+                      style={[styles.sizeTile, on && styles.sizeTileActive]}
+                      onPress={() => toggleIn("sizes", sz)}
+                      activeOpacity={0.85}
+                      accessibilityLabel={`Size ${sz}`}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.sizeText, on && styles.sizeTextActive]}>{sz}</Text>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
             </Section>
 
-            <Section title="Material">
-              <View style={styles.chipWrap}>
-                {MATERIAL_CHIPS.map((m) => {
-                  const present = products.some((p) => p.ai_attrs?.material?.toLowerCase() === m.toLowerCase());
-                  if (!present && draft.material !== m) return null;
-                  return (
+            {occasionChips.length > 0 ? (
+              <Section index={next()} title="Occasion">
+                <View style={styles.chipWrap}>
+                  {occasionChips.map((o) => (
                     <Chip
-                      key={m}
-                      label={m}
-                      active={draft.material === m}
-                      onPress={() => setDraft({ ...draft, material: draft.material === m ? undefined : m })}
+                      key={o.key}
+                      label={o.label}
+                      active={draft.occasion === o.key}
+                      onPress={() => setDraft({ ...draft, occasion: draft.occasion === o.key ? undefined : o.key })}
                     />
-                  );
-                })}
-              </View>
-            </Section>
+                  ))}
+                </View>
+              </Section>
+            ) : null}
 
-            <Section title="Discount">
-              <View style={styles.chipWrap}>
+            {materialChips.length > 0 ? (
+              <Section index={next()} title="Material">
+                <View style={styles.chipWrap}>
+                  {materialChips.map((m) => (
+                    <Chip
+                      key={m.key}
+                      label={m.label}
+                      active={draft.material === m.key}
+                      onPress={() => setDraft({ ...draft, material: draft.material === m.key ? undefined : m.key })}
+                    />
+                  ))}
+                </View>
+              </Section>
+            ) : null}
+
+            {/* Discount + rating side-by-side style: segmented rows */}
+            <Section index={next()} title="Discount">
+              <View style={styles.segment}>
                 {DISCOUNTS.map((d) => {
                   const on = draft.minDiscount === d.min;
                   return (
-                    <Chip
+                    <TouchableOpacity
                       key={d.min}
-                      label={d.label}
-                      active={on}
+                      style={[styles.segmentItem, on && styles.segmentItemActive]}
                       onPress={() => setDraft({ ...draft, minDiscount: on ? 0 : d.min })}
-                    />
+                      activeOpacity={0.85}
+                      accessibilityLabel={d.label}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.segmentText, on && styles.segmentTextActive]}>{d.min}%+</Text>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
             </Section>
 
-            <Section title="Rating">
-              <View style={styles.chipWrap}>
-                {RATINGS.map((r) => (
-                  <Chip
-                    key={String(r)}
-                    label={r === 0 ? "Any" : `${r}★ & up`}
-                    active={(draft.minRating ?? 0) === r}
-                    onPress={() => setDraft({ ...draft, minRating: r })}
-                  />
-                ))}
+            <Section index={next()} title="Rating">
+              <View style={styles.segment}>
+                {RATINGS.map((r) => {
+                  const on = (draft.minRating ?? 0) === r;
+                  return (
+                    <TouchableOpacity
+                      key={String(r)}
+                      style={[styles.segmentItem, on && styles.segmentItemActive]}
+                      onPress={() => setDraft({ ...draft, minRating: r })}
+                      activeOpacity={0.85}
+                      accessibilityLabel={r === 0 ? "Any rating" : `${r} stars and up`}
+                      accessibilityState={{ selected: on }}
+                    >
+                      {r > 0 ? (
+                        <Ionicons name="star" size={11} color={on ? colors.accent2.ochre : colors.accent2.ochre} />
+                      ) : null}
+                      <Text style={[styles.segmentText, on && styles.segmentTextActive]}>
+                        {r === 0 ? "Any" : `${r}+`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </Section>
 
-            <Section title="Gender">
-              <View style={styles.chipWrap}>
-                {GENDERS.map((g) => (
-                  <Chip
-                    key={g.key || "all"}
-                    label={g.label}
-                    active={(draft.gender || "") === g.key}
-                    onPress={() => setDraft({ ...draft, gender: g.key || undefined })}
-                  />
-                ))}
+            <Section index={next()} title="Gender">
+              <View style={styles.segment}>
+                {GENDERS.map((g) => {
+                  const on = (draft.gender || "") === g.key;
+                  return (
+                    <TouchableOpacity
+                      key={g.key || "all"}
+                      style={[styles.segmentItem, on && styles.segmentItemActive]}
+                      onPress={() => setDraft({ ...draft, gender: g.key || undefined })}
+                      activeOpacity={0.85}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.segmentText, on && styles.segmentTextActive]} numberOfLines={1}>
+                        {g.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </Section>
           </ScrollView>
 
+          {/* Footer */}
           <View style={[styles.sheetFooter, { paddingBottom: Math.max(insets.bottom, spacing[4]) }]}>
-            <Button variant="outline" onPress={handleClear} style={styles.clearBtn}>
-              Clear all
-            </Button>
-            <Button
-              variant="brand"
+            <LinearGradient
+              colors={[`${colors.paper.DEFAULT}00`, colors.paper.DEFAULT]}
+              style={styles.footerFade}
+              pointerEvents="none"
+            />
+            <TouchableOpacity onPress={handleClear} style={styles.clearBtn} activeOpacity={0.8}>
+              <Text style={styles.clearText}>Clear all</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={handleApply}
-              style={styles.applyBtn}
               disabled={previewCount === 0}
+              style={[styles.applyBtn, previewCount === 0 && styles.applyBtnDisabled]}
+              activeOpacity={0.9}
+              accessibilityLabel={previewCount === 0 ? "No matches" : `Show ${previewCount} results`}
             >
-              {previewCount === 0
-                ? "No matches"
-                : `Show ${previewCount} result${previewCount === 1 ? "" : "s"}`}
-            </Button>
+              <Text style={styles.applyText}>
+                {previewCount === 0 ? "No matches" : "Show results"}
+              </Text>
+              {previewCount > 0 ? (
+                <View style={styles.applyCount}>
+                  <Text style={styles.applyCountText}>{previewCount}</Text>
+                  <Ionicons name="arrow-forward" size={13} color={colors.olive[950]} />
+                </View>
+              ) : null}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -417,211 +568,442 @@ export function SearchFilterSheet({
   );
 }
 
+const INK = colors.ink.DEFAULT;
+const LINE = `${colors.olive[900]}1F`;
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(22, 23, 15, 0.5)",
+    backgroundColor: "rgba(22, 23, 15, 0.55)",
   },
   backdropTouch: {
     position: "absolute",
     inset: 0,
   },
   sheet: {
-    backgroundColor: colors.light.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.paper.DEFAULT,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     overflow: "hidden",
-    ...shadows.editorial,
   },
+
+  /* Header */
   sheetHeader: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
+    paddingTop: 10,
     paddingBottom: spacing[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.light.border,
   },
   handle: {
-    width: 36,
+    width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.light.border,
+    backgroundColor: `${colors.olive[900]}26`,
     alignSelf: "center",
-    marginBottom: spacing[3],
+    marginBottom: spacing[4],
   },
   headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  activeBadge: {
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 6,
-    borderRadius: 11,
-    backgroundColor: colors.accent2.rust,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  activeBadgeText: {
-    color: "#fff",
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  resetBtn: {
-    paddingHorizontal: spacing[2],
-  },
-  resetText: {
-    color: colors.olive[700],
-    fontFamily: fontFamilies.sans.semibold,
-    textDecorationLine: "underline",
-  },
-  closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.light.muted,
-  },
-  sheetBody: {
-    flex: 1,
-  },
-  sheetBodyContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[6],
-  },
-  section: {
-    gap: spacing[3],
-    paddingVertical: spacing[4],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.light.border,
-  },
-  sectionHead: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
-  chipWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing[2],
-  },
-  chip: {
-    minWidth: 48,
-    height: 38,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    backgroundColor: colors.light.card,
-  },
-  chipActive: {
-    backgroundColor: colors.light.foreground,
-    borderColor: colors.light.foreground,
-  },
-  chipText: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-  },
-  chipTextActive: {
-    color: colors.light.primaryForeground,
-  },
-  priceRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: spacing[2],
   },
-  priceField: {
-    flex: 1,
-    gap: 4,
-  },
-  priceFieldLabel: {
-    fontSize: 11,
-  },
-  priceInput: {
-    height: 44,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.lg,
-    paddingHorizontal: spacing[3],
-    color: colors.light.foreground,
-    fontSize: 15,
-    fontFamily: fontFamilies.sans.medium,
-  },
-  priceDash: {
-    width: 10,
-    height: 1,
-    backgroundColor: colors.light.mutedForeground,
-    marginBottom: 22,
-  },
-  colorGrid: {
+  kickerRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    rowGap: spacing[3],
-    columnGap: spacing[2],
-  },
-  colorItem: {
-    width: 58,
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    marginBottom: 2,
   },
-  colorRing: {
-    padding: 3,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: "transparent",
+  kickerDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.olive[500],
   },
-  colorRingActive: {
-    borderColor: colors.light.foreground,
+  kicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
   },
-  colorSwatch: {
+  title: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 32,
+    lineHeight: 38,
+    letterSpacing: -0.5,
+    color: INK,
+  },
+  resetBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.accent2.rust}14`,
+  },
+  resetText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.accent2.rust,
+  },
+  closeBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+
+  /* Body */
+  sheetBody: {
+    flex: 1,
+  },
+  sheetBodyContent: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[1],
+    paddingBottom: spacing[8],
+    gap: 10,
+  },
+  section: {
+    gap: 14,
+    padding: spacing[4],
+    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  sectionIndex: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: colors.olive[500],
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 17,
+    color: INK,
+  },
+  sectionHint: {
+    maxWidth: "55%",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+  },
+  sectionHintText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.olive[700],
+  },
+
+  /* Generic chip */
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    backgroundColor: colors.paper.DEFAULT,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+  chipActive: {
+    backgroundColor: INK,
+    borderColor: INK,
+  },
+  chipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: INK,
+  },
+  chipTextActive: {
+    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.semibold,
+  },
+  chipCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.ink.mute,
+  },
+  chipCountActive: {
+    color: colors.olive[300],
+  },
+
+  /* Sort tiles */
+  sortGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 8,
+  },
+  sortTile: {
+    width: "48.5%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    height: 48,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    backgroundColor: colors.paper.DEFAULT,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+  sortTileActive: {
+    backgroundColor: INK,
+    borderColor: INK,
+  },
+  sortIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+  },
+  sortIconActive: {
+    backgroundColor: colors.olive[200],
+  },
+  sortText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: INK,
+  },
+  sortTextActive: {
+    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.semibold,
+  },
+
+  /* Price range */
+  rangeField: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    backgroundColor: colors.paper.DEFAULT,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+  rangeSide: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingTop: 9,
+    paddingBottom: 7,
+  },
+  rangeLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+  },
+  rangeInput: {
+    height: 28,
+    paddingVertical: 0,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: INK,
+  },
+  rangeDivider: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+
+  /* Segmented rows (price presets, discount, rating, gender) */
+  segment: {
+    flexDirection: "row",
+    padding: 4,
+    gap: 2,
+    borderRadius: 14,
+    backgroundColor: `${colors.olive[900]}0D`,
+  },
+  segmentItem: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    height: 36,
+    borderRadius: 11,
+  },
+  segmentItemActive: {
+    backgroundColor: "#ffffff",
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  segmentText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+  },
+  segmentTextActive: {
+    fontFamily: fontFamilies.sans.bold,
+    color: INK,
+  },
+
+  /* Colour grid */
+  colorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 8,
+  },
+  colorItem: {
+    width: "23%",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  colorItemActive: {
+    backgroundColor: colors.paper.DEFAULT,
+    borderColor: INK,
+  },
+  colorSwatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
   },
   colorSwatchLight: {
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: LINE,
   },
   colorName: {
-    color: colors.light.mutedForeground,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 11,
+    color: colors.ink.mute,
   },
   colorNameActive: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
+    color: INK,
+    fontFamily: fontFamilies.sans.bold,
   },
+
+  /* Size grid */
+  sizeGrid: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  sizeTile: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.paper.DEFAULT,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: LINE,
+  },
+  sizeTileActive: {
+    backgroundColor: INK,
+    borderColor: INK,
+  },
+  sizeText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: INK,
+  },
+  sizeTextActive: {
+    color: colors.paper.cream,
+  },
+
+  /* Footer */
   sheetFooter: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: spacing[4],
     paddingTop: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-    backgroundColor: colors.light.background,
+    backgroundColor: colors.paper.DEFAULT,
+  },
+  footerFade: {
+    position: "absolute",
+    top: -28,
+    left: 0,
+    right: 0,
+    height: 28,
   },
   clearBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: radii.xl,
+    height: 54,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: INK,
+    textDecorationLine: "underline",
   },
   applyBtn: {
-    flex: 2,
-    height: 50,
-    borderRadius: radii.xl,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 54,
+    paddingLeft: 22,
+    paddingRight: 8,
+    borderRadius: radii.full,
+    backgroundColor: INK,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  applyBtnDisabled: {
+    backgroundColor: colors.ink.mute,
+    shadowOpacity: 0,
+    justifyContent: "center",
+    paddingRight: 22,
+  },
+  applyText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: colors.paper.cream,
+  },
+  applyCount: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[200],
+  },
+  applyCountText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 13,
+    color: colors.olive[950],
   },
 });

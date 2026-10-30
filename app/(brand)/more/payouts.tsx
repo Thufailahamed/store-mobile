@@ -14,6 +14,8 @@ import { getBrandPayoutSettingsBackend } from "@/lib/api/backend";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { getMyKyc } from "@/lib/api/kyc";
+import { KycBanner } from "@/components/kyc/KycBanner";
 
 export default function BrandPayouts() {
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -41,6 +43,15 @@ export default function BrandPayouts() {
     },
   });
 
+  const kycQ = useQuery({
+    queryKey: ["kyc", "me"],
+    queryFn: async () => {
+      const r = await getMyKyc();
+      return r.ok ? r.data.submissions : [];
+    },
+  });
+  const kycStatus = kycQ.data?.[0]?.status ?? (kycQ.isLoading ? null : "none");
+
   const available = Math.max(
     0,
     (balanceQ.data?.lifetime_net ?? 0) - (balanceQ.data?.pending ?? 0),
@@ -54,6 +65,9 @@ export default function BrandPayouts() {
         subtitle="Lifetime earnings, bank details, and withdrawals"
         back={{ onPress: () => router.back() }}
       />
+      {kycStatus && kycStatus !== "approved" ? (
+        <KycBanner status={kycStatus} reason={kycQ.data?.[0]?.rejection_reason ?? null} href="/(brand)/more/verify" />
+      ) : null}
       {balanceQ.isLoading ? (
         <Skeleton style={styles.skel} />
       ) : balanceQ.data ? (
@@ -93,7 +107,7 @@ export default function BrandPayouts() {
           <WithdrawSheet
             available={available}
             settings={settingsQ.data ?? null}
-            kycApproved
+            kycApproved={kycStatus === "approved"}
             onSuccess={() => {
               void balanceQ.refetch();
               void listQ.refetch();

@@ -1,19 +1,23 @@
 import React, { useState } from "react";
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@/components/ui/Icon";
-import { Button, Input, useToast } from "@/components/ui";
+import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
-import { colors, spacing } from "@/lib/theme/tokens";
-import { Display, Label, Body } from "@/components/ui/Typography";
+import { EMAIL_REGEX } from "@/lib/contact-validation";
+import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
+import {
+  AuthBackButton,
+  AuthField,
+  AuthFooterLink,
+  OutlineButton,
+  PrimaryButton,
+  authStyles,
+} from "@/components/auth/auth-ui";
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -23,6 +27,7 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const emailOk = EMAIL_REGEX.test(email.trim());
 
   const handleReset = async () => {
     if (!email.trim()) {
@@ -42,135 +47,94 @@ export default function ForgotPasswordScreen() {
     }
   };
 
+  const toLogin = () => (router.canGoBack() ? router.back() : router.replace("/(auth)/login"));
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <KeyboardAvoidingView style={authStyles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingTop: insets.top > 0 ? insets.top + spacing[4] : spacing[8],
-            paddingBottom: insets.bottom > 0 ? insets.bottom + spacing[4] : spacing[8],
-          },
+          authStyles.scroll,
+          { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) + 8 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Header section with luxury editorial brand details */}
-        <View style={styles.header}>
-          <Label style={styles.kicker}>— Reset</Label>
-          <View style={styles.titleRow}>
-            <Display size="4xl" style={styles.titleText}>Reset </Display>
-            <Display italic size="4xl" style={styles.titleTextItalic}>password</Display>
-            <Display size="4xl" style={styles.titleText}>.</Display>
-          </View>
-        </View>
+        <AuthBackButton onPress={toLogin} />
 
         {sent ? (
-          <View style={styles.form}>
-            <Body size="sm" style={styles.infoText}>
-              We've sent a password reset link to <Body style={{ fontWeight: "600" }}>{email}</Body>. Please check your email to continue.
-            </Body>
-            <Button
-              onPress={() => router.replace("/(auth)/login")}
-              variant="brand"
-              style={styles.submitButton}
-            >
-              Back to Sign In
-            </Button>
-          </View>
+          <Animated.View key="sent" entering={FadeIn.duration(320)} style={styles.sentWrap}>
+            <View style={styles.badge}>
+              <Ionicons name="mail-open-outline" size={30} color={C.lime} />
+            </View>
+            <Text style={[authStyles.title, styles.center]}>Check your email</Text>
+            <Text style={[authStyles.subtitle, styles.center]}>
+              We sent a password reset link to{"\n"}
+              <Text style={styles.strong}>{email.trim()}</Text>
+            </Text>
+            <View style={styles.sentActions}>
+              <PrimaryButton label="Back to Login" onPress={() => router.replace("/(auth)/login")} />
+              <OutlineButton label="Use a different email" onPress={() => setSent(false)} />
+            </View>
+          </Animated.View>
         ) : (
-          <View style={styles.form}>
-            <Body size="sm" muted style={styles.infoText}>
-              Enter your email address and we'll send you a link to reset your password.
-            </Body>
-
-            <Input
-              label="Email address"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              leftIcon={<Ionicons name="mail-outline" size={18} color={colors.light.mutedForeground} />}
-            />
-
-            <Button
-              onPress={handleReset}
-              loading={loading}
-              variant="brand"
-              style={styles.submitButton}
-            >
-              Send Reset Link
-            </Button>
-          </View>
+          <Animated.View key="form" entering={FadeInDown.duration(450)}>
+            <Text style={authStyles.title} accessibilityRole="header">
+              Forgot password?
+            </Text>
+            <Text style={authStyles.subtitle}>
+              Don’t worry! Enter the email linked with your account and we’ll send you a reset link.
+            </Text>
+            <View style={authStyles.form}>
+              <AuthField
+                placeholder="Enter your email"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="send"
+                onSubmitEditing={handleReset}
+                accessibilityLabel="Email"
+                valid={emailOk}
+              />
+              <PrimaryButton
+                label="Send Reset Link"
+                onPress={handleReset}
+                disabled={!emailOk}
+                loading={loading}
+                style={{ marginTop: 6 }}
+              />
+            </View>
+          </Animated.View>
         )}
 
-        {/* Back Link */}
-        <TouchableOpacity
-          style={styles.backLink}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={14} color={colors.light.mutedForeground} style={{ marginRight: 4 }} />
-          <Label style={styles.backText}>Back to Sign In</Label>
-        </TouchableOpacity>
+        <View style={{ flex: 1, minHeight: 24 }} />
+        <AuthFooterLink
+          prompt={sent ? "Didn’t get it?" : "Remember password?"}
+          action={sent ? "Resend" : "Login"}
+          onPress={sent ? handleReset : toLogin}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.light.background,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  kicker: {
-    color: colors.olive[600],
-    marginBottom: 8,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  titleText: {
-    color: colors.light.foreground,
-    lineHeight: 46,
-  },
-  titleTextItalic: {
-    color: colors.olive[700],
-    lineHeight: 46,
-  },
-  form: {
-    gap: 16,
-  },
-  infoText: {
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  submitButton: {
-    marginTop: 8,
-  },
-  backLink: {
-    flexDirection: "row",
+  sentWrap: { alignItems: "center", marginTop: 40 },
+  badge: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: C.ink,
+    borderWidth: 2,
+    borderColor: C.goldSoft,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 40,
-    paddingVertical: 8,
   },
-  backText: {
-    color: colors.light.mutedForeground,
-    fontSize: 10,
-  },
+  center: { textAlign: "center" },
+  strong: { fontFamily: fontFamilies.sans.bold, color: C.text },
+  sentActions: { alignSelf: "stretch", gap: 12, marginTop: 30 },
 });

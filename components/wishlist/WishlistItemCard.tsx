@@ -1,10 +1,12 @@
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet, TouchableOpacity, Text } from "react-native";
+import { View, Pressable, StyleSheet, Text } from "react-native";
 import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { discountPct, formatPrice } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
@@ -12,9 +14,8 @@ import type { Product } from "@/lib/types";
 import { useWishlistLayout } from "@/components/wishlist/layout";
 import { subscribeStockAlertBackend } from "@/lib/api/backend";
 
-const INK = colors.light.foreground;
-const MUTED = colors.light.mutedForeground;
-const BORDER = colors.light.border;
+const INK = colors.ink.DEFAULT;
+const MUTED = colors.ink.mute;
 
 interface WishlistItemCardProps {
   product: Product;
@@ -27,7 +28,7 @@ function getStock(product: Product) {
 
 export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const router = useRouter();
-  const { cardWidth, imageHeight } = useWishlistLayout();
+  const { imageHeight } = useWishlistLayout();
   const { addItem } = useCart();
   const { toggle } = useWishlist();
   const { toast } = useToast();
@@ -38,8 +39,9 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const variant = product.variants?.[0];
   const stock = getStock(product);
   const isOutOfStock = stock <= 0;
+  const isLowStock = !isOutOfStock && Number.isFinite(stock) && stock <= 3;
   const discount = discountPct(product.mrp, product.price);
-  const brandLabel = (product.store?.name || product.brand?.name || "LUXE").toUpperCase();
+  const brandLabel = product.store?.name || product.brand?.name || "LUXE";
 
   const open = () =>
     router.push({
@@ -77,237 +79,317 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
     else toast(res.error ?? "Could not set alert", "error");
   };
 
+  const stockLabel = isOutOfStock
+    ? "Sold out"
+    : isLowStock
+      ? `Only ${stock} left`
+      : "Ready to ship";
+
   return (
     <Pressable
       onPress={open}
-      style={({ pressed }) => [styles.card, { width: cardWidth }, pressed && { opacity: 0.98 }]}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${product.name}, ${formatPrice(product.price, product.currency)}`}
     >
       <View style={[styles.imageWrap, { height: imageHeight }]}>
         {primary ? (
-          <Image source={{ uri: primary }} style={styles.image} contentFit="cover" transition={250} />
+          <Image
+            source={{ uri: primary }}
+            style={[styles.image, isOutOfStock && styles.imageMuted]}
+            contentFit="cover"
+            transition={250}
+          />
         ) : (
           <View style={styles.imagePlaceholder}>
             <Ionicons name="image-outline" size={24} color={MUTED} />
           </View>
         )}
 
+        <LinearGradient
+          colors={["rgba(22,23,15,0.18)", "rgba(22,23,15,0)"]}
+          style={styles.topScrim}
+          pointerEvents="none"
+        />
+
         <Pressable
           onPress={(e) => {
             e.stopPropagation();
             toggle(product.id);
           }}
-          hitSlop={8}
+          hitSlop={10}
           accessibilityLabel="Remove from wishlist"
-          style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.75 }]}
+          style={({ pressed }) => [styles.heartBtn, pressed && { transform: [{ scale: 0.9 }] }]}
         >
-          <Ionicons name="heart" size={16} color={colors.accent2.rust} />
+          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          <Ionicons name="heart" size={15} color={colors.accent2.rust} />
         </Pressable>
 
         {discount > 0 && !isOutOfStock ? (
           <View style={styles.discountBadge}>
-            <Text style={styles.discountText}>-{discount}%</Text>
+            <Text style={styles.discountText}>−{discount}%</Text>
           </View>
         ) : null}
 
         {isOutOfStock ? (
-          <View style={styles.oosBanner}>
-            <Text style={styles.oosBannerText}>OUT OF STOCK</Text>
+          <View style={styles.soldOutPill}>
+            <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+            <Text style={styles.soldOutText}>SOLD OUT</Text>
           </View>
         ) : null}
       </View>
 
       <View style={styles.info}>
         <Text style={styles.brandName} numberOfLines={1}>
-          {brandLabel}
+          {brandLabel.toUpperCase()}
         </Text>
         <Text style={styles.productName} numberOfLines={2}>
           {product.name}
         </Text>
+
         <View style={styles.priceRow}>
-          <Text style={styles.price}>{formatPrice(product.price, product.currency)}</Text>
+          <Text style={[styles.price, discount > 0 && styles.priceSale]}>
+            {formatPrice(product.price, product.currency)}
+          </Text>
           {discount > 0 && product.mrp ? (
             <Text style={styles.mrp}>{formatPrice(product.mrp, product.currency)}</Text>
           ) : null}
         </View>
+
         <View style={styles.stockRow}>
-          <View style={[styles.stockDot, isOutOfStock && styles.stockDotOut]} />
-          <Text style={[styles.stockText, isOutOfStock && styles.stockTextOut]}>
-            {isOutOfStock ? "Out of stock" : "Ready to ship"}
+          <View
+            style={[
+              styles.stockDot,
+              isLowStock && styles.stockDotLow,
+              isOutOfStock && styles.stockDotOut,
+            ]}
+          />
+          <Text
+            style={[
+              styles.stockText,
+              isLowStock && styles.stockTextLow,
+              isOutOfStock && styles.stockTextOut,
+            ]}
+          >
+            {stockLabel}
           </Text>
         </View>
+
+        <View style={styles.ctaSpacer} />
+
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            void (isOutOfStock ? notifyMe() : moveToBag());
+          }}
+          disabled={adding}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.actionBtn,
+            isOutOfStock && styles.actionBtnGhost,
+            pressed && styles.actionBtnPressed,
+          ]}
+        >
+          <Ionicons
+            name={isOutOfStock ? "notifications-outline" : "bag-add-outline"}
+            size={14}
+            color={isOutOfStock ? colors.olive[800] : colors.paper.cream}
+          />
+          <Text style={[styles.actionText, isOutOfStock && styles.actionTextGhost]}>
+            {isOutOfStock ? "Notify me" : adding ? "Adding…" : "Move to bag"}
+          </Text>
+        </Pressable>
       </View>
-
-      <View style={styles.divider} />
-
-      <TouchableOpacity
-        style={[styles.actionBtn, isOutOfStock && styles.actionBtnMuted]}
-        onPress={isOutOfStock ? notifyMe : moveToBag}
-        disabled={adding}
-        activeOpacity={0.8}
-      >
-        <Ionicons
-          name={isOutOfStock ? "notifications-outline" : "bag-add-outline"}
-          size={14}
-          color={isOutOfStock ? colors.olive[700] : colors.paper.cream}
-        />
-        <Text style={[styles.actionText, isOutOfStock && styles.actionTextMuted]}>
-          {isOutOfStock ? "NOTIFY ME" : adding ? "ADDING…" : "MOVE TO BAG"}
-        </Text>
-      </TouchableOpacity>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    flex: 1,
     backgroundColor: colors.paper.cream,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: `${colors.olive[700]}20`,
+    borderRadius: radii["3xl"],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: `${colors.olive[700]}26`,
     overflow: "hidden",
-    marginBottom: spacing[4],
     ...shadows.soft,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.985 }],
   },
   imageWrap: {
     width: "100%",
     position: "relative",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: colors.paper.warm,
   },
   image: {
     width: "100%",
     height: "100%",
+  },
+  imageMuted: {
+    opacity: 0.55,
   },
   imagePlaceholder: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  removeBtn: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: `${colors.paper.cream}F2`,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: `${colors.accent2.rust}30`,
-  },
-  discountBadge: {
-    position: "absolute",
-    left: 8,
-    top: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.accent2.ochre,
-  },
-  discountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[950],
-  },
-  oosBanner: {
+  topScrim: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: "#c0392b",
-    paddingVertical: 6,
-    alignItems: "center",
+    top: 0,
+    height: 64,
   },
-  oosBannerText: {
-    fontFamily: fontFamilies.sans.bold,
+  heartBtn: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.paper.cream}B3`,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: `${colors.paper.cream}`,
+  },
+  discountBadge: {
+    position: "absolute",
+    left: 10,
+    top: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[950],
+  },
+  discountText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    color: colors.accent2.ochre,
+  },
+  soldOutPill: {
+    position: "absolute",
+    alignSelf: "center",
+    bottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    overflow: "hidden",
+    backgroundColor: "rgba(22,23,15,0.45)",
+  },
+  soldOutText: {
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+    letterSpacing: 1.6,
+    color: colors.paper.cream,
   },
   info: {
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 8,
-    gap: 4,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   brandName: {
-    fontFamily: fontFamilies.sans.medium,
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 9,
     color: MUTED,
-    letterSpacing: 0.8,
+    letterSpacing: 1.4,
   },
   productName: {
+    marginTop: 5,
     fontFamily: fontFamilies.display.regular,
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 19,
+    // Reserve two lines so cards in the same row line up.
+    minHeight: 38,
     color: INK,
-    lineHeight: 17,
-    letterSpacing: -0.1,
+    letterSpacing: -0.2,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "baseline",
     flexWrap: "wrap",
-    gap: 5,
-    marginTop: 2,
+    columnGap: 6,
+    marginTop: 8,
   },
   price: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.olive[800],
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: INK,
+    letterSpacing: -0.1,
+  },
+  priceSale: {
+    color: colors.accent2.rust,
   },
   mrp: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 9,
+    fontSize: 11,
     color: MUTED,
     textDecorationLine: "line-through",
   },
   stockRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginTop: 2,
+    gap: 6,
+    marginTop: 6,
   },
   stockDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.olive[500],
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[400],
+  },
+  stockDotLow: {
+    backgroundColor: colors.accent2.ochre,
   },
   stockDotOut: {
     backgroundColor: colors.accent2.rust,
   },
   stockText: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 9,
-    color: colors.olive[700],
+    fontSize: 11,
+    color: colors.olive[600],
+  },
+  stockTextLow: {
+    color: "#9a7a26",
   },
   stockTextOut: {
     color: colors.accent2.rust,
   },
-  divider: {
-    height: 1,
-    backgroundColor: BORDER,
+  ctaSpacer: {
+    // Pushes the CTA to the card's bottom edge so buttons align across a row.
+    flexGrow: 1,
+    minHeight: 12,
   },
   actionBtn: {
-    width: "100%",
-    minHeight: 42,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
+    gap: 7,
+    borderRadius: radii.full,
     backgroundColor: colors.olive[900],
   },
-  actionBtnMuted: {
-    backgroundColor: colors.paper.warm,
+  actionBtnGhost: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: `${colors.olive[800]}40`,
+  },
+  actionBtnPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
   },
   actionText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
+    fontSize: 11,
     color: colors.paper.cream,
-    letterSpacing: 1,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
-  actionTextMuted: {
-    color: colors.olive[700],
+  actionTextGhost: {
+    color: colors.olive[800],
   },
 });

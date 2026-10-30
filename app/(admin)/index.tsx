@@ -23,13 +23,9 @@ import {
   approveBrand,
   approveProduct,
 } from "@/lib/api";
-import {
-  Card,
-  ListRow,
-  StatusDot,
-  ProgressBar,
-  Skeleton,
-} from "@/components/ui";
+import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import { StatusDot, Skeleton } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -172,6 +168,26 @@ export default function AdminOverview() {
 
   const adminName = user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "Admin";
 
+  const greeting = greetingFor(new Date().getHours());
+  const revenueParts = splitCurrency(formatPrice(s?.revenue ?? 0));
+  const lowStockCount = lowStockQ.data?.length ?? 0;
+  const signupCount = signupsQ.data?.length ?? 0;
+
+  const confirmApprove = (row: { id: string; name: string; kind: "Store" | "Brand" | "Product" }) => {
+    const m =
+      row.kind === "Store" ? approveStoreM : row.kind === "Brand" ? approveBrandM : approveProductM;
+    Alert.alert(`Approve ${row.kind}`, row.name, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Approve", onPress: () => m.mutate(row.id) },
+    ]);
+  };
+
+  const confirmRejectStore = (row: { id: string; name: string }) =>
+    Alert.alert("Reject Store", row.name, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Reject", style: "destructive", onPress: () => rejectStoreM.mutate(row.id) },
+    ]);
+
   return (
     <ScrollView
       style={styles.container}
@@ -181,419 +197,564 @@ export default function AdminOverview() {
       }
       showsVerticalScrollIndicator={false}
     >
-      {/* ── 1. Executive Masthead ─────────────────────────────── */}
+      {/* ── 1. Editorial Masthead ─────────────────────────────── */}
       <View style={styles.masthead}>
         <View style={styles.mastheadTop}>
-          <View style={styles.liveIndicator}>
-            <StatusDot tone="live" size={7} />
-            <Text style={styles.liveText}>PLATFORM ONLINE</Text>
+          <View style={styles.livePill}>
+            <StatusDot tone="live" size={6} />
+            <Text style={styles.livePillText}>PLATFORM ONLINE</Text>
           </View>
           <View style={styles.clockWrap}>
-            <Ionicons name="time-outline" size={12} color={colors.light.mutedForeground} />
+            <Ionicons name="time-outline" size={11} color={colors.ink.mute} />
             <Text style={styles.clockText}>{clock}</Text>
           </View>
         </View>
 
+        <Text style={styles.greeting}>
+          {greeting}, <Text style={styles.greetingName}>{adminName}</Text>
+        </Text>
         <Text style={styles.headline}>
           Command <Text style={styles.headlineAccent}>Deck</Text>
         </Text>
-        <Text style={styles.subline}>
-          Welcome, {adminName} · LUXE Executive Overview
-        </Text>
+        <View style={styles.mastheadRule}>
+          <View style={styles.mastheadRuleAccent} />
+          <Text style={styles.mastheadRuleText}>LUXE · EXECUTIVE OVERVIEW</Text>
+          <View style={styles.mastheadRuleLine} />
+        </View>
 
-        {/* Action Pills */}
-        <View style={styles.quickPillsRow}>
-          <Pressable
+        {/* Quick actions */}
+        <View style={styles.quickRow}>
+          <QuickAction
+            label="Analytics"
+            icon="bar-chart-outline"
             onPress={() => router.push("/(admin)/analytics" as any)}
-            style={styles.quickPill}
-          >
-            <Ionicons name="bar-chart-outline" size={13} color={colors.light.primary} />
-            <Text style={styles.quickPillText}>Analytics</Text>
-          </Pressable>
-
-          <Pressable
+          />
+          <QuickAction
+            label="Inventory"
+            icon="cube-outline"
             onPress={() => router.push("/(admin)/catalogue" as any)}
-            style={styles.quickPill}
-          >
-            <Ionicons name="cube-outline" size={13} color={colors.light.primary} />
-            <Text style={styles.quickPillText}>Inventory</Text>
-          </Pressable>
-
-          <Pressable
+          />
+          <QuickAction
+            label="Approvals"
+            icon="shield-checkmark-outline"
+            count={pendingTotal}
+            highlight={pendingTotal > 0}
             onPress={() => router.push("/(admin)/approvals" as any)}
-            style={[styles.quickPill, pendingTotal > 0 && styles.quickPillHighlight]}
-          >
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={13}
-              color={pendingTotal > 0 ? "#7a5b1a" : colors.light.primary}
-            />
-            <Text style={[styles.quickPillText, pendingTotal > 0 && styles.quickPillTextHighlight]}>
-              Approvals {pendingTotal > 0 ? `(${pendingTotal})` : ""}
-            </Text>
-          </Pressable>
+          />
         </View>
       </View>
 
-      {/* ── 2. Unified Executive Performance Deck (Non-redundant) ── */}
+      {/* ── 2. Hero Performance Deck ──────────────────────────── */}
       {isLoading ? (
-        <Card style={styles.heroDeck}>
-          <Skeleton width="40%" height={14} />
-          <Skeleton width="60%" height={36} style={{ marginTop: 12 }} />
-          <View style={{ flexDirection: "row", gap: 16, marginTop: 20 }}>
-            <Skeleton width="30%" height={32} />
-            <Skeleton width="30%" height={32} />
-            <Skeleton width="30%" height={32} />
+        <View style={[styles.heroShell, styles.heroSkeleton]}>
+          <Skeleton width="40%" height={12} />
+          <Skeleton width="70%" height={40} style={{ marginTop: 16 }} />
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 24 }}>
+            <Skeleton width="31%" height={64} />
+            <Skeleton width="31%" height={64} />
+            <Skeleton width="31%" height={64} />
           </View>
-        </Card>
+        </View>
       ) : (
-        <Card style={styles.heroDeck}>
-          <View style={styles.heroTop}>
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="bar-chart-outline" size={15} color={colors.accent2.ochre} />
+        <View style={styles.heroShell}>
+          <LinearGradient
+            colors={["#3a4120", colors.olive[900], "#14170a"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.hero}
+          >
+            {/* Decorative glow + guilloché rings */}
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <Svg width="100%" height="100%">
+                <Defs>
+                  <RadialGradient id="glow" cx="88%" cy="6%" r="60%">
+                    <Stop offset="0" stopColor={colors.accent2.ochre} stopOpacity="0.32" />
+                    <Stop offset="1" stopColor={colors.accent2.ochre} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#glow)" />
+                {[70, 110, 150, 190].map((r) => (
+                  <Circle
+                    key={r}
+                    cx="100%"
+                    cy="0"
+                    r={r}
+                    stroke="rgba(232,212,150,0.07)"
+                    strokeWidth={1}
+                    fill="none"
+                  />
+                ))}
+              </Svg>
             </View>
-            <Text style={styles.heroEyebrow}>Marketplace volume</Text>
-            <View style={styles.heroBadge}>
-              <Ionicons name="trending-up" size={12} color={colors.olive[800]} />
-              <Text style={styles.heroBadgeText}>GROSS</Text>
-            </View>
-          </View>
+            <View style={styles.heroHairline} />
 
-          <Text style={styles.heroMainValue}>
-            {formatPrice(s?.revenue ?? 0)}
-          </Text>
-          <Text style={styles.heroSub}>Aggregated settled marketplace volume</Text>
-
-          {/* 3-Column Inline Metrics */}
-          <View style={styles.heroTripleRow}>
-            <View style={styles.tripleCol}>
-              <Text style={styles.tripleLabel}>ORDERS</Text>
-              <Text style={styles.tripleValue}>{(s?.orders ?? 0).toLocaleString()}</Text>
-              <Text style={styles.tripleSub}>{formatPrice(s?.aov ?? 0)} avg</Text>
-            </View>
-
-            <View style={styles.tripleDivider} />
-
-            <View style={styles.tripleCol}>
-              <Text style={styles.tripleLabel}>ACTIVE ATELIERS</Text>
-              <Text style={styles.tripleValue}>
-                {s?.activeStores ?? 0}
-                <Text style={styles.tripleTotal}> / {s?.stores ?? 0}</Text>
-              </Text>
-              <Text style={styles.tripleSub}>{activeStoreRate.toFixed(0)}% approved</Text>
-            </View>
-
-            <View style={styles.tripleDivider} />
-
-            <View style={styles.tripleCol}>
-              <Text style={styles.tripleLabel}>CATALOGUE</Text>
-              <Text style={styles.tripleValue}>{(s?.products ?? 0).toLocaleString()}</Text>
-              <Text style={styles.tripleSub}>{s?.brands ?? 0} brands</Text>
-            </View>
-          </View>
-
-          {/* Action Attention Banner */}
-          {pendingTotal > 0 ? (
-            <Pressable
-              onPress={() => router.push("/(admin)/approvals" as any)}
-              style={styles.actionBanner}
-            >
-              <View style={styles.actionBannerLeft}>
-                <Ionicons name="flash" size={14} color="#7a5b1a" />
-                <Text style={styles.actionBannerText}>
-                  {pendingTotal} submission{pendingTotal > 1 ? "s" : ""} require attention
-                </Text>
+            <View style={styles.heroTop}>
+              <View style={styles.heroIconWrap}>
+                <Ionicons name="pulse-outline" size={15} color={GOLD_LIGHT} />
               </View>
-              <View style={styles.actionBannerBtn}>
-                <Text style={styles.actionBannerBtnText}>Review →</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroEyebrow}>MARKETPLACE VOLUME</Text>
+                <Text style={styles.heroEyebrowSub}>Gross · settled</Text>
               </View>
-            </Pressable>
-          ) : (
-            <View style={styles.nominalBanner}>
-              <Ionicons name="checkmark-circle-outline" size={14} color={colors.accent2.ochre} />
-              <Text style={styles.nominalBannerText}>All submission queues nominal · 0 pending</Text>
+              <LinearGradient
+                colors={[GOLD_LIGHT, colors.accent2.ochre]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroBadge}
+              >
+                <Ionicons name="trending-up" size={11} color={colors.olive[900]} />
+                <Text style={styles.heroBadgeText}>LIVE</Text>
+              </LinearGradient>
             </View>
-          )}
-        </Card>
+
+            {revenueParts.currency ? (
+              <Text style={styles.heroCurrency}>{revenueParts.currency}</Text>
+            ) : null}
+            <Text style={styles.heroMainValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {revenueParts.amount}
+            </Text>
+            <Text style={styles.heroSub}>Aggregated settled marketplace volume</Text>
+
+            <View style={styles.heroMetrics}>
+              <HeroMetric
+                icon="receipt-outline"
+                label="ORDERS"
+                value={(s?.orders ?? 0).toLocaleString()}
+                sub={`${formatPrice(s?.aov ?? 0)} avg`}
+              />
+              <HeroMetric
+                icon="storefront-outline"
+                label="ATELIERS"
+                value={String(s?.activeStores ?? 0)}
+                total={s?.stores ?? 0}
+                sub={`${activeStoreRate.toFixed(0)}% live`}
+              />
+              <HeroMetric
+                icon="pricetags-outline"
+                label="CATALOGUE"
+                value={(s?.products ?? 0).toLocaleString()}
+                sub={`${s?.brands ?? 0} brands`}
+              />
+            </View>
+
+            {pendingTotal > 0 ? (
+              <Pressable
+                onPress={() => router.push("/(admin)/approvals" as any)}
+                style={({ pressed }) => [pressed && styles.pressed]}
+              >
+                <LinearGradient
+                  colors={["#fbf0cf", "#f2dd9c"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.actionBanner}
+                >
+                  <View style={styles.actionBannerCount}>
+                    <Text style={styles.actionBannerCountText}>{pendingTotal}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.actionBannerTitle}>
+                      Submission{pendingTotal > 1 ? "s" : ""} awaiting review
+                    </Text>
+                    <Text style={styles.actionBannerSub}>Moderation queue needs attention</Text>
+                  </View>
+                  <View style={styles.actionBannerBtn}>
+                    <Ionicons name="arrow-forward" size={15} color={colors.accent2.ochre} />
+                  </View>
+                </LinearGradient>
+              </Pressable>
+            ) : (
+              <View style={styles.nominalBanner}>
+                <Ionicons name="checkmark-circle" size={15} color={GOLD_LIGHT} />
+                <Text style={styles.nominalBannerText}>All submission queues nominal · 0 pending</Text>
+              </View>
+            )}
+          </LinearGradient>
+        </View>
       )}
 
       {/* ── 3. Priority Moderation Queue ───────────────────────── */}
-      <Card style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>MODERATION</Text>
-            <Text style={styles.sectionTitle}>Priority Queue</Text>
-          </View>
-          <Pressable onPress={() => router.push("/(admin)/approvals" as any)} hitSlop={10}>
-            <Text style={styles.headerLink}>View all →</Text>
-          </Pressable>
-        </View>
+      <View style={styles.sectionCard}>
+        <SectionHead
+          eyebrow="MODERATION"
+          title="Priority Queue"
+          count={pendingTotal}
+          linkLabel="View all"
+          onLink={() => router.push("/(admin)/approvals" as any)}
+        />
 
         {merged.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="checkmark-done-circle-outline" size={32} color={colors.olive[600]} />
-            <Text style={styles.emptyTitle}>Inbox Zero</Text>
-            <Text style={styles.emptySub}>All submissions have been approved or handled.</Text>
-          </View>
+          <EmptyBlock
+            icon="checkmark-done-outline"
+            title="Inbox zero"
+            sub="Every submission has been reviewed."
+          />
         ) : (
-          merged.map((row) => (
-            <ListRow
-              key={`${row.kind}-${row.id}`}
-              leftIcon={
-                <View style={[styles.queueIcon, { backgroundColor: kindBg(row.kind) }]}>
-                  <Ionicons name={kindIcon(row.kind)} size={15} color={kindFg(row.kind)} />
+          merged.map((row, i) => (
+            <View key={`${row.kind}-${row.id}`} style={[styles.queueRow, i > 0 && styles.rowDivider]}>
+              <View style={[styles.queueIcon, { backgroundColor: kindBg(row.kind) }]}>
+                <Ionicons name={kindIcon(row.kind)} size={17} color={kindFg(row.kind)} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle} numberOfLines={1}>
+                  {row.name}
+                </Text>
+                <View style={styles.rowMetaLine}>
+                  <View style={[styles.kindTag, { borderColor: kindFg(row.kind) + "33" }]}>
+                    <Text style={[styles.kindTagText, { color: kindFg(row.kind) }]}>
+                      {row.kind.toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.rowMeta}>{formatRelative(row.created_at)}</Text>
                 </View>
-              }
-              title={row.name}
-              subtitle={`${row.kind} · Submitted ${formatRelative(row.created_at)}`}
-              right={
-                <View style={styles.queueActions}>
-                  {row.kind === "Store" ? (
-                    <>
-                      <Pressable
-                        onPress={() =>
-                          Alert.alert("Approve Store", row.name, [
-                            { text: "Cancel", style: "cancel" },
-                            { text: "Approve", onPress: () => approveStoreM.mutate(row.id) },
-                          ])
-                        }
-                        style={[styles.iconBtn, styles.iconBtnApprove]}
-                      >
-                        <Ionicons name="checkmark" size={13} color="#fff" />
-                      </Pressable>
-                      <Pressable
-                        onPress={() =>
-                          Alert.alert("Reject Store", row.name, [
-                            { text: "Cancel", style: "cancel" },
-                            { text: "Reject", style: "destructive", onPress: () => rejectStoreM.mutate(row.id) },
-                          ])
-                        }
-                        style={styles.iconBtn}
-                      >
-                        <Ionicons name="close" size={13} color={colors.light.destructive} />
-                      </Pressable>
-                    </>
-                  ) : row.kind === "Brand" ? (
-                    <Pressable
-                      onPress={() =>
-                        Alert.alert("Approve Brand", row.name, [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Approve", onPress: () => approveBrandM.mutate(row.id) },
-                        ])
-                      }
-                      style={[styles.iconBtn, styles.iconBtnApprove]}
-                    >
-                      <Ionicons name="checkmark" size={13} color="#fff" />
-                    </Pressable>
-                  ) : (
-                    <Pressable
-                      onPress={() =>
-                        Alert.alert("Approve Product", row.name, [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Approve", onPress: () => approveProductM.mutate(row.id) },
-                        ])
-                      }
-                      style={[styles.iconBtn, styles.iconBtnApprove]}
-                    >
-                      <Ionicons name="checkmark" size={13} color="#fff" />
-                    </Pressable>
-                  )}
-                </View>
-              }
-            />
+              </View>
+              <View style={styles.queueActions}>
+                {row.kind === "Store" ? (
+                  <Pressable
+                    onPress={() => confirmRejectStore(row)}
+                    hitSlop={6}
+                    style={({ pressed }) => [styles.rejectBtn, pressed && styles.pressed]}
+                  >
+                    <Ionicons name="close" size={15} color={colors.light.destructive} />
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => confirmApprove(row)}
+                  hitSlop={6}
+                  style={({ pressed }) => [pressed && styles.pressed]}
+                >
+                  <LinearGradient
+                    colors={[colors.olive[500], colors.olive[700]]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.approveBtn}
+                  >
+                    <Ionicons name="checkmark" size={16} color={colors.paper.cream} />
+                  </LinearGradient>
+                </Pressable>
+              </View>
+            </View>
           ))
         )}
-      </Card>
+      </View>
 
-      {/* ── 4. Operational Health & Telemetry (2x2 Grid) ───────── */}
+      {/* ── 4. Operational Health (2x2 ring gauges) ─────────────── */}
+      <View style={styles.gridHeader}>
+        <Text style={styles.sectionEyebrow}>TELEMETRY</Text>
+        <Text style={styles.sectionTitle}>Operational Health</Text>
+      </View>
       <View style={styles.telemetryGrid}>
-        <View style={styles.telemetryCard}>
-          <View style={styles.telemetryTop}>
-            <Text style={styles.telemetryLabel}>STORE ACTIVATION</Text>
-            <View style={[styles.telemetryIcon, { backgroundColor: "#dde4d6" }]}>
-              <Ionicons name="storefront-outline" size={13} color={colors.olive[800]} />
-            </View>
-          </View>
-          <Text style={styles.telemetryValue}>{activeStoreRate.toFixed(0)}%</Text>
-          <Text style={styles.telemetrySub}>{s?.activeStores ?? 0} of {s?.stores ?? 0} stores live</Text>
-          <ProgressBar value={activeStoreRate} fillColor={colors.olive[600]} style={{ marginTop: 8 }} />
-        </View>
-
-        <View style={styles.telemetryCard}>
-          <View style={styles.telemetryTop}>
-            <Text style={styles.telemetryLabel}>CUSTOMER SHARE</Text>
-            <View style={[styles.telemetryIcon, { backgroundColor: "#fdf3d7" }]}>
-              <Ionicons name="people-outline" size={13} color="#7a5b1a" />
-            </View>
-          </View>
-          <Text style={styles.telemetryValue}>{customerShare.toFixed(0)}%</Text>
-          <Text style={styles.telemetrySub}>{s?.customers ?? 0} purchasers</Text>
-          <ProgressBar value={customerShare} fillColor="#c8a44a" style={{ marginTop: 8 }} />
-        </View>
-
-        <View style={styles.telemetryCard}>
-          <View style={styles.telemetryTop}>
-            <Text style={styles.telemetryLabel}>LOW STOCK ALERT</Text>
-            <View style={[styles.telemetryIcon, { backgroundColor: "#fbe5dc" }]}>
-              <Ionicons name="alert-circle-outline" size={13} color="#7a2f1a" />
-            </View>
-          </View>
-          <Text style={[styles.telemetryValue, (lowStockQ.data?.length ?? 0) > 0 && { color: colors.light.destructive }]}>
-            {lowStockQ.data?.length ?? 0}
-          </Text>
-          <Text style={styles.telemetrySub}>Variants near limit</Text>
-          <ProgressBar
-            value={Math.min(100, (lowStockQ.data?.length ?? 0) * 20)}
-            fillColor={colors.light.destructive}
-            style={{ marginTop: 8 }}
-          />
-        </View>
-
-        <View style={styles.telemetryCard}>
-          <View style={styles.telemetryTop}>
-            <Text style={styles.telemetryLabel}>NEW ACCOUNTS</Text>
-            <View style={[styles.telemetryIcon, { backgroundColor: "#e6e6d0" }]}>
-              <Ionicons name="person-add-outline" size={13} color={colors.olive[700]} />
-            </View>
-          </View>
-          <Text style={styles.telemetryValue}>{signupsQ.data?.length ?? 0}</Text>
-          <Text style={styles.telemetrySub}>Recent registrations</Text>
-          <ProgressBar
-            value={Math.min(100, (signupsQ.data?.length ?? 0) * 25)}
-            fillColor={colors.olive[500]}
-            style={{ marginTop: 8 }}
-          />
-        </View>
+        <TelemetryCard
+          label="Store activation"
+          value={`${activeStoreRate.toFixed(0)}%`}
+          sub={`${s?.activeStores ?? 0} of ${s?.stores ?? 0} live`}
+          pct={activeStoreRate}
+          icon="storefront-outline"
+          color={colors.olive[600]}
+        />
+        <TelemetryCard
+          label="Customer share"
+          value={`${customerShare.toFixed(0)}%`}
+          sub={`${s?.customers ?? 0} purchasers`}
+          pct={customerShare}
+          icon="people-outline"
+          color={colors.accent2.ochre}
+        />
+        <TelemetryCard
+          label="Low stock"
+          value={String(lowStockCount)}
+          sub="Variants near limit"
+          pct={Math.min(100, lowStockCount * 20)}
+          icon="alert-circle-outline"
+          color={colors.accent2.rust}
+          alert={lowStockCount > 0}
+        />
+        <TelemetryCard
+          label="New accounts"
+          value={String(signupCount)}
+          sub="Recent registrations"
+          pct={Math.min(100, signupCount * 25)}
+          icon="person-add-outline"
+          color={colors.olive[400]}
+        />
       </View>
 
       {/* ── 5. Recent Orders Stream ────────────────────────────── */}
-      <Card style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>DISPATCH</Text>
-            <Text style={styles.sectionTitle}>Recent Orders</Text>
-          </View>
-          <Pressable onPress={() => router.push("/(admin)/orders" as any)} hitSlop={10}>
-            <Text style={styles.headerLink}>View all →</Text>
-          </Pressable>
-        </View>
+      <View style={styles.sectionCard}>
+        <SectionHead
+          eyebrow="DISPATCH"
+          title="Recent Orders"
+          linkLabel="View all"
+          onLink={() => router.push("/(admin)/orders" as any)}
+        />
 
         {(ordersQ.data ?? []).length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="receipt-outline" size={28} color={colors.light.mutedForeground} />
-            <Text style={styles.emptySub}>No orders received yet.</Text>
-          </View>
+          <EmptyBlock icon="receipt-outline" title="No orders yet" sub="New orders will stream in here." />
         ) : (
-          (ordersQ.data ?? []).map((o: any, i: number) => (
-            <Pressable
-              key={o.id}
-              onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: o.id } })}
-            >
-              <ListRow
-                index={i + 1}
-                title={o.user?.full_name ?? "Direct Customer"}
-                subtitle={`#${o.order_number ?? o.id.slice(0, 8)} · ${formatRelative(o.placed_at)}`}
-                right={
-                  <View style={{ alignItems: "flex-end", gap: 3 }}>
-                    <Text style={styles.orderAmount}>{formatPrice(Number(o.total ?? 0), o.currency ?? "LKR")}</Text>
-                    <View style={[styles.statusPill, { backgroundColor: pillBg(STATUS_TONE[o.status] ?? "muted") }]}>
-                      <Text style={[styles.statusPillText, { color: pillFg(STATUS_TONE[o.status] ?? "muted") }]}>
-                        {o.status}
-                      </Text>
-                    </View>
+          (ordersQ.data ?? []).map((o: any, i: number) => {
+            const tone = STATUS_TONE[o.status] ?? "muted";
+            const name = o.user?.full_name ?? "Direct Customer";
+            return (
+              <Pressable
+                key={o.id}
+                onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: o.id } })}
+                style={({ pressed }) => [styles.orderRow, i > 0 && styles.rowDivider, pressed && styles.rowPressed]}
+              >
+                <View style={styles.monogram}>
+                  <Text style={styles.monogramText}>{initials(name)}</Text>
+                </View>
+                <View style={styles.rowBody}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Text style={styles.rowMetaMono} numberOfLines={1}>
+                    #{o.order_number ?? o.id.slice(0, 8)} · {formatRelative(o.placed_at)}
+                  </Text>
+                </View>
+                <View style={{ alignItems: "flex-end", gap: 5 }}>
+                  <Text style={styles.orderAmount}>{formatPrice(Number(o.total ?? 0), o.currency ?? "LKR")}</Text>
+                  <View style={[styles.statusPill, { backgroundColor: pillBg(tone) }]}>
+                    <View style={[styles.statusPillDot, { backgroundColor: pillFg(tone) }]} />
+                    <Text style={[styles.statusPillText, { color: pillFg(tone) }]}>
+                      {String(o.status).replace(/_/g, " ")}
+                    </Text>
                   </View>
-                }
-              />
-            </Pressable>
-          ))
+                </View>
+              </Pressable>
+            );
+          })
         )}
-      </Card>
+      </View>
 
-      {/* ── 6. Activity & Security Stream ──────────────────────── */}
-      <Card style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>AUDIT LOG</Text>
-            <Text style={styles.sectionTitle}>Live Activity</Text>
-          </View>
-          <Pressable onPress={() => router.push("/(admin)/audit-log" as any)} hitSlop={10}>
-            <Text style={styles.headerLink}>Stream →</Text>
-          </Pressable>
-        </View>
+      {/* ── 6. Activity Timeline ───────────────────────────────── */}
+      <View style={styles.sectionCard}>
+        <SectionHead
+          eyebrow="AUDIT LOG"
+          title="Live Activity"
+          linkLabel="Stream"
+          onLink={() => router.push("/(admin)/audit-log" as any)}
+        />
 
         {(auditQ.data ?? []).length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Ionicons name="time-outline" size={28} color={colors.light.mutedForeground} />
-            <Text style={styles.emptySub}>No recent system activity recorded.</Text>
-          </View>
+          <EmptyBlock icon="time-outline" title="All quiet" sub="No recent system activity recorded." />
         ) : (
-          (auditQ.data ?? []).map((e: any) => (
-            <ListRow
-              key={e.id}
-              leftIcon={<View style={[styles.auditDot, { backgroundColor: auditColor(e.action) }]} />}
-              title={e.actor_name ?? "Administrator"}
-              subtitle={humanize(e.action)}
-              meta={formatRelative(e.created_at)}
-            />
+          (auditQ.data ?? []).map((e: any, i: number, arr: any[]) => (
+            <View key={e.id} style={styles.timelineRow}>
+              <View style={styles.timelineRail}>
+                <View style={[styles.timelineDotOuter, { borderColor: auditColor(e.action) + "55" }]}>
+                  <View style={[styles.timelineDot, { backgroundColor: auditColor(e.action) }]} />
+                </View>
+                {i < arr.length - 1 ? <View style={styles.timelineLine} /> : null}
+              </View>
+              <View style={styles.timelineBody}>
+                <View style={styles.timelineHead}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {humanize(e.action)}
+                  </Text>
+                  <Text style={styles.timelineTime}>{formatRelative(e.created_at)}</Text>
+                </View>
+                <Text style={styles.rowMeta} numberOfLines={1}>
+                  by {e.actor_name ?? "Administrator"}
+                </Text>
+              </View>
+            </View>
           ))
         )}
-      </Card>
+      </View>
 
-      {/* ── 7. Console Navigation Grid ─────────────────────────── */}
-      <Card style={[styles.sectionCard, { marginBottom: 24 }]}>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>NAVIGATION</Text>
-            <Text style={styles.sectionTitle}>Console Hub</Text>
+      {/* ── 7. Console Hub ─────────────────────────────────────── */}
+      <View style={styles.gridHeader}>
+        <Text style={styles.sectionEyebrow}>NAVIGATION</Text>
+        <Text style={styles.sectionTitle}>Console Hub</Text>
+      </View>
+      <View style={styles.hubGrid}>
+        <HubTile label="Analytics" sub="Revenue & telemetry" icon="bar-chart-outline" tint={colors.olive[600]} onPress={() => router.push("/(admin)/analytics" as any)} />
+        <HubTile label="Delivery" sub="Riders & dispatches" icon="car-outline" tint={colors.accent2.ochre} onPress={() => router.push("/(admin)/delivery" as any)} />
+        <HubTile label="Couriers" sub="3PL integrations" icon="bicycle-outline" tint={colors.accent2.rust} onPress={() => router.push("/(admin)/courier" as any)} />
+        <HubTile label="Commissions" sub="Payout rates & tiers" icon="wallet-outline" tint={colors.olive[500]} onPress={() => router.push("/(admin)/commissions" as any)} />
+        <HubTile label="Homepage CMS" sub="Sections & layout" icon="globe-outline" tint={colors.ink.soft} onPress={() => router.push("/(admin)/homepage" as any)} />
+        <HubTile label="Gift Cards" sub="Codes & balances" icon="gift-outline" tint="#8a6a2a" onPress={() => router.push("/(admin)/gift-cards" as any)} />
+      </View>
+    </ScrollView>
+  );
+}
+
+/* ───────────────────────── Components ───────────────────────── */
+
+const GOLD_LIGHT = "#e8d496";
+
+function QuickAction({
+  label,
+  icon,
+  count,
+  highlight,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  count?: number;
+  highlight?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.quickAction, highlight && styles.quickActionHighlight, pressed && styles.pressed]}
+    >
+      <View style={[styles.quickIcon, highlight && styles.quickIconHighlight]}>
+        <Ionicons name={icon} size={17} color={highlight ? "#7a5b1a" : colors.olive[700]} />
+        {count ? (
+          <View style={styles.quickBadge}>
+            <Text style={styles.quickBadgeText}>{count > 99 ? "99+" : count}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={[styles.quickLabel, highlight && { color: "#7a5b1a" }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function HeroMetric({
+  icon,
+  label,
+  value,
+  total,
+  sub,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  total?: number;
+  sub: string;
+}) {
+  return (
+    <View style={styles.heroMetric}>
+      <View style={styles.heroMetricTop}>
+        <Ionicons name={icon} size={11} color="rgba(232,212,150,0.75)" />
+        <Text style={styles.heroMetricLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={styles.heroMetricValue} numberOfLines={1}>
+        {value}
+        {total !== undefined ? <Text style={styles.heroMetricTotal}> / {total}</Text> : null}
+      </Text>
+      <Text style={styles.heroMetricSub} numberOfLines={1}>
+        {sub}
+      </Text>
+    </View>
+  );
+}
+
+function SectionHead({
+  eyebrow,
+  title,
+  count,
+  linkLabel,
+  onLink,
+}: {
+  eyebrow: string;
+  title: string;
+  count?: number;
+  linkLabel?: string;
+  onLink?: () => void;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {count ? (
+            <View style={styles.sectionCount}>
+              <Text style={styles.sectionCountText}>{count}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      {linkLabel && onLink ? (
+        <Pressable onPress={onLink} hitSlop={10} style={({ pressed }) => [styles.linkPill, pressed && styles.pressed]}>
+          <Text style={styles.linkPillText}>{linkLabel}</Text>
+          <Ionicons name="arrow-forward" size={12} color={colors.olive[700]} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function EmptyBlock({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }) {
+  return (
+    <View style={styles.emptyWrap}>
+      <View style={styles.emptyIcon}>
+        <Ionicons name={icon} size={22} color={colors.olive[600]} />
+      </View>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptySub}>{sub}</Text>
+    </View>
+  );
+}
+
+function RingGauge({ pct, color, size = 46, stroke = 4 }: { pct: number; color: string; size?: number; stroke?: number }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct || 0));
+  return (
+    <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
+      <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.light.muted} strokeWidth={stroke} fill="none" />
+      <Circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        stroke={color}
+        strokeWidth={stroke}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={`${c} ${c}`}
+        strokeDashoffset={c * (1 - clamped / 100)}
+      />
+    </Svg>
+  );
+}
+
+function TelemetryCard({
+  label,
+  value,
+  sub,
+  pct,
+  icon,
+  color,
+  alert,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  pct: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  alert?: boolean;
+}) {
+  return (
+    <View style={styles.telemetryCard}>
+      <View style={styles.telemetryTop}>
+        <View style={styles.ringWrap}>
+          <RingGauge pct={pct} color={color} />
+          <View style={styles.ringIcon}>
+            <Ionicons name={icon} size={15} color={color} />
           </View>
         </View>
-
-        <View style={styles.hubGrid}>
-          <HubTile
-            label="Analytics"
-            sub="Revenue & telemetry"
-            icon="bar-chart-outline"
-            bg="#dde4d6"
-            onPress={() => router.push("/(admin)/analytics" as any)}
-          />
-          <HubTile
-            label="Delivery"
-            sub="Riders & dispatches"
-            icon="car-outline"
-            bg="#fdf3d7"
-            onPress={() => router.push("/(admin)/delivery" as any)}
-          />
-          <HubTile
-            label="Couriers"
-            sub="3PL Integrations"
-            icon="bicycle-outline"
-            bg="#fbe5dc"
-            onPress={() => router.push("/(admin)/courier" as any)}
-          />
-          <HubTile
-            label="Commissions"
-            sub="Payout rates & tiers"
-            icon="wallet-outline"
-            bg="#e6e6d0"
-            onPress={() => router.push("/(admin)/commissions" as any)}
-          />
-          <HubTile
-            label="Homepage CMS"
-            sub="Sections & layout"
-            icon="globe-outline"
-            bg="#efece2"
-            onPress={() => router.push("/(admin)/homepage" as any)}
-          />
-          <HubTile
-            label="Gift Cards"
-            sub="Codes & balances"
-            icon="gift-outline"
-            bg="#d4d4b5"
-            onPress={() => router.push("/(admin)/gift-cards" as any)}
-          />
-        </View>
-      </Card>
-    </ScrollView>
+        {alert ? (
+          <View style={styles.alertChip}>
+            <Text style={styles.alertChipText}>ALERT</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={[styles.telemetryValue, alert && { color: colors.accent2.rust }]}>{value}</Text>
+      <Text style={styles.telemetryLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.telemetrySub} numberOfLines={1}>
+        {sub}
+      </Text>
+    </View>
   );
 }
 
@@ -601,24 +762,51 @@ function HubTile({
   label,
   sub,
   icon,
-  bg,
+  tint,
   onPress,
 }: {
   label: string;
   sub: string;
   icon: keyof typeof Ionicons.glyphMap;
-  bg: string;
+  tint: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.hubTile}>
-      <View style={[styles.hubIconWrap, { backgroundColor: bg }]}>
-        <Ionicons name={icon} size={18} color={colors.light.foreground} />
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.hubTile, pressed && styles.pressed]}>
+      <View style={styles.hubTop}>
+        <View style={[styles.hubIconWrap, { backgroundColor: tint + "1A", borderColor: tint + "33" }]}>
+          <Ionicons name={icon} size={18} color={tint} />
+        </View>
+        <Ionicons name="arrow-forward" size={14} color={colors.light.mutedForeground} style={styles.hubArrow} />
       </View>
-      <Text style={styles.hubLabel} numberOfLines={1}>{label}</Text>
-      <Text style={styles.hubSub} numberOfLines={1}>{sub}</Text>
+      <Text style={styles.hubLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.hubSub} numberOfLines={1}>
+        {sub}
+      </Text>
     </Pressable>
   );
+}
+
+/* ───────────────────────── Helpers ───────────────────────── */
+
+function greetingFor(h: number) {
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function splitCurrency(formatted: string) {
+  const m = formatted.match(/^([A-Za-z]{2,4}|[^\d\s-]+)\s?(.+)$/);
+  if (!m) return { currency: "", amount: formatted };
+  return { currency: m[1], amount: m[2] };
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  return ((parts[0][0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
 function kindIcon(kind: string): keyof typeof Ionicons.glyphMap {
@@ -631,26 +819,26 @@ function kindIcon(kind: string): keyof typeof Ionicons.glyphMap {
 
 function kindBg(kind: string) {
   switch (kind) {
-    case "Store": return "#dde4d6";
-    case "Brand": return "#fdf3d7";
-    default: return "#fbe5dc";
+    case "Store": return "#e4e9dc";
+    case "Brand": return "#fbf1d6";
+    default: return "#f9e6dd";
   }
 }
 
 function kindFg(kind: string) {
   switch (kind) {
-    case "Store": return colors.olive[800];
-    case "Brand": return "#7a5b1a";
-    default: return "#7a2f1a";
+    case "Store": return colors.olive[700];
+    case "Brand": return "#8a6a2a";
+    default: return "#a14a2c";
   }
 }
 
 function pillBg(tone: string) {
   switch (tone) {
-    case "success": return "#dce8c4";
-    case "warning": return "#fdf3d7";
-    case "danger": return "#fbe5dc";
-    case "info": return "#dde4d6";
+    case "success": return "#e3ecd0";
+    case "warning": return "#fbf1d6";
+    case "danger": return "#f9e6dd";
+    case "info": return "#e4e9dc";
     default: return colors.light.secondary;
   }
 }
@@ -658,8 +846,8 @@ function pillBg(tone: string) {
 function pillFg(tone: string) {
   switch (tone) {
     case "success": return "#3d4a1f";
-    case "warning": return "#7a5b1a";
-    case "danger": return "#7a2f1a";
+    case "warning": return "#8a6a2a";
+    case "danger": return "#a14a2c";
     case "info": return colors.olive[700];
     default: return colors.light.mutedForeground;
   }
@@ -672,444 +860,681 @@ function humanize(s: string) {
 function auditColor(action: string) {
   if (action.includes("delete") || action.includes("reject") || action.includes("ban")) return colors.light.destructive;
   if (action.includes("create") || action.includes("approve")) return colors.olive[600];
-  if (action.includes("update")) return "#c8a44a";
-  return colors.light.muted;
+  if (action.includes("update")) return colors.accent2.ochre;
+  return colors.olive[300];
 }
+
+/* ───────────────────────── Styles ───────────────────────── */
+
+const cardShadow = {
+  shadowColor: "#2c3119",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.07,
+  shadowRadius: 22,
+  elevation: 4,
+} as const;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingBottom: 120 },
+  content: { paddingBottom: 140 },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+  rowPressed: { opacity: 0.6 },
 
-  /* ── 1. Masthead ─────────────────────────────── */
+  /* ── Masthead ─────────────────────────────── */
   masthead: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 20,
-    backgroundColor: colors.paper.DEFAULT,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    ...shadows.soft,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   mastheadTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  liveIndicator: {
+  livePill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    backgroundColor: colors.olive[50],
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    gap: 6,
+    backgroundColor: colors.paper.cream,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radii.full,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.olive[200],
   },
-  liveText: {
+  livePillText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
-    color: colors.olive[800],
-    letterSpacing: 0.8,
+    color: colors.olive[700],
+    letterSpacing: 1.2,
   },
-  clockWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
+  clockWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
   clockText: {
     fontFamily: fontFamilies.mono.regular,
     fontSize: 10,
-    color: colors.light.mutedForeground,
+    color: colors.ink.mute,
+    letterSpacing: 0.2,
+  },
+  greeting: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.ink.mute,
+    marginTop: 22,
+  },
+  greetingName: {
+    fontFamily: fontFamilies.sans.bold,
+    color: colors.ink.soft,
   },
   headline: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    color: colors.light.foreground,
-    letterSpacing: -0.8,
-    lineHeight: 36,
-    marginTop: 12,
+    fontSize: 42,
+    color: colors.ink.DEFAULT,
+    letterSpacing: -1.4,
+    lineHeight: 48,
+    marginTop: 2,
   },
   headlineAccent: {
-    fontStyle: "italic",
+    fontFamily: fontFamilies.display.italic,
     color: colors.olive[600],
   },
-  subline: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    marginTop: 4,
-  },
-  quickPillsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  quickPill: {
+  mastheadRule: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
+    gap: 8,
+    marginTop: 10,
+  },
+  mastheadRuleAccent: {
+    width: 18,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.accent2.ochre,
+  },
+  mastheadRuleText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.6,
+    color: colors.ink.mute,
+  },
+  mastheadRuleLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.light.border,
+  },
+  quickRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+  },
+  quickAction: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 12,
+    gap: 8,
+    borderRadius: radii["2xl"],
+    backgroundColor: colors.paper.cream,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    ...cardShadow,
+    shadowOpacity: 0.05,
+  },
+  quickActionHighlight: {
+    backgroundColor: "#fdf6e2",
+    borderColor: "#ecd590",
+  },
+  quickIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.olive[50],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickIconHighlight: { backgroundColor: "#f7e7b4" },
+  quickBadge: {
+    position: "absolute",
+    top: -4,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: colors.accent2.rust,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fdf6e2",
+  },
+  quickBadgeText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9,
+    color: "#fff",
+  },
+  quickLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.ink.soft,
+  },
+
+  /* ── Hero ─────────────────────────────────── */
+  heroShell: {
+    marginHorizontal: 16,
+    marginTop: 22,
+    borderRadius: 26,
+    shadowColor: "#161a0a",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  heroSkeleton: {
+    padding: 22,
+    backgroundColor: colors.paper.cream,
     borderWidth: 1,
     borderColor: colors.light.border,
   },
-  quickPillHighlight: {
-    backgroundColor: "#fdf3d7",
-    borderColor: "#f5d97a",
-  },
-  quickPillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.light.primary,
-  },
-  quickPillTextHighlight: {
-    color: "#7a5b1a",
-  },
-
-  /* ── 2. Unified Executive Performance Deck ───── */
-  heroDeck: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    padding: 20,
-    backgroundColor: colors.olive[900],
-    borderRadius: radii.xl,
+  hero: {
+    borderRadius: 26,
+    padding: 22,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: colors.olive[800],
-    ...shadows.soft,
+    borderColor: "rgba(232,212,150,0.16)",
   },
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  heroHairline: {
+    position: "absolute",
+    top: 0,
+    left: 40,
+    right: 40,
+    height: 1,
+    backgroundColor: "rgba(232,212,150,0.45)",
   },
+  heroTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   heroIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(232,212,150,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(232,212,150,0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
   heroEyebrow: {
-    flex: 1,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: "rgba(244,242,234,0.62)",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    color: "rgba(244,242,234,0.78)",
+    letterSpacing: 1.6,
+  },
+  heroEyebrowSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 10.5,
+    color: "rgba(244,242,234,0.45)",
+    marginTop: 1,
   },
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: colors.accent2.ochre,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: radii.full,
   },
   heroBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
-    color: colors.olive[800],
-    letterSpacing: 0.6,
+    color: colors.olive[900],
+    letterSpacing: 1,
+  },
+  heroCurrency: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 12,
+    color: GOLD_LIGHT,
+    letterSpacing: 1.6,
+    marginTop: 22,
   },
   heroMainValue: {
+    alignSelf: "stretch",
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 34,
+    fontSize: 44,
+    lineHeight: 50,
     color: colors.paper.cream,
-    letterSpacing: -0.8,
-    marginTop: 10,
+    letterSpacing: -1.4,
   },
   heroSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "rgba(244,242,234,0.62)",
+    fontSize: 12,
+    color: "rgba(244,242,234,0.55)",
     marginTop: 2,
   },
-  heroTripleRow: {
+  heroMetrics: {
     flexDirection: "row",
-    marginTop: 18,
-    paddingTop: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(244,242,234,0.14)",
+    gap: 8,
+    marginTop: 22,
   },
-  tripleCol: {
+  heroMetric: {
     flex: 1,
+    padding: 11,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(244,242,234,0.09)",
   },
-  tripleDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: "rgba(244,242,234,0.14)",
-    marginHorizontal: 10,
-    alignSelf: "center",
-  },
-  tripleLabel: {
+  heroMetricTop: { flexDirection: "row", alignItems: "center", gap: 5 },
+  heroMetricLabel: {
+    flexShrink: 1,
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: "rgba(244,242,234,0.5)",
-    letterSpacing: 0.8,
+    fontSize: 8,
+    color: "rgba(244,242,234,0.55)",
+    letterSpacing: 1,
   },
-  tripleValue: {
+  heroMetricValue: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontSize: 21,
     color: colors.paper.cream,
-    marginTop: 2,
+    marginTop: 8,
+    letterSpacing: -0.4,
   },
-  tripleTotal: {
+  heroMetricTotal: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
-    color: "rgba(244,242,234,0.5)",
+    color: "rgba(244,242,234,0.45)",
   },
-  tripleSub: {
+  heroMetricSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 10,
     color: "rgba(244,242,234,0.5)",
-    marginTop: 1,
+    marginTop: 2,
   },
   actionBanner: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#fdf3d7",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radii.lg,
+    gap: 12,
+    padding: 10,
+    paddingRight: 10,
+    borderRadius: 18,
     marginTop: 16,
-    borderWidth: 1,
-    borderColor: "#f5d97a",
   },
-  actionBannerLeft: {
-    flexDirection: "row",
+  actionBannerCount: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
-    gap: 6,
-    flex: 1,
+    justifyContent: "center",
   },
-  actionBannerText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#7a5b1a",
+  actionBannerCountText: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    color: GOLD_LIGHT,
+  },
+  actionBannerTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: "#5c4413",
+  },
+  actionBannerSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    color: "#8a6a2a",
+    marginTop: 1,
   },
   actionBannerBtn: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  actionBannerBtnText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: "#7a5b1a",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
   },
   nominalBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.lg,
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(232,212,150,0.14)",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 16,
     marginTop: 16,
   },
   nominalBannerText: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: "rgba(244,242,234,0.78)",
+    fontSize: 12,
+    color: "rgba(244,242,234,0.8)",
   },
 
-  /* ── 3. Section Cards ───────────────────────── */
+  /* ── Section cards ────────────────────────── */
   sectionCard: {
     marginHorizontal: 16,
-    marginTop: 14,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
+    marginTop: 16,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,
-    padding: 16,
-    ...shadows.soft,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 8,
+    ...cardShadow,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginBottom: 12,
+    marginBottom: 8,
   },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 },
   sectionEyebrow: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
-    color: colors.light.primary,
-    letterSpacing: 1.2,
+    color: colors.accent2.ochre,
+    letterSpacing: 1.8,
   },
   sectionTitle: {
     fontFamily: fontFamilies.display.regular,
-    fontSize: 18,
-    color: colors.light.foreground,
-    marginTop: 2,
+    fontSize: 22,
+    letterSpacing: -0.4,
+    color: colors.ink.DEFAULT,
   },
-  headerLink: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.primary,
+  sectionCount: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
   },
-  emptyWrap: {
-    paddingVertical: 24,
+  sectionCountText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 11,
+    color: GOLD_LIGHT,
+  },
+  linkPill: {
+    flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.olive[200],
   },
-  emptyTitle: {
+  linkPillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11.5,
+    color: colors.olive[700],
+  },
+  gridHeader: {
+    marginHorizontal: 20,
+    marginTop: 26,
+    marginBottom: 2,
+  },
+
+  /* Rows */
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  rowBody: { flex: 1, minWidth: 0 },
+  rowTitle: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 14,
-    color: colors.light.foreground,
-    marginTop: 4,
+    color: colors.ink.DEFAULT,
+  },
+  rowMeta: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    color: colors.ink.mute,
+    marginTop: 2,
+  },
+  rowMetaMono: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10.5,
+    color: colors.ink.mute,
+    marginTop: 3,
+  },
+  rowMetaLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+
+  /* Queue */
+  queueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 13,
+  },
+  queueIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kindTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+  kindTagText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8.5,
+    letterSpacing: 0.8,
+  },
+  queueActions: { flexDirection: "row", gap: 8, alignItems: "center" },
+  approveBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.glow,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  rejectBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#efd3c8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* Empty */
+  emptyWrap: { paddingVertical: 26, alignItems: "center", gap: 4 },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.olive[50],
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.olive[200],
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  emptyTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 17,
+    color: colors.ink.DEFAULT,
   },
   emptySub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
-    color: colors.light.mutedForeground,
+    color: colors.ink.mute,
     textAlign: "center",
   },
-  queueIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  queueActions: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  iconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
-    backgroundColor: colors.light.background,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconBtnApprove: {
-    backgroundColor: colors.olive[600],
-    borderColor: colors.olive[600],
-  },
 
-  /* ── 4. Telemetry 2x2 Grid ──────────────────── */
+  /* ── Telemetry ────────────────────────────── */
   telemetryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     paddingHorizontal: 16,
-    gap: 10,
-    marginTop: 14,
+    gap: 12,
+    marginTop: 12,
   },
   telemetryCard: {
-    width: "48%",
+    width: "47%",
     flexGrow: 1,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    padding: 14,
-    borderWidth: 1,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,
-    ...shadows.soft,
+    ...cardShadow,
   },
   telemetryTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
   },
-  telemetryLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.8,
-  },
-  telemetryIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+  ringWrap: { width: 46, height: 46 },
+  ringIcon: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+  },
+  alertChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    backgroundColor: "#f9e6dd",
+  },
+  alertChipText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8,
+    letterSpacing: 0.8,
+    color: colors.accent2.rust,
   },
   telemetryValue: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: colors.light.foreground,
-    letterSpacing: -0.4,
-    marginTop: 8,
+    fontSize: 30,
+    color: colors.ink.DEFAULT,
+    letterSpacing: -0.8,
+    marginTop: 14,
+  },
+  telemetryLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: colors.ink.soft,
+    marginTop: 2,
   },
   telemetrySub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
+    fontSize: 11,
+    color: colors.ink.mute,
+    marginTop: 1,
   },
 
-  /* ── 5. Orders Stream ───────────────────────── */
+  /* ── Orders ───────────────────────────────── */
+  orderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 13,
+  },
+  monogram: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.olive[900],
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(200,164,74,0.55)",
+  },
+  monogramText: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 14,
+    color: GOLD_LIGHT,
+  },
   orderAmount: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontSize: 14,
+    color: colors.ink.DEFAULT,
   },
   statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 2.5,
     borderRadius: radii.full,
   },
+  statusPillDot: { width: 5, height: 5, borderRadius: 3 },
   statusPillText: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.5,
+    fontSize: 8.5,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
   },
 
-  /* ── 6. Audit Dot ───────────────────────────── */
-  auditDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 4,
+  /* ── Timeline ─────────────────────────────── */
+  timelineRow: { flexDirection: "row", gap: 12 },
+  timelineRail: { width: 18, alignItems: "center", paddingTop: 14 },
+  timelineDotOuter: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  timelineDot: { width: 7, height: 7, borderRadius: 4 },
+  timelineLine: {
+    flex: 1,
+    width: 1,
+    backgroundColor: colors.light.border,
+    marginTop: 4,
+  },
+  timelineBody: { flex: 1, paddingVertical: 12, minWidth: 0 },
+  timelineHead: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "space-between" },
+  timelineTime: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: colors.ink.mute,
   },
 
-  /* ── 7. Console Hub Grid ────────────────────── */
+  /* ── Hub ──────────────────────────────────── */
   hubGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginTop: 4,
+    gap: 12,
+    paddingHorizontal: 16,
+    marginTop: 12,
   },
   hubTile: {
-    width: "48%",
+    width: "47%",
     flexGrow: 1,
-    backgroundColor: colors.light.background,
-    borderRadius: radii.lg,
-    borderWidth: 1,
+    backgroundColor: colors.paper.cream,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,
-    padding: 12,
-    gap: 3,
+    padding: 14,
+    ...cardShadow,
+    shadowOpacity: 0.05,
   },
+  hubTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
   hubIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
   },
+  hubArrow: { transform: [{ rotate: "-45deg" }] },
   hubLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.ink.DEFAULT,
   },
   hubSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
-    color: colors.light.mutedForeground,
+    fontSize: 11,
+    color: colors.ink.mute,
+    marginTop: 2,
   },
 });
-

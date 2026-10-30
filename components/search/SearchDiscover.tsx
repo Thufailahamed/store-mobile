@@ -1,30 +1,55 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
+import { useQuery } from "@tanstack/react-query";
+import * as api from "@/lib/api";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 
+const GOLD = colors.accent2.ochre;
+const CREAM = colors.paper.cream;
+const INK = colors.ink.DEFAULT;
+
 const TRENDING = [
-  "Linen blazer",
-  "Leather loafers",
-  "Silk scarf",
-  "Resort '26",
-  "Vintage denim",
-  "Hoodie",
+  { term: "Linen blazer", delta: "+248%" },
+  { term: "Leather loafers", delta: "+182%" },
+  { term: "Silk scarf", delta: "+131%" },
+  { term: "Resort '26", delta: "+96%" },
+  { term: "Vintage denim", delta: "+74%" },
+  { term: "Hoodie", delta: "+58%" },
 ];
 
-const QUICK_CATEGORIES = [
-  { label: "Women", slug: "women", icon: "woman-outline" as const },
-  { label: "Men", slug: "men", icon: "man-outline" as const },
-  { label: "Footwear", slug: "footwear", icon: "footsteps-outline" as const },
-  { label: "Accessories", slug: "accessories", icon: "glasses-outline" as const },
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+const QUICK_CATEGORIES: {
+  label: string;
+  slug: string;
+  icon: IconName;
+  caption: string;
+  gradient: [string, string];
+  dark: boolean;
+}[] = [
+  { label: "Women", slug: "women", icon: "woman-outline", caption: "New season", gradient: [colors.olive[700], colors.olive[950]], dark: true },
+  { label: "Men", slug: "men", icon: "man-outline", caption: "Tailoring & more", gradient: ["#efe7d6", "#dccfb4"], dark: false },
+  { label: "Footwear", slug: "footwear", icon: "footsteps-outline", caption: "Crafted soles", gradient: ["#e9d6c8", "#c99a7e"], dark: false },
+  { label: "Accessories", slug: "accessories", icon: "glasses-outline", caption: "Finishing touches", gradient: ["#2a2c1f", "#0f100b"], dark: true },
 ];
 
 type AiTool = {
   label: string;
   description: string;
-  icon: React.ComponentProps<typeof Ionicons>["name"];
+  icon: IconName;
   route?: string;
   action?: "visual";
 };
@@ -70,10 +95,149 @@ interface SearchDiscoverProps {
   onVisualSearch?: () => void;
 }
 
-function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
+type QuickCategory = (typeof QUICK_CATEGORIES)[number];
+
+/** Category photos keyed by slug (shared cache with any other category fetch). */
+function useDepartmentImages() {
+  return useQuery({
+    queryKey: ["categories", "all"],
+    queryFn: async () => {
+      const res = await api.getAllCategories();
+      return res.ok ? res.data : [];
+    },
+    staleTime: 10 * 60_000,
+    select: (cats) => {
+      const map: Record<string, string> = {};
+      for (const c of cats) if (c.slug && c.image_url) map[c.slug] = c.image_url;
+      return map;
+    },
+  });
+}
+
+function DeptTile({
+  cat,
+  index,
+  image,
+  variant,
+  onPress,
+}: {
+  cat: QuickCategory;
+  index: number;
+  image?: string;
+  variant: "tall" | "square" | "wide";
+  onPress: () => void;
+}) {
+  const wide = variant === "wide";
+  return (
+    <PressableScale
+      style={[styles.deptShadow, variant === "tall" ? styles.deptTall : variant === "wide" ? styles.deptWide : styles.deptSquare]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Shop ${cat.label}`}
+    >
+      <View style={styles.deptCard}>
+        {image ? (
+          <Image source={{ uri: image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
+        ) : (
+          <LinearGradient colors={cat.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill}>
+            <View style={styles.deptFallbackIcon}>
+              <Ionicons name={cat.icon} size={wide ? 56 : 48} color={cat.dark ? `${CREAM}2E` : `${INK}1F`} />
+            </View>
+          </LinearGradient>
+        )}
+        {/* Legibility scrim: bottom-up on tiles, left-to-right on the banner */}
+        <LinearGradient
+          colors={
+            wide
+              ? ["rgba(13,14,10,0.86)", "rgba(13,14,10,0.45)", "rgba(13,14,10,0)"]
+              : ["rgba(13,14,10,0.18)", "rgba(13,14,10,0)", "rgba(13,14,10,0.78)"]
+          }
+          locations={wide ? [0, 0.5, 1] : [0, 0.38, 1]}
+          start={wide ? { x: 0, y: 0.5 } : { x: 0.5, y: 0 }}
+          end={wide ? { x: 1, y: 0.5 } : { x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.deptHairline} pointerEvents="none" />
+
+        <View style={styles.deptTopRow}>
+          <Text style={styles.deptIndex}>{String(index + 1).padStart(2, "0")}</Text>
+          <View style={styles.deptGlassArrow}>
+            <Ionicons name="arrow-forward" size={14} color={CREAM} />
+          </View>
+        </View>
+
+        <View style={wide ? styles.deptCopyWide : undefined}>
+          <Text style={[styles.deptLabel, variant === "tall" && styles.deptLabelTall]} numberOfLines={1}>
+            {cat.label}
+          </Text>
+          <Text style={styles.deptCaption} numberOfLines={1}>
+            {cat.caption}
+          </Text>
+          {variant !== "square" ? (
+            <View style={styles.deptCta}>
+              <Text style={styles.deptCtaText}>Shop now</Text>
+              <View style={styles.deptCtaRule} />
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </PressableScale>
+  );
+}
+
+/**
+ * Department bento — tall lead tile, two stacked squares, and a wide
+ * banner. Photos come from the category records; each tile falls back to
+ * its tonal gradient + icon when a category has no image yet.
+ */
+function DepartmentBento({ onOpen }: { onOpen: (slug: string) => void }) {
+  const { data: images = {} } = useDepartmentImages();
+  const [lead, a, b, wide] = QUICK_CATEGORIES;
+  return (
+    <View style={styles.deptBento}>
+      <View style={styles.deptRow}>
+        <DeptTile cat={lead} index={0} image={images[lead.slug]} variant="tall" onPress={() => onOpen(lead.slug)} />
+        <View style={styles.deptCol}>
+          <DeptTile cat={a} index={1} image={images[a.slug]} variant="square" onPress={() => onOpen(a.slug)} />
+          <DeptTile cat={b} index={2} image={images[b.slug]} variant="square" onPress={() => onOpen(b.slug)} />
+        </View>
+      </View>
+      <DeptTile cat={wide} index={3} image={images[wide.slug]} variant="wide" onPress={() => onOpen(wide.slug)} />
+    </View>
+  );
+}
+
+function PressableScale({
+  style,
+  children,
+  scale = 0.97,
+  ...rest
+}: React.ComponentProps<typeof Pressable> & { style?: StyleProp<ViewStyle>; scale?: number }) {
+  return (
+    <Pressable
+      {...rest}
+      style={({ pressed }) => [style, pressed && { transform: [{ scale }], opacity: 0.92 }]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  action?: React.ReactNode;
+}) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionHeaderText}>
+        <Text style={styles.eyebrow}>{eyebrow}</Text>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
       {action}
     </View>
   );
@@ -87,6 +251,12 @@ export function SearchDiscover({
 }: SearchDiscoverProps) {
   const router = useRouter();
   const aiTools = AI_TOOLS.filter((t) => t.action !== "visual" || onVisualSearch);
+  const [featuredTool, ...otherTools] = aiTools;
+
+  const runTool = (item: AiTool) => {
+    if (item.action === "visual") onVisualSearch?.();
+    else if (item.route) router.push(item.route as never);
+  };
 
   return (
     <ScrollView
@@ -95,19 +265,28 @@ export function SearchDiscover({
       keyboardDismissMode="on-drag"
       contentContainerStyle={styles.content}
     >
+      <View style={styles.hero}>
+        <Text style={styles.heroEyebrow}>THE LUXE EDIT</Text>
+        <Text style={styles.heroTitle}>
+          What are you <Text style={styles.heroTitleItalic}>looking for</Text> today?
+        </Text>
+      </View>
+
       {recentSearches.length > 0 ? (
         <View style={styles.section}>
           <SectionHeader
+            eyebrow="Your history"
             title="Recent searches"
             action={
-              <TouchableOpacity
+              <Pressable
                 onPress={onClearRecent}
                 hitSlop={10}
+                style={({ pressed }) => [styles.clearBtn, pressed && { opacity: 0.6 }]}
                 accessibilityRole="button"
                 accessibilityLabel="Clear recent searches"
               >
                 <Text style={styles.clearText}>Clear all</Text>
-              </TouchableOpacity>
+              </Pressable>
             }
           />
           <ScrollView
@@ -118,107 +297,147 @@ export function SearchDiscover({
             style={styles.bleed}
           >
             {recentSearches.slice(0, 8).map((term) => (
-              <TouchableOpacity
+              <PressableScale
                 key={term}
-                style={styles.chip}
+                style={styles.recentChip}
                 onPress={() => onSearch(term)}
-                activeOpacity={0.78}
                 accessibilityRole="button"
                 accessibilityLabel={`Search ${term}`}
               >
-                <Ionicons name="time-outline" size={14} color={colors.light.mutedForeground} />
-                <Text style={styles.chipText} numberOfLines={1}>{term}</Text>
-              </TouchableOpacity>
+                <View style={styles.recentChipIcon}>
+                  <Ionicons name="time-outline" size={12} color={colors.olive[700]} />
+                </View>
+                <Text style={styles.recentChipText} numberOfLines={1}>{term}</Text>
+                <Ionicons name="arrow-up-outline" size={13} color={colors.light.mutedForeground} style={styles.recentChipArrow} />
+              </PressableScale>
             ))}
           </ScrollView>
         </View>
       ) : null}
 
       <View style={styles.section}>
-        <SectionHeader title="Trending now" />
-        <View style={styles.chipWrap}>
-          {TRENDING.map((term, index) => (
-            <TouchableOpacity
-              key={term}
-              style={[styles.chip, index < 3 && styles.chipHot]}
-              onPress={() => onSearch(term)}
-              activeOpacity={0.78}
-              accessibilityRole="button"
-              accessibilityLabel={`Search ${term}`}
-            >
-              {index < 3 ? (
-                <Ionicons name="flame" size={13} color={colors.accent2.rust} />
-              ) : (
-                <Ionicons name="trending-up" size={14} color={colors.olive[600]} />
-              )}
-              <Text style={styles.chipText}>{term}</Text>
-            </TouchableOpacity>
-          ))}
+        <SectionHeader
+          eyebrow="This week"
+          title="Trending now"
+          action={
+            <View style={styles.livePill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>Live</Text>
+            </View>
+          }
+        />
+        <View style={styles.trendCard}>
+          {TRENDING.map((item, index) => {
+            const hot = index < 3;
+            return (
+              <PressableScale
+                key={item.term}
+                scale={0.985}
+                style={[styles.trendRow, index > 0 && styles.trendRowDivider]}
+                onPress={() => onSearch(item.term)}
+                accessibilityRole="button"
+                accessibilityLabel={`Search ${item.term}`}
+              >
+                <Text style={[styles.trendRank, hot && styles.trendRankHot]}>
+                  {String(index + 1).padStart(2, "0")}
+                </Text>
+                <View style={styles.trendBody}>
+                  <Text style={styles.trendTerm} numberOfLines={1}>{item.term}</Text>
+                  {hot ? (
+                    <View style={styles.hotPill}>
+                      <Ionicons name="flame" size={10} color={colors.accent2.rust} />
+                      <Text style={styles.hotText}>Hot</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.trendDelta}>
+                  <Ionicons name="trending-up" size={12} color={colors.olive[600]} />
+                  <Text style={styles.trendDeltaText}>{item.delta}</Text>
+                </View>
+              </PressableScale>
+            );
+          })}
         </View>
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title="Shop by department" />
-        <View style={styles.categoryRow}>
-          {QUICK_CATEGORIES.map((cat) => (
-            <TouchableOpacity
-              key={cat.slug}
-              style={styles.categoryTile}
-              onPress={() => router.push(`/(main)/products?category=${cat.slug}`)}
-              activeOpacity={0.78}
-              accessibilityRole="button"
-              accessibilityLabel={`Shop ${cat.label}`}
-            >
-              <View style={styles.categoryIcon}>
-                <Ionicons name={cat.icon} size={22} color={colors.olive[800]} />
-              </View>
-              <Text
-                style={styles.categoryText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.85}
-              >
-                {cat.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <SectionHeader eyebrow="Explore" title="Shop by department" />
+        <DepartmentBento onOpen={(slug) => router.push(`/(main)/products?category=${slug}`)} />
       </View>
 
-      <View style={styles.aiPanel}>
-        <View style={styles.aiHeader}>
-          <View style={styles.aiBadge}>
-            <Ionicons name="sparkles" size={15} color={colors.accent2.ochre} />
-          </View>
-          <View style={styles.aiHeaderText}>
-            <Text style={styles.aiTitle}>Search smarter with LUXE AI</Text>
+      <View style={styles.aiShadow}>
+        <LinearGradient
+          colors={["#22271a", colors.olive[950], "#0b0c07"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.aiPanel}
+        >
+          <View style={styles.aiGlowA} />
+          <View style={styles.aiGlowB} />
+
+          <View style={styles.aiHeader}>
+            <View style={styles.aiBrandRow}>
+              <LinearGradient
+                colors={["#e6c873", GOLD, "#9c7a2c"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.aiBadge}
+              >
+                <Ionicons name="sparkles" size={14} color={colors.olive[950]} />
+              </LinearGradient>
+              <Text style={styles.aiBrand}>LUXE AI</Text>
+              <View style={styles.aiNewPill}>
+                <Text style={styles.aiNewText}>NEW</Text>
+              </View>
+            </View>
+            <Text style={styles.aiTitle}>
+              Search <Text style={styles.aiTitleItalic}>smarter</Text>, not harder
+            </Text>
             <Text style={styles.aiSubtitle}>Find it faster — by chat, description or photo</Text>
           </View>
-        </View>
-        <View style={styles.aiList}>
-          {aiTools.map((item, index) => (
-            <TouchableOpacity
-              key={item.label}
-              style={[styles.aiRow, index > 0 && styles.aiRowDivider]}
-              onPress={() => {
-                if (item.action === "visual") onVisualSearch?.();
-                else if (item.route) router.push(item.route as never);
-              }}
-              activeOpacity={0.7}
+
+          {featuredTool ? (
+            <PressableScale
+              style={styles.aiFeatured}
+              onPress={() => runTool(featuredTool)}
               accessibilityRole="button"
-              accessibilityLabel={`${item.label}. ${item.description}`}
+              accessibilityLabel={`${featuredTool.label}. ${featuredTool.description}`}
             >
-              <View style={styles.aiIcon}>
-                <Ionicons name={item.icon} size={17} color={colors.accent2.ochre} />
+              <View style={styles.aiFeaturedIcon}>
+                <Ionicons name={featuredTool.icon} size={20} color={colors.olive[950]} />
               </View>
               <View style={styles.aiRowText}>
-                <Text style={styles.aiCardTitle}>{item.label}</Text>
-                <Text style={styles.aiCardDescription} numberOfLines={1}>{item.description}</Text>
+                <Text style={styles.aiFeaturedTitle}>{featuredTool.label}</Text>
+                <Text style={styles.aiFeaturedDescription} numberOfLines={1}>{featuredTool.description}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={`${colors.paper.cream}66`} />
-            </TouchableOpacity>
-          ))}
-        </View>
+              <View style={styles.aiFeaturedCta}>
+                <Text style={styles.aiFeaturedCtaText}>Start</Text>
+                <Ionicons name="arrow-forward" size={13} color={colors.olive[950]} />
+              </View>
+            </PressableScale>
+          ) : null}
+
+          <View style={styles.aiGrid}>
+            {otherTools.map((item) => (
+              <PressableScale
+                key={item.label}
+                style={styles.aiTile}
+                onPress={() => runTool(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label}. ${item.description}`}
+              >
+                <View style={styles.aiTileTop}>
+                  <View style={styles.aiIcon}>
+                    <Ionicons name={item.icon} size={17} color={GOLD} />
+                  </View>
+                  <Ionicons name="arrow-forward" size={14} color={`${CREAM}59`} style={styles.aiTileArrow} />
+                </View>
+                <Text style={styles.aiCardTitle} numberOfLines={1}>{item.label}</Text>
+                <Text style={styles.aiCardDescription} numberOfLines={2}>{item.description}</Text>
+              </PressableScale>
+            ))}
+          </View>
+        </LinearGradient>
       </View>
     </ScrollView>
   );
@@ -226,163 +445,486 @@ export function SearchDiscover({
 
 const styles = StyleSheet.create({
   content: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[16],
-    gap: spacing[7],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[6],
+    paddingBottom: spacing[20],
+    gap: spacing[8],
+  },
+  hero: {
+    gap: spacing[2],
+  },
+  heroEyebrow: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    letterSpacing: 2.4,
+    color: colors.olive[600],
+  },
+  heroTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.6,
+    color: INK,
+  },
+  heroTitleItalic: {
+    fontFamily: fontFamilies.display.italic,
+    color: colors.olive[600],
   },
   section: {
-    gap: spacing[3],
+    gap: spacing[4],
   },
   bleed: {
-    marginHorizontal: -spacing[4],
+    marginHorizontal: -spacing[5],
   },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
   },
-  sectionTitle: {
+  sectionHeaderText: {
+    gap: 3,
+  },
+  eyebrow: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
+    fontSize: 10.5,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    letterSpacing: -0.3,
+    color: INK,
+  },
+  clearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[600]}12`,
   },
   clearText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
     color: colors.olive[700],
   },
   chipRow: {
     gap: spacing[2],
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[5],
+    paddingVertical: 4,
   },
-  chipWrap: {
+  recentChip: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing[2],
+    alignItems: "center",
+    gap: 8,
+    height: 40,
+    maxWidth: 230,
+    paddingLeft: 6,
+    paddingRight: 12,
+    borderRadius: radii.full,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: `${INK}0F`,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  chip: {
+  recentChipIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[50],
+  },
+  recentChipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    color: INK,
+    flexShrink: 1,
+  },
+  recentChipArrow: {
+    transform: [{ rotate: "-45deg" }],
+  },
+  livePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    height: 36,
-    maxWidth: 220,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radii.full,
-    backgroundColor: colors.light.card,
+    backgroundColor: `${colors.accent2.rust}12`,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent2.rust,
+  },
+  liveText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    color: colors.accent2.rust,
+  },
+  trendCard: {
+    borderRadius: radii["3xl"],
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: `${INK}0D`,
+    paddingHorizontal: spacing[4],
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 3,
   },
-  chipHot: {
-    backgroundColor: `${colors.accent2.rust}0D`,
-    borderColor: `${colors.accent2.rust}33`,
+  trendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    paddingVertical: 14,
   },
-  chipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    color: colors.light.foreground,
+  trendRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: `${INK}1A`,
+  },
+  trendRank: {
+    width: 30,
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 20,
+    color: `${INK}40`,
+  },
+  trendRankHot: {
+    color: colors.accent2.rust,
+  },
+  trendBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
+  trendTerm: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    color: INK,
     flexShrink: 1,
   },
-  categoryRow: {
+  hotPill: {
     flexDirection: "row",
-    gap: spacing[2],
-  },
-  categoryTile: {
-    flex: 1,
-    minWidth: 0,
     alignItems: "center",
-    gap: spacing[2],
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[1],
-    borderRadius: radii.xl,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.accent2.rust}14`,
   },
-  categoryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  hotText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10,
+    letterSpacing: 0.3,
+    color: colors.accent2.rust,
+  },
+  trendDelta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+  },
+  trendDeltaText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: colors.olive[700],
+  },
+  deptBento: {
+    gap: spacing[3],
+  },
+  deptRow: {
+    flexDirection: "row",
+    gap: spacing[3],
+  },
+  deptCol: {
+    flex: 1,
+    gap: spacing[3],
+  },
+  deptShadow: {
+    borderRadius: 26,
+    backgroundColor: colors.olive[100],
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+  deptTall: {
+    flex: 1.08,
+    height: 296,
+  },
+  deptSquare: {
+    height: 142,
+  },
+  deptWide: {
+    height: 132,
+  },
+  deptCard: {
+    flex: 1,
+    borderRadius: 26,
+    overflow: "hidden",
+    padding: spacing[4],
+    justifyContent: "space-between",
+  },
+  deptHairline: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: "rgba(250,248,241,0.14)",
+  },
+  deptFallbackIcon: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${colors.olive[500]}12`,
   },
-  categoryText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
+  deptTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  deptIndex: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 10.5,
+    letterSpacing: 1.4,
+    color: CREAM,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    overflow: "hidden",
+    backgroundColor: "rgba(13,14,10,0.32)",
+  },
+  deptGlassArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(13,14,10,0.32)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(250,248,241,0.4)",
+  },
+  deptCopyWide: {
+    maxWidth: "62%",
+  },
+  deptLabel: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.4,
+    color: CREAM,
+  },
+  deptLabelTall: {
+    fontSize: 30,
+    lineHeight: 34,
+  },
+  deptCaption: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13,
+    marginTop: 1,
+    color: "rgba(250,248,241,0.82)",
+  },
+  deptCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: spacing[2.5],
+  },
+  deptCtaText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: GOLD,
+  },
+  deptCtaRule: {
+    width: 22,
+    height: 1,
+    backgroundColor: GOLD,
+  },
+  aiShadow: {
+    borderRadius: 28,
+    shadowColor: colors.olive[950],
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    elevation: 10,
   },
   aiPanel: {
-    padding: spacing[4],
-    gap: spacing[3],
-    borderRadius: radii["2xl"],
-    backgroundColor: colors.olive[950],
+    padding: spacing[5],
+    gap: spacing[4],
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: `${GOLD}26`,
+  },
+  aiGlowA: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: -110,
+    right: -70,
+    backgroundColor: `${GOLD}1A`,
+  },
+  aiGlowB: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    bottom: -90,
+    left: -60,
+    backgroundColor: `${colors.olive[400]}14`,
   },
   aiHeader: {
+    gap: spacing[2],
+  },
+  aiBrandRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
+    gap: spacing[2],
+    marginBottom: spacing[1],
   },
   aiBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${colors.accent2.ochre}1F`,
   },
-  aiHeaderText: {
-    flex: 1,
-    gap: 2,
+  aiBrand: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    letterSpacing: 2,
+    color: GOLD,
+  },
+  aiNewPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: `${GOLD}59`,
+  },
+  aiNewText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: GOLD,
   },
   aiTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 16,
-    color: colors.paper.cream,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 26,
+    lineHeight: 31,
+    letterSpacing: -0.5,
+    color: CREAM,
+  },
+  aiTitleItalic: {
+    fontFamily: fontFamilies.display.italic,
+    color: GOLD,
   },
   aiSubtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: `${colors.paper.cream}99`,
+    fontSize: 13,
+    color: `${CREAM}99`,
   },
-  aiList: {
-    borderRadius: radii.xl,
-    backgroundColor: colors.olive[900],
-    borderWidth: 1,
-    borderColor: `${colors.paper.cream}14`,
-    overflow: "hidden",
-  },
-  aiRow: {
+  aiFeatured: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
+    padding: spacing[3],
+    borderRadius: radii["2xl"],
+    backgroundColor: CREAM,
   },
-  aiRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: `${colors.paper.cream}1F`,
-  },
-  aiIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.lg,
+  aiFeaturedIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.xl,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${colors.accent2.ochre}18`,
+    backgroundColor: GOLD,
   },
   aiRowText: {
     flex: 1,
-    gap: 1,
+    gap: 2,
+  },
+  aiFeaturedTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: INK,
+  },
+  aiFeaturedDescription: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+  },
+  aiFeaturedCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    backgroundColor: `${colors.olive[950]}0F`,
+  },
+  aiFeaturedCtaText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.olive[950],
+  },
+  aiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2.5],
+  },
+  aiTile: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    padding: spacing[3.5],
+    gap: 4,
+    borderRadius: radii["2xl"],
+    backgroundColor: `${CREAM}0A`,
+    borderWidth: 1,
+    borderColor: `${CREAM}17`,
+  },
+  aiTileTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: spacing[2],
+  },
+  aiTileArrow: {
+    transform: [{ rotate: "-45deg" }],
+  },
+  aiIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${GOLD}1F`,
+    borderWidth: 1,
+    borderColor: `${GOLD}2E`,
   },
   aiCardTitle: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 14,
-    color: colors.paper.cream,
+    color: CREAM,
   },
   aiCardDescription: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
-    color: `${colors.paper.cream}99`,
+    lineHeight: 16,
+    color: `${CREAM}8C`,
   },
 });

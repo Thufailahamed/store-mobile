@@ -137,6 +137,38 @@ function getStoreApiHost(): string {
   return fromEnv || fromExtra?.replace(/\/$/, "") || "";
 }
 
+/**
+ * The backend presign schema only accepts "public" | "private". Every image
+ * the app uploads (product photos, storefront, reviews, avatars) is shown
+ * publicly and needs a CDN URL, so legacy Supabase bucket names map to
+ * "public" — same as the web's uploadSellerImage.
+ */
+const PRESIGN_BUCKET = "public";
+
+/** Presign success is wrapped in the v2 envelope `{ ok, data }`. */
+function readPresignPayload(raw: unknown): { uploadUrl?: string; publicUrl?: string } {
+  const rec = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const inner = (rec.data && typeof rec.data === "object" ? rec.data : rec) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return {
+    uploadUrl: str(inner.uploadUrl) ?? str(inner.url),
+    publicUrl: str(inner.publicUrl),
+  };
+}
+
+/** Envelope errors are `{ error: { code, message } }`; never surface "[object Object]". */
+function readPresignError(raw: unknown, status: number): string {
+  const rec = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const err = rec.error as unknown;
+  if (typeof err === "string" && err) return err;
+  if (err && typeof err === "object") {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string" && msg) return msg;
+  }
+  if (typeof rec.message === "string" && rec.message) return rec.message;
+  return `Upload registration failed (HTTP ${status})`;
+}
+
 async function uploadImageToBucket(
   bucket: string,
   path: string,
@@ -179,7 +211,7 @@ async function uploadImageToBucket(
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({
-        bucket: bucket === "user-avatars" ? "public" : bucket,
+        bucket: PRESIGN_BUCKET,
         filename,
         content_type: contentType,
         ...(prefix ? { prefix } : {}),
@@ -188,12 +220,10 @@ async function uploadImageToBucket(
 
     if (!presignedRes.ok) {
       const errData = await presignedRes.json().catch(() => ({}));
-      return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
+      return { url: "", error: readPresignError(errData, presignedRes.status) };
     }
 
-    const raw = await presignedRes.json();
-    const uploadUrl = raw.uploadUrl || raw.url;
-    const publicUrl = raw.publicUrl || raw.key || "";
+    const { uploadUrl, publicUrl } = readPresignPayload(await presignedRes.json());
     if (!uploadUrl || !publicUrl) {
       return { url: "", error: "Upload registration failed (missing URL)" };
     }
@@ -363,12 +393,10 @@ export async function uploadAvatar(
 
     if (!presignedRes.ok) {
       const errData = await presignedRes.json().catch(() => ({}));
-      return { url: "", error: errData.error || `Upload registration failed (HTTP ${presignedRes.status})` };
+      return { url: "", error: readPresignError(errData, presignedRes.status) };
     }
 
-    const raw = await presignedRes.json();
-    const uploadUrl = raw.uploadUrl || raw.url;
-    const publicUrl: string = raw.publicUrl || raw.key || "";
+    const { uploadUrl, publicUrl } = readPresignPayload(await presignedRes.json());
     if (!uploadUrl || !publicUrl) {
       return { url: "", error: "Upload registration failed (missing URL)" };
     }

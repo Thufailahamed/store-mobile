@@ -48,6 +48,10 @@ import { BiometricGate } from "@/components/auth/BiometricGate";
 
 SplashScreen.preventAutoHideAsync();
 
+// Route groups that only make sense for a signed-in account. (main) stays
+// public so guests can browse; checkout and account screens gate themselves.
+const SESSION_REQUIRED_GROUPS = ["(seller)", "(delivery)", "(delivery-company)", "(brand)", "(admin)"];
+
 // Force light mode even when the OS is set to dark theme.
 Appearance.setColorScheme("light");
 
@@ -97,6 +101,7 @@ function RootLayoutNav() {
 
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboardingGroup = segments[0] === "(onboarding)";
+    const inPrivateGroup = SESSION_REQUIRED_GROUPS.some((group) => segments[0] === group);
 
     // If logged in: redirect away from onboarding and auth pages to role-based screens
     if (session) {
@@ -104,9 +109,6 @@ function RootLayoutNav() {
         switch (role) {
           case "store_owner":
             router.replace("/(seller)");
-            break;
-          case "brand_owner":
-            router.replace("/(brand)");
             break;
           case "delivery":
             router.replace("/(delivery)");
@@ -136,10 +138,17 @@ function RootLayoutNav() {
       return;
     }
 
-    // If NOT logged in: redirect to onboarding welcome screen if trying to access protected screens
+    // Signed-out visitors can browse the catalogue. Ordering and account
+    // screens are gated where they're used (cart, checkout, account links).
+    // Role dashboards still need a session.
     if (!session) {
-      if (!inOnboardingGroup && !inAuthGroup) {
-        router.replace("/(onboarding)");
+      if (inPrivateGroup) {
+        router.replace("/(auth)/welcome");
+        return;
+      }
+      // Returning guests skip the intro carousel and land on the catalogue.
+      if (inOnboardingGroup && onboardingComplete) {
+        router.replace("/(main)");
       }
       return;
     }
@@ -318,14 +327,12 @@ function RootLayoutNav() {
         }
       }
 
-      // Everything below requires auth.
-      if (!user?.id) {
-        router.replace("/(auth)/login");
-        return;
-      }
-
-      // Order deep link: luxe://order/<id>
+      // Order deep link: luxe://order/<id> — requires a session.
       if (parsed.hostname === "order" && parsed.path) {
+        if (!user?.id) {
+          router.replace("/(auth)/login");
+          return;
+        }
         const orderId = sanitizeSlug(parsed.path.replace("/", ""));
         if (!isUuid(orderId)) {
           console.warn("[deeplink] rejected non-uuid order id:", orderId);
@@ -342,6 +349,10 @@ function RootLayoutNav() {
       // Driver invite: luxe://delivery-company/accept?token=...
       // Authenticated invitees only — anonymous users go to login first.
       if (parsed.hostname === "delivery-company" && parsed.path?.includes("accept")) {
+        if (!user?.id) {
+          router.replace("/(auth)/login");
+          return;
+        }
         const token = parsed.queryParams?.token as string | undefined;
         if (!isValidToken(token)) {
           console.warn("[deeplink] rejected delivery-company invite token");

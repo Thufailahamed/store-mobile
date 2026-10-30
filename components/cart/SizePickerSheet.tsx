@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
-  Modal,
+
   Pressable,
   TouchableOpacity,
   StyleSheet,
   Text,
   ScrollView,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";

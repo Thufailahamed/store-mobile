@@ -3,17 +3,18 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   StyleSheet,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { AiPageShell } from "@/components/ai/AiPageShell";
-import { Body, Label, Display } from "@/components/ui/Typography";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
@@ -21,8 +22,14 @@ import {
   type StylistChatPiece,
 } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
-import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+
+const GOLD = colors.accent2.ochre;
+const CREAM = colors.paper.cream;
+const INK = colors.ink.DEFAULT;
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 type ChatTurn =
   | { kind: "user"; id: string; text: string }
@@ -36,15 +43,50 @@ type ChatTurn =
     }
   | { kind: "error"; id: string; text: string; retryPrompt: string };
 
-const INTRO_PROMPTS = [
-  "What should I wear to a beach wedding?",
-  "Office look that's still comfortable",
-  "Casual weekend outfit under a budget",
-  "Date night — something elegant",
+const INTRO_PROMPTS: { text: string; tag: string; icon: IconName }[] = [
+  { text: "What should I wear to a beach wedding?", tag: "Occasion", icon: "sunny-outline" },
+  { text: "Office look that's still comfortable", tag: "Work", icon: "briefcase-outline" },
+  { text: "Casual weekend outfit under a budget", tag: "Budget", icon: "wallet-outline" },
+  { text: "Date night — something elegant", tag: "Evening", icon: "moon-outline" },
+];
+
+const STEPS: { icon: IconName; title: string; body: string }[] = [
+  { icon: "chatbubble-ellipses-outline", title: "Describe", body: "Occasion, mood or budget" },
+  { icon: "sparkles-outline", title: "Style", body: "A look built for you" },
+  { icon: "bag-handle-outline", title: "Shop", body: "Every piece is live" },
 ];
 
 let idCounter = 0;
 const nextId = () => `t${++idCounter}`;
+
+function PressableScale({
+  style,
+  children,
+  scale = 0.97,
+  ...rest
+}: React.ComponentProps<typeof Pressable> & { style?: StyleProp<ViewStyle>; scale?: number }) {
+  return (
+    <Pressable
+      {...rest}
+      style={({ pressed }) => [style, pressed && { transform: [{ scale }], opacity: 0.92 }]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+function StylistAvatar() {
+  return (
+    <LinearGradient
+      colors={["#e6c873", GOLD, "#9c7a2c"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={s.avatar}
+    >
+      <Ionicons name="sparkles" size={12} color={colors.olive[950]} />
+    </LinearGradient>
+  );
+}
 
 export default function AiStylistScreen() {
   const router = useRouter();
@@ -116,11 +158,11 @@ export default function AiStylistScreen() {
     if (slug) router.push(`/(main)/products/${slug}` as never);
   };
 
+  const empty = turns.length === 0;
+  const canSend = !!input.trim() && !sending;
+
   return (
-    <AiPageShell
-      title="AI Stylist"
-      description="Chat with your stylist — describe the occasion and get a shoppable look."
-    >
+    <AiPageShell title="AI Stylist">
       <KeyboardAvoidingView
         style={s.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -129,50 +171,102 @@ export default function AiStylistScreen() {
         <ScrollView
           ref={scrollRef}
           style={s.flex}
-          contentContainerStyle={s.thread}
+          contentContainerStyle={empty ? s.introScroll : s.thread}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onContentSizeChange={scrollToEnd}
         >
-          {turns.length === 0 ? (
-            <View style={s.intro}>
-              <View style={s.introBadge}>
-                <Ionicons name="sparkles" size={22} color={colors.paper.cream} />
+          {empty ? (
+            <>
+              <View style={s.hero}>
+                <Text style={s.heroEyebrow}>LUXE AI · AI STYLIST</Text>
+                <Text style={s.heroTitle}>
+                  Tell me the vibe.{"\n"}
+                  <Text style={s.heroTitleItalic}>I'll build the look.</Text>
+                </Text>
+                <Text style={s.heroSub}>
+                  Occasion, mood or budget — chat your way to a shoppable outfit
+                  made from live pieces.
+                </Text>
               </View>
-              <Display size="md" style={s.introTitle}>
-                What are we dressing for?
-              </Display>
-              <Body muted size="sm" style={s.introSub}>
-                Tell me the occasion, the vibe, or a budget — I'll build a look
-                from live pieces you can actually buy.
-              </Body>
-              <View style={s.introChips}>
-                {INTRO_PROMPTS.map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    style={s.promptChip}
-                    onPress={() => send(p)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="sparkles-outline" size={12} color={colors.olive[700]} />
-                    <Text style={s.promptChipText}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
+
+              <View style={s.section}>
+                <View style={s.sectionHeader}>
+                  <Text style={s.eyebrow}>Inspiration</Text>
+                  <Text style={s.sectionTitle}>Try asking</Text>
+                </View>
+                <View style={s.promptGrid}>
+                  {INTRO_PROMPTS.map((p) => (
+                    <PressableScale
+                      key={p.text}
+                      style={s.promptCard}
+                      onPress={() => send(p.text)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ask: ${p.text}`}
+                    >
+                      <View style={s.promptTop}>
+                        <View style={s.promptIcon}>
+                          <Ionicons name={p.icon} size={16} color={colors.olive[700]} />
+                        </View>
+                        <Ionicons
+                          name="arrow-forward"
+                          size={14}
+                          color={colors.light.mutedForeground}
+                          style={s.promptArrow}
+                        />
+                      </View>
+                      <Text style={s.promptTag}>{p.tag}</Text>
+                      <Text style={s.promptText} numberOfLines={2}>
+                        “{p.text}”
+                      </Text>
+                    </PressableScale>
+                  ))}
+                </View>
               </View>
-              {!user && (
-                <Body size="xs" muted style={s.signInNote}>
-                  You'll be asked to sign in when you send your first message.
-                </Body>
-              )}
-            </View>
+
+              <View style={s.section}>
+                <View style={s.sectionHeader}>
+                  <Text style={s.eyebrow}>How it works</Text>
+                  <Text style={s.sectionTitle}>Your personal stylist</Text>
+                </View>
+                <View style={s.stepsCard}>
+                  {STEPS.map((step, i) => (
+                    <React.Fragment key={step.title}>
+                      {i > 0 ? <View style={s.stepDivider} /> : null}
+                      <View style={s.step}>
+                        <View style={s.stepIcon}>
+                          <Ionicons name={step.icon} size={17} color={GOLD} />
+                          <View style={s.stepNum}>
+                            <Text style={s.stepNumText}>{i + 1}</Text>
+                          </View>
+                        </View>
+                        <Text style={s.stepTitle}>{step.title}</Text>
+                        <Text style={s.stepBody}>{step.body}</Text>
+                      </View>
+                    </React.Fragment>
+                  ))}
+                </View>
+                {!user && (
+                  <Text style={s.signInNote}>
+                    You'll be asked to sign in when you send your first message.
+                  </Text>
+                )}
+              </View>
+            </>
           ) : (
             <>
               {turns.map((t) => {
                 if (t.kind === "user") {
                   return (
-                    <View key={t.id} style={s.userBubble}>
+                    <LinearGradient
+                      key={t.id}
+                      colors={["#39412c", colors.olive[950]]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={s.userBubble}
+                    >
                       <Text style={s.userBubbleText}>{t.text}</Text>
-                    </View>
+                    </LinearGradient>
                   );
                 }
                 if (t.kind === "error") {
@@ -184,66 +278,78 @@ export default function AiStylistScreen() {
                           size={15}
                           color={colors.accent2.rust}
                         />
-                        <Body size="sm" style={s.errorText}>
+                        <Text style={s.errorText}>
                           {t.text || "Something went wrong"}
-                        </Body>
+                        </Text>
                       </View>
-                      <TouchableOpacity
+                      <PressableScale
                         style={s.retryChip}
                         onPress={() => {
                           setTurns((prev) => prev.filter((x) => x.id !== t.id));
                           send(t.retryPrompt);
                         }}
-                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Try again"
                       >
-                        <Ionicons name="refresh" size={11} color={colors.olive[800]} />
-                        <Label style={s.retryChipText}>Try again</Label>
-                      </TouchableOpacity>
+                        <Ionicons name="refresh" size={11} color={CREAM} />
+                        <Text style={s.retryChipText}>Try again</Text>
+                      </PressableScale>
                     </View>
                   );
                 }
                 return (
                   <View key={t.id} style={s.assistantRow}>
-                    <View style={s.stylistAvatar}>
-                      <Ionicons name="sparkles" size={12} color={colors.paper.cream} />
-                    </View>
+                    <StylistAvatar />
                     <View style={s.assistantBubble}>
-                      <Body size="sm" style={s.assistantText}>{t.reply}</Body>
+                      <Text style={s.assistantText}>{t.reply}</Text>
                       {t.pieces.length > 0 && (
                         <View style={s.pieceList}>
                           {t.pieces.map((p) => (
-                            <TouchableOpacity
+                            <PressableScale
                               key={p.id}
+                              scale={0.98}
                               style={s.pieceRow}
                               onPress={() => openProduct(p.slug)}
-                              activeOpacity={0.8}
                               accessibilityRole="button"
                               accessibilityLabel={`View ${p.name}`}
                             >
                               {p.image_url ? (
-                                <Image source={{ uri: p.image_url }} style={s.pieceImg} contentFit="cover" />
+                                <Image
+                                  source={{ uri: p.image_url }}
+                                  style={s.pieceImg}
+                                  contentFit="cover"
+                                  transition={250}
+                                />
                               ) : (
                                 <View style={[s.pieceImg, s.pieceImgEmpty]}>
-                                  <Ionicons name="shirt-outline" size={15} color={colors.light.mutedForeground} />
+                                  <Ionicons
+                                    name="shirt-outline"
+                                    size={15}
+                                    color={colors.light.mutedForeground}
+                                  />
                                 </View>
                               )}
                               <View style={{ flex: 1 }}>
                                 {p.slot ? (
-                                  <Label style={s.pieceSlot}>{p.slot.toUpperCase()}</Label>
+                                  <Text style={s.pieceSlot}>{p.slot.toUpperCase()}</Text>
                                 ) : null}
-                                <Body size="sm" numberOfLines={1} style={s.pieceName}>
+                                <Text numberOfLines={1} style={s.pieceName}>
                                   {p.name}
-                                </Body>
-                                <Body size="xs" style={s.piecePrice}>
+                                </Text>
+                                <Text style={s.piecePrice}>
                                   {formatPrice(p.price, p.currency ?? "LKR")}
-                                </Body>
+                                </Text>
                               </View>
-                              <Ionicons name="chevron-forward" size={14} color={colors.light.mutedForeground} />
-                            </TouchableOpacity>
+                              <Ionicons
+                                name="chevron-forward"
+                                size={14}
+                                color={colors.light.mutedForeground}
+                              />
+                            </PressableScale>
                           ))}
                           {typeof t.total === "number" && t.total > 0 && (
                             <View style={s.totalRow}>
-                              <Label style={s.totalLabel}>FULL LOOK</Label>
+                              <Text style={s.totalLabel}>FULL LOOK</Text>
                               <Text style={s.totalValue}>
                                 {formatPrice(t.total, t.pieces[0]?.currency ?? "LKR")}
                               </Text>
@@ -254,14 +360,18 @@ export default function AiStylistScreen() {
                       {!!t.suggestions?.length && (
                         <View style={s.suggRow}>
                           {t.suggestions.map((sg) => (
-                            <TouchableOpacity
+                            <Pressable
                               key={sg}
-                              style={s.suggChip}
+                              style={({ pressed }) => [
+                                s.suggChip,
+                                pressed && { opacity: 0.85 },
+                              ]}
                               onPress={() => send(sg)}
-                              activeOpacity={0.8}
+                              accessibilityRole="button"
+                              accessibilityLabel={sg}
                             >
-                              <Label style={s.suggChipText}>{sg}</Label>
-                            </TouchableOpacity>
+                              <Text style={s.suggChipText}>{sg}</Text>
+                            </Pressable>
                           ))}
                         </View>
                       )}
@@ -271,12 +381,10 @@ export default function AiStylistScreen() {
               })}
               {sending && (
                 <View style={s.assistantRow}>
-                  <View style={s.stylistAvatar}>
-                    <Ionicons name="sparkles" size={12} color={colors.paper.cream} />
-                  </View>
-                  <View style={[s.assistantBubble, s.typingBubble]}>
-                    <ActivityIndicator size="small" color={colors.olive[700]} />
-                    <Body size="xs" muted>Styling…</Body>
+                  <StylistAvatar />
+                  <View style={s.statusPill}>
+                    <Ionicons name="sparkles" size={12} color={GOLD} />
+                    <Text style={s.statusText}>Styling your look…</Text>
                   </View>
                 </View>
               )}
@@ -284,39 +392,55 @@ export default function AiStylistScreen() {
           )}
         </ScrollView>
 
-        <View style={s.composer}>
-          {turns.length > 0 && (
-            <TouchableOpacity
-              style={s.clearBtn}
-              onPress={reset}
-              activeOpacity={0.8}
-              accessibilityLabel="Start a new chat"
-            >
-              <Ionicons name="add" size={20} color={colors.olive[700]} />
-            </TouchableOpacity>
-          )}
-          <TextInput
-            style={s.composerInput}
-            value={input}
-            onChangeText={setInput}
-            placeholder="Ask your stylist…"
-            placeholderTextColor={colors.light.mutedForeground}
-            multiline
-            maxLength={1000}
-            editable={!sending}
-            onSubmitEditing={() => send()}
-            returnKeyType="send"
-          />
-          <TouchableOpacity
-            style={[s.sendBtn, (!input.trim() || sending) && s.sendBtnDim]}
-            onPress={() => send()}
-            disabled={!input.trim() || sending}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
+        <View style={s.composerShadow}>
+          <LinearGradient
+            colors={["#22271a", colors.olive[950], "#0b0c07"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.composerBar}
           >
-            <Ionicons name="arrow-up" size={18} color={colors.paper.cream} />
-          </TouchableOpacity>
+            <View style={s.composerGlow} />
+            {!empty && (
+              <Pressable
+                onPress={reset}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Start a new chat"
+                style={({ pressed }) => [s.ghostBtn, pressed && { opacity: 0.6 }]}
+              >
+                <Ionicons name="add" size={18} color={CREAM} />
+              </Pressable>
+            )}
+            <TextInput
+              style={s.input}
+              value={input}
+              onChangeText={setInput}
+              placeholder="Ask your stylist…"
+              placeholderTextColor={`${CREAM}59`}
+              selectionColor={GOLD}
+              multiline
+              maxLength={1000}
+              editable={!sending}
+              onSubmitEditing={() => send()}
+              returnKeyType="send"
+            />
+            <PressableScale
+              onPress={() => send()}
+              disabled={!canSend}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              style={[s.sendWrap, !canSend && { opacity: 0.45 }]}
+            >
+              <LinearGradient
+                colors={["#e6c873", GOLD, "#a8862f"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={s.sendBtn}
+              >
+                <Ionicons name="arrow-up" size={16} color={colors.olive[950]} />
+              </LinearGradient>
+            </PressableScale>
+          </LinearGradient>
         </View>
       </KeyboardAvoidingView>
     </AiPageShell>
@@ -325,82 +449,251 @@ export default function AiStylistScreen() {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
+
+  introScroll: { paddingBottom: spacing[8] },
+  hero: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[5],
+    gap: spacing[2],
+  },
+  heroEyebrow: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    letterSpacing: 2.2,
+    color: colors.olive[600],
+  },
+  heroTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.8,
+    color: INK,
+  },
+  heroTitleItalic: {
+    fontFamily: fontFamilies.display.italic,
+    color: colors.olive[600],
+  },
+  heroSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.light.mutedForeground,
+    maxWidth: 320,
+  },
+
+  section: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[6],
+    gap: spacing[4],
+  },
+  sectionHeader: { gap: 3 },
+  eyebrow: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10.5,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: colors.light.mutedForeground,
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    letterSpacing: -0.3,
+    color: INK,
+  },
+  promptGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[3],
+  },
+  promptCard: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 132,
+    padding: spacing[4],
+    borderRadius: radii["3xl"],
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: `${INK}0D`,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  promptTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: spacing[3],
+  },
+  promptIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[50],
+  },
+  promptArrow: {
+    transform: [{ rotate: "-45deg" }],
+  },
+  promptTag: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: colors.olive[600],
+    marginBottom: 4,
+  },
+  promptText: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 15,
+    lineHeight: 20,
+    color: INK,
+  },
+  stepsCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[2],
+    borderRadius: radii["3xl"],
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: `${INK}0D`,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    elevation: 2,
+  },
+  step: {
+    flex: 1,
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing[1],
+  },
+  stepDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: `${INK}1A`,
+    marginVertical: spacing[2],
+  },
+  stepIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[950],
+    marginBottom: spacing[1],
+  },
+  stepNum: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GOLD,
+    borderWidth: 2,
+    borderColor: "#ffffff",
+  },
+  stepNumText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 8.5,
+    color: colors.olive[950],
+  },
+  stepTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 13,
+    color: INK,
+  },
+  stepBody: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    textAlign: "center",
+    color: colors.light.mutedForeground,
+  },
+  signInNote: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    textAlign: "center",
+    color: colors.light.mutedForeground,
+  },
+
   thread: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
+    paddingTop: spacing[4],
     paddingBottom: spacing[4],
     gap: spacing[3],
   },
-
-  intro: { alignItems: "center", paddingTop: spacing[5], gap: spacing[3] },
-  introBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.olive[800],
-    ...shadows.soft,
-  },
-  introTitle: { textAlign: "center" },
-  introSub: { textAlign: "center", lineHeight: 19, paddingHorizontal: spacing[4] },
-  introChips: { gap: spacing[2], alignSelf: "stretch", marginTop: spacing[2] },
-  promptChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-    paddingHorizontal: spacing[4],
-    height: 40,
-  },
-  promptChipText: {
-    fontSize: 12,
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.medium,
-  },
-  signInNote: { marginTop: spacing[2] },
-
   userBubble: {
     alignSelf: "flex-end",
     maxWidth: "82%",
-    backgroundColor: colors.olive[800],
     borderRadius: radii.xl,
     borderBottomRightRadius: radii.sm,
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
+    shadowColor: colors.olive[950],
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 4,
   },
   userBubbleText: {
-    color: colors.paper.cream,
+    fontFamily: fontFamilies.sans.regular,
+    color: CREAM,
     fontSize: 14,
     lineHeight: 20,
   },
 
   assistantRow: { flexDirection: "row", gap: spacing[2], alignItems: "flex-start" },
-  stylistAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[700],
     marginTop: 2,
   },
   assistantBubble: {
     flex: 1,
-    borderRadius: radii.xl,
+    borderRadius: radii["2xl"],
     borderBottomLeftRadius: radii.sm,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
+    borderColor: `${INK}0D`,
+    backgroundColor: "#ffffff",
     padding: spacing[4],
     gap: spacing[3],
-    ...shadows.soft,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    elevation: 2,
   },
-  typingBubble: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  assistantText: { color: colors.light.foreground, lineHeight: 20 },
+  assistantText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14,
+    color: colors.light.foreground,
+    lineHeight: 20,
+  },
+
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[950],
+  },
+  statusText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: CREAM,
+  },
 
   pieceList: { gap: spacing[2] },
   pieceRow: {
@@ -413,20 +706,28 @@ const s = StyleSheet.create({
     backgroundColor: colors.light.background,
     padding: spacing[2],
   },
-  pieceImg: { width: 44, height: 44, borderRadius: radii.md },
+  pieceImg: { width: 48, height: 48, borderRadius: radii.md },
   pieceImgEmpty: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.light.muted,
   },
   pieceSlot: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 8,
     letterSpacing: 1.2,
-    color: colors.olive[700],
-    fontFamily: fontFamilies.sans.bold,
+    color: colors.olive[600],
   },
-  pieceName: { color: colors.light.foreground, fontWeight: "600" },
-  piecePrice: { color: colors.olive[800], fontWeight: "700" },
+  pieceName: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.foreground,
+  },
+  piecePrice: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    color: colors.olive[800],
+  },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -434,7 +735,12 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing[2],
     paddingTop: spacing[1],
   },
-  totalLabel: { fontSize: 9, letterSpacing: 1.2, color: colors.light.mutedForeground },
+  totalLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: colors.light.mutedForeground,
+  },
   totalValue: {
     fontSize: 14,
     fontFamily: fontFamilies.sans.bold,
@@ -445,18 +751,22 @@ const s = StyleSheet.create({
   suggChip: {
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.olive[200],
+    borderColor: `${colors.olive[600]}1F`,
     backgroundColor: colors.olive[50],
     paddingHorizontal: spacing[3],
     height: 30,
     justifyContent: "center",
   },
-  suggChipText: { fontSize: 10, color: colors.olive[800] },
+  suggChipText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: colors.olive[800],
+  },
 
   errorBubble: {
     alignSelf: "flex-start",
-    maxWidth: "85%",
-    borderRadius: radii.lg,
+    maxWidth: "88%",
+    borderRadius: radii["2xl"],
     borderWidth: 1,
     borderColor: "#ecc9bd",
     backgroundColor: "#fdf3ee",
@@ -464,63 +774,82 @@ const s = StyleSheet.create({
     gap: spacing[2],
   },
   errorRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  errorText: { color: colors.accent2.rust, flex: 1 },
+  errorText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: colors.accent2.rust,
+    flex: 1,
+  },
   retryChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
     alignSelf: "flex-start",
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-    backgroundColor: colors.paper.cream,
+    backgroundColor: colors.olive[950],
     paddingHorizontal: spacing[3],
-    height: 28,
+    height: 30,
   },
-  retryChipText: { fontSize: 10, color: colors.olive[800] },
+  retryChipText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: CREAM,
+  },
 
-  composer: {
+  composerShadow: {
+    marginHorizontal: spacing[5],
+    marginTop: spacing[2],
+    borderRadius: 26,
+    shadowColor: colors.olive[950],
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.25,
+    shadowRadius: 26,
+    elevation: 10,
+  },
+  composerBar: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: spacing[2],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-    paddingBottom: spacing[2],
-    borderTopWidth: 1,
-    borderTopColor: colors.light.border,
-    backgroundColor: colors.light.background,
+    borderRadius: 26,
+    padding: 6,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: `${GOLD}26`,
   },
-  clearBtn: {
+  composerGlow: {
+    position: "absolute",
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    top: -80,
+    right: -50,
+    backgroundColor: `${GOLD}1A`,
+  },
+  ghostBtn: {
     width: 42,
     height: 42,
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
+    backgroundColor: `${CREAM}14`,
   },
-  composerInput: {
+  input: {
     flex: 1,
     minHeight: 42,
     maxHeight: 110,
-    borderRadius: 21,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-    paddingHorizontal: spacing[4],
-    paddingTop: Platform.OS === "ios" ? 11 : 9,
-    paddingBottom: Platform.OS === "ios" ? 11 : 9,
+    fontFamily: fontFamilies.sans.regular,
     fontSize: 14,
-    color: colors.light.foreground,
+    color: CREAM,
+    paddingHorizontal: spacing[3],
+    paddingTop: Platform.OS === "ios" ? 12 : 9,
+    paddingBottom: Platform.OS === "ios" ? 12 : 9,
   },
+  sendWrap: { borderRadius: 21 },
   sendBtn: {
     width: 42,
     height: 42,
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[800],
   },
-  sendBtnDim: { opacity: 0.4 },
 });

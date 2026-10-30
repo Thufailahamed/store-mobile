@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet, TextInput, FlatList } from "react-native";
+import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet, FlatList } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import {
   getAdminProducts,
@@ -12,36 +14,23 @@ import {
   approveBrand,
   approveProduct,
 } from "@/lib/api";
-import { EmptyState, Skeleton } from "@/components/ui";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import { Skeleton, useToast } from "@/components/ui";
+import { colors, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, resolveImageUrl } from "@/lib/utils";
-
-const RUST = "#7a2f1a";
-const GOLD = "#8a6a2a";
-
-const STATUS_TONES: Record<string, { bg: string; text: string }> = {
-  active: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
-  approved: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
-  live: { bg: "rgba(83,94,44,0.14)", text: colors.olive[800] },
-  pending: { bg: "rgba(200,164,74,0.20)", text: GOLD },
-  draft: { bg: colors.light.muted, text: colors.light.mutedForeground },
-  archived: { bg: colors.light.muted, text: colors.light.mutedForeground },
-  inactive: { bg: colors.light.muted, text: colors.light.mutedForeground },
-  off: { bg: colors.light.muted, text: colors.light.mutedForeground },
-  rejected: { bg: "rgba(184,92,58,0.14)", text: RUST },
-};
-
-function StatusPill({ status }: { status: string }) {
-  const tone = STATUS_TONES[status] ?? STATUS_TONES.draft;
-  return (
-    <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.statusPillText, { color: tone.text }]}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Text>
-    </View>
-  );
-}
+import {
+  INK,
+  LIME,
+  HAIRLINE,
+  STATUS_TONE,
+  cardSurface,
+  Chip,
+  SearchBar,
+  Empty,
+  StatusPill,
+  SectionCount,
+  kit,
+} from "@/components/admin/catalog-kit";
 
 function primaryImage(images: any): string | null {
   if (!Array.isArray(images) || images.length === 0) return null;
@@ -50,13 +39,8 @@ function primaryImage(images: any): string | null {
   return typeof url === "string" && url ? resolveImageUrl(url) || url : null;
 }
 
-function Chevron() {
-  return (
-    <View style={styles.chevronCircle}>
-      <Ionicons name="chevron-forward" size={13} color={colors.olive[800]} />
-    </View>
-  );
-}
+const initialsOf = (name?: string | null) =>
+  (name ?? "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
 const TABS = [
   { key: "products", label: "Products", icon: "cube-outline" as const },
@@ -68,118 +52,162 @@ const TABS = [
 const PRODUCT_TABS = ["all", "active", "pending", "draft", "archived"];
 const BRAND_TABS = ["all", "approved", "pending", "rejected"];
 
+const SUB_LABEL: Record<string, string> = { all: "All", active: "Live" };
+
 export default function CatalogueHub() {
-  const qc = useQueryClient();
+  const router = useRouter();
   const [tab, setTab] = useState("products");
   const [search, setSearch] = useState("");
   const [sub, setSub] = useState("all");
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
+  // Shared header — rendered inside each list so the whole page scrolls.
+  const header = (
+    <View>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>INVENTORY & MERCHANDISING</Text>
-        <Text style={styles.title}>Catalogue</Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowDot} />
+            <Text style={styles.eyebrow}>INVENTORY & MERCHANDISING</Text>
+          </View>
+          <Text style={styles.title}>Catalogue</Text>
+          <Text style={styles.subtitle}>Moderate listings and labels, shape categories, curate what shoppers see first.</Text>
+        </View>
+        <Pressable
+          onPress={() => router.push("/(admin)/products" as any)}
+          style={({ pressed }) => [styles.roundBtn, pressed && kit.pressed]}
+          accessibilityLabel="Open boutique view"
+        >
+          <Ionicons name="grid-outline" size={17} color={INK} />
+        </Pressable>
       </View>
 
-      {/* Main Categories Selector */}
-      <View style={styles.tabsContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {TABS.map((t) => {
-            const isActive = tab === t.key;
-            return (
-              <Pressable
-                key={t.key}
-                onPress={() => {
-                  setTab(t.key);
-                  setSub("all");
-                  setSearch("");
-                }}
-                style={[styles.tab, isActive && styles.tabActive]}
-              >
-                <Ionicons name={t.icon} size={15} color={isActive ? "#fff" : colors.light.mutedForeground} />
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{t.label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Search with Icon */}
-      <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={18} color={colors.light.mutedForeground} style={styles.searchIcon} />
-        <TextInput
-          style={styles.search}
-          placeholder={`Search ${tab}…`}
-          placeholderTextColor={colors.light.mutedForeground}
-          value={search}
-          onChangeText={setSearch}
-          returnKeyType="search"
-        />
-        {search ? (
-          <Pressable onPress={() => setSearch("")} hitSlop={10} style={styles.clearBtn}>
-            <Ionicons name="close-circle" size={18} color={colors.light.mutedForeground} />
-          </Pressable>
-        ) : null}
-      </View>
-
-      {tab === "products" && (
-        <ProductsList
-          search={search}
-          status={sub}
-          onApprove={(id: string) => {
-            approveProduct(id, "active").then(() => qc.invalidateQueries({ queryKey: ["cat-products"] }));
-          }}
-          onReject={(id: string) => {
-            approveProduct(id, "rejected").then(() => qc.invalidateQueries({ queryKey: ["cat-products"] }));
-          }}
-          statusTabs={PRODUCT_TABS}
-          sub={sub}
-          setSub={setSub}
-        />
-      )}
-      {tab === "brands" && (
-        <BrandsList
-          search={search}
-          status={sub}
-          onApprove={(id: string) => {
-            approveBrand(id, "approved").then(() => qc.invalidateQueries({ queryKey: ["cat-brands"] }));
-          }}
-          onReject={(id: string) => {
-            approveBrand(id, "rejected").then(() => qc.invalidateQueries({ queryKey: ["cat-brands"] }));
-          }}
-          statusTabs={BRAND_TABS}
-          sub={sub}
-          setSub={setSub}
-        />
-      )}
-      {tab === "categories" && <CategoriesList />}
-      {tab === "banners" && <BannersList />}
-    </View>
-  );
-}
-
-function SubFilters({ tabs, sub, setSub }: { tabs: string[]; sub: string; setSub: (s: string) => void }) {
-  return (
-    <View style={styles.subFiltersWrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {tabs.map((t) => {
-          const isActive = sub === t;
+      {/* Section switch */}
+      <View style={styles.segment}>
+        {TABS.map((t) => {
+          const on = tab === t.key;
           return (
-            <Pressable key={t} onPress={() => setSub(t)} style={[styles.chip, isActive && styles.chipActive]}>
-              <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+            <Pressable
+              key={t.key}
+              onPress={() => {
+                setTab(t.key);
+                setSub("all");
+                setSearch("");
+              }}
+              style={[styles.segmentItem, on && styles.segmentItemOn]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+            >
+              <Ionicons name={t.icon} size={16} color={on ? LIME : colors.ink.mute} />
+              <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
+                {t.label}
               </Text>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
+
+      {(tab === "products" || tab === "brands") && (
+        <>
+          <SearchBar value={search} onChange={setSearch} placeholder={`Search ${tab}…`} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {(tab === "products" ? PRODUCT_TABS : BRAND_TABS).map((t) => (
+              <Chip
+                key={t}
+                label={SUB_LABEL[t] ?? t.charAt(0).toUpperCase() + t.slice(1)}
+                dot={t !== "all" ? STATUS_TONE[t]?.dot : undefined}
+                active={sub === t}
+                onPress={() => setSub(t)}
+              />
+            ))}
+          </ScrollView>
+        </>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      {tab === "products" && <ProductsList header={header} search={search} status={sub} onReset={() => { setSearch(""); setSub("all"); }} />}
+      {tab === "brands" && <BrandsList header={header} search={search} status={sub} onReset={() => { setSearch(""); setSub("all"); }} />}
+      {tab === "categories" && <CategoriesList header={header} />}
+      {tab === "banners" && <BannersList header={header} />}
     </View>
   );
 }
 
-function ProductsList({ search, status, sub, setSub, statusTabs, onApprove, onReject }: any) {
+/* -------------------------------------------------------------------------- */
+/*  Moderation actions                                                        */
+/* -------------------------------------------------------------------------- */
+
+function useModerate(kind: "product" | "brand") {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async ({ id, approve }: { id: string; approve: boolean }) => {
+      const res =
+        kind === "product"
+          ? await approveProduct(id, approve ? "active" : "rejected")
+          : await approveBrand(id, approve ? "approved" : "rejected");
+      if (!res.ok) throw new Error(res.error);
+    },
+    onSuccess: (_r, { approve }) => {
+      qc.invalidateQueries({ queryKey: kind === "product" ? ["cat-products"] : ["cat-brands"] });
+      if (kind === "product") {
+        qc.invalidateQueries({ queryKey: ["admin-products"] });
+        qc.invalidateQueries({ queryKey: ["admin-catalog-stores"] });
+      }
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      toast.success(approve ? `${kind === "product" ? "Listing" : "Brand"} approved` : `${kind === "product" ? "Listing" : "Brand"} rejected`);
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Action failed"),
+  });
+}
+
+function ModerationBar({
+  approveLabel,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  approveLabel: string;
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <View style={styles.modBar}>
+      <View style={styles.modHint}>
+        <View style={styles.modHintDot} />
+        <Text style={styles.modHintText}>AWAITING REVIEW</Text>
+      </View>
+      <View style={{ flex: 1 }} />
+      <Pressable
+        disabled={busy}
+        onPress={onReject}
+        style={({ pressed }) => [styles.rejectBtn, (pressed || busy) && kit.pressed]}
+        accessibilityLabel="Reject"
+      >
+        <Ionicons name="close" size={16} color="#b03a3a" />
+      </Pressable>
+      <Pressable
+        disabled={busy}
+        onPress={onApprove}
+        style={({ pressed }) => [styles.approveBtn, (pressed || busy) && kit.pressed]}
+      >
+        <Ionicons name="checkmark" size={14} color={LIME} />
+        <Text style={styles.approveText}>{approveLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Lists                                                                     */
+/* -------------------------------------------------------------------------- */
+
+function ProductsList({ header, search, status, onReset }: { header: React.ReactElement; search: string; status: string; onReset: () => void }) {
   const router = useRouter();
+  const moderate = useModerate("product");
   const q = useQuery({
     queryKey: ["cat-products", status, search],
     queryFn: async () => {
@@ -190,98 +218,109 @@ function ProductsList({ search, status, sub, setSub, statusTabs, onApprove, onRe
   });
   const products = q.data?.products ?? [];
   const loadError = q.data?.error ?? null;
+  const total = q.data?.total ?? products.length;
 
   return (
     <FlatList
       data={products}
       keyExtractor={(p: any) => p.id}
       contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
+      refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} tintColor={colors.olive[800]} />}
       ListHeaderComponent={
         <View>
-          <SubFilters tabs={statusTabs} sub={sub} setSub={setSub} />
-          <Text style={styles.listCount}>
-            {q.data?.total ?? products.length} {(q.data?.total ?? products.length) === 1 ? "product" : "products"}
-          </Text>
+          {header}
+          {!q.isLoading && (
+            <SectionCount>
+              {total} {total === 1 ? "PRODUCT" : "PRODUCTS"}
+            </SectionCount>
+          )}
         </View>
       }
       ListEmptyComponent={
         q.isLoading ? (
-          <View style={{ gap: 10 }}>
-            <Skeleton height={70} style={{ borderRadius: radii.xl }} />
-            <Skeleton height={70} style={{ borderRadius: radii.xl }} />
+          <View style={{ gap: 12 }}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} width="100%" height={122} style={{ borderRadius: 24 }} />
+            ))}
           </View>
         ) : loadError ? (
-          <EmptyState
-            icon="cloud-offline-outline"
-            title="Couldn't load products"
-            description={loadError}
-          />
+          <Empty icon="cloud-offline-outline" title="Couldn't load products" body={loadError} actionLabel="Retry" onReset={() => q.refetch()} />
         ) : (
-          <EmptyState icon="cube-outline" title="No products found" description="No products match your current search or status filter." />
+          <Empty
+            icon="cube-outline"
+            title="No products found"
+            body="Nothing matches your current search or status."
+            onReset={search || status !== "all" ? onReset : undefined}
+          />
         )
       }
-      renderItem={({ item }: any) => {
+      renderItem={({ item, index }: any) => {
         const img = primaryImage(item.images);
         const pending = item.status === "pending";
-        const hasDiscount = Number(item.mrp ?? 0) > Number(item.price ?? 0);
-        const subMeta = [
-          item.category?.name,
-          item.total_sales ? `${item.total_sales} sold` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
+        const mrp = Number(item.mrp ?? 0);
+        const price = Number(item.price ?? 0);
+        const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+        const label = [item.store?.name, item.brand?.name].filter(Boolean).join(" · ") || "Independent atelier";
+        const busy = moderate.isPending && moderate.variables?.id === item.id;
         return (
-          <View style={[styles.itemCard, pending && styles.itemCardPending]}>
-            {pending ? <View style={styles.pendingAccent} /> : null}
-            <Pressable
-              onPress={() => router.push({ pathname: "/(admin)/products/[id]", params: { id: item.id } } as any)}
-              style={styles.itemRow}
-            >
-              {img ? (
-                <Image source={{ uri: img }} style={styles.productThumb} contentFit="cover" />
-              ) : (
-                <View style={[styles.productThumb, styles.productAvatar]}>
-                  <Ionicons name="cube-outline" size={18} color={colors.olive[700]} />
+          <Animated.View entering={FadeInDown.duration(380).delay(Math.min(index, 8) * 40)}>
+            <View style={[styles.card, pending && styles.cardPending]}>
+              <Pressable
+                onPress={() => router.push({ pathname: "/(admin)/products/[id]", params: { id: item.id } } as any)}
+                style={({ pressed }) => [styles.productRow, pressed && { opacity: 0.85 }]}
+              >
+                <View style={styles.thumb}>
+                  {img ? (
+                    <Image source={{ uri: img }} style={styles.thumbImg} contentFit="cover" transition={200} />
+                  ) : (
+                    <View style={styles.thumbEmpty}>
+                      <Ionicons name="image-outline" size={20} color="rgba(22,23,15,0.25)" />
+                    </View>
+                  )}
+                  {item.is_featured && (
+                    <View style={styles.thumbStar}>
+                      <Ionicons name="star" size={9} color={INK} />
+                    </View>
+                  )}
                 </View>
+                <View style={styles.productInfo}>
+                  <View style={styles.productTop}>
+                    <Text style={styles.productLabel} numberOfLines={1}>{label.toUpperCase()}</Text>
+                    <StatusPill status={item.status} />
+                  </View>
+                  <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.price}>{formatPrice(price, item.currency)}</Text>
+                    {discount > 0 && (
+                      <>
+                        <Text style={styles.mrp}>{formatPrice(mrp, item.currency)}</Text>
+                        <Text style={styles.discount}>−{discount}%</Text>
+                      </>
+                    )}
+                  </View>
+                  <View style={styles.metaRow}>
+                    {item.category?.name ? (
+                      <View style={styles.metaItem}>
+                        <Ionicons name="albums-outline" size={11} color="rgba(22,23,15,0.4)" />
+                        <Text style={styles.metaText}>{item.category.name}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={styles.metaText}>{item.total_sales ?? 0} sold</Text>
+                    <View style={{ flex: 1 }} />
+                    <Ionicons name="arrow-forward" size={14} color="rgba(22,23,15,0.35)" />
+                  </View>
+                </View>
+              </Pressable>
+              {pending && (
+                <ModerationBar
+                  approveLabel="Approve listing"
+                  busy={busy}
+                  onApprove={() => moderate.mutate({ id: item.id, approve: true })}
+                  onReject={() => moderate.mutate({ id: item.id, approve: false })}
+                />
               )}
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={styles.itemName} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.itemMeta} numberOfLines={1}>
-                  {item.store?.name ?? "Independent Atelier"}
-                  {item.brand?.name ? ` · ${item.brand.name}` : ""}
-                </Text>
-                {subMeta ? (
-                  <Text style={styles.itemStock} numberOfLines={1}>
-                    {subMeta}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={{ alignItems: "flex-end", gap: 3 }}>
-                {hasDiscount ? (
-                  <Text style={styles.itemMrp}>{formatPrice(item.mrp, item.currency)}</Text>
-                ) : null}
-                <Text style={styles.itemPrice}>{formatPrice(item.price, item.currency)}</Text>
-                <StatusPill status={item.status} />
-              </View>
-              <Chevron />
-            </Pressable>
-
-            {pending ? (
-              <View style={styles.itemActions}>
-                <Pressable onPress={() => onApprove(item.id)} style={[styles.btn, styles.btnApprove]}>
-                  <Ionicons name="checkmark" size={13} color="#fff" />
-                  <Text style={styles.btnApproveText}>Approve listing</Text>
-                </Pressable>
-                <Pressable onPress={() => onReject(item.id)} style={[styles.btn, styles.btnReject]}>
-                  <Ionicons name="close" size={13} color={colors.light.destructive} />
-                  <Text style={styles.btnRejectText}>Reject</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
+            </View>
+          </Animated.View>
         );
       }}
       showsVerticalScrollIndicator={false}
@@ -289,8 +328,9 @@ function ProductsList({ search, status, sub, setSub, statusTabs, onApprove, onRe
   );
 }
 
-function BrandsList({ search, status, sub, setSub, statusTabs, onApprove, onReject }: any) {
+function BrandsList({ header, search, status, onReset }: { header: React.ReactElement; search: string; status: string; onReset: () => void }) {
   const router = useRouter();
+  const moderate = useModerate("brand");
   const q = useQuery({
     queryKey: ["cat-brands", status, search],
     queryFn: async () => {
@@ -301,66 +341,80 @@ function BrandsList({ search, status, sub, setSub, statusTabs, onApprove, onReje
   });
   const brands = q.data?.brands ?? [];
   const loadError = q.data?.error ?? null;
+  const total = q.data?.total ?? brands.length;
 
   return (
     <FlatList
       data={brands}
       keyExtractor={(b: any) => b.id}
       contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
-      ListHeaderComponent={<SubFilters tabs={statusTabs} sub={sub} setSub={setSub} />}
+      refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} tintColor={colors.olive[800]} />}
+      ListHeaderComponent={
+        <View>
+          {header}
+          {!q.isLoading && <SectionCount>{total} {total === 1 ? "LABEL" : "LABELS"}</SectionCount>}
+        </View>
+      }
       ListEmptyComponent={
         q.isLoading ? (
-          <Skeleton height={70} style={{ borderRadius: radii.xl }} />
+          <View style={{ gap: 12 }}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} width="100%" height={96} style={{ borderRadius: 24 }} />
+            ))}
+          </View>
         ) : loadError ? (
-          <EmptyState
-            icon="cloud-offline-outline"
-            title="Couldn't load brands"
-            description={loadError}
-          />
+          <Empty icon="cloud-offline-outline" title="Couldn't load brands" body={loadError} actionLabel="Retry" onReset={() => q.refetch()} />
         ) : (
-          <EmptyState icon="pricetag-outline" title="No brands found" description="No brands match your search or filter." />
+          <Empty
+            icon="pricetag-outline"
+            title="No brands found"
+            body="No labels match your search or filter."
+            onReset={search || status !== "all" ? onReset : undefined}
+          />
         )
       }
-      renderItem={({ item }: any) => {
+      renderItem={({ item, index }: any) => {
         const logo = item.logo_url ? resolveImageUrl(item.logo_url) || item.logo_url : null;
         const pending = item.status === "pending";
+        const busy = moderate.isPending && moderate.variables?.id === item.id;
         return (
-          <View style={[styles.itemCard, pending && styles.itemCardPending]}>
-            {pending ? <View style={styles.pendingAccent} /> : null}
-            <Pressable
-              onPress={() => router.push({ pathname: "/(admin)/brands/[id]", params: { id: item.id } } as any)}
-              style={styles.itemRow}
-            >
-              {logo ? (
-                <Image source={{ uri: logo }} style={styles.productThumb} contentFit="cover" />
-              ) : (
-                <View style={[styles.productThumb, { backgroundColor: "#fdf3d7" }]}>
-                  <Ionicons name="pricetag-outline" size={18} color={GOLD} />
+          <Animated.View entering={FadeInDown.duration(380).delay(Math.min(index, 8) * 40)}>
+            <View style={[styles.card, pending && styles.cardPending]}>
+              <Pressable
+                onPress={() => router.push({ pathname: "/(admin)/brands/[id]", params: { id: item.id } } as any)}
+                style={({ pressed }) => [styles.brandRow, pressed && { opacity: 0.85 }]}
+              >
+                <View style={styles.brandLogo}>
+                  {logo ? (
+                    <Image source={{ uri: logo }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                  ) : (
+                    <Text style={styles.brandInitials}>{initialsOf(item.name)}</Text>
+                  )}
                 </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={styles.productTop}>
+                    <Text style={styles.productLabel} numberOfLines={1}>@{(item.slug ?? "").toUpperCase()}</Text>
+                    <StatusPill status={item.status} />
+                  </View>
+                  <Text style={styles.brandName} numberOfLines={1}>{item.name}</Text>
+                  <View style={styles.brandStats}>
+                    <BrandStat icon="people-outline" value={item.total_followers ?? 0} label="followers" />
+                    <BrandStat icon="cube-outline" value={item.total_products ?? 0} label="products" />
+                    <View style={{ flex: 1 }} />
+                    <Ionicons name="arrow-forward" size={14} color="rgba(22,23,15,0.35)" />
+                  </View>
+                </View>
+              </Pressable>
+              {pending && (
+                <ModerationBar
+                  approveLabel="Approve brand"
+                  busy={busy}
+                  onApprove={() => moderate.mutate({ id: item.id, approve: true })}
+                  onReject={() => moderate.mutate({ id: item.id, approve: false })}
+                />
               )}
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.itemMeta} numberOfLines={1}>
-                  @{item.slug} · {item.total_followers ?? 0} followers · {item.total_products ?? 0} products
-                </Text>
-              </View>
-              <StatusPill status={item.status} />
-              <Chevron />
-            </Pressable>
-            {pending ? (
-              <View style={styles.itemActions}>
-                <Pressable onPress={() => onApprove(item.id)} style={[styles.btn, styles.btnApprove]}>
-                  <Ionicons name="checkmark" size={13} color="#fff" />
-                  <Text style={styles.btnApproveText}>Approve brand</Text>
-                </Pressable>
-                <Pressable onPress={() => onReject(item.id)} style={[styles.btn, styles.btnReject]}>
-                  <Ionicons name="close" size={13} color={colors.light.destructive} />
-                  <Text style={styles.btnRejectText}>Reject</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
+            </View>
+          </Animated.View>
         );
       }}
       showsVerticalScrollIndicator={false}
@@ -368,7 +422,17 @@ function BrandsList({ search, status, sub, setSub, statusTabs, onApprove, onReje
   );
 }
 
-function CategoriesList() {
+function BrandStat({ icon, value, label }: { icon: keyof typeof Ionicons.glyphMap; value: number; label: string }) {
+  return (
+    <View style={styles.metaItem}>
+      <Ionicons name={icon} size={11} color="rgba(22,23,15,0.4)" />
+      <Text style={styles.metaStrong}>{Number(value).toLocaleString()}</Text>
+      <Text style={styles.metaText}>{label}</Text>
+    </View>
+  );
+}
+
+function CategoriesList({ header }: { header: React.ReactElement }) {
   const router = useRouter();
   const q = useQuery({
     queryKey: ["cat-categories"],
@@ -377,76 +441,66 @@ function CategoriesList() {
       return r.ok ? r.data : [];
     },
   });
+  const data = (q.data ?? []) as any[];
+  const max = Math.max(1, ...data.map((c) => Number(c.product_count ?? 0)));
   return (
     <FlatList
-      data={q.data ?? []}
+      data={data}
       keyExtractor={(c: any) => c.id}
       contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
+      refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} tintColor={colors.olive[800]} />}
       ListHeaderComponent={
-        <Pressable onPress={() => router.push("/(admin)/categories" as never)} style={styles.manageLink}>
-          <Ionicons name="git-network-outline" size={14} color={colors.light.primary} />
-          <Text style={styles.manageLinkText}>Manage Category Hierarchy & Tree →</Text>
-        </Pressable>
-      }
-      ListEmptyComponent={q.isLoading ? <Skeleton height={70} style={{ borderRadius: radii.xl }} /> : <EmptyState icon="albums-outline" title="No categories" />}
-      renderItem={({ item }: any) => (
-        <View style={styles.itemCard}>
-          <View style={styles.itemRow}>
-            <View style={[styles.productThumb, { backgroundColor: "#dde4d6" }]}>
-              <Ionicons name="albums-outline" size={18} color={colors.olive[800]} />
+        <View>
+          {header}
+          <Pressable
+            onPress={() => router.push("/(admin)/categories" as never)}
+            style={({ pressed }) => [styles.manageCard, pressed && kit.pressedCard]}
+          >
+            <View style={styles.manageIcon}>
+              <Ionicons name="git-network-outline" size={18} color={LIME} />
             </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.itemMeta} numberOfLines={1}>
-                @{item.slug} · {item.gender ?? "all"} · {item.product_count ?? 0} products
-              </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.manageKicker}>STRUCTURE</Text>
+              <Text style={styles.manageTitle}>Manage hierarchy & order</Text>
             </View>
-            <StatusPill status={item.is_active ? "active" : "inactive"} />
-          </View>
+            <Ionicons name="arrow-forward" size={16} color={colors.paper.cream} />
+          </Pressable>
+          {!q.isLoading && <SectionCount>{data.length} CATEGORIES</SectionCount>}
         </View>
-      )}
-      showsVerticalScrollIndicator={false}
-    />
-  );
-}
-
-function BannersList() {
-  const q = useQuery({
-    queryKey: ["cat-banners"],
-    queryFn: async () => {
-      const r = await getAdminBanners();
-      return r.ok ? r.data : [];
-    },
-  });
-  return (
-    <FlatList
-      data={q.data ?? []}
-      keyExtractor={(b: any) => b.id}
-      contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
-      ListEmptyComponent={q.isLoading ? <Skeleton height={70} style={{ borderRadius: radii.xl }} /> : <EmptyState icon="images-outline" title="No banners" />}
-      renderItem={({ item }: any) => {
-        const bannerImg = item.image_url ? resolveImageUrl(item.image_url) || item.image_url : null;
+      }
+      ListEmptyComponent={
+        q.isLoading ? (
+          <Skeleton width="100%" height={76} style={{ borderRadius: 22 }} />
+        ) : (
+          <Empty icon="albums-outline" title="No categories" body="Create categories from the hierarchy manager." />
+        )
+      }
+      renderItem={({ item, index }: any) => {
+        const count = Number(item.product_count ?? 0);
         return (
-          <View style={styles.itemCard}>
-            <View style={styles.itemRow}>
-              {bannerImg ? (
-                <Image source={{ uri: bannerImg }} style={styles.bannerThumb} contentFit="cover" />
-              ) : (
-                <View style={[styles.productThumb, { backgroundColor: "#fbe5dc" }]}>
-                  <Ionicons name="images-outline" size={18} color={RUST} />
-                </View>
-              )}
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={styles.itemName} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.itemMeta} numberOfLines={1}>
-                  {item.position ?? "hero"} · order {item.display_order}
-                </Text>
+          <Animated.View entering={FadeInDown.duration(380).delay(Math.min(index, 8) * 30)}>
+            <View style={[styles.card, styles.categoryRow]}>
+              <View style={[styles.categoryIcon, !item.is_active && { opacity: 0.5 }]}>
+                <Text style={styles.categoryInitial}>{(item.name ?? "?").charAt(0).toUpperCase()}</Text>
               </View>
-              <StatusPill status={item.is_active ? "live" : "off"} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={styles.productTop}>
+                  <Text style={styles.categoryName} numberOfLines={1}>{item.name}</Text>
+                  <View style={[styles.activeDot, { backgroundColor: item.is_active ? "#22a35a" : "rgba(22,23,15,0.2)" }]} />
+                </View>
+                <Text style={styles.metaText} numberOfLines={1}>
+                  @{item.slug} · {item.gender ?? "all genders"}
+                </Text>
+                <View style={styles.categoryBarTrack}>
+                  <View style={[styles.categoryBarFill, { width: `${(count / max) * 100}%` }]} />
+                </View>
+              </View>
+              <View style={styles.categoryCount}>
+                <Text style={styles.categoryCountValue}>{count}</Text>
+                <Text style={styles.categoryCountLabel}>ITEMS</Text>
+              </View>
             </View>
-          </View>
+          </Animated.View>
         );
       }}
       showsVerticalScrollIndicator={false}
@@ -454,247 +508,185 @@ function BannersList() {
   );
 }
 
+function BannersList({ header }: { header: React.ReactElement }) {
+  const q = useQuery({
+    queryKey: ["cat-banners"],
+    queryFn: async () => {
+      const r = await getAdminBanners();
+      return r.ok ? r.data : [];
+    },
+  });
+  const data = (q.data ?? []) as any[];
+  return (
+    <FlatList
+      data={data}
+      keyExtractor={(b: any) => b.id}
+      contentContainerStyle={styles.list}
+      refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} tintColor={colors.olive[800]} />}
+      ListHeaderComponent={
+        <View>
+          {header}
+          {!q.isLoading && (
+            <SectionCount>
+              {data.length} BANNERS · {data.filter((b) => b.is_active).length} LIVE
+            </SectionCount>
+          )}
+        </View>
+      }
+      ListEmptyComponent={
+        q.isLoading ? (
+          <Skeleton width="100%" height={170} style={{ borderRadius: 24 }} />
+        ) : (
+          <Empty icon="images-outline" title="No banners" body="Hero, grid and marquee banners will appear here." />
+        )
+      }
+      renderItem={({ item, index }: any) => {
+        const img = item.image_url ? resolveImageUrl(item.image_url) || item.image_url : null;
+        return (
+          <Animated.View entering={FadeInDown.duration(380).delay(Math.min(index, 8) * 40)}>
+            <View style={[styles.card, styles.bannerCard]}>
+              <View style={styles.bannerImage}>
+                {img ? (
+                  <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+                ) : (
+                  <LinearGradient colors={["#e6e6d0", "#cccca0"]} style={StyleSheet.absoluteFill} />
+                )}
+                <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.62)"]} style={StyleSheet.absoluteFill} />
+                <View style={styles.bannerTop}>
+                  <View style={styles.bannerChip}>
+                    <Text style={styles.bannerChipText}>{String(item.position ?? "hero").replace(/_/g, " ").toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.bannerChip}>
+                    <Text style={styles.bannerChipText}>#{item.display_order ?? 0}</Text>
+                  </View>
+                  <View style={{ flex: 1 }} />
+                  <StatusPill status={item.is_active ? "live" : "off"} />
+                </View>
+                <Text style={styles.bannerTitle} numberOfLines={2}>{item.title || "Untitled banner"}</Text>
+              </View>
+            </View>
+          </Animated.View>
+        );
+      }}
+      showsVerticalScrollIndicator={false}
+    />
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Styles                                                                    */
+/* -------------------------------------------------------------------------- */
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
+  list: { paddingHorizontal: 18, paddingBottom: 120 },
 
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: colors.light.primary,
-    letterSpacing: 1.4,
-  },
-  title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: colors.light.foreground,
-    marginTop: 2,
-    letterSpacing: -0.6,
+  /* Header */
+  header: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingTop: 18, marginBottom: 18 },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
+  eyebrowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[600] },
+  eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 2.2, color: colors.olive[700] },
+  title: { fontFamily: fontFamilies.display.regular, fontSize: 44, lineHeight: 46, letterSpacing: -1.6, color: INK },
+  subtitle: { marginTop: 8, fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 19, color: colors.ink.mute, maxWidth: 300 },
+  roundBtn: {
+    width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.85)", borderWidth: 1, borderColor: HAIRLINE, ...shadows.soft,
   },
 
-  tabsContainer: { marginTop: 8 },
-  tabs: { paddingHorizontal: 16, gap: 6, paddingBottom: 6 },
-  tab: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  /* Section switch */
+  segment: {
+    flexDirection: "row", padding: 4, borderRadius: 24, marginBottom: 14, gap: 2,
+    backgroundColor: "rgba(239,236,226,0.8)", borderWidth: 1, borderColor: HAIRLINE,
   },
-  tabActive: {
-    backgroundColor: colors.light.primary,
-    borderColor: colors.light.primary,
-  },
-  tabText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-  },
-  tabTextActive: { color: "#fff" },
+  segmentItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, height: 56, borderRadius: 20 },
+  segmentItemOn: { backgroundColor: INK, ...shadows.soft },
+  segmentText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.ink.mute },
+  segmentTextOn: { color: colors.paper.cream },
+  chips: { gap: 7, paddingBottom: 14 },
 
-  searchWrap: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    paddingHorizontal: 14,
-    height: 44,
-  },
-  searchIcon: { marginRight: 8 },
-  search: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: fontFamilies.sans.regular,
-    color: colors.light.foreground,
-    height: "100%",
-  },
-  clearBtn: { padding: 4 },
+  /* Shared card */
+  card: { ...cardSurface, borderRadius: 24, marginBottom: 12, overflow: "hidden" },
+  cardPending: { borderColor: "rgba(224,165,38,0.45)" },
 
-  subFiltersWrap: { marginVertical: 6 },
-  filters: { paddingHorizontal: 16, gap: 6, paddingBottom: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.card,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  /* Products */
+  productRow: { flexDirection: "row", gap: 13, padding: 10 },
+  thumb: { width: 80, height: 100, borderRadius: 18, overflow: "hidden", backgroundColor: colors.paper.warm },
+  thumbImg: { width: "100%", height: "100%" },
+  thumbEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },
+  thumbStar: {
+    position: "absolute", top: 6, left: 6, width: 20, height: 20, borderRadius: 10, backgroundColor: LIME,
+    alignItems: "center", justifyContent: "center",
   },
-  chipActive: {
-    backgroundColor: colors.olive[600],
-    borderColor: colors.olive[600],
-  },
-  chipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  chipTextActive: { color: "#fff" },
+  productInfo: { flex: 1, paddingTop: 4, paddingRight: 4 },
+  productTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  productLabel: { flex: 1, fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.5, color: colors.olive[700] },
+  productName: { marginTop: 5, fontFamily: fontFamilies.display.regular, fontSize: 17, lineHeight: 21, letterSpacing: -0.3, color: INK },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 7, marginTop: 5 },
+  price: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: INK },
+  mrp: { fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: "rgba(22,23,15,0.4)", textDecorationLine: "line-through" },
+  discount: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.accent2.rust },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 7 },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  metaText: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: "rgba(22,23,15,0.5)" },
+  metaStrong: { fontFamily: fontFamilies.sans.bold, fontSize: 11.5, color: INK },
 
-  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 10 },
-  manageLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
+  /* Moderation bar */
+  modBar: {
+    flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: "rgba(253,246,227,0.7)", borderTopWidth: 1, borderTopColor: "rgba(224,165,38,0.25)",
   },
-  manageLinkText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.primary,
+  modHint: { flexDirection: "row", alignItems: "center", gap: 6 },
+  modHintDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#e0a526" },
+  modHintText: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.4, color: "#8a6116" },
+  rejectBtn: {
+    width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center",
+    backgroundColor: "#fff", borderWidth: 1, borderColor: "rgba(176,58,58,0.25)",
   },
+  approveBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6, height: 38, paddingHorizontal: 16, borderRadius: 19, backgroundColor: INK,
+  },
+  approveText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: colors.paper.cream },
 
-  itemCard: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    overflow: "hidden",
-    ...shadows.soft,
+  /* Brands */
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 13, padding: 12 },
+  brandLogo: {
+    width: 64, height: 64, borderRadius: 20, overflow: "hidden", backgroundColor: INK,
+    alignItems: "center", justifyContent: "center",
   },
-  itemCardPending: {
-    borderColor: "rgba(200,164,74,0.55)",
+  brandInitials: { fontFamily: fontFamilies.display.regular, fontSize: 22, color: LIME },
+  brandName: { marginTop: 4, fontFamily: fontFamilies.display.regular, fontSize: 20, letterSpacing: -0.4, color: INK },
+  brandStats: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6 },
+
+  /* Categories */
+  manageCard: {
+    flexDirection: "row", alignItems: "center", gap: 12, padding: 12, paddingRight: 16, borderRadius: 22,
+    backgroundColor: INK, marginBottom: 16, ...shadows.editorial,
   },
-  pendingAccent: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: "#c8a44a",
+  manageIcon: {
+    width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(200,224,138,0.12)", borderWidth: 1, borderColor: "rgba(200,224,138,0.25)",
   },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    paddingLeft: 18,
+  manageKicker: { fontFamily: fontFamilies.mono.medium, fontSize: 8.5, letterSpacing: 1.8, color: LIME },
+  manageTitle: { marginTop: 2, fontFamily: fontFamilies.display.regular, fontSize: 18, color: colors.paper.cream },
+  categoryRow: { flexDirection: "row", alignItems: "center", gap: 13, padding: 12, borderRadius: 22, marginBottom: 10 },
+  categoryIcon: {
+    width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.olive[50], borderWidth: 1, borderColor: "rgba(83,94,44,0.12)",
   },
-  productThumb: {
-    width: 46,
-    height: 46,
-    borderRadius: 11,
-    backgroundColor: colors.olive[100],
-  },
-  productAvatar: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-  },
-  bannerThumb: {
-    width: 66,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: "#fbe5dc",
-  },
-  itemName: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  itemMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
-  },
-  itemStock: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10.5,
-    color: colors.olive[700],
-  },
-  itemMrp: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    color: colors.light.mutedForeground,
-    textDecorationLine: "line-through",
-  },
-  listCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: colors.light.mutedForeground,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    paddingHorizontal: 16,
-    marginTop: -2,
-    marginBottom: 8,
-  },
-  itemPrice: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-  },
-  statusPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  chevronCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#f8f6f0",
-    borderWidth: 1,
-    borderColor: "#e4dfd3",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  itemActions: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-    paddingTop: 10,
-    marginTop: 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  btn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: radii.full,
-    borderWidth: 1,
-  },
-  btnApprove: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-  },
-  btnApproveText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#fff",
-  },
-  btnReject: {
-    backgroundColor: "rgba(184,92,58,0.08)",
-    borderColor: "rgba(184,92,58,0.35)",
-  },
-  btnRejectText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.destructive,
-  },
+  categoryInitial: { fontFamily: fontFamilies.display.regular, fontSize: 20, color: colors.olive[800] },
+  categoryName: { flex: 1, fontFamily: fontFamilies.display.regular, fontSize: 17, letterSpacing: -0.3, color: INK },
+  activeDot: { width: 7, height: 7, borderRadius: 4 },
+  categoryBarTrack: { height: 3, borderRadius: 2, marginTop: 8, backgroundColor: "rgba(22,23,15,0.06)", overflow: "hidden" },
+  categoryBarFill: { height: "100%", borderRadius: 2, backgroundColor: colors.olive[500] },
+  categoryCount: { alignItems: "flex-end", minWidth: 44 },
+  categoryCountValue: { fontFamily: fontFamilies.display.regular, fontSize: 24, lineHeight: 26, color: INK },
+  categoryCountLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 8, letterSpacing: 1.4, color: "rgba(22,23,15,0.4)" },
+
+  /* Banners */
+  bannerCard: { padding: 7, borderRadius: 26 },
+  bannerImage: { aspectRatio: 16 / 8, borderRadius: 20, overflow: "hidden", justifyContent: "space-between", padding: 12 },
+  bannerTop: { flexDirection: "row", alignItems: "center", gap: 6 },
+  bannerChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: "rgba(245,244,239,0.92)" },
+  bannerChipText: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.4, color: "rgba(22,23,15,0.75)" },
+  bannerTitle: { fontFamily: fontFamilies.display.regular, fontSize: 22, lineHeight: 26, letterSpacing: -0.4, color: "#fff" },
 });

@@ -22,7 +22,7 @@ vi.mock("@/lib/api/backend", async (importOriginal) => {
 
 vi.mock("@/lib/catalog-visibility", () => catalogVisibilityMocks);
 
-import { searchProducts, reverseImageSearch, fetchCompanionsForImageSearch } from "@/lib/api";
+import { searchProducts, searchProductsWithMeta, reverseImageSearch, fetchCompanionsForImageSearch } from "@/lib/api";
 
 describe("searchProducts", () => {
   beforeEach(() => {
@@ -85,12 +85,68 @@ describe("searchProducts", () => {
       expect(res.data[0].name).toBe("Polo Tee");
     }
 
-    expect(backendMocks.searchProductsBackend).toHaveBeenCalledWith({
+    expect(backendMocks.searchProductsBackend).toHaveBeenCalledWith(expect.objectContaining({
       q: "polo",
       sort: "relevance",
-      limit: 40,
-    });
+      limit: 20,
+    }));
     expect(backendMocks.getProductsByIdsBackend).toHaveBeenCalledWith(["p-1"]);
+  });
+
+  it("keeps the backend's ranking and match reasons, and never asks for more than the backend cap", async () => {
+    catalogVisibilityMocks.getBrowsableStoreIds.mockResolvedValue(new Set(["store-1"]));
+    catalogVisibilityMocks.isPublicCatalogProduct.mockReturnValue(true);
+    backendMocks.searchProductsBackend.mockResolvedValueOnce({
+      ok: true,
+      data: { query: "black tshirt", count: 2, products: [{ id: "p-2", match_reason: "Colour · Black · T-shirt" }, { id: "p-1" }] },
+    });
+    const product = (id: string, name: string) => ({
+      id, name, slug: id, price: 500, mrp: 1000, currency: "LKR", status: "active", is_active: true,
+      store: { id: "store-1", name: "Store One", slug: "store-one" },
+      variants: [{ id: `v-${id}`, color: "Black", size: "M", price: 500, stock: 5 }],
+      images: [{ url: `${id}.png`, is_primary: true }],
+    });
+    // by-ids returns rows in arbitrary order.
+    backendMocks.getProductsByIdsBackend.mockResolvedValueOnce({
+      ok: true,
+      data: { products: [product("p-1", "Graphic Tee"), product("p-2", "Balenciaga Tshirt")] },
+    });
+
+    const res = await searchProductsWithMeta("black tshirt", 200);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.products.map((p) => p.id)).toEqual(["p-2", "p-1"]);
+      expect(res.data.products[0].match_reason).toBe("Colour · Black · T-shirt");
+    }
+    expect(backendMocks.searchProductsBackend).toHaveBeenCalledWith(expect.objectContaining({ limit: 60 }));
+  });
+
+  it("surfaces the backend's spell correction and keeps backend matches whose text lacks the typo", async () => {
+    catalogVisibilityMocks.getBrowsableStoreIds.mockResolvedValue(new Set(["store-1"]));
+    catalogVisibilityMocks.isPublicCatalogProduct.mockReturnValue(true);
+    backendMocks.searchProductsBackend.mockResolvedValueOnce({
+      ok: true,
+      data: { query: "sneekers", count: 2, corrected_query: "sneakers", products: [{ id: "p-1" }, { id: "p-2" }] },
+    });
+    const product = (id: string, name: string) => ({
+      id, name, slug: id, price: 500, mrp: 1000, currency: "LKR", status: "active", is_active: true,
+      store: { id: "store-1", name: "Store One", slug: "store-one" },
+      variants: [{ id: `v-${id}`, color: "White", size: "9", price: 500, stock: 5 }],
+      images: [{ url: `${id}.png`, is_primary: true }],
+    });
+    backendMocks.getProductsByIdsBackend.mockResolvedValueOnce({
+      ok: true,
+      // p-1 matches the corrected word; p-2 was recalled via AI attributes (no query word in its text).
+      data: { products: [product("p-1", "White Sneakers"), product("p-2", "Air Force 1")] },
+    });
+
+    const res = await searchProductsWithMeta("sneekers", 20, { spell: "auto" });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.corrected_query).toBe("sneakers");
+      expect(res.data.products.map((p) => p.id)).toEqual(["p-1", "p-2"]);
+    }
+    expect(backendMocks.searchProductsBackend).toHaveBeenCalledWith(expect.objectContaining({ q: "sneekers", spell: "auto" }));
   });
 
   it("returns ok([]) when query search yields no matches", async () => {

@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";

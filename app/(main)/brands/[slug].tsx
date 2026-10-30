@@ -18,7 +18,7 @@ import { BrandHero } from "@/components/brand/BrandHero";
 import { useToast } from "@/components/ui/Toast";
 import {
   getBrandBySlug,
-  getBrandProducts,
+  getProducts,
   isFollowingBrand,
   followBrand,
   unfollowBrand,
@@ -57,7 +57,7 @@ export default function BrandDetailScreen() {
       setBrand(r.data);
       tracker.action("brand_view", { brandSlug: slugKey, brandId: r.data.id });
       const [prods, follow] = await Promise.all([
-        getBrandProducts(r.data.id, { limit: 24 }),
+        getProducts({ brandSlug: slugKey, limit: 24 }),
         user ? isFollowingBrand(r.data.id) : Promise.resolve({ ok: true, data: false } as never),
       ]);
       if (prods.ok) setProducts(prods.data.products);

@@ -11,17 +11,24 @@ interface StoreAboutSectionProps {
   store: Store;
 }
 
-const promises = [
+// 0357 — the returns promise follows the store's own setting.
+function returnsPromise(store: Store) {
+  return store.accepts_returns === false
+    ? { icon: "ban-outline", title: "No returns", body: "All sales are final with this boutique." }
+    : {
+        icon: "refresh-circle-outline",
+        title: `${store.return_window_days ?? 30}-day returns`,
+        body: "Free returns on unworn pieces with original tags.",
+      };
+}
+
+const promisesFor = (store: Store) => [
   {
     icon: "shield-checkmark-outline",
     title: "Authenticity guaranteed",
     body: "Every piece inspected and verified by our atelier team.",
   },
-  {
-    icon: "refresh-circle-outline",
-    title: "14-day returns",
-    body: "Free returns on unworn pieces with original tags.",
-  },
+  returnsPromise(store),
   {
     icon: "paper-plane-outline",
     title: "Islandwide dispatch",
@@ -60,7 +67,7 @@ export function StoreAboutSection({ store }: StoreAboutSectionProps) {
       ) : null}
 
       <View style={styles.promisesGrid}>
-        {promises.map((p) => (
+        {promisesFor(store).map((p) => (
           <View key={p.title} style={styles.promiseCard}>
             <View style={styles.promiseIconWrap}>
               <Ionicons name={p.icon as any} size={20} color={colors.olive[600]} />

@@ -5,31 +5,39 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
-  TextInput,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { getAdminOrders } from "@/lib/api";
 import type { Order } from "@/lib/types";
 import { Skeleton } from "@/components/ui";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import { colors, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { orderStatusTone } from "@/lib/seller/status-tones";
 import {
   formatCheckoutPayment,
   formatPaymentStatus,
+  formatOrderStatusLabel,
   firstLineItem,
   countOrderUnits,
 } from "@/lib/orders/seller-list";
-
-const RUST = "#7a2f1a";
-const CREAM = "#f4f2ea";
+import {
+  INK,
+  LIME,
+  HAIRLINE,
+  cardSurface,
+  Chip,
+  SearchBar,
+  Empty,
+  SectionCount,
+  kit,
+} from "@/components/admin/catalog-kit";
 
 const STATUS_TABS = [
   { key: "all", label: "All" },
@@ -40,6 +48,16 @@ const STATUS_TABS = [
   { key: "delivered", label: "Delivered" },
   { key: "cancelled", label: "Cancelled" },
 ] as const;
+
+const STATUS_DOT: Record<string, string | undefined> = {
+  all: undefined,
+  pending: "#e0a526",
+  confirmed: colors.olive[400],
+  processing: colors.olive[600],
+  shipped: colors.accent2.rust,
+  delivered: "#22a35a",
+  cancelled: "#9a9c8c",
+};
 
 function formatRelative(dateStr?: string) {
   if (!dateStr) return "—";
@@ -55,11 +73,19 @@ function formatRelative(dateStr?: string) {
   return d.toLocaleDateString("en-LK", { month: "short", day: "numeric" });
 }
 
-function statusLabel(status: string) {
-  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 const IN_FLIGHT = new Set(["confirmed", "processing", "shipped", "out_for_delivery"]);
+
+function OrderStatusPill({ status }: { status: string }) {
+  const tone = orderStatusTone(status);
+  return (
+    <View style={[kit.statusPill, { backgroundColor: tone.bg }]}>
+      <View style={[kit.statusDot, { backgroundColor: tone.text }]} />
+      <Text style={[kit.statusText, { color: tone.text }]}>
+        {formatOrderStatusLabel(status)}
+      </Text>
+    </View>
+  );
+}
 
 export default function AdminOrders() {
   const router = useRouter();
@@ -88,14 +114,102 @@ export default function AdminOrders() {
     return { pending, inFlight, volume };
   }, [orders]);
 
-  const renderOrder = ({ item }: { item: Order }) => {
-    const tone = orderStatusTone(item.status);
+  const resetFilters = () => {
+    setSearch("");
+    setStatus("all");
+  };
+
+  const header = (
+    <View>
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowDot} />
+            <Text style={styles.eyebrow}>DISPATCH & FULFILLMENT</Text>
+          </View>
+          <Text style={styles.title}>Orders</Text>
+          <Text style={styles.subtitle}>
+            Track fulfilment, payments and delivery across every consignment.
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => ordersQuery.refetch()}
+          style={({ pressed }) => [styles.roundBtn, pressed && kit.pressed]}
+          accessibilityLabel="Refresh orders"
+        >
+          <Ionicons name="refresh-outline" size={17} color={INK} />
+        </Pressable>
+      </View>
+
+      <SearchBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Search order #, customer, or phone…"
+      />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {STATUS_TABS.map((tab) => (
+          <Chip
+            key={tab.key}
+            label={tab.label}
+            dot={STATUS_DOT[tab.key]}
+            active={status === tab.key}
+            onPress={() => setStatus(tab.key)}
+          />
+        ))}
+      </ScrollView>
+
+      {!ordersQuery.isLoading && orders.length > 0 && !isFiltered ? (
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>PENDING</Text>
+            <Text style={[styles.summaryValue, summary.pending > 0 && styles.summaryValueWarn]}>
+              {summary.pending}
+            </Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>IN FLIGHT</Text>
+            <Text style={styles.summaryValue}>{summary.inFlight}</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>VISIBLE VOLUME</Text>
+            <Text style={styles.summaryValue} numberOfLines={1}>
+              {formatPrice(summary.volume)}
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {!ordersQuery.isLoading ? (
+        <View style={styles.countRow}>
+          <SectionCount>
+            {orders.length} {orders.length === 1 ? "ORDER" : "ORDERS"}
+            {isFiltered ? " MATCHING" : ""}
+          </SectionCount>
+          {isFiltered ? (
+            <Pressable onPress={resetFilters} hitSlop={8}>
+              <Text style={styles.clearText}>CLEAR</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const renderOrder = ({ item, index }: { item: Order; index: number }) => {
     const user = (item as any).user;
     const customerName = user?.full_name ?? user?.email ?? "Direct Customer";
-    const customerInitial = customerName.charAt(0).toUpperCase();
     const orderNumber = item.order_number ?? item.id.slice(0, 8).toUpperCase();
     const items = (item as any).items ?? (item as any).order_items;
-    const units = countOrderUnits(items) ?? (Array.isArray(items) && items.length > 0 ? items.length : null);
+    const units =
+      countOrderUnits(items) ??
+      (Array.isArray(items) && items.length > 0 ? items.length : null);
     const line = firstLineItem(items);
     const extraUnits = units != null && units > 1 ? units - 1 : 0;
     const method = formatCheckoutPayment(item.payment_method);
@@ -103,763 +217,289 @@ export default function AdminOrders() {
     const codUnpaid = item.payment_method === "cod" && item.payment_status !== "paid";
 
     return (
-      <View style={[styles.orderCard, codUnpaid && styles.orderCardWarn]}>
-        <View style={[styles.statusAccent, { backgroundColor: tone.text }]} />
-        <Pressable
-          onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: item.id } })}
-          style={styles.orderMain}
-        >
-          {/* Top Row: Customer Avatar & Status */}
-          <View style={styles.orderTop}>
-            <View style={styles.customerRow}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>{customerInitial}</Text>
-              </View>
-              <View style={styles.customerDetails}>
-                <Text style={styles.customerName} numberOfLines={1}>
-                  {customerName}
-                </Text>
-                <Text style={styles.orderMeta}>
+      <Animated.View entering={FadeInDown.duration(380).delay(Math.min(index, 8) * 40)}>
+        <View style={[styles.card, codUnpaid && styles.cardWarn]}>
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: "/(admin)/orders/[id]", params: { id: item.id } })
+            }
+            style={({ pressed }) => [styles.orderRow, pressed && { opacity: 0.85 }]}
+          >
+            <View style={styles.thumb}>
+              {line?.imageUrl ? (
+                <Image
+                  source={{ uri: line.imageUrl }}
+                  style={styles.thumbImg}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : (
+                <View style={styles.thumbEmpty}>
+                  <Ionicons name="receipt-outline" size={20} color="rgba(22,23,15,0.25)" />
+                </View>
+              )}
+              {extraUnits > 0 ? (
+                <View style={styles.thumbBadge}>
+                  <Text style={styles.thumbBadgeText}>+{extraUnits}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.info}>
+              <View style={styles.topRow}>
+                <Text style={styles.orderLabel} numberOfLines={1}>
                   #{orderNumber} · {formatRelative(item.placed_at ?? (item as any).created_at)}
                 </Text>
+                <OrderStatusPill status={item.status} />
               </View>
-            </View>
-
-            <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
-              <Text style={[styles.statusBadgeText, { color: tone.text }]}>
-                {statusLabel(item.status)}
+              <Text style={styles.customerName} numberOfLines={1}>
+                {customerName}
               </Text>
-            </View>
-          </View>
-
-          {/* Middle Row: Product thumbnail & name */}
-          {line || units != null ? (
-            <View style={styles.productRow}>
-              <View style={styles.thumbWrap}>
-                {line?.imageUrl ? (
-                  <Image
-                    source={{ uri: line.imageUrl }}
-                    style={styles.thumb}
-                    contentFit="cover"
+              <Text style={styles.itemName} numberOfLines={1}>
+                {line?.name ?? "Order items"}
+                {line?.variant ? ` · ${line.variant}` : ""}
+                {units != null ? `  ·  ${units} ${units === 1 ? "item" : "items"}` : ""}
+              </Text>
+              <View style={styles.bottomRow}>
+                <Text style={styles.price}>
+                  {formatPrice(item.total, item.currency ?? "LKR")}
+                </Text>
+                <View style={[styles.payPill, codUnpaid && styles.payPillWarn]}>
+                  <Ionicons
+                    name={codUnpaid ? "alert-circle-outline" : "card-outline"}
+                    size={11}
+                    color={codUnpaid ? colors.accent2.rust : colors.ink.mute}
                   />
-                ) : (
-                  <View style={[styles.thumb, styles.thumbEmpty]}>
-                    <Ionicons name="bag-outline" size={18} color={colors.olive[700]} />
-                  </View>
-                )}
-                {extraUnits > 0 ? (
-                  <View style={styles.thumbBadge}>
-                    <Text style={styles.thumbBadgeText}>+{extraUnits}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.productInfo}>
-                <Text style={styles.itemName} numberOfLines={1}>
-                  {line?.name ?? "Order items"}
-                  {line?.variant ? ` · ${line.variant}` : ""}
-                </Text>
-                <Text style={styles.itemsSummaryText}>
-                  {units ?? 0} {units === 1 ? "item" : "items"} in consignment
-                </Text>
+                  <Text
+                    style={[styles.payPillText, codUnpaid && styles.payPillTextWarn]}
+                    numberOfLines={1}
+                  >
+                    {method} · {payStatus}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }} />
+                <Ionicons name="arrow-forward" size={14} color="rgba(22,23,15,0.35)" />
               </View>
             </View>
-          ) : null}
-
-          {/* Bottom Row: Price & Payment */}
-          <View style={styles.orderBottom}>
-            <View style={styles.priceWrap}>
-              <Text style={styles.priceLabel}>ORDER TOTAL</Text>
-              <Text style={styles.orderTotal}>
-                {formatPrice(item.total, item.currency ?? "LKR")}
-              </Text>
-            </View>
-            <View style={styles.orderBottomRight}>
-              <View style={[styles.paymentPill, codUnpaid && styles.paymentPillWarn]}>
-                <Ionicons
-                  name={codUnpaid ? "alert-circle-outline" : "checkmark-circle-outline"}
-                  size={12}
-                  color={codUnpaid ? RUST : colors.olive[700]}
-                />
-                <Text
-                  style={[styles.paymentPillText, codUnpaid && styles.paymentPillTextWarn]}
-                  numberOfLines={1}
-                >
-                  {method} · {payStatus}
-                </Text>
-              </View>
-              <View style={styles.chevronCircle}>
-                <Ionicons name="chevron-forward" size={14} color={colors.olive[800]} />
-              </View>
-            </View>
-          </View>
-        </Pressable>
-      </View>
+          </Pressable>
+        </View>
+      </Animated.View>
     );
   };
 
   return (
     <View style={styles.container}>
-      {/* Editorial Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTextGroup}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowDot} />
-            <Text style={styles.eyebrow}>DISPATCH & FULFILLMENT</Text>
-          </View>
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>Orders</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{orders.length} orders</Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.refreshBtn}
-          onPress={() => ordersQuery.refetch()}
-          activeOpacity={0.7}
-          accessibilityLabel="Refresh orders"
-        >
-          <Ionicons
-            name="refresh-outline"
-            size={20}
-            color={colors.olive[800]}
+      <FlatList
+        data={orders}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={header}
+        renderItem={renderOrder}
+        refreshControl={
+          <RefreshControl
+            refreshing={ordersQuery.isFetching}
+            onRefresh={() => ordersQuery.refetch()}
+            tintColor={colors.olive[800]}
+            colors={[colors.olive[800]]}
           />
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Input Bar */}
-      <View style={styles.searchWrapper}>
-        <View style={styles.searchContainer}>
-          <Ionicons
-            name="search-outline"
-            size={18}
-            color={colors.olive[700]}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by order #, customer, or phone…"
-            placeholderTextColor={colors.light.mutedForeground}
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-            autoCapitalize="none"
-          />
-          {search ? (
-            <Pressable onPress={() => setSearch("")} hitSlop={10} style={styles.clearBtn}>
-              <Ionicons name="close-circle" size={18} color={colors.light.mutedForeground} />
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Status Filter Chips */}
-      <View style={styles.tabsContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsContent}
-        >
-          {STATUS_TABS.map((tab) => {
-            const isActive = status === tab.key;
-            return (
-              <Pressable
-                key={tab.key}
-                style={[styles.tabChip, isActive && styles.tabChipActive]}
-                onPress={() => setStatus(tab.key)}
-              >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Fulfilment summary / filtered results bar */}
-      {!ordersQuery.isLoading && orders.length > 0 ? (
-        isFiltered ? (
-          <View style={styles.resultsBar}>
-            <Text style={styles.resultsText}>
-              {orders.length} {orders.length === 1 ? "order" : "orders"} shown
-            </Text>
-            <Pressable
-              onPress={() => {
-                setSearch("");
-                setStatus("all");
-              }}
-              hitSlop={8}
-              style={styles.resultsClear}
-            >
-              <Text style={styles.resultsClearText}>Clear</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryCell}>
-              <Text style={styles.summaryLabel}>PENDING</Text>
-              <Text style={[styles.summaryValue, summary.pending > 0 && styles.summaryValueWarn]}>
-                {summary.pending}
-              </Text>
+        }
+        ListEmptyComponent={
+          ordersQuery.isLoading ? (
+            <View style={{ gap: 12 }}>
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} width="100%" height={110} style={{ borderRadius: 24 }} />
+              ))}
             </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryCell}>
-              <Text style={styles.summaryLabel}>IN FLIGHT</Text>
-              <Text style={styles.summaryValue}>{summary.inFlight}</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryCell}>
-              <Text style={styles.summaryLabel}>VISIBLE VOLUME</Text>
-              <Text style={styles.summaryValue} numberOfLines={1}>
-                {formatPrice(summary.volume)}
-              </Text>
-            </View>
-          </View>
-        )
-      ) : null}
-
-      {/* Order List / Skeleton / Empty State */}
-      {ordersQuery.isLoading ? (
-        <View style={styles.skeletonList}>
-          {[1, 2, 3, 4].map((i) => (
-            <View key={i} style={styles.skeletonCard}>
-              <View style={styles.skeletonTopRow}>
-                <Skeleton width={38} height={38} style={{ borderRadius: 19 }} />
-                <View style={{ flex: 1, gap: 6 }}>
-                  <Skeleton width="55%" height={14} />
-                  <Skeleton width="35%" height={11} />
-                </View>
-                <Skeleton width={60} height={20} style={{ borderRadius: radii.full }} />
-              </View>
-              <View style={styles.skeletonBottomRow}>
-                <Skeleton width="30%" height={18} />
-                <Skeleton width="20%" height={14} />
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : orders.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconCircle}>
-            <Ionicons name="receipt-outline" size={32} color={colors.olive[700]} />
-          </View>
-          <Text style={styles.emptyTitle}>
-            {search || status !== "all" ? "No Matching Orders" : "No Orders Yet"}
-          </Text>
-          <Text style={styles.emptyDescription}>
-            {search || status !== "all"
-              ? "No orders match the current keyword or status filter. Try clearing your filters."
-              : "When customers place orders, they will stream here in real-time."}
-          </Text>
-          {search || status !== "all" ? (
-            <Pressable
-              onPress={() => {
-                setSearch("");
-                setStatus("all");
-              }}
-              style={styles.clearFiltersBtn}
-            >
-              <Text style={styles.clearFiltersBtnText}>Clear Filters</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : (
-        <FlatList
-          data={orders}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          renderItem={renderOrder}
-          refreshControl={
-            <RefreshControl
-              refreshing={ordersQuery.isFetching}
-              onRefresh={() => ordersQuery.refetch()}
-              tintColor={colors.olive[800]}
-              colors={[colors.olive[800]]}
+          ) : (
+            <Empty
+              icon={isFiltered ? "funnel-outline" : "receipt-outline"}
+              title={isFiltered ? "No matching orders" : "No orders yet"}
+              body={
+                isFiltered
+                  ? "No orders match the current keyword or status filter."
+                  : "When customers place orders, they will stream here in real-time."
+              }
+              onReset={isFiltered ? resetFilters : undefined}
             />
-          }
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+          )
+        }
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.light.background,
-  },
+  container: { flex: 1, backgroundColor: colors.light.background },
+  list: { paddingHorizontal: 18, paddingBottom: 120 },
 
   /* Header */
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    alignItems: "flex-start",
+    gap: 12,
+    paddingTop: 18,
+    marginBottom: 18,
   },
-  headerTextGroup: {
-    flex: 1,
-  },
-  eyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
-  },
-  eyebrowDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[700],
-  },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
+  eyebrowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[600] },
   eyebrow: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 2.2,
     color: colors.olive[700],
-    letterSpacing: 1.2,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: colors.olive[900],
-    letterSpacing: -0.5,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 44,
+    lineHeight: 46,
+    letterSpacing: -1.6,
+    color: INK,
   },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: "#ebe7dc",
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "#ded8ca",
-  },
-  countText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: colors.olive[800],
-  },
-  refreshBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.full,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e4dfd3",
-    justifyContent: "center",
-    alignItems: "center",
-    ...shadows.soft,
-  },
-
-  /* Search */
-  searchWrapper: {
-    paddingHorizontal: 20,
-    marginBottom: 10,
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: "#e4dfd3",
-    paddingHorizontal: 14,
-    height: 44,
-    ...shadows.soft,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
+  subtitle: {
+    marginTop: 8,
     fontFamily: fontFamilies.sans.regular,
-    color: colors.light.foreground,
-    paddingVertical: 0,
-  },
-  clearBtn: {
-    padding: 4,
-  },
-
-  /* Status Tabs */
-  tabsContainer: {
-    marginBottom: 12,
-  },
-  tabsContent: {
-    paddingHorizontal: 20,
-    gap: 8,
-  },
-  tabChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#dfdacb",
-  },
-  tabChipActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-  },
-  tabText: {
-    fontFamily: fontFamilies.sans.semibold,
     fontSize: 13,
-    color: colors.olive[900],
+    lineHeight: 19,
+    color: colors.ink.mute,
+    maxWidth: 300,
   },
-  tabTextActive: {
-    color: "#ffffff",
-    fontFamily: fontFamilies.sans.bold,
+  roundBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    ...shadows.soft,
   },
 
-  /* Summary + results bar */
+  /* Chips */
+  chips: { gap: 7, paddingBottom: 14 },
+
+  /* Summary card */
   summaryCard: {
-    marginHorizontal: 20,
-    marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.olive[900],
-    borderRadius: radii.xl,
+    backgroundColor: INK,
+    borderRadius: 22,
     paddingHorizontal: 18,
     paddingVertical: 14,
-    ...shadows.soft,
+    marginBottom: 14,
+    ...shadows.editorial,
   },
-  summaryCell: {
-    flex: 1,
-    gap: 2,
-  },
+  summaryCell: { flex: 1, gap: 2 },
   summaryDivider: {
     width: 1,
     height: 28,
-    backgroundColor: "rgba(244,242,234,0.16)",
+    backgroundColor: "rgba(250,248,241,0.14)",
     marginHorizontal: 12,
   },
   summaryLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 8.5,
-    color: "rgba(244,242,234,0.55)",
-    letterSpacing: 0.9,
+    letterSpacing: 1.6,
+    color: "rgba(250,248,241,0.45)",
   },
   summaryValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: CREAM,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 18,
+    color: colors.paper.cream,
     letterSpacing: -0.3,
   },
-  summaryValueWarn: {
-    color: colors.accent2.ochre,
-  },
-  resultsBar: {
-    marginHorizontal: 20,
-    marginBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#ffffff",
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: "#e8e3d8",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    ...shadows.soft,
-  },
-  resultsText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
-  },
-  resultsClear: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.background,
-    borderWidth: 1,
-    borderColor: "#e4dfd3",
-  },
-  resultsClearText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.olive[800],
-  },
+  summaryValueWarn: { color: LIME },
 
-  /* Order List */
-  list: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 12,
-  },
-  orderCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: "#e8e3d8",
-    overflow: "hidden",
-    ...shadows.soft,
-  },
-  orderCardWarn: {
-    borderColor: "rgba(184,92,58,0.45)",
-  },
-  statusAccent: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  orderMain: {
-    padding: 16,
-    paddingLeft: 18,
-  },
-  orderTop: {
+  /* Section count */
+  countRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 10,
   },
-  customerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.olive[100],
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-  },
-  avatarText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.olive[900],
-  },
-  customerDetails: {
-    flex: 1,
-  },
-  customerName: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  orderMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
-  },
-  statusBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  statusBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
+  clearText: {
+    fontFamily: fontFamilies.mono.medium,
     fontSize: 9.5,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    letterSpacing: 1.8,
+    color: colors.accent2.rust,
+    marginBottom: 10,
   },
 
-  productRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#f4f1ea",
-  },
-  thumbWrap: {
-    position: "relative",
-  },
+  /* Order card */
+  card: { ...cardSurface, borderRadius: 24, marginBottom: 12, overflow: "hidden" },
+  cardWarn: { borderColor: "rgba(184,92,58,0.45)" },
+  orderRow: { flexDirection: "row", gap: 13, padding: 10 },
   thumb: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
+    width: 64,
+    height: 82,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: colors.paper.warm,
   },
-  thumbEmpty: {
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  thumbImg: { width: "100%", height: "100%" },
+  thumbEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },
   thumbBadge: {
     position: "absolute",
-    top: -5,
-    right: -5,
-    minWidth: 17,
-    height: 17,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: colors.olive[800],
-    borderWidth: 1.5,
-    borderColor: "#ffffff",
+    top: 5,
+    left: 5,
+    minWidth: 19,
+    height: 19,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: INK,
     alignItems: "center",
     justifyContent: "center",
   },
   thumbBadgeText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 9,
-    color: CREAM,
+    color: colors.paper.cream,
   },
-  productInfo: {
+  info: { flex: 1, paddingTop: 2, paddingRight: 4, minWidth: 0 },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  orderLabel: {
     flex: 1,
-    gap: 2,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    color: colors.olive[700],
+    textTransform: "uppercase",
+  },
+  customerName: {
+    marginTop: 5,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 17,
+    letterSpacing: -0.3,
+    color: INK,
   },
   itemName: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  itemsSummaryText: {
-    fontFamily: fontFamilies.sans.regular,
+    marginTop: 3,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 11.5,
-    color: colors.light.mutedForeground,
+    color: "rgba(22,23,15,0.5)",
   },
-
-  orderBottom: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#f0ece3",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  priceWrap: {
-    gap: 2,
-  },
-  priceLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: colors.olive[700],
-    letterSpacing: 1,
-  },
-  orderTotal: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: colors.olive[900],
-    letterSpacing: -0.3,
-  },
-  orderBottomRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexShrink: 1,
-  },
-  paymentPill: {
+  bottomRow: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 8 },
+  price: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: INK },
+  payPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
+    borderRadius: 999,
+    backgroundColor: "rgba(22,23,15,0.05)",
     flexShrink: 1,
   },
-  paymentPillWarn: {
-    backgroundColor: "rgba(184,92,58,0.12)",
-  },
-  paymentPillText: {
+  payPillWarn: { backgroundColor: "rgba(184,92,58,0.12)" },
+  payPillText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 10.5,
-    color: colors.olive[800],
+    color: colors.ink.mute,
   },
-  paymentPillTextWarn: {
-    color: RUST,
-  },
-  chevronCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#f8f6f0",
-    borderWidth: 1,
-    borderColor: "#e4dfd3",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  /* Skeletons */
-  skeletonList: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  skeletonCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: radii.xl,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#e8e3d8",
-    gap: 12,
-  },
-  skeletonTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  skeletonBottomRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#f0ece3",
-  },
-
-  /* Empty State */
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 36,
-    paddingVertical: 60,
-  },
-  emptyIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "#ebe7dc",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#dfdacd",
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontFamily: fontFamilies.display.semibold,
-    color: colors.olive[900],
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  emptyDescription: {
-    fontSize: 14,
-    fontFamily: fontFamilies.sans.regular,
-    color: colors.light.mutedForeground,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  clearFiltersBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    backgroundColor: colors.olive[900],
-    borderRadius: radii.full,
-  },
-  clearFiltersBtnText: {
-    fontSize: 13,
-    fontFamily: fontFamilies.sans.bold,
-    color: "#ffffff",
-  },
+  payPillTextWarn: { color: colors.accent2.rust },
 });

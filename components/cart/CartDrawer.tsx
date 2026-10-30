@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Modal,
   View,
   ScrollView,
   TouchableOpacity,
@@ -8,6 +7,7 @@ import {
   StyleSheet,
   Text,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,8 +21,6 @@ import { formatPrice } from "@/lib/utils";
 import { getProductsByIdsBackend } from "@/lib/api/backend";
 import { mapProducts } from "@/lib/api/product-mapper";
 import type { Product } from "@/lib/types";
-
-const FREE_DELIVERY_THRESHOLD = 15000;
 
 export function CartDrawer() {
   const router = useRouter();
@@ -75,15 +73,14 @@ export function CartDrawer() {
   };
 
   const itemCount = lines.reduce((n, i) => n + i.quantity, 0);
-  const remainingForFree = Math.max(0, FREE_DELIVERY_THRESHOLD - sub);
-  const freeProgress = Math.min(1, sub / FREE_DELIVERY_THRESHOLD);
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
-      <Pressable style={styles.overlay} onPress={close}>
+      <Pressable style={styles.overlay} onPress={(e) => { console.log("[DBG] overlay press", e.nativeEvent.target, e.nativeEvent.pageX, e.nativeEvent.pageY); close(); }} onTouchStart={(e) => console.log("[DBG] overlay touchStart", e.nativeEvent.target, e.nativeEvent.pageX, e.nativeEvent.pageY)} onResponderGrant={() => console.log("[DBG] overlay grant")} onLayout={(e) => console.log("[DBG] overlay layout", JSON.stringify(e.nativeEvent.layout))}>
         <Pressable
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 8, 20) }]}
           onPress={(e) => e.stopPropagation()}
+          onLayout={(e) => console.log("[DBG] sheet layout", JSON.stringify(e.nativeEvent.layout))}
         >
           <View style={styles.handle} />
 
@@ -106,46 +103,6 @@ export function CartDrawer() {
               <Ionicons name="close" size={18} color={colors.light.foreground} />
             </TouchableOpacity>
           </View>
-
-          {/* Free delivery bar */}
-          {lines.length > 0 && (
-            <View style={styles.delivery}>
-              <View style={styles.deliveryRow}>
-                <View
-                  style={[
-                    styles.deliveryIcon,
-                    remainingForFree === 0 && styles.deliveryIconDone,
-                  ]}
-                >
-                  <Ionicons
-                    name={remainingForFree === 0 ? "checkmark" : "car-outline"}
-                    size={13}
-                    color={remainingForFree === 0 ? colors.paper.cream : colors.olive[800]}
-                  />
-                </View>
-                <Text style={styles.deliveryText} numberOfLines={1}>
-                  {remainingForFree === 0 ? (
-                    <Text style={styles.deliveryStrong}>Complimentary delivery unlocked</Text>
-                  ) : (
-                    <>
-                      Add <Text style={styles.deliveryStrong}>{formatPrice(remainingForFree)}</Text>{" "}
-                      for free delivery
-                    </>
-                  )}
-                </Text>
-                <Text style={styles.deliveryPct}>{Math.round(freeProgress * 100)}%</Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    remainingForFree === 0 && styles.progressFillDone,
-                    { width: `${Math.round(freeProgress * 100)}%` },
-                  ]}
-                />
-              </View>
-            </View>
-          )}
 
           {/* Body */}
           {lines.length === 0 ? (
@@ -239,7 +196,7 @@ export function CartDrawer() {
                           </TouchableOpacity>
                           <Text style={styles.stepperValue}>{item.quantity}</Text>
                           <TouchableOpacity
-                            onPress={() => updateQuantity(key, item.quantity + 1)}
+                            onPress={() => { console.log("[DBG] plus press"); updateQuantity(key, item.quantity + 1); }}
                             style={styles.stepperBtn}
                             hitSlop={6}
                             accessibilityRole="button"
@@ -375,59 +332,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.paper.warm,
-  },
-
-  delivery: {
-    backgroundColor: colors.paper.warm,
-    borderRadius: radii["2xl"],
-    padding: spacing[3],
-    marginBottom: spacing[2],
-    gap: spacing[2.5],
-  },
-  deliveryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  deliveryIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.paper.cream,
-  },
-  deliveryIconDone: {
-    backgroundColor: colors.olive[600],
-  },
-  deliveryText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12.5,
-    color: colors.ink.mute,
-  },
-  deliveryStrong: {
-    fontFamily: fontFamilies.sans.bold,
-    color: colors.light.foreground,
-  },
-  deliveryPct: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10.5,
-    color: colors.olive[600],
-  },
-  progressTrack: {
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(22, 23, 15, 0.08)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: colors.accent2.ochre,
-    borderRadius: 2,
-  },
-  progressFillDone: {
-    backgroundColor: colors.olive[600],
   },
 
   empty: {

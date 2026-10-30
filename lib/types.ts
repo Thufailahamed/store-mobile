@@ -63,6 +63,18 @@ export interface Store {
   is_online?: boolean;
   contact_phone?: string | null;
   contact_email?: string | null;
+  /** Courier pickup point (never shown to shoppers). */
+  delivery_address_line1?: string | null;
+  delivery_address_line2?: string | null;
+  delivery_city?: string | null;
+  delivery_state?: string | null;
+  delivery_postal_code?: string | null;
+  delivery_country?: string | null;
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
+  /** 0357 — false = final sale (no returns). Missing/undefined = accepts returns. */
+  accepts_returns?: boolean;
+  return_window_days?: number | null;
 }
 
 export interface Brand {
@@ -107,6 +119,8 @@ export interface Product {
   occasion?: string;
   season?: string;
   care_instructions?: string;
+  meta_title?: string | null;
+  meta_description?: string | null;
   tags: string[];
   attributes?: Record<string, unknown>;
   is_featured: boolean;
@@ -290,6 +304,7 @@ export interface OrderItem {
   gift_message?: string | null;
   image_url?: string | null;
   product?: Product;
+  store?: Pick<Store, "id" | "name" | "slug"> | null;
 }
 
 export interface Banner {

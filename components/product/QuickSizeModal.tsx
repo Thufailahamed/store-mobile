@@ -1,11 +1,11 @@
 import React from "react";
 import {
-  Modal,
   View,
   StyleSheet,
   TouchableOpacity,
   Dimensions,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";

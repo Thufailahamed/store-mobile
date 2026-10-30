@@ -1,57 +1,26 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@/components/ui/Icon";
-import { ScreenHeader } from "@/components/layout";
-import { Badge, Button } from "@/components/ui";
-import { Body, Display, Label, Price } from "@/components/ui/Typography";
+import { Skeleton } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { cancelReturn, getReturnByGroupId, type MobileReturnRequest } from "@/lib/api";
-import { type ReturnStatus } from "@/lib/account-local";
-import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
-
-const STATUS_TONE: Record<ReturnStatus, { label: string; bg: string; fg: string; icon: keyof typeof Ionicons.glyphMap; copy: string }> = {
-  requested: {
-    label: "Requested",
-    bg: colors.accent2.ochre + "20",
-    fg: colors.accent2.ochre,
-    icon: "hourglass-outline",
-    copy: "We have received your return request and notified the seller.",
-  },
-  approved: {
-    label: "Approved",
-    bg: colors.olive[100],
-    fg: colors.olive[700],
-    icon: "checkmark-circle-outline",
-    copy: "Approved. Send the package back with the prepaid label.",
-  },
-  received: {
-    label: "Received",
-    bg: colors.olive[100],
-    fg: colors.olive[700],
-    icon: "archive-outline",
-    copy: "Warehouse received the parcel. Refund is being processed.",
-  },
-  refunded: {
-    label: "Refunded",
-    bg: colors.olive[200],
-    fg: colors.olive[800],
-    icon: "card-outline",
-    copy: "Refund issued to your original payment method.",
-  },
-  rejected: {
-    label: "Rejected",
-    bg: colors.light.destructive + "20",
-    fg: colors.light.destructive,
-    icon: "close-circle-outline",
-    copy: "This return was rejected. Review the seller note for details.",
-  },
-};
-
-const TIMELINE: ReturnStatus[] = ["requested", "approved", "received", "refunded"];
+import { C, DottedRail, ParcelArt, routeStyles, shortDate } from "@/components/orders/parcel-track";
+import { DetailTopBar, MenuSheet, type MenuItem } from "@/components/orders/detail-chrome";
+import {
+  RETURN_ICONS,
+  RETURN_RIBBON,
+  RETURN_TONE,
+  returnRailLabel,
+  returnStage,
+} from "@/components/orders/return-track";
 
 export default function ReturnDetailScreen() {
   const router = useRouter();
@@ -62,6 +31,7 @@ export default function ReturnDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   /**
    * Mobile parity with web: the buyer can cancel a return as long as
@@ -131,352 +101,481 @@ export default function ReturnDetailScreen() {
 
   if (loading || !returnReq) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <ScreenHeader title="Return" />
-        <View style={styles.loading}>
-          {loading ? (
-            <Body muted>Loading return…</Body>
-          ) : fetchError ? (
-            <>
-              <Body muted style={{ textAlign: "center", marginBottom: spacing[4] }}>
-                Couldn't load this return — check your connection
-              </Body>
-              <Button variant="outline" onPress={loadReturn}>Retry</Button>
-            </>
-          ) : (
-            <Body muted>Return not found</Body>
-          )}
-        </View>
-      </SafeAreaView>
+      <View style={styles.root}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={[C.glow, C.glowSoft, C.paper]}
+          locations={[0, 0.55, 1]}
+          style={styles.glow}
+        />
+        <SafeAreaView style={styles.flex} edges={["top"]}>
+          <DetailTopBar title="Return Details" onBack={() => router.back()} />
+          <View style={styles.loadingContainer}>
+            {loading ? (
+              <View style={{ width: "100%", gap: 14 }}>
+                <Skeleton height={90} borderRadius={24} />
+                <Skeleton height={64} borderRadius={20} />
+                <Skeleton height={240} borderRadius={26} />
+              </View>
+            ) : (
+              <>
+                <Ionicons name={fetchError ? "cloud-offline-outline" : "help-circle-outline"} size={26} color={C.muted} />
+                <Text style={styles.loadingText}>
+                  {fetchError ? "Couldn't load this return." : "Return not found."}
+                </Text>
+                {fetchError ? (
+                  <TouchableOpacity style={styles.retryBtn} onPress={loadReturn} activeOpacity={0.85}>
+                    <Text style={styles.retryBtnText}>Try again</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            )}
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
-  const tone = STATUS_TONE[returnReq.status];
-  const currentStepIndex = TIMELINE.indexOf(returnReq.status);
+  const r = returnReq;
+  const tone = RETURN_TONE[r.status];
+  const ribbon = RETURN_RIBBON[r.status];
+  const canCancel = r.status === "requested" || r.status === "approved";
+  const units = r.items.reduce((n, i) => n + i.quantity, 0);
+
+  const openSupport = () =>
+    router.push({
+      pathname: "/(main)/contact",
+      params: {
+        subject: `Return #${r.return_number}`,
+        message: `I need help with return #${r.return_number} (order #${r.order_number}).`,
+      },
+    } as never);
+  const openPickup = () =>
+    router.push({ pathname: "/(main)/account/returns/[id]/pickup", params: { id: r.return_group_id } } as never);
+  const openLabel = () =>
+    router.push({ pathname: "/(main)/account/returns/[id]/label", params: { id: r.return_group_id } } as never);
+
+  const menu: MenuItem[] = [
+    ...(r.status === "approved"
+      ? [
+          { icon: "navigate-outline" as const, label: "Track pickup", onPress: openPickup },
+          { icon: "print-outline" as const, label: "Prepaid return label", onPress: openLabel },
+        ]
+      : []),
+    { icon: "headset-outline", label: "Contact support", onPress: openSupport },
+    ...(canCancel
+      ? [{ icon: "close-circle-outline" as const, label: "Cancel return", onPress: handleCancel, danger: true }]
+      : []),
+  ];
+
+  let refundSub: string;
+  if (r.status === "refunded") refundSub = `Refunded ${shortDate(r.updated_at)}`;
+  else if (r.status === "rejected") refundSub = "Not refunded";
+  else refundSub = "3–5 days after inspection";
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScreenHeader title={`Return #${returnReq.return_number}`} />
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, spacing[6]) + spacing[3] }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.statusCard, { backgroundColor: tone.bg }]}>
-          <View style={styles.statusIconWrap}>
-            <Ionicons name={tone.icon} size={26} color={tone.fg} />
-          </View>
-          <Display size="xl" style={{ color: tone.fg }}>{tone.label}</Display>
-          <Body size="sm" style={{ color: tone.fg, opacity: 0.85, textAlign: "center" }}>
-            {tone.copy}
-          </Body>
-        </View>
+    <View style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glow, C.glowSoft, C.paper]}
+        locations={[0, 0.55, 1]}
+        style={styles.glow}
+      />
+      <SafeAreaView style={styles.flex} edges={["top"]}>
+        <DetailTopBar title="Return Details" onBack={() => router.back()} onMore={() => setMenuOpen(true)} />
 
-        {returnReq.status !== "rejected" && (
-          <View style={styles.timeline}>
-            <Display size="lg" style={styles.timelineTitle}>Progress</Display>
-            <View style={styles.steps}>
-              {TIMELINE.map((step, i) => {
-                const isDone = i <= currentStepIndex;
-                const isCurrent = i === currentStepIndex;
-                return (
-                  <View key={step} style={styles.step}>
-                    <View style={[styles.stepDot, isDone && styles.stepDotDone, isCurrent && styles.stepDotCurrent]}>
-                      {isDone ? (
-                        <Ionicons name="checkmark" size={12} color={colors.light.primaryForeground} />
-                      ) : (
-                        <View style={styles.stepDotEmpty} />
-                      )}
-                    </View>
-                    <View style={styles.stepInfo}>
-                      <Body size="sm" style={[styles.stepLabel, isDone && styles.stepLabelDone]}>
-                        {STATUS_TONE[step].label}
-                      </Body>
-                      {isCurrent && (
-                        <Body muted size="xs">In progress</Body>
-                      )}
-                    </View>
-                    {i < TIMELINE.length - 1 && (
-                      <View style={[styles.stepLine, isDone && styles.stepLineDone]} />
-                    )}
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <View style={styles.itemsHead}>
+            <Text style={styles.itemsKicker}>IN THIS RETURN</Text>
+            <Text style={styles.itemsCount}>
+              {units} piece{units === 1 ? "" : "s"}
+            </Text>
+          </View>
+          <View style={styles.itemsCard}>
+            {r.items.map((item, i) => (
+              <Animated.View
+                key={item.order_item_id}
+                entering={FadeInDown.delay(i * 60).duration(380)}
+                style={[styles.itemRow, i > 0 && styles.itemRowDivider]}
+              >
+                <View style={styles.itemThumb}>
+                  <MaterialCommunityIcons name="hanger" size={24} color={C.goldSoft} />
+                </View>
+                <View style={styles.itemBody}>
+                  <Text style={styles.itemName} numberOfLines={1}>{item.product_name}</Text>
+                  <View style={styles.itemMeta}>
+                    {item.variant_label ? (
+                      <View style={styles.variantChip}>
+                        <Text style={styles.variantChipText} numberOfLines={1}>{item.variant_label}</Text>
+                      </View>
+                    ) : null}
+                    <Text style={styles.unitText}>Qty {item.quantity}</Text>
                   </View>
-                );
-              })}
-            </View>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.itemPrice}>{formatPrice(item.refund_amount, r.currency)}</Text>
+                  <Text style={styles.itemPriceSub}>refund</Text>
+                </View>
+              </Animated.View>
+            ))}
           </View>
-        )}
 
-        <View style={styles.card}>
-          <Display size="lg" style={styles.cardTitle}>Order</Display>
-          <View style={styles.cardRow}>
-            <Body muted size="xs">Order number</Body>
-            <Body size="sm">#{returnReq.order_number}</Body>
-          </View>
-          <View style={styles.cardRow}>
-            <Body muted size="xs">Reason</Body>
-            <Body size="sm" style={styles.cardRowEnd}>{returnReq.reason || "—"}</Body>
-          </View>
-          <View style={styles.cardRow}>
-            <Body muted size="xs">Requested</Body>
-            <Body size="sm">{new Date(returnReq.created_at).toLocaleString()}</Body>
-          </View>
-          {returnReq.received_at && (
-            <View style={styles.cardRow}>
-              <Body muted size="xs">Received</Body>
-              <Body size="sm">{new Date(returnReq.received_at).toLocaleString()}</Body>
-            </View>
-          )}
-        </View>
+          <View style={styles.sheet}>
+            <View style={styles.grabber} />
 
-        <View style={styles.card}>
-          <Display size="lg" style={styles.cardTitle}>Items</Display>
-          {returnReq.items.map((item, i) => (
-            <View key={i} style={styles.itemRow}>
-              <View style={{ flex: 1 }}>
-                <Body size="sm" numberOfLines={2}>{item.product_name}</Body>
-                {item.variant_label && <Body muted size="xs">{item.variant_label}</Body>}
-                <Body muted size="xs">Qty {item.quantity} · Unit {item.unit_price.toLocaleString()}</Body>
+            <View style={styles.orderRow}>
+              <View style={styles.orderAvatar}>
+                <MaterialCommunityIcons name="shopping-outline" size={22} color={C.goldSoft} />
               </View>
-              <View style={styles.itemRefund}>
-                <Label style={styles.kicker}>Refund</Label>
-                <Price style={styles.itemRefundValue}>{formatPrice(item.refund_amount, returnReq.currency)}</Price>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.orderKicker}>Return for order</Text>
+                <Text style={styles.orderName} numberOfLines={1}>#{r.order_number}</Text>
+              </View>
+              {r.status === "approved" ? (
+                <TouchableOpacity
+                  style={styles.roundDark}
+                  onPress={openLabel}
+                  activeOpacity={0.85}
+                  accessibilityLabel="Prepaid return label"
+                >
+                  <Ionicons name="print-outline" size={18} color={C.cream} />
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={styles.roundDark}
+                onPress={openSupport}
+                activeOpacity={0.85}
+                accessibilityLabel="Contact support"
+              >
+                <Ionicons name="chatbubble-ellipses" size={18} color={C.cream} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.statusBar}>
+              <View style={[styles.statusDot, { backgroundColor: r.status === "rejected" ? C.rust : C.ink }]} />
+              <Text style={styles.statusText} numberOfLines={1}>{tone.line}</Text>
+              <Text style={styles.statusRight}>{shortDate(r.updated_at)}</Text>
+            </View>
+
+            <View style={styles.bookShadow}>
+              <View style={styles.book}>
+                <ParcelArt />
+                <View style={styles.bookTop}>
+                  <Text style={styles.bookLabel}>Return</Text>
+                  <View style={[styles.bookPill, { backgroundColor: ribbon.bg }]}>
+                    <Text style={[styles.bookPillText, { color: ribbon.fg }]}>{tone.label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.bookNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {r.return_number}
+                </Text>
+
+                <DottedRail
+                  stage={returnStage(r.status)}
+                  icons={RETURN_ICONS}
+                  finished={r.status === "refunded"}
+                  closed={r.status === "rejected"}
+                  label={returnRailLabel(r.status)}
+                />
+
+                <View style={routeStyles.route}>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>REQUESTED</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>{shortDate(r.created_at)}</Text>
+                    <Text style={routeStyles.routeSub} numberOfLines={1}>
+                      {r.received_at ? `Received ${shortDate(r.received_at)}` : "Awaiting pickup"}
+                    </Text>
+                  </View>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>REFUND TO</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>Original payment</Text>
+                    <Text style={routeStyles.routeSub} numberOfLines={1}>{refundSub}</Text>
+                  </View>
+                </View>
+                <View style={[routeStyles.route, { marginTop: 14 }]}>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>REFUND VALUE</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>
+                      {formatPrice(r.refund_amount, r.currency)}
+                    </Text>
+                  </View>
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>REASON</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>{r.reason || "—"}</Text>
+                  </View>
+                </View>
               </View>
             </View>
-          ))}
-        </View>
 
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <Label style={styles.kicker}>Total refund</Label>
-            <Price style={styles.refundTotal}>{formatPrice(returnReq.refund_amount, returnReq.currency)}</Price>
-          </View>
-        </View>
+            {r.status === "approved" ? (
+              <>
+                <TouchableOpacity
+                  style={styles.trackCta}
+                  onPress={openPickup}
+                  activeOpacity={0.88}
+                  accessibilityRole="button"
+                  accessibilityLabel="Track return pickup"
+                >
+                  <View style={styles.trackCtaIcon}>
+                    <Ionicons name="navigate" size={16} color={C.ink} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.trackCtaTitle}>Track pickup</Text>
+                    <Text style={styles.trackCtaSub}>See when the courier collects it</Text>
+                  </View>
+                  <Ionicons name="arrow-forward" size={17} color={C.lime} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.outlineBtn} onPress={openLabel} activeOpacity={0.85}>
+                  <Ionicons name="print-outline" size={16} color={C.text} />
+                  <Text style={styles.outlineBtnText}>Prepaid return label</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
 
-        {returnReq.seller_note && (
-          <View style={styles.noteCard}>
-            <View style={styles.noteHeader}>
-              <Ionicons name="chatbubble-outline" size={14} color={colors.olive[700]} />
-              <Label style={styles.noteTitle}>Seller note</Label>
+            {r.seller_note ? (
+              <View style={styles.block}>
+                <View style={styles.noteHead}>
+                  <Ionicons name="chatbubble-outline" size={15} color={C.accent} />
+                  <Text style={styles.blockTitle}>Seller note</Text>
+                </View>
+                <Text style={styles.noteBody}>{r.seller_note}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>Refund summary</Text>
+              <View style={styles.ledger}>
+                {r.items.map((it) => (
+                  <View key={it.order_item_id} style={styles.ledgerLine}>
+                    <Text style={styles.ledgerLabel} numberOfLines={1}>
+                      {it.product_name} ×{it.quantity}
+                    </Text>
+                    <Text style={styles.ledgerValue}>{formatPrice(it.refund_amount, r.currency)}</Text>
+                  </View>
+                ))}
+                <View style={styles.ledgerTotal}>
+                  <Text style={styles.ledgerTotalLabel}>Total refund</Text>
+                  <Text style={styles.ledgerTotalValue}>{formatPrice(r.refund_amount, r.currency)}</Text>
+                </View>
+              </View>
             </View>
-            <Body size="sm" style={styles.noteBody}>{returnReq.seller_note}</Body>
+
+            {canCancel ? (
+              <TouchableOpacity
+                style={styles.cancelRow}
+                onPress={handleCancel}
+                disabled={cancelling}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="close-circle-outline" size={16} color={C.rust} />
+                <Text style={styles.cancelText}>{cancelling ? "Cancelling…" : "Cancel this return"}</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <View style={{ height: Math.max(insets.bottom, 16) + 16 }} />
           </View>
-        )}
+        </ScrollView>
+      </SafeAreaView>
 
-        {(returnReq.status === "requested" || returnReq.status === "approved") && (
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={handleCancel}
-            disabled={cancelling}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="close-circle-outline" size={16} color={colors.light.destructive} />
-            <Label style={styles.cancelBtnText}>
-              {cancelling ? "Cancelling…" : "Cancel return"}
-            </Label>
-          </TouchableOpacity>
-        )}
-
-        {returnReq.status === "approved" && (
-          <>
-            <TouchableOpacity
-              style={styles.supportBtn}
-              onPress={() =>
-                router.push({
-                  pathname: "/(main)/account/returns/[id]/pickup",
-                  params: { id: returnReq.return_group_id },
-                } as never)
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons name="navigate-outline" size={16} color={colors.olive[950]} />
-              <Label style={styles.supportBtnText}>Track return pickup</Label>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.supportBtn}
-              onPress={() =>
-                router.push({
-                  pathname: "/(main)/account/returns/[id]/label",
-                  params: { id: returnReq.return_group_id },
-                } as never)
-              }
-              activeOpacity={0.85}
-            >
-              <Ionicons name="print-outline" size={16} color={colors.olive[950]} />
-              <Label style={styles.supportBtnText}>Prepaid return label</Label>
-            </TouchableOpacity>
-          </>
-        )}
-
-        <TouchableOpacity
-          style={styles.supportBtn}
-          onPress={() =>
-            router.push({
-              pathname: "/(main)/contact",
-              params: {
-                subject: `Return #${returnReq.return_number}`,
-                message: `I need help with return #${returnReq.return_number} (order #${returnReq.order_number}).`,
-              },
-            } as never)
-          }
-          activeOpacity={0.85}
-        >
-          <Ionicons name="headset-outline" size={16} color={colors.olive[950]} />
-          <Label style={styles.supportBtnText}>Contact support</Label>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+      <MenuSheet open={menuOpen} items={menu} onClose={() => setMenuOpen(false)} bottom={insets.bottom} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: spacing[5], paddingBottom: spacing[8] },
-  statusCard: {
-    alignItems: "center",
-    gap: spacing[2],
-    paddingVertical: spacing[6],
-    paddingHorizontal: spacing[5],
-    borderRadius: radii["2xl"],
-    marginBottom: spacing[5],
-    borderWidth: 1,
-    borderColor: colors.light.border,
+  root: { flex: 1, backgroundColor: C.paper },
+  flex: { flex: 1 },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 420 },
+
+  loadingContainer: { flex: 1, alignItems: "center", paddingHorizontal: 20, paddingTop: 12, gap: 10 },
+  loadingText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: C.muted },
+  retryBtn: { marginTop: 4, height: 42, paddingHorizontal: 20, borderRadius: 21, backgroundColor: C.ink, justifyContent: "center" },
+  retryBtnText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: C.cream },
+
+  scroll: { flexGrow: 1, paddingTop: 6 },
+
+  itemsHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: 22,
+    marginBottom: 10,
   },
-  statusIconWrap: {
+  itemsKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
+  itemsCount: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+
+  itemsCard: {
+    marginHorizontal: 20,
+    paddingHorizontal: 12,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  itemRowDivider: { borderTopWidth: 1, borderTopColor: C.line },
+  itemThumb: {
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 16,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.5)",
   },
-  timeline: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    marginBottom: spacing[5],
+  itemBody: { flex: 1, minWidth: 0, gap: 4 },
+  itemName: { fontFamily: fontFamilies.sans.bold, fontSize: 15, letterSpacing: -0.2, color: C.text },
+  itemMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
+  variantChip: {
+    paddingHorizontal: 10,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+    maxWidth: 140,
   },
-  timelineTitle: { marginBottom: spacing[3] },
-  steps: { gap: 0 },
-  step: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing[2],
+  variantChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.olive[800] },
+  unitText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
+  itemPrice: { fontFamily: fontFamilies.sans.bold, fontSize: 15, letterSpacing: -0.2, color: C.text, fontVariant: ["tabular-nums"] },
+  itemPriceSub: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: C.muted },
+
+  sheet: {
+    flex: 1,
+    marginTop: 22,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 8,
   },
-  stepDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  grabber: { alignSelf: "center", width: 44, height: 5, borderRadius: 3, backgroundColor: "#e2e0d6", marginBottom: 16 },
+
+  orderRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  orderAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.border,
-    zIndex: 2,
+    borderWidth: 2,
+    borderColor: C.goldSoft,
   },
-  stepDotDone: { backgroundColor: colors.light.primary },
-  stepDotCurrent: { backgroundColor: colors.accent2.ochre },
-  stepDotEmpty: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.light.mutedForeground, opacity: 0.4 },
-  stepInfo: { flex: 1, marginLeft: spacing[3] },
-  stepLabel: { color: colors.light.mutedForeground },
-  stepLabelDone: { color: colors.light.foreground, fontWeight: typography.fontWeights.semibold },
-  stepLine: {
-    position: "absolute",
-    left: 12,
-    top: 36,
-    width: 2,
-    height: 26,
-    backgroundColor: colors.light.border,
-    zIndex: 1,
-  },
-  stepLineDone: { backgroundColor: colors.light.primary },
-  card: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    marginBottom: spacing[4],
-    ...shadows.soft,
-  },
-  cardTitle: { marginBottom: spacing[3] },
-  cardRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  orderKicker: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+  orderName: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text, marginTop: 1 },
+  roundDark: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.ink,
     alignItems: "center",
-    paddingVertical: spacing[2],
+    justifyContent: "center",
   },
-  cardRowEnd: { flex: 1, textAlign: "right", marginLeft: spacing[3] },
-  itemRow: {
+
+  statusBar: {
     flexDirection: "row",
-    gap: spacing[3],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
-  },
-  itemRefund: { alignItems: "flex-end" },
-  itemRefundValue: { fontFamily: fontFamilies.mono.medium, fontSize: typography.fontSizes.sm, color: colors.olive[700] },
-  summaryCard: {
-    backgroundColor: colors.olive[50],
-    borderRadius: radii["2xl"],
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: colors.olive[200],
-    marginBottom: spacing[4],
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 10,
+    marginTop: 18,
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: "#efede4",
   },
-  refundTotal: { fontFamily: fontFamilies.mono.semibold, fontSize: typography.fontSizes.xl, color: colors.olive[800] },
-  noteCard: {
-    backgroundColor: colors.olive[50],
-    borderRadius: radii.xl,
-    padding: spacing[4],
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { flex: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text },
+  statusRight: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+
+  bookShadow: {
+    marginTop: 14,
+    borderRadius: 26,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  book: {
+    borderRadius: 26,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: colors.olive[200],
-    marginBottom: spacing[4],
-    gap: spacing[2],
+    borderColor: C.line,
+    padding: 20,
+    backgroundColor: "#FFFFFF",
   },
-  noteHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  noteTitle: { color: colors.olive[700] },
-  noteBody: { color: colors.light.foreground },
-  supportBtn: {
+  bookTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  bookLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 13.5, color: C.muted },
+  bookPill: { height: 30, paddingHorizontal: 14, borderRadius: 15, justifyContent: "center" },
+  bookPillText: { fontFamily: fontFamilies.sans.bold, fontSize: 12.5 },
+  bookNumber: { marginTop: 6, fontFamily: fontFamilies.sans.bold, fontSize: 26, letterSpacing: -0.6, color: C.text },
+
+  trackCta: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: C.ink,
+  },
+  trackCtaIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trackCtaTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.cream },
+  trackCtaSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: "rgba(250,248,241,0.6)", marginTop: 1 },
+  outlineBtn: {
+    marginTop: 10,
+    height: 50,
+    borderRadius: 25,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: colors.paper.cream,
-    borderRadius: radii.xl,
-    paddingVertical: spacing[3],
     borderWidth: 1,
-    borderColor: colors.olive[300],
+    borderColor: "rgba(22,23,15,0.12)",
   },
-  supportBtnText: {
-    color: colors.olive[950],
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.sm,
+  outlineBtnText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.text },
+
+  block: {
+    marginTop: 14,
+    padding: 18,
+    borderRadius: 24,
+    backgroundColor: "#faf9f4",
+    borderWidth: 1,
+    borderColor: C.line,
   },
-  cancelBtn: {
+  blockTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, letterSpacing: -0.2, color: C.text },
+  noteHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  noteBody: { marginTop: 8, fontFamily: fontFamilies.sans.regular, fontSize: 13.5, lineHeight: 19, color: C.muted },
+  ledger: { marginTop: 14, gap: 10 },
+  ledgerLine: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  ledgerLabel: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: C.muted },
+  ledgerValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text, fontVariant: ["tabular-nums"] },
+  ledgerTotal: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: colors.light.card,
-    borderRadius: radii.xl,
-    paddingVertical: spacing[3],
-    borderWidth: 1,
-    borderColor: colors.light.destructive,
-    marginBottom: spacing[3],
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
-  cancelBtnText: {
-    color: colors.light.destructive,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.sm,
-  },
-  kicker: {
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: typography.fontSizes.xs,
-  },
+  ledgerTotalLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.text },
+  ledgerTotalValue: { fontFamily: fontFamilies.sans.bold, fontSize: 20, letterSpacing: -0.4, color: C.text, fontVariant: ["tabular-nums"] },
+
+  cancelRow: { marginTop: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48 },
+  cancelText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.rust },
 });

@@ -4,12 +4,13 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Modal,
+
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { Display, Body, Label } from "@/components/ui/Typography";
@@ -19,6 +20,9 @@ import { listProductQuestions, addProductQuestion } from "@/lib/api";
 import type { Question } from "@/lib/api/backend";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+
+const INK = "#141414";
+const MUTED = "#6b6b6b";
 
 const QUESTION_MIN = 5;
 const QUESTION_MAX = 500;
@@ -93,11 +97,11 @@ export function ProductQA({ productId }: { productId: string }) {
     <View style={s.card}>
       <View style={s.header}>
         <View style={s.headerIcon}>
-          <Ionicons name="chatbubbles-outline" size={16} color={colors.olive[800]} />
+          <Ionicons name="chatbubbles-outline" size={17} color="#ffffff" />
         </View>
         <View style={{ flex: 1 }}>
           <Label style={s.eyebrow}>QUESTIONS & ANSWERS</Label>
-          <Display size="sm" style={s.title}>Ask about this piece</Display>
+          <Display size="md" style={s.title}>Ask about this piece</Display>
         </View>
         {!loading && !loadError && questions.length > 0 && (
           <View style={s.countPill}>
@@ -119,14 +123,14 @@ export function ProductQA({ productId }: { productId: string }) {
             {loadError}
           </Body>
           <TouchableOpacity style={s.retryBtn} onPress={load} activeOpacity={0.8}>
-            <Ionicons name="refresh" size={13} color={colors.paper.cream} />
+            <Ionicons name="refresh" size={13} color="#ffffff" />
             <Text style={s.retryBtnText}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : questions.length === 0 ? (
         <View style={s.stateCard}>
           <View style={s.emptyIcon}>
-            <Ionicons name="help" size={20} color={colors.olive[800]} />
+            <Ionicons name="help" size={22} color={INK} />
           </View>
           <Body size="sm" style={s.stateTitle}>No questions yet</Body>
           <Body size="xs" muted style={s.stateSub}>
@@ -155,7 +159,7 @@ export function ProductQA({ productId }: { productId: string }) {
               <Ionicons
                 name={showAll ? "chevron-up" : "chevron-down"}
                 size={13}
-                color={colors.olive[700]}
+                color={INK}
               />
             </TouchableOpacity>
           )}
@@ -169,7 +173,7 @@ export function ProductQA({ productId }: { productId: string }) {
         accessibilityRole="button"
         accessibilityLabel="Ask a question"
       >
-        <Ionicons name="chatbubble-ellipses-outline" size={15} color={colors.paper.cream} />
+        <Ionicons name="chatbubble-ellipses-outline" size={16} color="#ffffff" />
         <Text style={s.askBtnText}>Ask a question</Text>
       </TouchableOpacity>
 
@@ -200,7 +204,7 @@ function QuestionRow({ question: q }: { question: Question }) {
       {q.answer ? (
         <View style={s.aBlock}>
           <View style={s.aBadge}>
-            <Ionicons name="storefront-outline" size={10} color={colors.olive[800]} />
+            <Ionicons name="storefront-outline" size={11} color={INK} />
             <Label style={s.aBadgeText}>SELLER ANSWER</Label>
           </View>
           <Body size="sm" style={s.aText}>{q.answer}</Body>
@@ -210,7 +214,7 @@ function QuestionRow({ question: q }: { question: Question }) {
         </View>
       ) : (
         <View style={s.pendingRow}>
-          <Ionicons name="time-outline" size={11} color={colors.accent2.ochre} />
+          <Ionicons name="time-outline" size={12} color={MUTED} />
           <Body size="xs" style={s.pendingText}>Awaiting answer</Body>
         </View>
       )}
@@ -335,12 +339,16 @@ function AskQuestionModal({
 const s = StyleSheet.create({
   card: {
     marginHorizontal: spacing[4],
-    borderRadius: radii["2xl"],
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
+    borderColor: "rgba(0,0,0,0.06)",
+    backgroundColor: "#ffffff",
     padding: spacing[5],
-    ...shadows.soft,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 22,
+    elevation: 3,
   },
   header: {
     flexDirection: "row",
@@ -349,89 +357,101 @@ const s = StyleSheet.create({
     marginBottom: spacing[4],
   },
   headerIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: colors.olive[100],
+    backgroundColor: INK,
   },
   eyebrow: {
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: colors.olive[700],
-    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    color: MUTED,
+    fontFamily: fontFamilies.sans.bold,
   },
-  title: { marginTop: 2 },
+  title: { marginTop: 2, color: INK, fontSize: 18, letterSpacing: -0.2 },
   countPill: {
-    minWidth: 26,
-    height: 26,
-    borderRadius: 13,
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
     paddingHorizontal: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[800],
+    backgroundColor: "#f4f4f2",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
   },
-  countPillText: { color: colors.paper.cream, fontSize: 11 },
+  countPillText: { color: INK, fontSize: 12, fontFamily: fontFamilies.sans.bold },
 
   list: { gap: spacing[3] },
   answeredMeta: {
-    fontSize: 9,
+    fontSize: 10,
     letterSpacing: 1,
-    color: colors.light.mutedForeground,
+    color: MUTED,
     marginBottom: -spacing[1],
   },
   qRow: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.background,
+    borderRadius: 18,
+    backgroundColor: "#f7f7f5",
     padding: spacing[4],
-    gap: spacing[2],
+    gap: spacing[2.5],
   },
   qHeader: { flexDirection: "row", gap: spacing[3] },
   avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[100],
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
   },
   avatarText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontFamily: fontFamilies.sans.bold,
-    color: colors.olive[800],
+    color: INK,
   },
-  qText: { color: colors.light.foreground, fontWeight: "500", marginBottom: 2 },
+  qText: {
+    color: INK,
+    fontFamily: fontFamilies.sans.semibold,
+    lineHeight: 20,
+    marginBottom: 2,
+  },
   aBlock: {
-    marginLeft: 42,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.olive[300],
-    paddingLeft: spacing[3],
+    marginLeft: 44,
+    padding: spacing[3],
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
     gap: 4,
   },
   aBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-  },
-  aBadgeText: {
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: colors.olive[800],
-    fontFamily: fontFamilies.sans.bold,
-  },
-  aText: { color: colors.light.foreground },
-  pendingRow: {
-    marginLeft: 42,
-    flexDirection: "row",
-    alignItems: "center",
     gap: 5,
   },
-  pendingText: { color: colors.accent2.ochre, fontWeight: "500" },
+  aBadgeText: {
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: INK,
+    fontFamily: fontFamilies.sans.bold,
+  },
+  aText: { color: "#2b2b2b", lineHeight: 20 },
+  pendingRow: {
+    marginLeft: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: "#ffffff",
+  },
+  pendingText: { color: MUTED, fontFamily: fontFamilies.sans.medium },
 
   showMoreBtn: {
     flexDirection: "row",
@@ -440,62 +460,59 @@ const s = StyleSheet.create({
     gap: 5,
     paddingVertical: spacing[2],
   },
-  showMoreText: { color: colors.olive[700], fontSize: 11 },
+  showMoreText: { color: INK, fontSize: 12, fontFamily: fontFamilies.sans.semibold },
 
   stateCard: {
     alignItems: "center",
     gap: spacing[2],
-    paddingVertical: spacing[5],
-    paddingHorizontal: spacing[4],
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.background,
+    paddingVertical: spacing[6],
+    paddingHorizontal: spacing[5],
+    borderRadius: 18,
+    backgroundColor: "#f7f7f5",
   },
   emptyIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: colors.olive[100],
+    borderColor: "rgba(0,0,0,0.06)",
+    marginBottom: spacing[1],
   },
-  stateTitle: { fontWeight: "600", color: colors.light.foreground },
-  stateSub: { textAlign: "center", lineHeight: 17 },
+  stateTitle: { fontFamily: fontFamilies.sans.bold, color: INK, fontSize: 14.5 },
+  stateSub: { textAlign: "center", lineHeight: 18, color: MUTED },
   retryBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     marginTop: spacing[2],
     paddingHorizontal: spacing[4],
-    height: 34,
+    height: 36,
     borderRadius: radii.full,
-    backgroundColor: colors.olive[800],
+    backgroundColor: INK,
   },
   retryBtnText: {
-    color: colors.paper.cream,
+    color: "#ffffff",
     fontSize: 12,
     fontFamily: fontFamilies.sans.semibold,
   },
 
   askBtn: {
     marginTop: spacing[4],
-    height: 46,
+    height: 50,
     borderRadius: radii.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing[2],
-    backgroundColor: colors.olive[800],
+    backgroundColor: INK,
   },
   askBtnText: {
-    color: colors.paper.cream,
-    fontSize: 13,
-    letterSpacing: 0.6,
+    color: "#ffffff",
+    fontSize: 14,
     fontFamily: fontFamilies.sans.bold,
-    textTransform: "uppercase",
   },
 });
 

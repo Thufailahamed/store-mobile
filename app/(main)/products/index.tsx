@@ -43,7 +43,19 @@ export default function ProductsScreen() {
     brand?: string;
     sort?: string;
     search?: string;
+    /** Deep-link scopes from the home "Shop by price/occasion" shortcuts. */
+    minPrice?: string;
+    maxPrice?: string;
+    occasion?: string;
+    /** Optional display title supplied by the deep link. */
+    title?: string;
   }>();
+  const parsePrice = (v?: string) => {
+    const n = v != null && v !== "" ? Number(v) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const minPriceParam = parsePrice(params.minPrice);
+  const maxPriceParam = parsePrice(params.maxPrice);
   const [filterOpen, setFilterOpen] = useState(false);
 
   const {
@@ -64,6 +76,9 @@ export default function ProductsScreen() {
     brand: params.brand,
     search: params.search,
     initialSort: params.sort || "newest",
+    minPrice: minPriceParam,
+    maxPrice: maxPriceParam,
+    occasion: params.occasion,
   });
 
   // Category page → fire category_view once. Search params pass a slug;
@@ -73,10 +88,25 @@ export default function ProductsScreen() {
   const tracker = useTrackEvent();
   const viewable = useTrackViewableItems(refined, "category_grid");
 
-  const showHero = view === "editorial" && !params.category && !params.brand && !params.search;
-  const hasActiveContext = !!params.category || !!params.brand || !!params.search;
+  const hasActiveContext =
+    !!params.category || !!params.brand || !!params.search || !!params.occasion ||
+    minPriceParam != null || maxPriceParam != null || params.sort === "sale";
+  const showHero = view === "editorial" && !hasActiveContext;
 
-  const pageTitle = params.search
+  const titleCase = (v: string) => v.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const pageTitle = params.title
+    ? params.title
+    : params.occasion
+    ? `${titleCase(params.occasion)} edit`
+    : minPriceParam != null || maxPriceParam != null
+    ? maxPriceParam == null
+      ? `${Math.round((minPriceParam ?? 0) / 1000)}K & above`
+      : (minPriceParam ?? 0) === 0
+        ? `Under ${Math.round(maxPriceParam / 1000)}K`
+        : `${Math.round((minPriceParam ?? 0) / 1000)}K – ${Math.round(maxPriceParam / 1000)}K`
+    : params.sort === "sale" && !params.search && !params.brand && !params.category
+    ? "The Sale"
+    : params.search
     ? `Search · "${params.search}"`
     : params.brand
       ? params.brand.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
@@ -283,10 +313,17 @@ function ProductsListHeader({
               {pageTitle}
             </Label>
           </TouchableOpacity>
-        ) : null}
-        <Display size="3xl" style={styles.heroTitle} numberOfLines={2}>
+        ) : (
+          <Label style={styles.eyebrow}>Shop · All pieces</Label>
+        )}
+        <Display size="4xl" style={styles.heroTitle} numberOfLines={2}>
           {pageTitle}
         </Display>
+        {!hasActiveContext ? (
+          <Body muted size="sm" style={styles.heroSub}>
+            The full collection, from every atelier on LUXE.
+          </Body>
+        ) : null}
       </View>
 
       <ProductGridControls
@@ -323,8 +360,16 @@ const styles = StyleSheet.create({
   },
   heroBlock: {
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[3],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[4],
+  },
+  eyebrow: {
+    color: colors.olive[600],
+    fontSize: 10,
+    marginBottom: spacing[1.5],
+  },
+  heroSub: {
+    marginTop: spacing[1.5],
   },
   breadcrumb: {
     flexDirection: "row",
@@ -341,7 +386,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   heroTitle: {
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   heroCardWrap: {
     paddingHorizontal: GRID_PADDING,

@@ -43,3 +43,25 @@ describe("applySearchFilters — attr facets", () => {
     expect(out.map((x) => x.id)).toEqual(["a"]);
   });
 });
+
+function withColors(id: string, ...colors: string[]): Product {
+  return { ...p(id), variants: colors.map((color) => ({ color })) } as unknown as Product;
+}
+
+describe("applySearchFilters — colour families + normalized attrs", () => {
+  it("blue matches cobalt / ice blue but not midnight (navy)", () => {
+    const items = [withColors("a", "Cobalt Blue"), withColors("b", "Ice Blue"), withColors("c", "Midnight Blue")];
+    expect(applySearchFilters(items, { ...base, colors: ["blue"] }).map((x) => x.id)).toEqual(["a", "b"]);
+    expect(applySearchFilters(items, { ...base, colors: ["navy"] }).map((x) => x.id)).toEqual(["c"]);
+  });
+  it("legacy chip values still resolve (Olive → green)", () => {
+    const items = [withColors("a", "Emerald Green"), withColors("b", "Black")];
+    expect(applySearchFilters(items, { ...base, colors: ["Olive"] }).map((x) => x.id)).toEqual(["a"]);
+  });
+  it("AI free text snaps onto canonical occasion/material", () => {
+    const items = [p("a", { occasion: "garden party", material: "silk chiffon" }), p("b", { occasion: "everyday" })];
+    expect(applySearchFilters(items, { ...base, occasion: "party" }).map((x) => x.id)).toEqual(["a"]);
+    expect(applySearchFilters(items, { ...base, occasion: "casual" }).map((x) => x.id)).toEqual(["b"]);
+    expect(applySearchFilters(items, { ...base, material: "chiffon" }).map((x) => x.id)).toEqual(["a"]);
+  });
+});

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
+
   Platform,
   Pressable,
   ScrollView,
@@ -11,18 +11,17 @@ import {
   Text,
   TextInput,
   View,
-  TouchableOpacity,
 } from "react-native";
-import * as Location from "expo-location";
+import { Modal } from "@/components/ui/Modal";
+import { getDevicePosition, LocationError } from "@/lib/location";
 import { useToast } from "@/components/ui";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { Display } from "@/components/ui/Typography";
-import { Button } from "@/components/ui/Button";
+import { LinearGradient } from "expo-linear-gradient";
 import { AddressMapPicker } from "./AddressMapPicker";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { reverseGeocode, type GeocodeResult } from "@/lib/maps";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Address } from "@/lib/types";
 import {
@@ -61,6 +60,9 @@ interface AddressFormSheetProps {
   /** Hide the "set as default" switch (e.g. checkout flow). */
   hideDefault?: boolean;
 }
+
+const GOLD = "#E8CF8F";
+const INK = "#16170f";
 
 const TYPE_META: Record<AddressType, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
   home: { label: "Home", icon: "home-outline" },
@@ -107,19 +109,21 @@ export function AddressFormSheet({
   );
   const [saving, setSaving] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
+  const [mapInteracting, setMapInteracting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const debouncedLatLng = useDebounce(
     { lat: form.latitude, lng: form.longitude },
     500
   );
   const lastReverseKey = useRef<string | null>(null);
+  const hasAutoFetchedRef = useRef(false);
   const [fetchingLoc, setFetchingLoc] = useState(false);
   const { toast } = useToast();
 
   const applyGeocodeResult = useCallback((res: GeocodeResult) => {
     setForm((prev) => ({
       ...prev,
-      line1: res.components.line1 || res.formatted.split(",")[0]?.trim() || prev.line1,
+      line1: res.components.line1 || prev.line1,
       city: res.components.city || prev.city,
       state: res.components.state || prev.state,
       postal_code: res.components.postal_code || prev.postal_code,
@@ -134,37 +138,30 @@ export function AddressFormSheet({
     if (fetchingLoc) return;
     setFetchingLoc(true);
     try {
-      const servicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled) {
-        toast("Turn on location services in your phone settings", "error");
-        return;
-      }
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        toast("Permission to access location was denied", "error");
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+      const { lat, lng } = await getDevicePosition();
 
       lastReverseKey.current = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
       setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
 
       setGeoBusy(true);
-      const res = await reverseGeocode(lat, lng);
-      setGeoBusy(false);
+      const res = await reverseGeocode(lat, lng).finally(() => setGeoBusy(false));
 
-      if (res) {
-        applyGeocodeResult(res);
-        toast("Address auto-filled successfully!", "success");
+      if (!res) {
+        toast("Pinned your location — please type the street address below.", "info");
       } else {
-        toast("Got your location but could not resolve the address. Drag the pin or fill manually.", "error");
+        applyGeocodeResult(res);
+        toast(
+          res.components.line1
+            ? "Address filled in — check the house number."
+            : "Pinned your location — add your house number and street.",
+          "success"
+        );
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to get current location";
+      const message =
+        err instanceof LocationError || err instanceof Error
+          ? err.message
+          : "Couldn't get your location";
       toast(message, "error");
     } finally {
       setFetchingLoc(false);
@@ -179,6 +176,18 @@ export function AddressFormSheet({
       lastReverseKey.current = null;
     }
   }, [visible, initial, defaultName, defaultPhone]);
+
+  // Automatically autofetch device location when opening for a new address without coordinates
+  useEffect(() => {
+    if (visible) {
+      if (!initial?.id && initial?.latitude == null && !hasAutoFetchedRef.current) {
+        hasAutoFetchedRef.current = true;
+        handleAutoFetch();
+      }
+    } else {
+      hasAutoFetchedRef.current = false;
+    }
+  }, [visible, initial?.id, initial?.latitude]);
 
   // Reverse-geocode whenever the pin lands somewhere we haven't looked up.
   useEffect(() => {
@@ -196,6 +205,7 @@ export function AddressFormSheet({
     });
     return () => {
       cancelled = true;
+      setGeoBusy(false);
     };
   }, [debouncedLatLng.lat, debouncedLatLng.lng, applyGeocodeResult]);
 
@@ -259,6 +269,10 @@ export function AddressFormSheet({
   };
 
   const isEdit = Boolean(initial?.id);
+  const resolvedLine =
+    form.latitude != null
+      ? [form.line1, form.city, form.state].filter(Boolean).join(", ")
+      : "";
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -271,7 +285,11 @@ export function AddressFormSheet({
           <View style={styles.handle} />
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Display size="xl">{title ?? (isEdit ? "Edit address" : "Add address")}</Display>
+              <View style={styles.kickerRow}>
+                <View style={styles.kickerRule} />
+                <Text style={styles.kicker}>DELIVERY DETAILS</Text>
+              </View>
+              <HeaderTitle text={title ?? (isEdit ? "Edit address" : "Add address")} />
               <Text style={styles.headerSub}>{subtitle ?? "Where should we deliver?"}</Text>
             </View>
             <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityLabel="Close">
@@ -285,59 +303,81 @@ export function AddressFormSheet({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
+            scrollEnabled={!mapInteracting}
           >
-            {/* ── Location: fills the address fields below ───────────── */}
-            <Section title="Location">
-              <TouchableOpacity
-                onPress={handleAutoFetch}
-                disabled={fetchingLoc}
-                style={styles.locateBtn}
-                activeOpacity={0.75}
-              >
-                <View style={styles.locateIcon}>
-                  {fetchingLoc ? (
-                    <ActivityIndicator size="small" color={colors.light.primary} />
-                  ) : (
-                    <Ionicons name="navigate" size={16} color={colors.light.primary} />
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.locateTitle}>
-                    {fetchingLoc ? "Finding you…" : "Use my current location"}
-                  </Text>
-                  <Text style={styles.locateSub}>We'll fill in the address for you</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.light.mutedForeground} />
-              </TouchableOpacity>
-
+            {/* ── Location: map + one-tap auto-fill ─────────────────── */}
+            <View style={styles.locationCard}>
               <AddressMapPicker
                 latitude={form.latitude}
                 longitude={form.longitude}
                 onLocationChange={handleMapChange}
+                onInteractionChange={setMapInteracting}
                 showCoords={false}
-                height={200}
+                showLocateButton={false}
+                height={210}
+                overlay={
+                  <Pressable
+                    onPress={handleAutoFetch}
+                    disabled={fetchingLoc}
+                    accessibilityRole="button"
+                    accessibilityLabel="Use my current location"
+                    style={({ pressed }) => [
+                      styles.locatePill,
+                      form.latitude != null && styles.locatePillCompact,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                  >
+                    <View style={styles.locateIcon}>
+                      {fetchingLoc ? (
+                        <ActivityIndicator size="small" color={INK} />
+                      ) : (
+                        <Ionicons name="navigate" size={13} color={INK} />
+                      )}
+                    </View>
+                    <Text style={styles.locatePillText}>
+                      {fetchingLoc
+                        ? "Finding you…"
+                        : form.latitude != null
+                        ? "My location"
+                        : "Use my current location"}
+                    </Text>
+                  </Pressable>
+                }
               />
-              {geoBusy ? (
-                <View style={styles.geoStatus}>
-                  <ActivityIndicator size="small" color={colors.light.primary} />
-                  <Text style={styles.geoStatusText}>Looking up this spot…</Text>
+              <View style={styles.deliverRow}>
+                <View style={styles.deliverIcon}>
+                  {geoBusy ? (
+                    <ActivityIndicator size="small" color={GOLD} />
+                  ) : (
+                    <Ionicons
+                      name={resolvedLine ? "location" : "location-outline"}
+                      size={16}
+                      color={GOLD}
+                    />
+                  )}
                 </View>
-              ) : form.latitude != null && (form.line1 || form.city) ? (
-                <View style={styles.geoStatus}>
-                  <Ionicons name="checkmark-circle" size={15} color={colors.light.primary} />
-                  <Text style={styles.geoResolvedText} numberOfLines={1}>
-                    Pinned near {[form.line1, form.city].filter(Boolean).join(", ")}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deliverEyebrow}>DELIVER TO</Text>
+                  <Text style={styles.deliverText} numberOfLines={2}>
+                    {geoBusy
+                      ? "Looking up this spot…"
+                      : resolvedLine || "Tap the map or use your location to drop a pin"}
                   </Text>
                 </View>
-              ) : (
-                <Text style={styles.helper}>Tap the map or drag the pin to mark the exact spot.</Text>
-              )}
-            </Section>
+                {form.latitude != null && !geoBusy ? (
+                  <View style={styles.pinnedBadge}>
+                    <Ionicons name="checkmark" size={11} color={INK} />
+                    <Text style={styles.pinnedBadgeText}>Pinned</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
 
             {/* ── Contact ────────────────────────────────────────────── */}
-            <Section title="Contact">
+            <Section index="01" title="Recipient" caption="Who receives the parcel">
               <Field
                 label="Full name"
+                icon="person-outline"
                 value={form.full_name}
                 onChangeText={(v) => set("full_name", v)}
                 error={errors.full_name}
@@ -346,6 +386,7 @@ export function AddressFormSheet({
               />
               <Field
                 label="Phone"
+                icon="call-outline"
                 value={form.phone}
                 onChangeText={(v) => set("phone", v)}
                 keyboardType="phone-pad"
@@ -357,9 +398,10 @@ export function AddressFormSheet({
             </Section>
 
             {/* ── Address ────────────────────────────────────────────── */}
-            <Section title="Address">
+            <Section index="02" title="Address" caption="Auto-filled from your pin — edit anything">
               <Field
                 label="Street address"
+                icon="navigate-circle-outline"
                 value={form.line1}
                 onChangeText={(v) => set("line1", v)}
                 error={errors.line1}
@@ -368,6 +410,7 @@ export function AddressFormSheet({
               />
               <Field
                 label="Apartment, floor, landmark"
+                icon="business-outline"
                 optional
                 value={form.line2}
                 onChangeText={(v) => set("line2", v)}
@@ -420,7 +463,7 @@ export function AddressFormSheet({
             </Section>
 
             {/* ── Label + default ────────────────────────────────────── */}
-            <Section title="Save as">
+            <Section index="03" title="Save as" caption="A label to find it quickly at checkout">
               <View style={styles.typeRow}>
                 {(["home", "work", "other"] as AddressType[]).map((t) => {
                   const meta = TYPE_META[t];
@@ -436,7 +479,7 @@ export function AddressFormSheet({
                       <Ionicons
                         name={meta.icon}
                         size={15}
-                        color={active ? colors.light.primary : colors.light.mutedForeground}
+                        color={active ? GOLD : colors.olive[700]}
                       />
                       <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
                         {meta.label}
@@ -464,12 +507,39 @@ export function AddressFormSheet({
           </ScrollView>
 
           <View style={styles.footer}>
-            <Button variant="outline" onPress={onClose} style={{ flex: 1 }} textStyle={styles.footerBtnText}>
-              Cancel
-            </Button>
-            <Button loading={saving} onPress={handleSave} style={{ flex: 2 }} textStyle={styles.footerBtnText}>
-              {primaryLabel ?? (isEdit ? "Save changes" : "Save address")}
-            </Button>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleSave}
+              disabled={saving}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.saveBtn, pressed && styles.pressed]}
+            >
+              <LinearGradient
+                colors={["#2a2c1f", INK]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.saveGradient}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color={colors.paper.cream} />
+                ) : (
+                  <>
+                    <Text style={styles.saveText}>
+                      {primaryLabel ?? (isEdit ? "Save changes" : "Save address")}
+                    </Text>
+                    <View style={styles.saveArrow}>
+                      <Ionicons name="checkmark" size={16} color={INK} />
+                    </View>
+                  </>
+                )}
+              </LinearGradient>
+            </Pressable>
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -477,10 +547,39 @@ export function AddressFormSheet({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** "Add address" → "Add *address*": last word set in olive italic. */
+function HeaderTitle({ text }: { text: string }) {
+  const words = text.split(" ");
+  const last = words.pop();
+  return (
+    <Text style={styles.title}>
+      {words.length ? `${words.join(" ")} ` : ""}
+      <Text style={styles.titleItalic}>{last}</Text>
+    </Text>
+  );
+}
+
+function Section({
+  index,
+  title,
+  caption,
+  children,
+}: {
+  index: string;
+  title: string;
+  caption?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionIndex}>{index}</Text>
+        <View style={styles.sectionRule} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {caption ? <Text style={styles.sectionCaption}>{caption}</Text> : null}
+        </View>
+      </View>
       {children}
     </View>
   );
@@ -497,8 +596,10 @@ function Field({
   autoCapitalize,
   textContentType,
   hint,
+  icon,
 }: {
   label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
   value: string;
   onChangeText: (v: string) => void;
   /** Everything is required unless marked optional — shown as a quiet "(optional)" tag. */
@@ -513,10 +614,10 @@ function Field({
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>
-        {label}
-        {optional ? <Text style={styles.fieldOptional}> (optional)</Text> : null}
-      </Text>
+      <View style={styles.fieldLabelRow}>
+        <Text style={[styles.fieldLabel, focused && { color: colors.olive[700] }]}>{label.toUpperCase()}</Text>
+        {optional ? <Text style={styles.fieldOptional}>Optional</Text> : null}
+      </View>
       <View
         style={[
           styles.input,
@@ -524,6 +625,14 @@ function Field({
           error ? styles.inputError : null,
         ]}
       >
+        {icon ? (
+          <Ionicons
+            name={icon}
+            size={17}
+            color={error ? colors.light.destructive : focused ? colors.olive[700] : colors.ink.mute}
+            style={{ marginRight: 10 }}
+          />
+        ) : null}
         <TextInput
           style={styles.inputText}
           value={value}
@@ -535,7 +644,13 @@ function Field({
           textContentType={textContentType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          selectionColor={colors.olive[600]}
         />
+        {!error && value.trim().length > 0 && !focused ? (
+          <View style={styles.validDot}>
+            <Ionicons name="checkmark" size={10} color={colors.paper.cream} />
+          </View>
+        ) : null}
       </View>
       {error ? (
         <Text style={styles.errorText}>{error}</Text>
@@ -546,218 +661,375 @@ function Field({
   );
 }
 
+const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(15, 16, 11, 0.6)",
     justifyContent: "flex-end",
   },
   backdropTouch: { ...StyleSheet.absoluteFillObject },
+  pressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
   sheet: {
-    backgroundColor: colors.light.background,
-    borderTopLeftRadius: radii["3xl"],
-    borderTopRightRadius: radii["3xl"],
-    height: "92%",
+    backgroundColor: colors.paper.cream,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    height: "93%",
     overflow: "hidden",
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.light.border,
+    backgroundColor: "rgba(22,23,15,0.14)",
     alignSelf: "center",
-    marginTop: spacing[3],
+    marginTop: spacing[2.5],
   },
   header: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[4],
     gap: spacing[3],
   },
+  kickerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  kickerRule: { width: 18, height: 1, backgroundColor: colors.accent2.ochre },
+  kicker: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 2.4,
+    color: colors.olive[600],
+  },
+  title: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 32,
+    lineHeight: 36,
+    letterSpacing: -0.9,
+    color: INK,
+  },
+  titleItalic: { fontFamily: fontFamilies.display.italic, color: colors.olive[700] },
   headerSub: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    color: colors.light.mutedForeground,
-    marginTop: 2,
+    color: colors.ink.mute,
+    marginTop: 4,
   },
   closeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    ...shadows.soft,
+  },
+  body: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[1],
+    paddingBottom: spacing[8],
+    gap: spacing[4],
+  },
+
+  // Location
+  locationCard: {
+    borderRadius: 26,
+    backgroundColor: INK,
+    padding: 6,
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  locatePill: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingLeft: 5,
+    paddingRight: 18,
+    height: 44,
+    borderRadius: radii.full,
+    backgroundColor: INK,
+    borderWidth: 1,
+    borderColor: "rgba(232,207,143,0.35)",
+    ...shadows.editorial,
+  },
+  locatePillCompact: {
+    alignSelf: "flex-end",
+    paddingRight: 12,
+    height: 38,
+  },
+  locateIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
+    backgroundColor: GOLD,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
   },
-  body: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[1],
-    paddingBottom: spacing[8],
-    gap: spacing[6],
+  locatePillText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.paper.cream,
   },
-  section: {
-    gap: spacing[3],
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
-  locateBtn: {
+  deliverRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    padding: spacing[3],
-    borderRadius: radii.xl,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: colors.olive[100],
+    paddingHorizontal: spacing[3],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[2.5],
   },
-  locateIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.light.card,
+  deliverIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: "rgba(232,207,143,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
-  locateTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.light.primary,
+  deliverEyebrow: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 2,
+    color: GOLD,
   },
-  locateSub: {
+  deliverText: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 16,
+    lineHeight: 21,
+    color: colors.paper.cream,
+    marginTop: 3,
+  },
+  pinnedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    backgroundColor: GOLD,
+  },
+  pinnedBadgeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    color: INK,
+  },
+
+  // Sections
+  section: {
+    gap: spacing[3.5],
+    padding: spacing[5],
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.78)",
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    ...shadows.soft,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2.5],
+    marginBottom: 4,
+  },
+  sectionIndex: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    color: colors.accent2.ochre,
+    letterSpacing: 1,
+  },
+  sectionRule: { width: 14, height: 1, backgroundColor: "rgba(22,23,15,0.18)" },
+  sectionTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: INK,
+  },
+  sectionCaption: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
-    color: colors.light.mutedForeground,
+    color: colors.ink.mute,
     marginTop: 1,
   },
+
+  // Type chips
   typeRow: { flexDirection: "row", gap: 8 },
   typeChip: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    height: 42,
+    gap: 7,
+    height: 46,
     borderRadius: radii.full,
-    backgroundColor: colors.paper.cream,
+    backgroundColor: colors.paper.DEFAULT,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: HAIRLINE,
   },
   typeChipActive: {
-    backgroundColor: colors.olive[50],
-    borderColor: colors.light.primary,
-    borderWidth: 1.5,
+    backgroundColor: INK,
+    borderColor: INK,
+    ...shadows.editorial,
   },
   typeChipText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 14,
-    color: colors.light.foreground,
+    color: INK,
   },
-  typeChipTextActive: { color: colors.light.primary, fontFamily: fontFamilies.sans.semibold },
-  field: { gap: 6 },
+  typeChipTextActive: { color: colors.paper.cream, fontFamily: fontFamilies.sans.semibold },
+
+  // Fields
+  field: { gap: 7 },
   fieldRow: { flexDirection: "row", gap: spacing[3] },
-  helper: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-    marginTop: -4,
+  fieldLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 2,
   },
   fieldLabel: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    color: colors.ink.mute,
   },
   fieldOptional: {
     fontFamily: fontFamilies.sans.regular,
-    color: colors.light.mutedForeground,
+    fontSize: 10.5,
+    color: "rgba(101,104,77,0.7)",
   },
   input: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.paper.cream,
+    backgroundColor: colors.paper.DEFAULT,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: 14,
-    height: 48,
+    borderColor: "rgba(22,23,15,0.06)",
+    borderRadius: 16,
+    paddingHorizontal: 15,
+    height: 52,
   },
   inputFocused: {
-    borderColor: colors.light.ring,
-    borderWidth: 1.5,
+    backgroundColor: "#ffffff",
+    borderColor: colors.olive[600],
+    shadowColor: colors.olive[600],
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 2,
   },
   inputError: { borderColor: colors.light.destructive },
   inputText: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 15,
-    color: colors.light.foreground,
+    color: INK,
     height: "100%",
+  },
+  validDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.olive[600],
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
   },
   errorText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 12,
     color: colors.light.destructive,
+    paddingHorizontal: 2,
   },
   hintText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
+    fontSize: 11.5,
+    color: colors.ink.mute,
+    paddingHorizontal: 2,
   },
-  geoStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    marginTop: -4,
-  },
-  geoStatusText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-  },
-  geoResolvedText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12.5,
-    color: colors.light.foreground,
-  },
+
+  // Default toggle
   defaultRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[4],
-    backgroundColor: colors.paper.cream,
+    backgroundColor: colors.olive[50],
     borderWidth: 1,
-    borderColor: colors.light.border,
-    borderRadius: radii.xl,
+    borderColor: "rgba(83,94,44,0.14)",
+    borderRadius: 18,
     gap: spacing[3],
   },
   defaultTitle: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 14,
-    color: colors.light.foreground,
+    color: INK,
   },
   defaultSubtitle: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12,
-    color: colors.light.mutedForeground,
+    color: colors.ink.mute,
     marginTop: 2,
   },
+
+  // Footer
   footer: {
     flexDirection: "row",
+    alignItems: "center",
     gap: spacing[3],
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],
     paddingBottom: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-    backgroundColor: colors.light.background,
+    borderTopWidth: 1,
+    borderTopColor: HAIRLINE,
+    backgroundColor: colors.paper.cream,
   },
-  footerBtnText: {
-    textTransform: "none",
-    letterSpacing: 0,
+  cancelBtn: {
+    height: 56,
+    paddingHorizontal: spacing[5],
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelText: {
+    fontFamily: fontFamilies.sans.semibold,
     fontSize: 15,
+    color: INK,
+  },
+  saveBtn: {
+    flex: 1,
+    borderRadius: radii.full,
+    overflow: "hidden",
+    ...shadows.editorial,
+  },
+  saveGradient: {
+    height: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 24,
+    paddingRight: 6,
+  },
+  saveText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 15,
+    letterSpacing: 0.2,
+    color: colors.paper.cream,
+  },
+  saveArrow: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: GOLD,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

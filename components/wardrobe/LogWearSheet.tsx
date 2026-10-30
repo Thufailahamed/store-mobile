@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
-  Modal,
   View,
   StyleSheet,
   Text,
   TouchableOpacity,
   Pressable,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { radii, spacing } from "@/lib/theme/tokens";

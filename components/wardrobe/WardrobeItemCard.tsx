@@ -4,13 +4,13 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { spacing, radii } from "@/lib/theme/tokens";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import type { GarmentType, WardrobeItem } from "@/lib/types";
 
 const INK = "#16170f";
-const MUTED = "#6b6b6b";
-const PAPER = "#fbfaf3";
+const MUTED = "#65684d";
+const PAPER = "#faf8f1";
 const BORDER = "rgba(22,23,15,0.08)";
 
 const GARMENT_LABEL: Record<GarmentType, string> = {
@@ -110,7 +110,7 @@ export function WardrobeItemCard({
             }}
             activeOpacity={0.85}
           >
-            <Ionicons name="checkmark-circle" size={14} color="#fff" />
+            <Ionicons name="add" size={13} color="#E8CF8F" />
             <Text style={styles.logBtnText}>Log wear</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -184,19 +184,16 @@ export function WardrobeItemCard({
               {formatPrice(item.purchase_price, item.currency)}
             </Text>
           ) : null}
-          {item.size ? (
-            <Text style={styles.size}>· {item.size}</Text>
-          ) : null}
+          {item.size ? <Text style={styles.size}>{item.size}</Text> : null}
         </View>
 
         <View style={styles.metaRow}>
-          <Text style={styles.meta}>
-            {item.wear_count}× worn
-          </Text>
+          <View style={styles.wearPill}>
+            <Ionicons name="repeat" size={10} color={colors.olive[700]} />
+            <Text style={styles.wearText}>{item.wear_count}× worn</Text>
+          </View>
           {cpw !== null ? (
-            <Text style={styles.meta}>
-              {formatPrice(cpw, item.currency)} / wear
-            </Text>
+            <Text style={styles.meta}>{formatPrice(cpw, item.currency)}/wear</Text>
           ) : null}
         </View>
       </View>
@@ -207,14 +204,20 @@ export function WardrobeItemCard({
 const styles: Record<string, any> = StyleSheet.create({
   card: {
     backgroundColor: PAPER,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: BORDER,
-    overflow: "hidden",
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    ...shadows.soft,
   },
   imageWrap: {
     position: "relative",
-    backgroundColor: "#f1efe6",
+    backgroundColor: colors.paper.warm,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
+    margin: 5,
+    marginBottom: 0,
+    borderRadius: 16,
   },
   image: {
     width: "100%",
@@ -230,32 +233,33 @@ const styles: Record<string, any> = StyleSheet.create({
     position: "absolute",
     top: 8,
     left: 8,
-    backgroundColor: "#16170f",
+    backgroundColor: "rgba(250,248,241,0.94)",
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: radii.full,
   },
   garmentBadgeText: {
-    color: "#fff",
-    fontSize: 9,
-    fontFamily: fontFamilies.sans.regular,
-    letterSpacing: 0.5,
-    fontWeight: "700",
+    color: INK,
+    fontSize: 8.5,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
   colorBadge: {
     position: "absolute",
     top: 8,
     right: 8,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(22,23,15,0.55)",
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: radii.full,
   },
   colorBadgeText: {
-    color: INK,
-    fontSize: 9,
-    fontFamily: fontFamilies.sans.regular,
-    letterSpacing: 0.4,
+    color: PAPER,
+    fontSize: 8.5,
+    fontFamily: fontFamilies.mono.medium,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   bottomBar: {
     position: "absolute",
@@ -271,21 +275,20 @@ const styles: Record<string, any> = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    paddingVertical: 7,
-    backgroundColor: "#556b2f",
-    borderRadius: radii.md,
+    height: 32,
+    backgroundColor: "rgba(22,23,15,0.88)",
+    borderRadius: radii.full,
   },
   logBtnText: {
-    color: "#fff",
+    color: PAPER,
     fontSize: 11,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
+    fontFamily: fontFamilies.sans.bold,
   },
   menuBtn: {
-    width: 30,
-    height: 30,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderRadius: radii.md,
+    width: 32,
+    height: 32,
+    backgroundColor: "rgba(250,248,241,0.94)",
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -293,73 +296,96 @@ const styles: Record<string, any> = StyleSheet.create({
     position: "absolute",
     right: 8,
     bottom: 46,
-    backgroundColor: "#fff",
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: BORDER,
-    minWidth: 140,
+    backgroundColor: PAPER,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    minWidth: 150,
     paddingVertical: 4,
+    ...shadows.editorial,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   menuItemDanger: {
-    backgroundColor: "rgba(168,49,31,0.06)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
   },
   menuItemText: {
-    fontSize: 12,
+    fontSize: 12.5,
     color: INK,
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.sans.medium,
   },
   menuItemTextDanger: {
     color: "#a8311f",
   },
   body: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 3,
   },
   brand: {
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
+    fontSize: 8.5,
+    letterSpacing: 1.4,
+    color: "#85651b",
+    fontFamily: fontFamilies.mono.semibold,
   },
   name: {
-    fontSize: 13,
+    fontSize: 15,
     color: INK,
-    fontFamily: fontFamilies.display.regular,
-    fontWeight: "500",
+    fontFamily: fontFamilies.display.semibold,
+    letterSpacing: -0.2,
   },
   priceRow: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 4,
   },
   price: {
-    fontSize: 14,
+    fontSize: 12,
     color: INK,
-    fontFamily: fontFamilies.display.regular,
-    fontWeight: "600",
+    fontFamily: fontFamilies.mono.medium,
   },
   size: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.mono.medium,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
   },
   metaRow: {
-    marginTop: 2,
+    marginTop: 8,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
   },
+  wearPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.olive[50],
+  },
+  wearText: {
+    fontSize: 9.5,
+    color: colors.olive[700],
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 0.4,
+  },
   meta: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
+    fontFamily: fontFamilies.mono.regular,
   },
 });

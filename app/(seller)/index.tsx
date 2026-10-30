@@ -17,14 +17,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { SellerBentoGrid } from "@/components/seller/SellerBentoGrid";
 import {
   SELLER_CREAM,
   SELLER_GOLD,
   SELLER_RUST,
   SellerStatusPill,
-  sellerBorder,
 } from "@/components/seller/chrome";
+import { SellerBentoGrid } from "@/components/seller/SellerBentoGrid";
 import { RevenueChart } from "@/components/seller/RevenueChart";
 import {
   createSellerStore,
@@ -41,9 +40,10 @@ import { useAuth } from "@/lib/supabase/auth";
 import { SELLER_DASHBOARD_ACTIONS } from "@/lib/seller/dashboard-actions";
 import { orderStatusTone } from "@/lib/seller/status-tones";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { formatPrice, pluralize } from "@/lib/utils";
 import type { Notification, Order, Store } from "@/lib/types";
+import { hasPickupAddress, PICKUP_ADDRESS_ROUTE } from "@/lib/seller-pickup-address";
 
 interface KPIData {
   totalRevenue: number;
@@ -336,7 +336,6 @@ export default function SellerDashboard() {
     (outOfStockCount ?? 0) > 0 ? `${outOfStockCount} out of stock` : null,
     (lowStockCount ?? 0) > 0 ? `${lowStockCount} running low` : null,
   ].filter(Boolean).join(" · ");
-  const hasTasks = (pendingOrders ?? 0) > 0 || inventoryIssues > 0 || (returnsCount ?? 0) > 0;
   const revenueDelta = kpis?.analyticsReady ? kpis.revenueDelta : 0;
   const revenueSeries = kpis?.analyticsReady ? kpis.revenueSeries : [];
   const revenueTrend = analyticsReady && Math.abs(revenueDelta) >= 0.5
@@ -344,23 +343,79 @@ export default function SellerDashboard() {
     : null;
   const latestNotification = notifications.find(isNotificationUnread);
   const todayLabel = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const openTaskCount = [pendingOrders, inventoryIssues, returnsCount].filter((value) => (value ?? 0) > 0).length;
+  const pickupMissing = !hasPickupAddress(store);
+  const openTaskCount =
+    [pendingOrders, inventoryIssues, returnsCount].filter((value) => (value ?? 0) > 0).length + (pickupMissing ? 1 : 0);
   const revenueParts = splitCurrency(formatCompactPrice(totalRevenue));
 
+  const tasks = [
+    // Pickup address stays at the top of "Needs attention" until it's saved
+    // (never listed as settled — couriers can't collect without it).
+    ...(pickupMissing
+      ? [{
+          key: "pickup",
+          icon: "location-outline" as const,
+          label: "Pickup",
+          open: true,
+          unavailable: false,
+          title: "Add your product pickup address",
+          subtitle: "Couriers need it to collect your orders",
+          action: "Add",
+          route: PICKUP_ADDRESS_ROUTE,
+        }]
+      : []),
+    {
+      key: "orders",
+      icon: "bag-check-outline" as const,
+      label: "Orders",
+      open: (pendingOrders ?? 0) > 0,
+      unavailable: pendingOrders == null,
+      title: `${pendingOrders ?? 0} ${pluralize(pendingOrders ?? 0, "order")} to process`,
+      subtitle: "Confirm and prepare fulfilment",
+      action: "Process",
+      route: "/(seller)/orders",
+    },
+    {
+      key: "stock",
+      icon: "cube-outline" as const,
+      label: "Stock",
+      open: inventoryIssues > 0,
+      unavailable: !inventoryReady,
+      title: `${inventoryIssues} stock ${pluralize(inventoryIssues, "issue")}`,
+      subtitle: stockAttentionSubtitle || "Inventory needs review",
+      action: "Fix",
+      route: "/(seller)/inventory",
+      meter:
+        inventoryIssues > 0 && (kpis?.totalSkus ?? 0) > 0
+          ? { out: outOfStockCount ?? 0, low: lowStockCount ?? 0, total: kpis!.totalSkus }
+          : undefined,
+    },
+    {
+      key: "returns",
+      icon: "return-down-back-outline" as const,
+      label: "Returns",
+      open: (returnsCount ?? 0) > 0,
+      unavailable: returnsCount == null,
+      title: `${returnsCount ?? 0} ${pluralize(returnsCount ?? 0, "return")} waiting`,
+      subtitle: "Review and make a decision",
+      action: "Review",
+      route: "/(seller)/returns",
+    },
+  ];
+  const hasSalesCurve = revenueSeries.length > 1 && revenueSeries.some((p) => p.revenue > 0);
+  const openTasks = tasks.filter((t) => t.open);
+  const settledTasks = tasks.filter((t) => !t.open);
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SELLER_GOLD} />}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
-      <LinearGradient
-        colors={["#F9F7F1", "#EFEBDD"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: Math.max(insets.top, 16) + 8 }]}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 16) + 10 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={SELLER_GOLD} />}
+        showsVerticalScrollIndicator={false}
       >
+        {/* Identity */}
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.storeIdentity}
@@ -369,17 +424,23 @@ export default function SellerDashboard() {
             accessibilityRole="button"
             accessibilityLabel="Open store settings"
           >
-            {store.logo_url ? (
-              <Image source={{ uri: store.logo_url }} style={styles.logo} contentFit="cover" />
-            ) : (
-              <View style={styles.monogram}>
-                <Text style={styles.monogramText}>{monogram}</Text>
-              </View>
-            )}
+            <View style={styles.logoRing}>
+              {store.logo_url ? (
+                <Image source={{ uri: store.logo_url }} style={styles.logo} contentFit="cover" />
+              ) : (
+                <View style={styles.monogram}>
+                  <Text style={styles.monogramText}>{monogram}</Text>
+                </View>
+              )}
+              <View style={[styles.presenceDot, !store.is_online && styles.presenceDotOff]} />
+            </View>
             <View style={styles.storeIdentityText}>
-              <Text style={styles.storeEyebrow}>
-                {greeting.toUpperCase()} · {todayLabel.toUpperCase()}
-              </Text>
+              <View style={styles.eyebrowRow}>
+                <View style={styles.eyebrowRule} />
+                <Text style={styles.storeEyebrow} numberOfLines={1}>
+                  {greeting} · {todayLabel}
+                </Text>
+              </View>
               <Text style={styles.storeName} numberOfLines={1}>{storeName}</Text>
             </View>
           </TouchableOpacity>
@@ -389,7 +450,7 @@ export default function SellerDashboard() {
             accessibilityRole="button"
             accessibilityLabel={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
           >
-            <Ionicons name="notifications-outline" size={20} color={colors.olive[950]} />
+            <Ionicons name="notifications-outline" size={19} color={INK} />
             {unreadCount > 0 ? (
               <View style={styles.notificationBadge}>
                 <Text style={styles.notificationBadgeText}>{formatBadgeCount(unreadCount)}</Text>
@@ -398,193 +459,240 @@ export default function SellerDashboard() {
           </TouchableOpacity>
         </View>
 
+        {/* Store type */}
         {store.is_online ? (
-          <View style={styles.storeStatus}>
-            <View style={styles.statusDot} />
-            <Text style={styles.storeStatusText}>Store live · accepting orders</Text>
+          <View style={styles.liveChip}>
+            <Ionicons name="globe-outline" size={13} color={INK} />
+            <Text style={styles.liveChipText}>Online-only store</Text>
           </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.offlineBanner}
-            onPress={() => router.push("/(seller)/settings" as any)}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Store offline. Open settings to go live"
-          >
-            <View style={styles.offlineIcon}>
-              <Ionicons name="moon-outline" size={15} color={SELLER_RUST} />
-            </View>
-            <View style={styles.offlineText}>
-              <Text style={styles.offlineTitle}>Your store is offline</Text>
-              <Text style={styles.offlineSub} numberOfLines={1}>Shoppers can’t place new orders</Text>
-            </View>
-            <View style={styles.goLivePill}>
-              <Text style={styles.goLiveText}>Go live</Text>
-              <Ionicons name="arrow-forward" size={12} color={SELLER_CREAM} />
-            </View>
-          </TouchableOpacity>
-        )}
+        ) : null}
 
+        {/* Revenue hero */}
         <TouchableOpacity
-          style={styles.revenueCard}
+          style={styles.hero}
           onPress={() => router.push("/(seller)/analytics" as any)}
-          activeOpacity={0.9}
+          activeOpacity={0.92}
           accessibilityRole="button"
           accessibilityLabel={`Revenue ${totalRevenue == null ? "unavailable" : formatPrice(totalRevenue)}. Open analytics`}
         >
-          <View style={styles.revenueTop}>
-            <Text style={styles.revenueLabel}>Revenue · last 30 days</Text>
-            <View style={styles.openAnalytics}>
-              <Text style={styles.openAnalyticsText}>Analytics</Text>
-              <Ionicons name="arrow-forward" size={12} color="#E8CF8F" />
+          <LinearGradient
+            pointerEvents="none"
+            colors={["#f5f4ef", "#faf8f1", "#efece2"]}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            pointerEvents="none"
+            colors={["rgba(83,94,44,0.10)", "transparent", "rgba(83,94,44,0.05)"]}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.85, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View pointerEvents="none" style={styles.heroSheen} />
+
+          <View style={styles.heroTop}>
+            <View>
+              <Text style={styles.heroKicker}>Revenue</Text>
+              <Text style={styles.heroPeriod}>Last 30 days</Text>
+            </View>
+            <View style={styles.heroLink}>
+              <Ionicons name="stats-chart" size={12} color={colors.olive[800]} />
+              <Text style={styles.heroLinkText}>Analytics</Text>
             </View>
           </View>
-          <View style={styles.revenueValueRow}>
-            {revenueParts.currency ? <Text style={styles.revenueCurrency}>{revenueParts.currency}</Text> : null}
-            <Text style={styles.revenueValue} numberOfLines={1} adjustsFontSizeToFit>{revenueParts.amount}</Text>
+
+          <View style={styles.heroValueRow}>
+            {revenueParts.currency ? <Text style={styles.heroCurrency}>{revenueParts.currency}</Text> : null}
+            <Text style={styles.heroValue} numberOfLines={1}>{revenueParts.amount}</Text>
           </View>
+
           {revenueTrend ? (
             <View style={styles.trendRow}>
               <View style={[styles.trendPill, revenueDelta < 0 && styles.trendPillDown]}>
-                <Ionicons name={revenueDelta >= 0 ? "trending-up" : "trending-down"} size={12} color={revenueDelta >= 0 ? "#DCE8D2" : "#FFD7CA"} />
+                <Ionicons
+                  name={revenueDelta >= 0 ? "trending-up" : "trending-down"}
+                  size={12}
+                  color={revenueDelta >= 0 ? colors.olive[800] : "#b85c3a"}
+                />
                 <Text style={[styles.trendText, revenueDelta < 0 && styles.trendTextDown]}>{revenueTrend}</Text>
               </View>
-              <Text style={styles.trendCaption}>vs previous 30 days</Text>
+              <Text style={styles.trendCaption}>vs previous period</Text>
             </View>
           ) : null}
-          <View style={styles.chartWrap}>
-            {revenueSeries.length > 1 ? (
-              <RevenueChart compact fluid height={56} points={revenueSeries} />
-            ) : (
-              <Text style={styles.revenueHint}>{analyticsReady ? "Sales will appear here" : "Pull to refresh metrics"}</Text>
-            )}
-          </View>
-          <View style={styles.revenueInsights}>
-            <RevenueInsight label="Orders" value={totalOrders == null ? "—" : String(totalOrders)} />
-            <View style={styles.revenueInsightRule} />
-            <RevenueInsight label="Avg. order" value={averageOrderValue == null ? "—" : formatCompactPrice(averageOrderValue)} />
-            <View style={styles.revenueInsightRule} />
-            <RevenueInsight label="Products" value={totalProducts == null ? "—" : String(totalProducts)} />
+
+          {hasSalesCurve ? (
+            <View style={styles.chartWrap}>
+              <RevenueChart compact fluid height={44} points={revenueSeries} />
+            </View>
+          ) : (
+            <View style={styles.chartEmpty}>
+              <View style={styles.chartEmptyLine} />
+              <Text style={styles.chartEmptyText}>
+                {analyticsReady ? "Your sales curve appears with the first order" : "Pull to refresh metrics"}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.heroStats}>
+            <HeroStat icon="receipt-outline" label="Orders" value={totalOrders == null ? "—" : String(totalOrders)} />
+            <HeroStat
+              icon="pricetag-outline"
+              label="Avg. order"
+              value={averageOrderValue == null ? "—" : formatCompactPrice(averageOrderValue)}
+            />
+            <HeroStat icon="cube-outline" label="Products" value={totalProducts == null ? "—" : String(totalProducts)} />
           </View>
         </TouchableOpacity>
-      </LinearGradient>
 
-      <View style={styles.body}>
-        <View style={styles.sectionFirst}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>TODAY</Text>
-              <Text style={styles.sectionTitle}>{hasTasks ? "Needs attention" : "You’re all caught up"}</Text>
-            </View>
-            {hasTasks ? (
-              <View style={styles.taskCountPill}>
-                <View style={styles.taskCountDot} />
-                <Text style={styles.taskCountText}>{openTaskCount} open</Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.taskPanel}>
-            <TaskRow
-              icon="bag-check-outline"
-              title={
-                pendingOrders == null
-                  ? "Orders unavailable"
-                  : pendingOrders > 0
-                    ? `${pendingOrders} ${pluralize(pendingOrders, "order")} to process`
-                    : "No orders waiting"
-              }
-              subtitle={(pendingOrders ?? 0) > 0 ? "Confirm and prepare fulfilment" : "New orders will show up here"}
-              action="Open"
-              done={(pendingOrders ?? 0) === 0}
-              onPress={() => router.push("/(seller)/orders" as any)}
-            />
-            <TaskRow
-              icon="cube-outline"
-              title={
-                !inventoryReady
-                  ? "Inventory unavailable"
-                  : inventoryIssues > 0
-                    ? `${inventoryIssues} stock ${pluralize(inventoryIssues, "issue")}`
-                    : "Stock levels healthy"
-              }
-              subtitle={inventoryIssues > 0 ? stockAttentionSubtitle || "Inventory needs review" : "Nothing out of stock or running low"}
-              action="Fix"
-              tone="warn"
-              done={inventoryIssues === 0}
-              onPress={() => router.push("/(seller)/inventory" as any)}
-              meter={
-                inventoryIssues > 0 && (kpis?.totalSkus ?? 0) > 0
-                  ? { out: outOfStockCount ?? 0, low: lowStockCount ?? 0, total: kpis!.totalSkus }
-                  : undefined
-              }
-            />
-            <TaskRow
-              icon="return-down-back-outline"
-              title={
-                returnsCount == null
-                  ? "Returns unavailable"
-                  : returnsCount > 0
-                    ? `${returnsCount} ${pluralize(returnsCount, "return")} waiting`
-                    : "No returns to review"
-              }
-              subtitle={(returnsCount ?? 0) > 0 ? "Review and make a decision" : "Return requests will show up here"}
-              action="Review"
-              tone="warn"
-              done={(returnsCount ?? 0) === 0}
-              last
-              onPress={() => router.push("/(seller)/returns" as any)}
-            />
-          </View>
-        </View>
-
+        {/* Primary actions */}
         <View style={styles.primaryActions}>
           <TouchableOpacity
             style={styles.addProductButton}
             onPress={() => router.push("/(seller)/products/new" as any)}
             activeOpacity={0.86}
+            accessibilityRole="button"
           >
-            <Ionicons name="add" size={19} color={SELLER_CREAM} />
+            <View style={styles.addProductIcon}>
+              <Ionicons name="add" size={17} color={INK} />
+            </View>
             <Text style={styles.addProductText}>Add product</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.viewStoreButton}
             onPress={() => router.push(`/stores/${store.slug || store.id}` as any)}
             activeOpacity={0.86}
+            accessibilityRole="button"
           >
-            <Ionicons name="storefront-outline" size={17} color={colors.olive[900]} />
+            <Ionicons name="storefront-outline" size={16} color={INK} />
             <Text style={styles.viewStoreText}>View store</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Today */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>MANAGE</Text>
-              <Text style={styles.sectionTitle}>Quick actions</Text>
+          <SectionHeader
+            eyebrow="Today"
+            title={openTasks.length > 0 ? "Needs attention" : "All caught up"}
+            right={
+              openTasks.length > 0 ? (
+                <View style={styles.taskCountPill}>
+                  <View style={styles.taskCountDot} />
+                  <Text style={styles.taskCountText}>{openTaskCount} open</Text>
+                </View>
+              ) : null
+            }
+          />
+
+          {openTasks.map((task) => (
+            <TouchableOpacity
+              key={task.key}
+              style={styles.taskCard}
+              onPress={() => router.push(task.route as any)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${task.title}. ${task.subtitle}`}
+            >
+              <View style={styles.taskCardTop}>
+                <View style={styles.taskIcon}>
+                  <Ionicons name={task.icon} size={18} color={SELLER_RUST} />
+                </View>
+                <View style={styles.taskText}>
+                  <Text style={styles.taskLabel}>{task.label}</Text>
+                  <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+                  <Text style={styles.taskSubtitle} numberOfLines={1}>{task.subtitle}</Text>
+                </View>
+                <View style={styles.taskAction}>
+                  <Text style={styles.taskActionText}>{task.action}</Text>
+                  <Ionicons name="arrow-forward" size={12} color={SELLER_CREAM} />
+                </View>
+              </View>
+              {task.meter ? (
+                <View style={styles.meterBlock}>
+                  <View style={styles.stockMeter}>
+                    <View style={[styles.stockMeterOut, { flex: task.meter.out }]} />
+                    <View style={[styles.stockMeterLow, { flex: task.meter.low }]} />
+                    <View style={{ flex: Math.max(task.meter.total - task.meter.out - task.meter.low, 0) }} />
+                  </View>
+                  <View style={styles.meterLegend}>
+                    <LegendDot color={SELLER_RUST} label={`${task.meter.out} out`} />
+                    <LegendDot color={SELLER_GOLD} label={`${task.meter.low} low`} />
+                    <Text style={styles.meterTotal}>of {task.meter.total} SKUs</Text>
+                  </View>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+
+          {settledTasks.length > 0 ? (
+            <View style={styles.settledCard}>
+              {settledTasks.map((task, i) => (
+                <TouchableOpacity
+                  key={task.key}
+                  style={[styles.settledItem, i > 0 && styles.settledItemDivider]}
+                  onPress={() => router.push(task.route as any)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${task.label}: ${task.unavailable ? "unavailable" : "all clear"}`}
+                >
+                  <View style={[styles.settledCheck, task.unavailable && styles.settledCheckMuted]}>
+                    <Ionicons
+                      name={task.unavailable ? "remove" : "checkmark"}
+                      size={12}
+                      color={task.unavailable ? colors.ink.mute : "#FFFFFF"}
+                    />
+                  </View>
+                  <View style={{ minWidth: 0, flexShrink: 1 }}>
+                    <Text style={styles.settledLabel} numberOfLines={1}>{task.label}</Text>
+                    <Text style={styles.settledState} numberOfLines={1}>
+                      {task.unavailable ? "Unavailable" : "All clear"}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
+          ) : null}
+        </View>
+
+        {/* Quick actions */}
+        <View style={styles.section}>
+          <SectionHeader eyebrow="Manage" title="Shortcuts" />
           <SellerBentoGrid
-            items={SELLER_DASHBOARD_ACTIONS.map((action) => ({
-              key: action.key,
-              label: action.label,
-              hint: action.hint,
-              icon: action.icon,
-              onPress: () => router.push(action.route as any),
-            }))}
+            items={SELLER_DASHBOARD_ACTIONS.map((a) => {
+              const hasAlertBadge = a.badgeKey === "alerts" && unreadCount > 0;
+              const hasReturnsBadge = a.badgeKey === "returns" && (returnsCount ?? 0) > 0;
+              return {
+                key: a.key,
+                label: a.label,
+                hint: a.hint,
+                icon: a.icon,
+                onPress: () => router.push(a.route as any),
+                badge: hasAlertBadge ? unreadCount : hasReturnsBadge ? returnsCount : null,
+                tone: hasAlertBadge ? ("critical" as const) : hasReturnsBadge ? ("warn" as const) : ("default" as const),
+              };
+            })}
           />
         </View>
 
+        {/* Recent orders */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>LATEST</Text>
-              <Text style={styles.sectionTitle}>Recent orders</Text>
-            </View>
-            <TouchableOpacity onPress={() => router.push("/(seller)/orders" as any)} hitSlop={10}>
-              <Text style={styles.sectionLink}>View all</Text>
-            </TouchableOpacity>
-          </View>
+          <SectionHeader
+            eyebrow="Latest"
+            title="Recent orders"
+            right={
+              <TouchableOpacity
+                style={styles.viewAll}
+                onPress={() => router.push("/(seller)/orders" as any)}
+                hitSlop={10}
+                accessibilityRole="button"
+              >
+                <Text style={styles.viewAllText}>View all</Text>
+                <Ionicons name="arrow-forward" size={12} color={INK} />
+              </TouchableOpacity>
+            }
+          />
           {kpis?.ordersReady && kpis.recentOrders.length > 0 ? (
             <View style={styles.listPanel}>
               {kpis.recentOrders.slice(0, 3).map((order, index) => {
@@ -593,30 +701,38 @@ export default function SellerDashboard() {
                 return (
                   <TouchableOpacity
                     key={order.id}
-                    style={[styles.orderRow, index === Math.min(kpis.recentOrders.length, 3) - 1 && styles.lastRow]}
+                    style={[styles.orderRow, index > 0 && styles.orderRowDivider]}
                     onPress={() => router.push(`/(seller)/orders/${order.id}` as any)}
                     activeOpacity={0.75}
+                    accessibilityRole="button"
                   >
                     <View style={styles.orderIcon}>
-                      <Ionicons name="receipt-outline" size={17} color={colors.olive[800]} />
+                      <Ionicons name="bag-handle-outline" size={17} color={colors.olive[800]} />
                     </View>
                     <View style={styles.orderInfo}>
-                      <View style={styles.orderTitleRow}>
-                        <Text style={styles.orderNumber}>{order.order_number}</Text>
-                        <SellerStatusPill label={formatOrderStatusLabel(order.status)} bg={status.bg} color={status.text} dotted={order.status === "pending"} />
+                      <Text style={styles.orderNumber} numberOfLines={1}>{order.order_number}</Text>
+                      <View style={styles.orderMetaRow}>
+                        <SellerStatusPill
+                          label={formatOrderStatusLabel(order.status)}
+                          bg={status.bg}
+                          color={status.text}
+                          dotted={order.status === "pending"}
+                        />
+                        <Text style={styles.orderMeta} numberOfLines={1}>
+                          {itemCount} {pluralize(itemCount, "item")} · {formatRelative(order.placed_at)}
+                        </Text>
                       </View>
-                      <Text style={styles.orderMeta}>{itemCount} {pluralize(itemCount, "item")} · {formatRelative(order.placed_at)}</Text>
                     </View>
-                    <View style={styles.orderAmountWrap}>
-                      <Text style={styles.orderAmount}>{formatPrice(order.total)}</Text>
-                      <Ionicons name="chevron-forward" size={14} color={colors.ink.mute} />
-                    </View>
+                    <Text style={styles.orderAmount} numberOfLines={1}>{formatPrice(order.total)}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
           ) : kpis?.ordersReady ? (
-            <EmptyState icon="bag-handle-outline" title="No orders yet" description="New orders will appear here." />
+            <View style={styles.unavailableCard}>
+              <Ionicons name="bag-handle-outline" size={18} color={colors.ink.mute} />
+              <Text style={styles.unavailableText}>No orders yet — they’ll appear here.</Text>
+            </View>
           ) : (
             <View style={styles.unavailableCard}>
               <Ionicons name="cloud-offline-outline" size={18} color={colors.ink.mute} />
@@ -629,113 +745,99 @@ export default function SellerDashboard() {
           <TouchableOpacity
             style={styles.updateCard}
             onPress={() => router.push("/(seller)/notifications" as any)}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
+            accessibilityRole="button"
           >
-            <View style={styles.updateDot} />
+            <View style={styles.updateIcon}>
+              <Ionicons name="sparkles" size={15} color={GOLD_LIGHT} />
+            </View>
             <View style={styles.updateText}>
-              <Text style={styles.updateLabel}>NEW UPDATE</Text>
+              <Text style={styles.updateLabel}>New update</Text>
               <Text style={styles.updateTitle} numberOfLines={1}>{latestNotification.title}</Text>
               <Text style={styles.updateBody} numberOfLines={1}>
-                {formatNotificationBody(latestNotification.body, latestNotification.data) || formatRelative(latestNotification.created_at)}
+                {formatNotificationBody(latestNotification.body, latestNotification.data) ||
+                  formatRelative(latestNotification.created_at)}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.ink.mute} />
+            <Ionicons name="chevron-forward" size={16} color="rgba(250,248,241,0.6)" />
           </TouchableOpacity>
         ) : null}
 
         <View style={styles.summaryFooter}>
+          <View style={styles.footerRule} />
           <Text style={styles.summaryText}>
-            {totalOrders == null ? "Dashboard metrics may take a moment to sync." : `${totalOrders} total ${pluralize(totalOrders, "order")} recorded.`}
+            {totalOrders == null
+              ? "Metrics may take a moment to sync"
+              : `${totalOrders} total ${pluralize(totalOrders, "order")} recorded`}
           </Text>
+          <View style={styles.footerRule} />
         </View>
-      </View>
-    </ScrollView>
-  );
-}
-
-function RevenueInsight({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.revenueInsight}>
-      <Text style={styles.revenueInsightLabel}>{label.toUpperCase()}</Text>
-      <Text style={styles.revenueInsightValue} numberOfLines={1}>{value}</Text>
+      </ScrollView>
+      <View pointerEvents="none" style={[styles.statusScrim, { height: insets.top }]} />
     </View>
   );
 }
 
-function TaskRow({
-  icon,
-  title,
-  subtitle,
-  action,
-  onPress,
-  tone = "default",
-  done = false,
-  last = false,
-  meter,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle: string;
-  action: string;
-  onPress: () => void;
-  tone?: "default" | "warn";
-  done?: boolean;
-  last?: boolean;
-  meter?: { out: number; low: number; total: number };
-}) {
-  const warn = tone === "warn" && !done;
+function SectionHeader({ eyebrow, title, right }: { eyebrow: string; title: string; right?: React.ReactNode }) {
   return (
-    <TouchableOpacity
-      style={[styles.taskRow, last && styles.lastRow]}
-      onPress={onPress}
-      activeOpacity={0.75}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}. ${subtitle}`}
-    >
-      <View style={[styles.taskIcon, warn && styles.taskIconWarn, done && styles.taskIconDone]}>
-        <Ionicons
-          name={done ? "checkmark" : icon}
-          size={done ? 16 : 18}
-          color={done ? colors.olive[600] : warn ? SELLER_RUST : colors.olive[800]}
-        />
-      </View>
-      <View style={styles.taskText}>
-        <Text style={[styles.taskTitle, done && styles.taskTitleDone]} numberOfLines={1}>{title}</Text>
-        <Text style={styles.taskSubtitle} numberOfLines={1}>{subtitle}</Text>
-        {meter ? (
-          <View style={styles.stockMeter}>
-            <View style={[styles.stockMeterOut, { flex: meter.out }]} />
-            <View style={[styles.stockMeterLow, { flex: meter.low }]} />
-            <View style={{ flex: Math.max(meter.total - meter.out - meter.low, 0) }} />
-          </View>
-        ) : null}
-      </View>
-      {done ? (
-        <Ionicons name="chevron-forward" size={14} color={colors.ink.mute} />
-      ) : (
-        <View style={[styles.taskActionPill, warn && styles.taskActionPillWarn]}>
-          <Text style={[styles.taskAction, warn && styles.taskActionWarn]}>{action}</Text>
-          <Ionicons name="chevron-forward" size={12} color={warn ? SELLER_CREAM : colors.olive[700]} />
+    <View style={styles.sectionHeader}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.eyebrowRow}>
+          <View style={styles.eyebrowRule} />
+          <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
         </View>
-      )}
-    </TouchableOpacity>
+        <Text style={styles.sectionTitle}>{title}</Text>
+      </View>
+      {right}
+    </View>
   );
 }
 
+function HeroStat({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.heroStat}>
+      <View style={styles.heroStatLabelRow}>
+        <Ionicons name={icon} size={11} color={colors.ink.mute} />
+        <Text style={styles.heroStatLabel}>{label}</Text>
+      </View>
+      <Text style={styles.heroStatValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+    </View>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
+  );
+}
+
+const INK = colors.olive[950];
+const GOLD_LIGHT = "#E8CF8F";
+const CARD_SHADOW = {
+  shadowColor: "#161a0a",
+  shadowOpacity: 0.06,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 2,
+} as const;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingBottom: 120 },
-  loadingHeader: { backgroundColor: "#F5F2E9", paddingHorizontal: spacing[5], paddingBottom: spacing[6] },
+  content: { paddingHorizontal: spacing[5], paddingBottom: 120 },
+  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.light.background },
+  loadingHeader: { paddingHorizontal: spacing[5], paddingBottom: spacing[6] },
   loadingBody: { padding: spacing[5] },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   centeredContent: { flexGrow: 1, justifyContent: "center", padding: spacing[5], paddingBottom: 120 },
   onboardingCard: {
-    backgroundColor: SELLER_CREAM,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: sellerBorder,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 26,
     padding: spacing[6],
     gap: spacing[2],
+    ...CARD_SHADOW,
   },
   onboardingIcon: {
     width: 52,
@@ -746,9 +848,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing[2],
   },
-  onboardingTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 26, color: colors.olive[950] },
+  onboardingTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 26, color: INK },
   onboardingSub: { fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: colors.ink.mute, marginBottom: spacing[3] },
-  inputLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[950], marginTop: spacing[2] },
+  inputLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK, marginTop: spacing[2] },
   input: {
     backgroundColor: colors.light.background,
     borderWidth: 1,
@@ -758,12 +860,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontFamily: fontFamilies.sans.regular,
     fontSize: 14,
-    color: colors.olive[950],
+    color: INK,
   },
   textArea: { minHeight: 84, textAlignVertical: "top" },
   primaryButton: {
     minHeight: 48,
-    backgroundColor: colors.olive[900],
+    backgroundColor: INK,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
@@ -772,132 +874,408 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: SELLER_CREAM, fontFamily: fontFamilies.sans.semibold, fontSize: 14 },
   disabled: { opacity: 0.55 },
-  header: { paddingHorizontal: spacing[5], paddingBottom: 40 },
+
+  // Identity
   headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  storeIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
-  logo: { width: 48, height: 48, borderRadius: 16 },
-  monogram: { width: 48, height: 48, borderRadius: 16, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center" },
-  monogramText: { color: SELLER_CREAM, fontFamily: fontFamilies.display.semibold, fontSize: 20 },
-  storeIdentityText: { flex: 1, minWidth: 0, gap: 2 },
-  storeEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.3, color: colors.ink.mute },
-  storeName: { fontFamily: fontFamilies.display.semibold, fontSize: 24, color: colors.olive[950] },
+  storeIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 14 },
+  logoRing: {
+    padding: 3,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(200,164,74,0.55)",
+  },
+  logo: { width: 46, height: 46, borderRadius: 16 },
+  monogram: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.olive[900], alignItems: "center", justifyContent: "center" },
+  monogramText: { color: SELLER_GOLD, fontFamily: fontFamilies.display.semibold, fontSize: 21 },
+  presenceDot: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#5f9a4a",
+    borderWidth: 3,
+    borderColor: colors.light.background,
+  },
+  presenceDotOff: { backgroundColor: SELLER_RUST },
+  storeIdentityText: { flex: 1, minWidth: 0 },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  eyebrowRule: { width: 14, height: 1, backgroundColor: SELLER_GOLD },
+  storeEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+    flexShrink: 1,
+  },
+  storeName: { fontFamily: fontFamilies.display.semibold, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: INK },
   notificationButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
+    ...CARD_SHADOW,
   },
   notificationBadge: {
     position: "absolute",
-    top: -4,
-    right: -4,
-    minWidth: 20,
-    height: 20,
+    top: -3,
+    right: -3,
+    minWidth: 19,
+    height: 19,
     borderRadius: 10,
     paddingHorizontal: 5,
     backgroundColor: SELLER_RUST,
     borderWidth: 2,
-    borderColor: "#F6F3EA",
+    borderColor: colors.light.background,
     alignItems: "center",
     justifyContent: "center",
   },
-  notificationBadgeText: { color: "#FFFFFF", fontFamily: fontFamilies.sans.semibold, fontSize: 10 },
-  storeStatus: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "rgba(78,141,66,0.1)", borderRadius: radii.full, paddingHorizontal: 12, paddingVertical: 7, marginTop: 18, marginBottom: 14 },
-  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#4E8D42" },
-  storeStatusText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#35642D" },
-  offlineBanner: {
+  notificationBadgeText: { color: "#FFFFFF", fontFamily: fontFamilies.sans.bold, fontSize: 9.5 },
+
+  // Status
+  liveChip: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: 14,
-    padding: 10,
-    paddingLeft: 12,
-    borderRadius: 18,
-    backgroundColor: "rgba(184,92,58,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(184,92,58,0.18)",
+    gap: 7,
+    backgroundColor: "#FFFFFF",
+    borderRadius: radii.full,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginTop: 20,
+    ...CARD_SHADOW,
   },
-  offlineIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: "rgba(184,92,58,0.12)", alignItems: "center", justifyContent: "center" },
-  offlineText: { flex: 1, minWidth: 0, gap: 1 },
-  offlineTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[950] },
-  offlineSub: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
-  goLivePill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.olive[900], borderRadius: radii.full, paddingHorizontal: 12, paddingVertical: 8 },
-  goLiveText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: SELLER_CREAM },
-  revenueCard: { backgroundColor: "#191814", borderRadius: 26, paddingHorizontal: 20, paddingTop: 18, paddingBottom: 6, overflow: "hidden", ...shadows.soft },
-  revenueTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  revenueLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 1.2, color: "#AAA396", textTransform: "uppercase" },
-  revenueValueRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 10 },
-  revenueCurrency: { fontFamily: fontFamilies.mono.semibold, fontSize: 13, letterSpacing: 1, color: "#AAA396" },
-  revenueValue: { flexShrink: 1, fontFamily: fontFamilies.display.semibold, fontSize: 38, lineHeight: 44, color: "#FAF8F3", fontVariant: ["tabular-nums"] },
-  trendRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
-  trendPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(125,139,111,0.22)", borderRadius: radii.full, paddingHorizontal: 8, paddingVertical: 4 },
-  trendPillDown: { backgroundColor: "rgba(184,92,58,0.22)" },
-  trendText: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, color: "#DCE8D2" },
-  trendTextDown: { color: "#FFD7CA" },
-  trendCaption: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: "#8F897D" },
-  chartWrap: { minHeight: 56, marginTop: 14, marginHorizontal: -4, justifyContent: "flex-end" },
-  revenueHint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396", paddingBottom: 8, paddingHorizontal: 4 },
-  openAnalytics: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: "rgba(232,207,143,0.1)" },
-  openAnalyticsText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#E8CF8F" },
-  revenueInsights: { minHeight: 64, flexDirection: "row", alignItems: "center", marginTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.13)" },
-  revenueInsight: { flex: 1, alignItems: "center", gap: 4, paddingHorizontal: 4 },
-  revenueInsightRule: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: "rgba(255,255,255,0.14)" },
-  revenueInsightLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1, color: "#8F897D" },
-  revenueInsightValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: "#F1ECE2", fontVariant: ["tabular-nums"] },
-  body: { marginTop: -22, paddingTop: spacing[6], paddingHorizontal: spacing[5], backgroundColor: colors.light.background, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  section: { marginTop: spacing[8] },
-  sectionFirst: {},
+  liveChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK },
+
+  // Hero
+  hero: {
+    marginTop: 16,
+    backgroundColor: "#f5f4ef",
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(83,94,44,0.14)",
+    shadowColor: "#3d4423",
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 6,
+  },
+  heroSheen: {
+    position: "absolute",
+    top: 0,
+    left: 24,
+    right: 24,
+    height: 1,
+    backgroundColor: "rgba(83,94,44,0.18)",
+  },
+  heroTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
+  heroKicker: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+  },
+  heroPeriod: { fontFamily: fontFamilies.display.italic, fontSize: 13, color: colors.ink.mute, marginTop: 2 },
+  heroLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: radii.full,
+    backgroundColor: "#fffdf8",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(83,94,44,0.22)",
+  },
+  heroLinkText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
+  heroValueRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 8 },
+  heroCurrency: { fontFamily: fontFamilies.mono.medium, fontSize: 11, letterSpacing: 1.1, color: colors.ink.mute },
+  heroValue: {
+    flex: 1,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 38,
+    lineHeight: 44,
+    letterSpacing: -1,
+    color: colors.olive[950],
+    fontVariant: ["tabular-nums"],
+  },
+  trendRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  trendPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(83,94,44,0.10)",
+    borderRadius: radii.full,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  trendPillDown: { backgroundColor: "rgba(184,92,58,0.15)" },
+  trendText: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, color: colors.olive[800] },
+  trendTextDown: { color: "#b85c3a" },
+  trendCaption: { fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.ink.mute },
+  chartWrap: { minHeight: 44, marginTop: 10, marginHorizontal: -4, justifyContent: "flex-end" },
+  chartEmpty: { marginTop: 12, gap: 6 },
+  chartEmptyLine: {
+    height: 1,
+    borderRadius: 1,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(83,94,44,0.18)",
+  },
+  chartEmptyText: { fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.ink.mute },
+  heroStats: { flexDirection: "row", gap: 6, marginTop: 12 },
+  heroStat: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(83,94,44,0.06)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(83,94,44,0.14)",
+  },
+  heroStatLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  heroStatLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 10.5, color: colors.ink.mute },
+  heroStatValue: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: colors.olive[950],
+    marginTop: 3,
+    fontVariant: ["tabular-nums"],
+  },
+
+  // Primary actions
+  primaryActions: { flexDirection: "row", gap: 10, marginTop: 14 },
+  addProductButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: radii.full,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#FFFFFF",
+    ...CARD_SHADOW,
+  },
+  addProductIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: SELLER_GOLD,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addProductText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: INK },
+  viewStoreButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: radii.full,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    ...CARD_SHADOW,
+  },
+  viewStoreText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: INK },
+
+  // Sections
+  section: { marginTop: 34 },
   sectionHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginBottom: 14 },
-  sectionEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.4, color: colors.olive[600], marginBottom: 4 },
-  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 24, color: colors.olive[950] },
-  sectionLink: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.olive[700] },
-  taskCountPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.full, backgroundColor: "rgba(184,92,58,0.08)", marginBottom: 3 },
+  sectionEyebrow: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: colors.olive[700],
+  },
+  sectionTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 26, lineHeight: 30, letterSpacing: -0.6, color: INK },
+  viewAll: { flexDirection: "row", alignItems: "center", gap: 4, paddingBottom: 4 },
+  viewAllText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: INK },
+
+  // Tasks
+  taskCountPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(184,92,58,0.1)",
+    marginBottom: 3,
+  },
   taskCountDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: SELLER_RUST },
-  taskCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: SELLER_RUST },
-  taskPanel: { backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 22, overflow: "hidden" },
-  taskRow: { minHeight: 76, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: sellerBorder },
-  taskIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  taskIconWarn: { backgroundColor: "rgba(184,92,58,0.1)" },
-  taskIconDone: { width: 32, height: 32, borderRadius: 16, marginHorizontal: 5 },
-  taskText: { flex: 1, minWidth: 0, gap: 3 },
-  taskTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.olive[950] },
-  taskTitleDone: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: colors.ink.mute },
-  taskSubtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
-  stockMeter: { flexDirection: "row", height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: colors.olive[50], marginTop: 6 },
-  stockMeterOut: { backgroundColor: SELLER_RUST },
-  stockMeterLow: { backgroundColor: SELLER_GOLD },
-  taskActionPill: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.full, backgroundColor: colors.olive[50] },
-  taskActionPillWarn: { backgroundColor: colors.olive[900] },
-  taskAction: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[700] },
-  taskActionWarn: { color: SELLER_CREAM },
-  primaryActions: { flexDirection: "row", gap: 10, marginTop: spacing[5] },
-  addProductButton: { flex: 1, minHeight: 54, borderRadius: radii.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: colors.olive[900] },
-  addProductText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: SELLER_CREAM },
-  viewStoreButton: { minHeight: 54, paddingHorizontal: 18, borderRadius: radii.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder },
-  viewStoreText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.olive[900] },
-  listPanel: { backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 20, overflow: "hidden" },
-  orderRow: { minHeight: 76, flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: sellerBorder },
-  lastRow: { borderBottomWidth: 0 },
-  orderIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.olive[50], alignItems: "center", justifyContent: "center" },
-  orderInfo: { flex: 1, minWidth: 0, gap: 4 },
-  orderTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  orderNumber: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.olive[950] },
-  orderMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
-  orderAmountWrap: { flexDirection: "row", alignItems: "center", gap: 5 },
-  orderAmount: { fontFamily: fontFamilies.mono.semibold, fontSize: 13, color: colors.olive[950] },
-  unavailableCard: { minHeight: 70, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.light.card, borderWidth: 1, borderColor: sellerBorder, borderRadius: 20 },
-  unavailableText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
-  updateCard: { marginTop: spacing[6], minHeight: 78, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.paper.warm, borderRadius: 18, padding: 14 },
-  updateDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: SELLER_GOLD },
+  taskCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: SELLER_RUST },
+  taskCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 10,
+    ...CARD_SHADOW,
+  },
+  taskCardTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  taskIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: "rgba(184,92,58,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  taskText: { flex: 1, minWidth: 0 },
+  taskLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: SELLER_RUST,
+  },
+  taskTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: INK, marginTop: 2 },
+  taskSubtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute, marginTop: 1 },
+  taskAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: radii.full,
+    backgroundColor: INK,
+  },
+  taskActionText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: SELLER_CREAM },
+  meterBlock: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(83,94,44,0.18)",
+  },
+  stockMeter: { flexDirection: "row", height: 6, borderRadius: 3, overflow: "hidden", backgroundColor: colors.olive[50], gap: 2 },
+  stockMeterOut: { backgroundColor: SELLER_RUST, borderRadius: 3 },
+  stockMeterLow: { backgroundColor: SELLER_GOLD, borderRadius: 3 },
+  meterLegend: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 9 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  legendText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: colors.ink.soft },
+  meterTotal: { marginLeft: "auto", fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.ink.mute },
+  settledCard: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingVertical: 12,
+    ...CARD_SHADOW,
+  },
+  settledItem: { flex: 1, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 14 },
+  settledItemDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(83,94,44,0.2)" },
+  settledCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#5f9a4a",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settledCheckMuted: { backgroundColor: colors.paper.warm },
+  settledLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: INK },
+  settledState: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: colors.ink.mute },
+
+  // Shortcuts
+  shortcuts: { flexDirection: "row", gap: 10 },
+  shortcut: {
+    flex: 1,
+    alignItems: "center",
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    ...CARD_SHADOW,
+  },
+  shortcutIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.paper.DEFAULT,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 9,
+  },
+  shortcutLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: INK },
+  shortcutHint: { fontFamily: fontFamilies.sans.regular, fontSize: 10.5, color: colors.ink.mute, marginTop: 1 },
+
+  // Orders
+  listPanel: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 14, ...CARD_SHADOW },
+  orderRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
+  orderRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(83,94,44,0.18)" },
+  orderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.paper.DEFAULT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  orderInfo: { flex: 1, minWidth: 0, gap: 6 },
+  orderNumber: { fontFamily: fontFamilies.mono.medium, fontSize: 12, letterSpacing: 0.4, color: INK },
+  orderMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  orderMeta: { flexShrink: 1, fontFamily: fontFamilies.sans.regular, fontSize: 11.5, color: colors.ink.mute },
+  orderAmount: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: INK, fontVariant: ["tabular-nums"] },
+  unavailableCard: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    ...CARD_SHADOW,
+  },
+  unavailableText: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: colors.ink.mute },
+
+  // Update
+  updateCard: {
+    marginTop: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: colors.olive[900],
+    borderRadius: 22,
+    padding: 14,
+    ...CARD_SHADOW,
+  },
+  updateIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(232,207,143,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   updateText: { flex: 1, minWidth: 0, gap: 1 },
-  updateLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.2, color: colors.olive[600] },
-  updateTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.olive[950] },
-  updateBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute },
-  summaryFooter: { alignItems: "center", paddingVertical: spacing[7] },
-  summaryText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.mute, textAlign: "center" },
+  updateLabel: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: SELLER_GOLD,
+  },
+  updateTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: SELLER_CREAM },
+  updateBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+
+  summaryFooter: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: spacing[7] },
+  footerRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(83,94,44,0.22)" },
+  summaryText: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+    textAlign: "center",
+  },
 });

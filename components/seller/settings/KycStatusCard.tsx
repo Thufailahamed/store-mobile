@@ -70,7 +70,6 @@ export function KycStatusCard({ profile, loadError }: Props) {
           ) : null}
           <Fact label="Method" value={formatMethod(profile.method)} />
           <Fact label="Bank" value={profile.bankSummary} />
-          <Fact label="Stripe" value={profile.stripeConnected ? "Connected" : null} />
           {profile.missing.length > 0 ? (
             <Text style={styles.missing}>
               Still needed: {profile.missing.join(", ")}
@@ -99,9 +98,6 @@ function setupPct(profile: PayoutProfileView): number {
 
 const METHOD_LABELS: Record<string, string> = {
   bank: "Bank wire",
-  upi: "UPI",
-  paypal: "PayPal",
-  stripe_connect: "Stripe Connect",
 };
 
 function formatMethod(method: string | null) {
@@ -123,12 +119,12 @@ function Fact({ label, value }: { label: string; value: string | null }) {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: spacing[4],
+    borderColor: "rgba(200,164,74,0.22)",
+    padding: spacing[5],
     gap: spacing[3],
-    ...shadows.soft,
+    ...shadows.editorial,
   },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 },
   headerTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },

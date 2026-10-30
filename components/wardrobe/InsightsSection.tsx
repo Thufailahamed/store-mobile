@@ -10,14 +10,14 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { radii } from "@/lib/theme/tokens";
+import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { getWardrobeInsights, logWardrobeWear, updateWardrobeItem } from "@/lib/api/wardrobe";
 import type { GarmentType, WardrobeInsights, WardrobeItem } from "@/lib/types";
 
 const INK = "#16170f";
-const MUTED = "#6b6b6b";
+const MUTED = "#65684d";
 
 const GARMENT_LABEL: Record<string, string> = {
   top: "Top", bottom: "Bottom", dress: "Dress", footwear: "Footwear",
@@ -26,20 +26,18 @@ const GARMENT_LABEL: Record<string, string> = {
 };
 
 type AccentKey = "amber" | "blue" | "rose" | "emerald";
-const ACCENT_RING: Record<AccentKey, string> = {
-  amber: "rgba(217,119,6,0.25)",
-  blue: "rgba(37,99,235,0.20)",
-  rose: "rgba(225,29,72,0.20)",
-  emerald: "rgba(5,150,105,0.20)",
-};
-const ACCENT_BG: Record<AccentKey, string> = {
-  amber: "rgba(217,119,6,0.06)",
-  blue: "rgba(37,99,235,0.05)",
-  rose: "rgba(225,29,72,0.05)",
-  emerald: "rgba(5,150,105,0.05)",
-};
+// One house palette — accents differ only in the dot + label tone.
 const ACCENT_TXT: Record<AccentKey, string> = {
-  amber: "#b45309", blue: "#1d4ed8", rose: "#be123c", emerald: "#047857",
+  amber: "#85651b",
+  blue: "#414a23",
+  rose: "#b85c3a",
+  emerald: "#535e2c",
+};
+const ACCENT_DOT: Record<AccentKey, string> = {
+  amber: "#c8a44a",
+  blue: "#869149",
+  rose: "#b85c3a",
+  emerald: "#6a7639",
 };
 
 export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem) => void }) {
@@ -153,31 +151,24 @@ export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem
       contentContainerStyle={styles.row}
     >
       {cards.map((c) => (
-        <View
-          key={c.title}
-          style={[
-            styles.card,
-            {
-              borderColor: ACCENT_RING[c.accent],
-              backgroundColor: ACCENT_BG[c.accent],
-            },
-          ]}
-        >
+        <View key={c.title} style={styles.card}>
           <View style={styles.head}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.cardTitle, { color: ACCENT_TXT[c.accent] }]}>
-                {c.title}
-              </Text>
-              <Text style={styles.count}>{c.count}</Text>
-            </View>
-            <Ionicons name={c.icon} size={18} color={ACCENT_TXT[c.accent]} />
+            <View style={[styles.dot, { backgroundColor: ACCENT_DOT[c.accent] }]} />
+            <Text style={[styles.cardTitle, { color: ACCENT_TXT[c.accent] }]}>{c.title}</Text>
           </View>
-          <Text style={styles.sub}>{c.subtitle}</Text>
-          <View style={{ marginTop: 10, gap: 6 }}>
+          <View style={styles.countRow}>
+            <Text style={[styles.count, c.count === 0 && styles.countMuted]}>{c.count}</Text>
+            <Text style={styles.sub} numberOfLines={2}>{c.subtitle}</Text>
+          </View>
+          <View style={styles.rule} />
+          <View style={{ gap: 10 }}>
             {c.items.length === 0 ? (
-              <Text style={styles.empty}>No items</Text>
+              <View style={styles.emptyRow}>
+                <Ionicons name="checkmark-circle-outline" size={15} color={colors.olive[500]} />
+                <Text style={styles.empty}>All clear</Text>
+              </View>
             ) : (
-              c.items.slice(0, 4).map((it) => (
+              c.items.slice(0, 3).map((it) => (
                 <View key={it.id} style={styles.itemRow}>
                   <View style={styles.thumb}>
                     {it.image_url ? (
@@ -200,10 +191,9 @@ export function InsightsSection({ onLogWear }: { onLogWear?: (item: WardrobeItem
                       onPress={() => c.onAction!(it)}
                       hitSlop={6}
                       activeOpacity={0.7}
+                      style={styles.actionBtn}
                     >
-                      <Text style={[styles.actionTxt, { color: ACCENT_TXT[c.accent] }]}>
-                        {c.actionLabel}
-                      </Text>
+                      <Text style={styles.actionTxt}>{c.actionLabel}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -223,57 +213,80 @@ const styles: Record<string, any> = StyleSheet.create({
   },
   row: {
     paddingHorizontal: 16,
-    gap: 10,
+    paddingBottom: 6,
+    gap: 12,
   },
   card: {
-    width: 240,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    padding: 12,
+    width: 232,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    backgroundColor: colors.paper.cream,
+    padding: 16,
+    ...shadows.soft,
   },
   head: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 7,
   },
+  dot: { width: 6, height: 6, borderRadius: 3 },
   cardTitle: {
-    fontSize: 10,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-    letterSpacing: 0.6,
+    flex: 1,
+    fontSize: 9.5,
+    fontFamily: fontFamilies.mono.semibold,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
+  index: {
+    fontSize: 9.5,
+    fontFamily: fontFamilies.mono.regular,
+    color: MUTED,
+    letterSpacing: 0.8,
+  },
+  countRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 10,
+  },
   count: {
-    fontSize: 22,
-    fontFamily: fontFamilies.display.semibold,
-    fontWeight: "700",
+    fontSize: 40,
+    lineHeight: 46,
+    fontFamily: fontFamilies.display.regular,
+    letterSpacing: -1,
     color: INK,
-    marginTop: 2,
   },
+  countMuted: { color: "rgba(22,23,15,0.25)" },
   sub: {
-    fontSize: 10,
+    flex: 1,
+    fontSize: 11.5,
+    lineHeight: 15,
     color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    marginTop: 4,
+    fontFamily: fontFamilies.display.italic,
   },
+  rule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.light.border,
+    marginVertical: 12,
+  },
+  emptyRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 },
   empty: {
-    fontSize: 11,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    fontStyle: "italic",
-    paddingVertical: 6,
+    fontSize: 12,
+    color: colors.olive[600],
+    fontFamily: fontFamilies.sans.semibold,
   },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   thumb: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: 36,
+    height: 44,
+    borderRadius: 10,
     overflow: "hidden",
-    backgroundColor: "#f1efe6",
+    backgroundColor: colors.paper.warm,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -282,21 +295,27 @@ const styles: Record<string, any> = StyleSheet.create({
     height: "100%",
   },
   itemName: {
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "600",
+    fontSize: 13,
+    fontFamily: fontFamilies.display.semibold,
     color: INK,
   },
   itemMeta: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: MUTED,
-    fontFamily: fontFamilies.sans.regular,
-    marginTop: 1,
+    fontFamily: fontFamilies.mono.medium,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginTop: 2,
+  },
+  actionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: INK,
   },
   actionTxt: {
-    fontSize: 10,
-    fontFamily: fontFamilies.sans.regular,
-    fontWeight: "700",
-    textDecorationLine: "underline",
+    fontSize: 11,
+    fontFamily: fontFamilies.sans.bold,
+    color: colors.paper.cream,
   },
 });

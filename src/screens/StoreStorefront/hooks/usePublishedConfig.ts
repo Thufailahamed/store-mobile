@@ -4,7 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase/client";
 import type { StorefrontConfig } from "@luxe/store-storefront";
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "";
+// Same backend root every other mobile API module uses. (This previously read
+// EXPO_PUBLIC_API_BASE, which no env file defines — the fetch hit a relative
+// URL and every store page showed "Customised sections couldn't load".)
+const API_BASE = (process.env.EXPO_PUBLIC_STORE_API_URL ?? process.env.EXPO_PUBLIC_API_BASE ?? "").replace(/\/$/, "");
 
 interface PublishedResponse {
   channel: "app";

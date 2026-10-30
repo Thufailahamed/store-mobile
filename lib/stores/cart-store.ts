@@ -53,9 +53,6 @@ export interface CartItem {
    *  the cart so the user sees the out-of-stock banner and can decide to
    *  remove it. Excluded from itemCount() and subtotal(). */
   is_unavailable?: boolean;
-  /** Gift wrap — LKR 250 surcharge is applied at totals time, not on unit price. */
-  is_gift?: boolean;
-  gift_message?: string | null;
 }
 
 export type CartLoadResult =
@@ -76,10 +73,8 @@ export interface CartStore {
   loadFromServer: (userId: string, options?: { merge?: "login" | "remote" }) => Promise<CartLoadResult>;
   refreshFromServer: (userId: string) => Promise<CartLoadResult>;
   applyReconciliation: (reconciliation: CartReconciliation) => void;
-  setGift: (key: string, isGift: boolean, message?: string | null) => void;
   itemCount: () => number;
   subtotal: () => number;
-  giftWrapCount: () => number;
 }
 
 export const useCart = create<CartStore>()(
@@ -148,8 +143,6 @@ export const useCart = create<CartStore>()(
                 image: item.image ?? existing?.image,
                 quantity: next,
                 stock: knownStock ?? null,
-                is_gift: existing?.is_gift ?? item.is_gift ?? false,
-                gift_message: existing?.gift_message ?? item.gift_message ?? null,
               },
             },
           };
@@ -198,26 +191,6 @@ export const useCart = create<CartStore>()(
 
       setCoupon: (code) => set({ couponCode: code }),
 
-      setGift: (key, isGift, message) => {
-        set((state) => {
-          const item = state.items[key];
-          if (!item) return state;
-          const nextMessage = isGift
-            ? (message ?? item.gift_message ?? "").slice(0, 200)
-            : null;
-          return {
-            items: {
-              ...state.items,
-              [key]: {
-                ...item,
-                is_gift: isGift,
-                gift_message: nextMessage,
-              },
-            },
-          };
-        });
-      },
-
       clear: () => {
         const { items, couponCode, hydrated } = get();
         if (Object.keys(items).length === 0 && couponCode == null && !hydrated) return;
@@ -245,8 +218,6 @@ export const useCart = create<CartStore>()(
             store_id: item.storeId,
             quantity: item.quantity,
             unit_price: item.price,
-            is_gift: item.is_gift ?? false,
-            gift_message: item.is_gift ? (item.gift_message ?? null) : null,
           }));
           const res = await putCartBackend(lines, "LKR");
           if (!res.ok) {
@@ -291,8 +262,6 @@ export const useCart = create<CartStore>()(
               quantity?: number;
               product?: { id: string; name: string; status?: string; is_active?: boolean };
               variant?: { id?: string; color?: string; size?: string; inventory?: unknown; is_active?: boolean };
-              is_gift?: boolean;
-              gift_message?: string | null;
             };
             if (!r.product_id || !r.store_id) continue;
             const productInactive =
@@ -323,8 +292,6 @@ export const useCart = create<CartStore>()(
                 { inventory: r.variant?.inventory as never },
                 99,
               ),
-              is_gift: r.is_gift ?? false,
-              gift_message: r.gift_message ?? null,
             };
           }
 
@@ -433,10 +400,6 @@ export const useCart = create<CartStore>()(
         return Object.values(get().items)
           .filter((item) => !item.is_unavailable)
           .reduce((sum, item) => sum + item.price * item.quantity, 0);
-      },
-
-      giftWrapCount: () => {
-        return Object.values(get().items).filter((item) => !item.is_unavailable && item.is_gift).length;
       },
     }),
     {

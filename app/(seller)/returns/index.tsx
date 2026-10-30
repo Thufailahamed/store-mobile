@@ -7,10 +7,8 @@ import {
   StyleSheet,
   RefreshControl,
   StatusBar,
-  ScrollView,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -22,7 +20,6 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import {
   SellerSearchField,
-  SellerFilterTab,
   SellerStateView,
   SellerStatusPill,
 } from "@/components/seller/chrome";
@@ -63,12 +60,20 @@ const STATUS_ACTION: Record<string, string> = {
   rejected: "Closed",
 };
 
-const RETURN_STEPS: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-  { icon: "mail-unread-outline", label: "Buyer requests" },
-  { icon: "checkmark-circle-outline", label: "You approve" },
-  { icon: "cube-outline", label: "Item returns" },
-  { icon: "cash-outline", label: "Refund sent" },
+const RETURN_STEPS: { icon: keyof typeof Ionicons.glyphMap; label: string; desc: string }[] = [
+  { icon: "mail-unread-outline", label: "Buyer requests", desc: "A return arrives with the buyer’s reason." },
+  { icon: "checkmark-circle-outline", label: "You approve", desc: "Review the request, then approve or decline." },
+  { icon: "cube-outline", label: "Item returns", desc: "Mark the piece received once it’s back." },
+  { icon: "cash-outline", label: "Refund sent", desc: "Issue the refund to close the return." },
 ];
+
+const CARD_SHADOW = {
+  shadowColor: "#161a0a",
+  shadowOpacity: 0.06,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 2,
+} as const;
 
 function formatRelative(dateStr: string) {
   const d = new Date(dateStr);
@@ -96,12 +101,14 @@ function EmptyReturnsState() {
     <View style={styles.emptyCard}>
       <View style={styles.emptyIconHalo}>
         <View style={styles.emptyIconCore}>
-          <Ionicons name="return-down-back-outline" size={22} color={colors.olive[800]} />
+          <Ionicons name="return-down-back-outline" size={22} color={CREAM} />
         </View>
       </View>
-      <Text style={styles.emptyTitle}>No returns yet</Text>
+      <Text style={styles.emptyTitle}>
+        Nothing to return<Text style={styles.emptyTitleItalic}> — yet</Text>
+      </Text>
       <Text style={styles.emptyDesc}>
-        When a buyer requests a return, it lands here for your review — nothing needs your attention right now.
+        When a buyer requests a return, it lands here for your review.
       </Text>
 
       <View style={styles.emptyEyebrowRow}>
@@ -110,24 +117,31 @@ function EmptyReturnsState() {
         <View style={styles.emptyRule} />
       </View>
 
-      <View style={styles.stepsRow}>
-        <View style={styles.stepsTrack} />
-        {RETURN_STEPS.map((step) => (
-          <View key={step.label} style={styles.step}>
-            <View style={styles.stepIconWrap}>
-              <Ionicons name={step.icon} size={15} color={colors.olive[700]} />
+      <View style={styles.steps}>
+        {RETURN_STEPS.map((step, i) => {
+          const last = i === RETURN_STEPS.length - 1;
+          return (
+            <View key={step.label} style={styles.stepRow}>
+              <View style={styles.stepRail}>
+                <View style={styles.stepIconWrap}>
+                  <Ionicons name={step.icon} size={15} color={colors.olive[800]} />
+                </View>
+                {!last ? <View style={styles.stepLine} /> : null}
+              </View>
+              <View style={[styles.stepCopy, !last && { paddingBottom: 16 }]}>
+                <Text style={styles.stepNum}>{String(i + 1).padStart(2, "0")}</Text>
+                <Text style={styles.stepLabel}>{step.label}</Text>
+                <Text style={styles.stepDesc}>{step.desc}</Text>
+              </View>
             </View>
-            <Text style={styles.stepLabel} numberOfLines={2}>
-              {step.label}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.emptyNote}>
-        <Ionicons name="shield-checkmark-outline" size={13} color={colors.olive[700]} />
+        <Ionicons name="shield-checkmark-outline" size={14} color={GOLD} />
         <Text style={styles.emptyNoteText}>
-          Buyers can return within 14 days of delivery
+          Buyers can return within <Text style={styles.emptyNoteStrong}>14 days</Text> of delivery
         </Text>
       </View>
     </View>
@@ -136,12 +150,7 @@ function EmptyReturnsState() {
 
 function ReturnsSkeleton() {
   return (
-    <View style={{ paddingHorizontal: spacing[5], gap: 12 }}>
-      <View style={styles.skelSummary}>
-        <Skeleton width="45%" height={12} />
-        <Skeleton width="60%" height={26} />
-        <Skeleton width="80%" height={12} />
-      </View>
+    <View style={{ gap: 12 }}>
       {[0, 1, 2].map((i) => (
         <View key={i} style={styles.skelCard}>
           <Skeleton width="40%" height={14} />
@@ -264,84 +273,94 @@ export default function SellerReturns() {
         accessibilityLabel={`${item.order_number || "Return"}, ${formatReturnStatusLabel(item.status)}`}
         activeOpacity={0.85}
       >
-        <View style={[styles.cardAccent, { backgroundColor: tone.accent }]} />
-        <View style={styles.cardBody}>
-          <View style={styles.cardHeader}>
-            <SellerStatusPill
-              label={formatReturnStatusLabel(item.status)}
-              bg={tone.bg}
-              color={tone.text}
-              dotted={urgent}
-            />
-            <View style={styles.timeWrap}>
-              <Ionicons name="time-outline" size={12} color={colors.ink.mute} />
-              <Text style={styles.time}>{formatRelative(item.created_at)}</Text>
-            </View>
-          </View>
+        <View style={styles.cardHeader}>
+          <SellerStatusPill
+            label={formatReturnStatusLabel(item.status)}
+            bg={tone.bg}
+            color={tone.text}
+            dotted
+          />
+          <Text style={styles.time}>{formatRelative(item.created_at)}</Text>
+        </View>
 
-          <Text style={styles.product} numberOfLines={2}>
-            {product ?? "Return request"}
-            {variant ? ` · ${variant}` : ""}
-            {extraItems > 0 ? `  +${extraItems} more` : ""}
+        {item.order_number ? (
+          <Text style={styles.orderNo} numberOfLines={1}>{item.order_number}</Text>
+        ) : null}
+        <Text style={styles.product} numberOfLines={2}>
+          {product ?? "Return request"}
+        </Text>
+        {variant || extraItems > 0 ? (
+          <Text style={styles.variant} numberOfLines={1}>
+            {variant ?? ""}
+            {variant && extraItems > 0 ? "  ·  " : ""}
+            {extraItems > 0 ? `+${extraItems} more` : ""}
           </Text>
+        ) : null}
 
-          <View style={styles.metaRow}>
-            <Ionicons name="person-outline" size={13} color={colors.ink.mute} />
-            <Text style={styles.meta} numberOfLines={1}>
-              {item.buyer_name || "Buyer"}
+        <View style={styles.buyerRow}>
+          <View style={styles.buyerAvatar}>
+            <Text style={styles.buyerInitial}>
+              {(item.buyer_name || "B").trim().charAt(0).toUpperCase()}
             </Text>
-            {item.order_number ? (
-              <>
-                <Text style={styles.metaDot}>·</Text>
-                <Ionicons name="receipt-outline" size={13} color={colors.ink.mute} />
-                <Text style={styles.metaMono} numberOfLines={1}>
-                  {item.order_number}
-                </Text>
-              </>
-            ) : null}
           </View>
+          <Text style={styles.buyerName} numberOfLines={1}>{item.buyer_name || "Buyer"}</Text>
+        </View>
 
-          {item.reason ? (
-            <View style={styles.reasonRow}>
-              <Ionicons name="chatbox-ellipses-outline" size={13} color={colors.ink.mute} />
-              <Text style={styles.reason} numberOfLines={1}>
-                {item.reason}
-              </Text>
-            </View>
-          ) : null}
+        {item.reason ? (
+          <View style={styles.reasonBox}>
+            <View style={[styles.reasonBar, { backgroundColor: tone.accent }]} />
+            <Text style={styles.reason} numberOfLines={2}>“{item.reason}”</Text>
+          </View>
+        ) : null}
 
-          <View style={styles.footer}>
-            <View>
-              <Text style={styles.refundLabel}>Refund</Text>
-              <Text style={styles.refund}>{refundMoney(item)}</Text>
-            </View>
-            <View style={[styles.actionPill, urgent && styles.actionPillUrgent]}>
-              <Text style={[styles.action, urgent && styles.actionUrgent]}>{action}</Text>
-              <Ionicons
-                name="arrow-forward"
-                size={12}
-                color={urgent ? CREAM : colors.olive[700]}
-              />
-            </View>
+        <View style={styles.footer}>
+          <View>
+            <Text style={styles.refundLabel}>Refund</Text>
+            <Text style={styles.refund}>{refundMoney(item)}</Text>
+          </View>
+          <View style={[styles.actionPill, urgent && styles.actionPillUrgent]}>
+            <Text style={[styles.action, urgent && styles.actionUrgent]}>{action}</Text>
+            <Ionicons name="arrow-forward" size={12} color={urgent ? INK : colors.olive[800]} />
           </View>
         </View>
       </TouchableOpacity>
     );
   };
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <LinearGradient
-        colors={["#F9F7F1", "#EEEADD"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}
-      >
-        <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
+  const overview = [
+    {
+      key: "requested",
+      label: "To review",
+      value: String(counts.requested),
+      icon: "mail-unread-outline" as const,
+      warn: counts.requested > 0,
+    },
+    {
+      key: "approved",
+      label: "In progress",
+      value: String(inFlight),
+      icon: "sync-outline" as const,
+      warn: false,
+    },
+    {
+      key: null,
+      label: "Exposure",
+      value: refundExposure > 0 ? formatPrice(refundExposure, exposureCurrency) : "—",
+      icon: "wallet-outline" as const,
+      warn: false,
+    },
+  ];
+
+  const listHeader = (
+    <View>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) + 6 }]}>
+        <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 14 }} />
         <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>Atelier</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.kickerRow}>
+              <View style={styles.kickerRule} />
+              <Text style={styles.kicker}>Atelier</Text>
+            </View>
             <Text style={styles.title}>Returns</Text>
             <Text style={styles.subtitle}>{headerSubtitle}</Text>
           </View>
@@ -354,8 +373,65 @@ export default function SellerReturns() {
             </View>
           ) : null}
         </View>
-      </LinearGradient>
-      <View style={styles.goldRule} />
+      </View>
+
+      {!loadError && !isFiltered && !loading ? (
+        <View style={styles.overview}>
+          <View style={styles.overviewTop}>
+            <Text style={styles.overviewKicker}>Return queue</Text>
+            <Text style={styles.overviewTotal}>
+              {returns.length}
+              <Text style={styles.overviewTotalUnit}> {returns.length === 1 ? "return" : "returns"}</Text>
+            </Text>
+          </View>
+          <View style={styles.overviewRow}>
+            {overview.map((m, i) => {
+              const Cell = m.key ? TouchableOpacity : View;
+              return (
+                <Cell
+                  key={m.label}
+                  style={[styles.overviewCell, i > 0 && styles.overviewCellDivider]}
+                  {...(m.key
+                    ? {
+                        onPress: () => setStatusTab(m.key!),
+                        activeOpacity: 0.7,
+                        accessibilityRole: "button" as const,
+                        accessibilityLabel: `${m.value} ${m.label}. Filter`,
+                      }
+                    : {})}
+                >
+                  <View style={styles.overviewLabelRow}>
+                    <Ionicons name={m.icon} size={11} color={m.warn ? GOLD : "rgba(250,248,241,0.6)"} />
+                    <Text style={styles.overviewLabel}>{m.label}</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.overviewValue,
+                      m.key === null && styles.overviewValueSmall,
+                      m.warn && { color: GOLD },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {m.value}
+                  </Text>
+                </Cell>
+              );
+            })}
+          </View>
+          {counts.requested > 0 ? (
+            <TouchableOpacity
+              style={styles.overviewCta}
+              onPress={() => setStatusTab("requested")}
+              accessibilityRole="button"
+              accessibilityLabel="Show requested returns"
+            >
+              <Text style={styles.overviewCtaText}>Review {pluralize(counts.requested, "request")}</Text>
+              <Ionicons name="arrow-forward" size={13} color={INK} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={styles.searchContainer}>
         <SellerSearchField
@@ -363,469 +439,391 @@ export default function SellerReturns() {
           onChangeText={setSearchInput}
           placeholder="Search order, piece, buyer…"
           accessibilityLabel="Search returns"
+          style={styles.searchField}
         />
       </View>
 
-      <ScrollView
+      <FlatList
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabsContent}
+        data={STATUS_TABS}
+        keyExtractor={(t) => t.key}
         style={styles.tabsContainer}
-      >
-        {STATUS_TABS.map((tab) => (
-          <SellerFilterTab
-            key={tab.key}
-            label={tab.label}
-            count={counts[tab.key as keyof typeof counts] ?? 0}
-            active={statusTab === tab.key}
-            onPress={() => setStatusTab(tab.key)}
-          />
-        ))}
-      </ScrollView>
+        contentContainerStyle={styles.tabsContent}
+        renderItem={({ item: tab }) => {
+          const active = statusTab === tab.key;
+          const count = counts[tab.key as keyof typeof counts] ?? 0;
+          return (
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => setStatusTab(tab.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${tab.label}${count ? `, ${count}` : ""}`}
+              activeOpacity={0.7}
+            >
+              <View style={styles.tabLabelRow}>
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+                {count > 0 ? (
+                  <Text style={[styles.tabCount, active && styles.tabCountActive]}>
+                    {count > 99 ? "99+" : count}
+                  </Text>
+                ) : null}
+              </View>
+              <View style={[styles.tabIndicator, active && styles.tabIndicatorOn]} />
+            </TouchableOpacity>
+          );
+        }}
+      />
 
       {!loading && isFiltered ? (
         <View style={styles.resultsBar}>
-          <Text style={styles.resultsText}>
+          <Text style={styles.resultsText} numberOfLines={1}>
             {visible.length} result{visible.length === 1 ? "" : "s"}
-            {statusTab !== "all"
-              ? ` · ${STATUS_TABS.find((t) => t.key === statusTab)?.label}`
-              : ""}
-            {search ? ` for “${search}”` : ""}
+            {statusTab !== "all" ? ` · ${STATUS_TABS.find((t) => t.key === statusTab)?.label}` : ""}
+            {search ? ` · “${search}”` : ""}
           </Text>
           <TouchableOpacity
+            style={styles.clearButton}
             onPress={clearFilters}
             accessibilityRole="button"
             accessibilityLabel="Clear filters"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.resultsClear}>Clear</Text>
+            <Ionicons name="close" size={12} color={colors.olive[800]} />
+            <Text style={styles.clearButtonText}>Clear</Text>
           </TouchableOpacity>
         </View>
       ) : null}
+    </View>
+  );
 
-      {loading && returns.length === 0 ? (
-        <ReturnsSkeleton />
-      ) : (
-        <FlatList
-          data={visible}
-          keyExtractor={(item) => item.id}
-          renderItem={renderReturn}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[800]} />
-          }
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            returns.length > 0 && !isFiltered ? (
-              <View style={styles.summaryCard}>
-                <View style={styles.summaryTop}>
-                  <View style={styles.summaryIconWrap}>
-                    <Ionicons name="return-down-back-outline" size={16} color={GOLD} />
-                  </View>
-                  <Text style={styles.summaryEyebrow}>Return queue</Text>
-                </View>
-                <View style={styles.summaryStats}>
-                  <TouchableOpacity
-                    style={styles.summaryStat}
-                    onPress={() => setStatusTab("requested")}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${counts.requested} to review. Filter to requested returns`}
-                  >
-                    <Text style={styles.summaryValue}>{counts.requested}</Text>
-                    <Text style={styles.summaryLabel}>To review</Text>
-                  </TouchableOpacity>
-                  <View style={styles.summaryDivider} />
-                  <TouchableOpacity
-                    style={styles.summaryStat}
-                    onPress={() => setStatusTab("approved")}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${inFlight} in progress. Filter to approved returns`}
-                  >
-                    <Text style={styles.summaryValue}>{inFlight}</Text>
-                    <Text style={styles.summaryLabel}>In progress</Text>
-                  </TouchableOpacity>
-                  <View style={styles.summaryDivider} />
-                  <View style={styles.summaryStat}>
-                    <Text style={styles.summaryValue} numberOfLines={1}>
-                      {refundExposure > 0 ? formatPrice(refundExposure, exposureCurrency) : "—"}
-                    </Text>
-                    <Text style={styles.summaryLabel}>Refund exposure</Text>
-                  </View>
-                </View>
-                {counts.requested > 0 ? (
-                  <TouchableOpacity
-                    style={styles.summaryCta}
-                    onPress={() => setStatusTab("requested")}
-                    accessibilityRole="button"
-                    accessibilityLabel="Show requested returns"
-                  >
-                    <Text style={styles.summaryCtaText}>
-                      Review {pluralize(counts.requested, "request")}
-                    </Text>
-                    <Ionicons name="arrow-forward" size={13} color={CREAM} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            loadError || isFiltered ? (
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <FlatList
+        data={loading && returns.length === 0 ? [] : visible}
+        keyExtractor={(item) => item.id}
+        renderItem={renderReturn}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.olive[800]} />
+        }
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <View style={styles.listInset}>
+            {loading && returns.length === 0 ? (
+              <ReturnsSkeleton />
+            ) : loadError || isFiltered ? (
               <SellerStateView
                 variant={loadError ? "error" : "empty"}
                 icon={loadError ? "cloud-offline-outline" : "return-down-back-outline"}
                 title={loadError ? "Couldn’t load returns" : "Nothing matches"}
-                description={
-                  loadError ??
-                  "Try a different order number, buyer name, or status filter."
-                }
+                description={loadError ?? "Try a different order number, buyer name, or status filter."}
                 actionLabel={loadError ? "Try again" : "Clear filters"}
                 onAction={loadError ? onRefresh : clearFilters}
                 style={{ marginTop: 24 }}
               />
             ) : (
               <EmptyReturnsState />
-            )
-          }
-        />
-      )}
+            )}
+          </View>
+        }
+      />
+      <View pointerEvents="none" style={[styles.statusScrim, { height: insets.top }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
-  header: {
-    paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    gap: 12,
-  },
+  statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.paper.DEFAULT },
+  listContent: { paddingBottom: 48 },
+  listInset: { paddingHorizontal: spacing[5] },
+
+  // Header
+  header: { paddingHorizontal: spacing[5], paddingBottom: spacing[5] },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", gap: 12 },
+  kickerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 },
+  kickerRule: { width: 18, height: 1, backgroundColor: GOLD },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
     color: colors.olive[700],
-    marginBottom: 2,
   },
   title: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
+    fontSize: 36,
+    lineHeight: 40,
     color: INK,
-    letterSpacing: -0.4,
+    letterSpacing: -1,
   },
   subtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.sm,
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 15,
     color: colors.ink.mute,
-    marginTop: 3,
+    marginTop: 4,
   },
   queuePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radii.full,
-    backgroundColor: "rgba(83,94,44,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
-    marginBottom: 2,
+    backgroundColor: "#FFFFFF",
+    marginBottom: 4,
+    ...CARD_SHADOW,
   },
-  queuePillWarn: {
-    backgroundColor: "rgba(200,164,74,0.16)",
-    borderColor: "rgba(200,164,74,0.45)",
-  },
-  queueDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[600],
-  },
+  queuePillWarn: { backgroundColor: "#fbf4e2" },
+  queueDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#5f9a4a" },
   queueDotWarn: { backgroundColor: GOLD },
-  queuePillText: {
+  queuePillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK },
+  queuePillTextWarn: { color: "#8a6a2a" },
+
+  // Overview
+  overview: {
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[4],
+    backgroundColor: colors.olive[900],
+    borderRadius: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
+    shadowColor: "#161a0a",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  overviewTop: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    marginBottom: 14,
+  },
+  overviewKicker: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: 0.4,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
-    color: colors.olive[800],
+    color: GOLD,
   },
-  queuePillTextWarn: { color: "#8a6a2a" },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[3],
+  overviewTotal: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: CREAM, letterSpacing: -0.4 },
+  overviewTotalUnit: { fontFamily: fontFamilies.display.italic, fontSize: 15, color: "rgba(250,248,241,0.6)" },
+  overviewRow: { flexDirection: "row" },
+  overviewCell: { flex: 1, paddingHorizontal: 18, paddingVertical: 2, minWidth: 0 },
+  overviewCellDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "rgba(250,248,241,0.18)" },
+  overviewLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  overviewLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: "rgba(250,248,241,0.6)" },
+  overviewValue: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 26,
+    lineHeight: 32,
+    color: CREAM,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
   },
-  searchContainer: { paddingHorizontal: spacing[5], marginBottom: spacing[3] },
-  tabsContainer: { marginBottom: 8, flexGrow: 0 },
-  tabsContent: { paddingHorizontal: spacing[5], gap: 8, paddingBottom: 4 },
+  overviewValueSmall: { fontSize: 18 },
+  overviewCta: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 42,
+    borderRadius: radii.full,
+    backgroundColor: GOLD,
+  },
+  overviewCtaText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: INK },
+
+  // Search + tabs
+  searchContainer: { paddingHorizontal: spacing[5], marginBottom: 6 },
+  searchField: { backgroundColor: "#FFFFFF", borderColor: "transparent", minHeight: 44, ...CARD_SHADOW },
+  tabsContainer: {
+    flexGrow: 0,
+    flexShrink: 0,
+    marginBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(83,94,44,0.22)",
+  },
+  tabsContent: { paddingHorizontal: spacing[5], gap: 22 },
+  tab: { paddingTop: 12 },
+  tabLabelRow: { flexDirection: "row", alignItems: "flex-start", gap: 3, paddingBottom: 10 },
+  tabText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: colors.ink.mute },
+  tabTextActive: { fontFamily: fontFamilies.sans.bold, color: INK },
+  tabCount: { fontFamily: fontFamilies.mono.medium, fontSize: 9, color: colors.ink.mute, marginTop: -1 },
+  tabCountActive: { color: colors.olive[600] },
+  tabIndicator: { height: 2, borderRadius: 1, backgroundColor: "transparent" },
+  tabIndicatorOn: { backgroundColor: INK },
+
   resultsBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    marginBottom: 4,
+    marginBottom: 12,
     gap: 12,
   },
   resultsText: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.ink.mute,
-  },
-  resultsClear: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: colors.olive[700],
-  },
-  listContent: { paddingHorizontal: spacing[5], paddingTop: 4, paddingBottom: 48 },
-
-  summaryCard: {
-    backgroundColor: colors.olive[900],
-    borderRadius: radii["2xl"],
-    padding: 18,
-    marginTop: 4,
-    marginBottom: 14,
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  summaryTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 14,
-  },
-  summaryIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(200,164,74,0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  summaryEyebrow: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    color: "rgba(250,248,241,0.65)",
+    color: colors.ink.mute,
   },
-  summaryStats: {
+  clearButton: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  summaryStat: { flex: 1, gap: 3 },
-  summaryValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    color: CREAM,
-    letterSpacing: -0.3,
-  },
-  summaryLabel: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "rgba(250,248,241,0.6)",
-  },
-  summaryDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: "stretch",
-    backgroundColor: "rgba(250,248,241,0.16)",
-    marginHorizontal: 14,
-  },
-  summaryCta: {
-    marginTop: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
+    gap: 3,
     borderRadius: radii.full,
-    backgroundColor: "rgba(200,164,74,0.22)",
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.4)",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: colors.olive[50],
   },
-  summaryCtaText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    color: CREAM,
-  },
+  clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.olive[800] },
 
+  // Return card
   card: {
-    flexDirection: "row",
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
+    marginHorizontal: spacing[5],
     marginBottom: 12,
-    overflow: "hidden",
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "transparent",
+    ...CARD_SHADOW,
   },
-  cardUrgent: {
-    borderColor: "rgba(200,164,74,0.45)",
-    shadowOpacity: 0.1,
-  },
-  cardAccent: { width: 4 },
-  cardBody: { flex: 1, padding: 14, paddingLeft: 12 },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  timeWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
-  time: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
+  cardUrgent: { borderColor: "rgba(200,164,74,0.55)" },
+  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  time: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: colors.ink.mute },
+  orderNo: {
+    marginTop: 12,
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
     color: colors.ink.mute,
   },
   product: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontSize: 17,
+    lineHeight: 22,
     color: INK,
-    marginTop: 10,
+    marginTop: 3,
     letterSpacing: -0.2,
   },
-  metaRow: {
-    flexDirection: "row",
+  variant: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: colors.ink.mute, marginTop: 2 },
+  buyerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
+  buyerAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.olive[100],
     alignItems: "center",
-    gap: 5,
-    marginTop: 7,
+    justifyContent: "center",
   },
-  meta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.ink.soft,
-    flexShrink: 1,
-  },
-  metaDot: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.ink.mute,
-  },
-  metaMono: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.ink.mute,
-    flexShrink: 1,
-  },
-  reasonRow: {
+  buyerInitial: { fontFamily: fontFamilies.sans.bold, fontSize: 11, color: colors.olive[800] },
+  buyerName: { flexShrink: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.ink.soft },
+  reasonBox: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 5,
+    gap: 10,
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingRight: 12,
+    borderRadius: 12,
+    backgroundColor: colors.paper.DEFAULT,
+    overflow: "hidden",
   },
+  reasonBar: { width: 3, borderRadius: 2 },
   reason: {
     flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.ink.mute,
-    fontStyle: "italic",
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.ink.soft,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    marginTop: 12,
+    marginTop: 14,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(83,94,44,0.12)",
+    borderTopColor: "rgba(83,94,44,0.2)",
   },
   refundLabel: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 9,
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
     color: colors.ink.mute,
     marginBottom: 2,
   },
-  refund: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: INK,
-    letterSpacing: -0.2,
-  },
+  refund: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: INK, fontVariant: ["tabular-nums"] },
   actionPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 13,
+    height: 34,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.22)",
     backgroundColor: colors.paper.DEFAULT,
   },
-  actionPillUrgent: {
-    backgroundColor: colors.olive[800],
-    borderColor: colors.olive[800],
-  },
-  action: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: colors.olive[800],
-  },
-  actionUrgent: { color: CREAM },
+  actionPillUrgent: { backgroundColor: GOLD },
+  action: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] },
+  actionUrgent: { color: INK, fontFamily: fontFamilies.sans.bold },
 
+  // Empty state
   emptyCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    marginTop: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    marginTop: 4,
     paddingHorizontal: 22,
-    paddingVertical: 30,
+    paddingTop: 28,
+    paddingBottom: 22,
     alignItems: "center",
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    ...CARD_SHADOW,
   },
   emptyIconHalo: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: "rgba(200,164,74,0.14)",
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: "rgba(200,164,74,0.16)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   emptyIconCore: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.16)",
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.olive[900],
     alignItems: "center",
     justifyContent: "center",
   },
   emptyTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    letterSpacing: -0.3,
+    fontSize: 22,
+    letterSpacing: -0.4,
     color: INK,
     textAlign: "center",
   },
+  emptyTitleItalic: { fontFamily: fontFamilies.display.italic, color: colors.olive[600] },
   emptyDesc: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
-    lineHeight: 21,
+    lineHeight: 20,
     color: colors.ink.mute,
     textAlign: "center",
-    maxWidth: 280,
+    maxWidth: 260,
     marginTop: 6,
   },
   emptyEyebrowRow: {
@@ -833,82 +831,63 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     alignSelf: "stretch",
-    marginTop: 22,
-    marginBottom: 16,
+    marginTop: 24,
+    marginBottom: 18,
   },
-  emptyRule: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(83,94,44,0.16)",
-  },
+  emptyRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(83,94,44,0.2)" },
   emptyEyebrow: {
     fontFamily: fontFamilies.mono.medium,
     fontSize: 9,
-    letterSpacing: typography.letterSpacing.editorial,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     color: colors.ink.mute,
   },
-  stepsRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    alignSelf: "stretch",
-  },
-  stepsTrack: {
-    position: "absolute",
-    top: 16,
-    left: 34,
-    right: 34,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(83,94,44,0.2)",
-  },
-  step: { width: 68, alignItems: "center", gap: 7 },
+  steps: { alignSelf: "stretch" },
+  stepRow: { flexDirection: "row", gap: 14 },
+  stepRail: { alignItems: "center", width: 34 },
   stepIconWrap: {
-    width: 33,
-    height: 33,
+    width: 34,
+    height: 34,
     borderRadius: 17,
-    backgroundColor: colors.paper.DEFAULT,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.18)",
+    backgroundColor: colors.olive[50],
     alignItems: "center",
     justifyContent: "center",
   },
-  stepLabel: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10,
-    lineHeight: 13,
-    color: colors.ink.soft,
-    textAlign: "center",
+  stepLine: { flex: 1, width: 1, marginVertical: 4, backgroundColor: "rgba(83,94,44,0.22)" },
+  stepCopy: { flex: 1, minWidth: 0, paddingTop: 1 },
+  stepNum: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: GOLD,
+  },
+  stepLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: INK, marginTop: 1 },
+  stepDesc: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.ink.mute,
+    marginTop: 2,
   },
   emptyNote: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(83,94,44,0.06)",
+    alignSelf: "stretch",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: colors.paper.DEFAULT,
   },
-  emptyNoteText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.ink.mute,
-  },
+  emptyNoteText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.ink.soft },
+  emptyNoteStrong: { fontFamily: fontFamilies.sans.bold, color: INK },
 
-  skelSummary: {
-    backgroundColor: colors.olive[900],
-    borderRadius: radii["2xl"],
-    padding: 18,
-    gap: 10,
-    opacity: 0.9,
-  },
   skelCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
     padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.08)",
     gap: 10,
   },
 });

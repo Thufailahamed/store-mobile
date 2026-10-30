@@ -53,7 +53,7 @@ vi.mock("@/lib/api/backend", () => ({
 vi.mock("@/lib/seller-access", () => ({}));
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { uploadReviewPhoto } from "../upload";
+import { uploadReviewPhoto, uploadSellerProductPhoto } from "../upload";
 
 // atob polyfill (node < 16 may lack it)
 if (typeof globalThis.atob !== "function") {
@@ -75,12 +75,12 @@ describe("uploadReviewPhoto", () => {
       .mockResolvedValueOnce({ ok: true });
   });
 
-  it("targets the 'reviews' bucket, not 'review-media'", async () => {
+  // Backend PresignSchema only accepts "public" | "private"; anything else 422s.
+  it("presigns against the public bucket", async () => {
     await uploadReviewPhoto("user-1", "review-1", "file:///tmp/photo.jpg");
     const presignCall = fetchMock.mock.calls[0];
     const body = JSON.parse(presignCall[1].body as string);
-    expect(body.bucket).toBe("reviews");
-    expect(body.bucket).not.toBe("review-media");
+    expect(body.bucket).toBe("public");
   });
 
   it("forwards a prefix scoped under <userId>/<reviewId>/ so R2 keys are user-scoped", async () => {
@@ -89,5 +89,38 @@ describe("uploadReviewPhoto", () => {
     const body = JSON.parse(presignCall[1].body as string);
     expect(body.prefix).toBe("user-1/review-1");
     expect(body.filename).toMatch(/^2\./);
+  });
+});
+
+describe("uploadSellerProductPhoto (quick upload)", () => {
+  beforeEach(() => fetchMock.mockReset());
+
+  it("unwraps the v2 envelope and returns the CDN url", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          data: { url: "https://r2/upload", uploadUrl: "https://r2/upload", key: "storefront/x.jpg", publicUrl: "https://cdn/storefront/x.jpg" },
+          version: 2,
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true });
+    const res = await uploadSellerProductPhoto("file:///tmp/photo.jpg", { mimeType: "image/jpeg" });
+    expect(res).toEqual({ url: "https://cdn/storefront/x.jpg" });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.bucket).toBe("public");
+    expect(fetchMock.mock.calls[1][0]).toBe("https://r2/upload");
+  });
+
+  it("surfaces the envelope error message, not [object Object]", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({ ok: false, error: { code: "validation", message: "Invalid request", status: 422 }, version: 2 }),
+    });
+    const res = await uploadSellerProductPhoto("file:///tmp/photo.jpg");
+    expect(res.url).toBe("");
+    expect(res.error).toBe("Invalid request");
   });
 });

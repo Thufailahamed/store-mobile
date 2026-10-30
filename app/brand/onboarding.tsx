@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet, Alert, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { useMutation } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
+import { isBrandPortalEnabledMobile } from "@/lib/feature-flags";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -11,7 +12,13 @@ import { fontFamilies } from "@/lib/theme/fonts";
 
 type Step = 0 | 1 | 2;
 
-export default function BrandOnboarding() {
+export default function BrandOnboardingRoute() {
+  // Brand portal is disabled — brands are admin-created.
+  if (!isBrandPortalEnabledMobile()) return <Redirect href="/(main)" />;
+  return <BrandOnboarding />;
+}
+
+function BrandOnboarding() {
   const [step, setStep] = React.useState<Step>(0);
   const [name, setName] = React.useState("");
   const [slug, setSlug] = React.useState("");

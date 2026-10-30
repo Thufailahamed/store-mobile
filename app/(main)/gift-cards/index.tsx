@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,8 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { PaperBackground } from "@/components/layout";
@@ -29,11 +29,23 @@ const MIN_AMOUNT = AMOUNTS[0];
 
 export default function GiftCardsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { toast } = useToast();
 
+  const params = useLocalSearchParams<{ amount?: string }>();
   const [amount, setAmount] = useState(5000);
   const [customAmountStr, setCustomAmountStr] = useState("5000");
+
+  // Optional preset from links (e.g. the account vouchers screen's amount tiles).
+  // An effect rather than initial state, since the screen can be reused across navigations.
+  const presetParam = Array.isArray(params.amount) ? params.amount[0] : params.amount;
+  useEffect(() => {
+    const n = Number(presetParam);
+    if (!presetParam || !Number.isFinite(n) || n < MIN_AMOUNT) return;
+    setAmount(Math.round(n));
+    setCustomAmountStr(String(Math.round(n)));
+  }, [presetParam]);
   const [recipient, setRecipient] = useState({ name: "", email: "", message: "" });
   const [scheduled, setScheduled] = useState(false);
   const [scheduledHours, setScheduledHours] = useState("24");
@@ -107,747 +119,933 @@ export default function GiftCardsScreen() {
     }
   };
 
+  const shownAmount = isAmountValid ? amount : MIN_AMOUNT;
+  const scheduleHoursNum = Number(scheduledHours);
+  const scheduleValid = Number.isFinite(scheduleHoursNum) && scheduleHoursNum > 0;
+  const arrivesAt =
+    scheduled && scheduleValid
+      ? new Date(Date.now() + scheduleHoursNum * 3_600_000).toLocaleString(undefined, {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+  const canPay = !!recipient.email && isAmountValid && !purchasing;
+  const recipientLabel = recipient.name.trim() || recipient.email.trim() || "Your recipient";
+
   return (
     <PaperBackground>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Atelier Top Navigation Bar */}
+        {/* Navigation */}
         <View style={styles.navBar}>
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.back()}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
           </TouchableOpacity>
 
-          <View style={styles.navTitleWrap}>
-            <Text style={styles.navTitle}>SEND A GIFT VOUCHER</Text>
-            <Text style={styles.navSubtitle}>BESPOKE DIGITAL GIFTING</Text>
-          </View>
+          <Text style={styles.navTitle}>Send a gift</Text>
 
           <TouchableOpacity
             style={styles.navBtn}
             onPress={() => router.push("/(main)/gift-cards/redeem" as any)}
             activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Redeem a voucher"
           >
             <Ionicons name="ticket-outline" size={18} color={colors.light.foreground} />
           </TouchableOpacity>
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 130 }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* 1. Haute Couture Gifting Hero Card */}
-          <LinearGradient
-            colors={["#1c2016", "#14170e", "#0e110a"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
-          >
-            <View style={styles.heroEyebrowRow}>
-              <View style={styles.heroTagBadge}>
-                <Ionicons name="sparkles" size={11} color="#C8A44A" />
-                <Text style={styles.heroTagText}>BESPOKE PRESENT</Text>
-              </View>
-              <View style={styles.heroLiveBadge}>
-                <View style={styles.heroLiveDot} />
-                <Text style={styles.heroLiveText}>INSTANT EMAIL DELIVERY</Text>
-              </View>
+          {/* Heading */}
+          <View>
+            <View style={styles.eyebrowRow}>
+              <View style={styles.eyebrowRule} />
+              <Text style={styles.eyebrow}>Digital gifting</Text>
             </View>
-
-            <Text style={styles.heroTitle}>Curate a Digital Voucher</Text>
-            <Text style={styles.heroSubtitle}>
-              Gift bespoke store credit directly to someone special. Valid across all designer boutiques, private drops, and luxury collections.
+            <Text style={styles.pageTitle}>
+              Send a <Text style={styles.pageTitleAccent}>gift.</Text>
             </Text>
-
-            {/* Micro Reassurance Banner */}
-            <View style={styles.noticePill}>
-              <Ionicons name="shield-checkmark" size={13} color="#E8CF8F" />
-              <Text style={styles.noticePillText}>
-                Vouchers are minted and sent upon verified payment completion.
-              </Text>
-            </View>
-          </LinearGradient>
-
-          {/* 2. Amount Selection Card */}
-          <View style={styles.formCard}>
-            <View style={styles.cardHeaderRow}>
-              <View>
-                <Text style={styles.cardEyebrow}>DENOMINATION</Text>
-                <Text style={styles.cardTitle}>Select Voucher Value</Text>
-              </View>
-              <View style={styles.currencyBadge}>
-                <Text style={styles.currencyBadgeText}>LKR</Text>
-              </View>
-            </View>
-
-            {/* Presets Grid */}
-            <View style={styles.amtGrid}>
-              {AMOUNTS.map((a) => {
-                const isSelected = amount === a;
-                return (
-                  <TouchableOpacity
-                    key={a}
-                    onPress={() => handleSelectAmount(a)}
-                    style={[styles.amtBtn, isSelected && styles.amtBtnActive]}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.amtBtnText,
-                        isSelected && styles.amtBtnTextActive,
-                      ]}
-                    >
-                      {formatPrice(a)}
-                    </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark-circle" size={12} color="#E8CF8F" />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Custom Amount Input Field */}
-            <View style={styles.customAmountWrap}>
-              <Text style={styles.inputFieldLabel}>CUSTOM AMOUNT (LKR)</Text>
-              <View style={styles.customInputRow}>
-                <Text style={styles.currencyPrefix}>LKR</Text>
-                <TextInput
-                  style={styles.customInputText}
-                  value={customAmountStr}
-                  onChangeText={handleCustomAmountChange}
-                  keyboardType="numeric"
-                  placeholder="e.g. 15000"
-                  placeholderTextColor={colors.light.mutedForeground}
-                />
-              </View>
-              {!isAmountValid && (
-                <View style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={12} color={colors.light.destructive} />
-                  <Text style={styles.errorText}>
-                    Minimum voucher value is {formatPrice(MIN_AMOUNT)}.
-                  </Text>
-                </View>
-              )}
-            </View>
+            <Text style={styles.pageSub}>
+              Store credit for someone special — valid across every boutique on LUXE.
+            </Text>
           </View>
 
-          {/* 3. Live Card Preview */}
-          <View style={styles.previewSection}>
-            <Text style={styles.previewEyebrow}>LIVE RECIPIENT PREVIEW</Text>
+          {/* Live preview — the gift card itself */}
+          <View style={styles.previewShadow}>
             <LinearGradient
-              colors={["#272c20", "#191d14", "#11140e"]}
+              colors={["#2c3119", "#181b0f", "#0e1009"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.previewCard}
             >
+              <LinearGradient
+                colors={["rgba(232,207,143,0)", "rgba(232,207,143,0.22)", "rgba(232,207,143,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.ribbonV}
+                pointerEvents="none"
+              />
+              <LinearGradient
+                colors={["rgba(232,207,143,0)", "rgba(232,207,143,0.16)", "rgba(232,207,143,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.ribbonH}
+                pointerEvents="none"
+              />
+              <LinearGradient
+                colors={["rgba(255,255,255,0.09)", "rgba(255,255,255,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.6, y: 0.6 }}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+
               <View style={styles.previewTop}>
-                <View style={styles.previewLogoBadge}>
-                  <Ionicons name="gift" size={13} color="#C8A44A" />
-                  <Text style={styles.previewLogoText}>ATELIER GIFT CARD</Text>
+                <View>
+                  <Text style={styles.previewWordmark}>LUXE</Text>
+                  <Text style={styles.previewTag}>Gift card · Live preview</Text>
                 </View>
-                <Text style={styles.previewCodeMask}>•••• •••• •••• 9428</Text>
+                <LinearGradient
+                  colors={[GOLD_SOFT, GOLD, GOLD_DEEP]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.previewBow}
+                >
+                  <Ionicons name="gift" size={18} color={colors.olive[950]} />
+                </LinearGradient>
               </View>
 
-              <View style={styles.previewCenter}>
-                <Text style={styles.previewValue}>
-                  {formatPrice(isAmountValid ? amount : MIN_AMOUNT)}
-                </Text>
-                <Text style={styles.previewBalanceLabel}>UNIVERSAL STORE CREDIT</Text>
-              </View>
+              <Text style={styles.previewValue} numberOfLines={1} adjustsFontSizeToFit>
+                {formatPrice(shownAmount)}
+              </Text>
+              <Text style={styles.previewValueLabel}>Store credit</Text>
+
+              {recipient.message.trim() ? (
+                <View style={styles.previewMessage}>
+                  <Text style={styles.previewQuote}>“</Text>
+                  <Text style={styles.previewMessageText} numberOfLines={2}>
+                    {recipient.message.trim()}
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={styles.previewFooter}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.previewToLabel}>FOR</Text>
-                  <Text style={styles.previewToName} numberOfLines={1}>
-                    {recipient.name.trim() || recipient.email.trim() || "Recipient Name"}
+                  <Text style={styles.previewFootLabel}>FOR</Text>
+                  <Text style={styles.previewFootValue} numberOfLines={1}>{recipientLabel}</Text>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.previewFootLabel}>DELIVERY</Text>
+                  <Text style={styles.previewFootValue} numberOfLines={1}>
+                    {arrivesAt ?? "Instantly"}
                   </Text>
                 </View>
-                {recipient.message.trim() ? (
-                  <Ionicons name="chatbubble-ellipses" size={14} color="#C8A44A" />
-                ) : null}
               </View>
             </LinearGradient>
           </View>
 
-          {/* 4. Recipient Details Card */}
-          <View style={styles.formCard}>
-            <View style={styles.cardHeaderRow}>
-              <View>
-                <Text style={styles.cardEyebrow}>DESTINATION</Text>
-                <Text style={styles.cardTitle}>Recipient Information</Text>
+          {/* Trust strip */}
+          <View style={styles.trustRow}>
+            {TRUST.map((t) => (
+              <View key={t.label} style={styles.trustItem}>
+                <Ionicons name={t.icon} size={13} color={GOLD_DEEP} />
+                <Text style={styles.trustText}>{t.label}</Text>
               </View>
-              <Ionicons name="paper-plane-outline" size={18} color="#85651b" />
+            ))}
+          </View>
+
+          {/* Step 1 — value */}
+          <View style={styles.card}>
+            <StepHeader n={1} eyebrow="Denomination" title="Choose a" accent="value" />
+
+            <View style={styles.amtGrid}>
+              {AMOUNTS.map((a) => {
+                const isSelected = amount === a;
+                return (
+                  <Pressable
+                    key={a}
+                    onPress={() => handleSelectAmount(a)}
+                    style={({ pressed }) => [styles.amtCell, pressed && { transform: [{ scale: 0.97 }] }]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={formatPrice(a)}
+                  >
+                    {isSelected ? (
+                      <LinearGradient
+                        colors={[colors.olive[800], colors.olive[950]]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[styles.amtBtn, styles.amtBtnActive]}
+                      >
+                        <View style={styles.amtCheck}>
+                          <Ionicons name="checkmark" size={10} color={colors.olive[950]} />
+                        </View>
+                        <Text style={[styles.amtCurrency, { color: GOLD_SOFT }]}>LKR</Text>
+                        <Text style={[styles.amtValue, { color: colors.paper.cream }]} numberOfLines={1} adjustsFontSizeToFit>
+                          {a.toLocaleString()}
+                        </Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={styles.amtBtn}>
+                        <Text style={styles.amtCurrency}>LKR</Text>
+                        <Text style={styles.amtValue} numberOfLines={1} adjustsFontSizeToFit>
+                          {a.toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
 
+            <Text style={styles.fieldLabel}>Or enter your own</Text>
+            <View style={[styles.customRow, !isAmountValid && styles.customRowError]}>
+              <View style={styles.customPrefix}>
+                <Text style={styles.customPrefixText}>LKR</Text>
+              </View>
+              <TextInput
+                style={styles.customInput}
+                value={customAmountStr}
+                onChangeText={handleCustomAmountChange}
+                keyboardType="numeric"
+                placeholder="15000"
+                placeholderTextColor="rgba(22,23,15,0.3)"
+                accessibilityLabel="Custom amount in LKR"
+              />
+              <Ionicons name="create-outline" size={16} color={colors.ink.mute} />
+            </View>
+            {!isAmountValid ? (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={13} color={colors.light.destructive} />
+                <Text style={styles.errorText}>Minimum voucher value is {formatPrice(MIN_AMOUNT)}.</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Step 2 — recipient */}
+          <View style={styles.card}>
+            <StepHeader n={2} eyebrow="Destination" title="Who's it" accent="for?" />
+
             <View style={styles.inputsStack}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputFieldLabel}>RECIPIENT NAME</Text>
+              <Field icon="person-outline" label="Recipient name" optional>
                 <TextInput
-                  style={styles.textInputField}
+                  style={styles.fieldInput}
                   value={recipient.name}
                   onChangeText={(v) => setRecipient({ ...recipient, name: v })}
-                  placeholder="Recipient's full name (optional)"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholder="Their full name"
+                  placeholderTextColor="rgba(22,23,15,0.3)"
                 />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputFieldLabel}>RECIPIENT EMAIL *</Text>
+              </Field>
+              <Field icon="mail-outline" label="Recipient email" required>
                 <TextInput
-                  style={styles.textInputField}
+                  style={styles.fieldInput}
                   value={recipient.email}
                   onChangeText={(v) => setRecipient({ ...recipient, email: v })}
                   placeholder="recipient@example.com"
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  autoCorrect={false}
+                  placeholderTextColor="rgba(22,23,15,0.3)"
                 />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputFieldLabel}>PERSONAL MESSAGE (OPTIONAL)</Text>
+              </Field>
+              <Field icon="chatbubble-ellipses-outline" label="Personal message" optional multiline>
                 <TextInput
-                  style={[styles.textInputField, styles.textAreaField]}
+                  style={[styles.fieldInput, styles.fieldTextArea]}
                   value={recipient.message}
                   onChangeText={(v) => setRecipient({ ...recipient, message: v })}
                   placeholder="Add a heartfelt note or celebration wish…"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholderTextColor="rgba(22,23,15,0.3)"
                   multiline
                   numberOfLines={3}
+                  textAlignVertical="top"
                 />
-              </View>
+              </Field>
             </View>
           </View>
 
-          {/* 5. Schedule Dispatch Option */}
-          <View style={styles.formCard}>
-            <View style={styles.scheduleHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.scheduleTitleRow}>
-                  <Ionicons name="time-outline" size={16} color="#85651b" />
-                  <Text style={styles.scheduleTitle}>Schedule Delivery</Text>
-                </View>
-                <Text style={styles.scheduleDesc}>
-                  Dispatch automatically on an upcoming birthday, anniversary, or celebration.
-                </Text>
-              </View>
+          {/* Step 3 — delivery */}
+          <View style={styles.card}>
+            <StepHeader n={3} eyebrow="Timing" title="When should it" accent="arrive?" />
 
-              <Pressable
-                onPress={() => setScheduled((s) => !s)}
-                style={[styles.toggleTrack, scheduled && styles.toggleTrackOn]}
-              >
-                <View
-                  style={[styles.toggleThumb, scheduled && styles.toggleThumbOn]}
-                />
-              </Pressable>
+            <View style={styles.segment}>
+              {[
+                { on: false, label: "Send now", icon: "flash-outline" as const },
+                { on: true, label: "Schedule", icon: "calendar-outline" as const },
+              ].map((opt) => {
+                const active = scheduled === opt.on;
+                return (
+                  <Pressable
+                    key={opt.label}
+                    onPress={() => setScheduled(opt.on)}
+                    style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Ionicons name={opt.icon} size={15} color={active ? GOLD_SOFT : colors.ink.mute} />
+                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{opt.label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
-            {scheduled && (
-              <View style={styles.scheduledHoursBox}>
-                <Text style={styles.inputFieldLabel}>DELIVERY TIMELINE</Text>
-                <View style={styles.hoursInputRow}>
+            {scheduled ? (
+              <View style={styles.scheduleBox}>
+                <Text style={styles.fieldLabel}>Deliver in</Text>
+                <View style={styles.quickRow}>
+                  {SCHEDULE_PRESETS.map((p) => {
+                    const active = scheduledHours === String(p.hours);
+                    return (
+                      <Pressable
+                        key={p.hours}
+                        onPress={() => setScheduledHours(String(p.hours))}
+                        style={[styles.quickChip, active && styles.quickChipActive]}
+                      >
+                        <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>{p.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.hoursRow}>
                   <TextInput
-                    style={styles.hoursInputField}
+                    style={styles.hoursInput}
                     value={scheduledHours}
                     onChangeText={setScheduledHours}
                     placeholder="24"
                     keyboardType="numeric"
-                    placeholderTextColor={colors.light.mutedForeground}
+                    placeholderTextColor="rgba(22,23,15,0.3)"
+                    accessibilityLabel="Hours from now"
                   />
-                  <Text style={styles.hoursInputUnit}>hours from now</Text>
+                  <Text style={styles.hoursUnit}>hours from now</Text>
                 </View>
+                {arrivesAt ? (
+                  <View style={styles.arrivesRow}>
+                    <Ionicons name="time-outline" size={14} color={GOLD_DEEP} />
+                    <Text style={styles.arrivesText}>
+                      Arrives <Text style={styles.arrivesStrong}>{arrivesAt}</Text>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : (
+              <View style={styles.arrivesRow}>
+                <Ionicons name="mail-unread-outline" size={14} color={GOLD_DEEP} />
+                <Text style={styles.arrivesText}>Emailed the moment payment is confirmed.</Text>
               </View>
             )}
           </View>
-
-          {/* 6. Purchase Action Button */}
-          <TouchableOpacity
-            style={[
-              styles.checkoutBtn,
-              (!recipient.email || !isAmountValid || purchasing) &&
-                styles.checkoutBtnDisabled,
-            ]}
-            onPress={onPurchase}
-            disabled={purchasing || !recipient.email || !isAmountValid}
-            activeOpacity={0.88}
-          >
-            {purchasing ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="lock-closed" size={14} color="#ffffff" />
-                <Text style={styles.checkoutBtnText}>
-                  PAY {formatPrice(isAmountValid ? amount : MIN_AMOUNT)} WITH CARD
-                </Text>
-                <Ionicons name="arrow-forward" size={14} color="#ffffff" />
-              </>
-            )}
-          </TouchableOpacity>
-
-          <View style={{ height: 30 }} />
         </ScrollView>
 
+        {/* Pay bar */}
+        <View style={[styles.payBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.payLabel}>TOTAL</Text>
+            <Text style={styles.payAmount} numberOfLines={1} adjustsFontSizeToFit>
+              {formatPrice(shownAmount)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.payTouch, !canPay && { shadowOpacity: 0 }]}
+            onPress={onPurchase}
+            disabled={!canPay}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel={`Pay ${formatPrice(shownAmount)}`}
+          >
+            <LinearGradient
+              colors={canPay || purchasing ? [GOLD_SOFT, GOLD] : ["#e6e4da", "#d8d5c8"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.payBtn}
+            >
+              {purchasing ? (
+                <ActivityIndicator color={colors.olive[950]} size="small" />
+              ) : (
+                canPay ? (
+                  <>
+                    <Ionicons name="lock-closed" size={14} color={colors.olive[950]} />
+                    <Text style={styles.payBtnText}>Pay securely</Text>
+                    <Ionicons name="arrow-forward" size={15} color={colors.olive[950]} />
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name={isAmountValid ? "mail-outline" : "alert-circle-outline"} size={15} color={colors.ink.mute} />
+                    <Text style={[styles.payBtnText, { color: colors.ink.mute }]}>
+                      {isAmountValid ? "Add recipient email" : "Check amount"}
+                    </Text>
+                  </>
+                )
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     </PaperBackground>
   );
 }
 
-/* =========================================================================
-   Styles
-   ========================================================================= */
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+const GOLD = colors.accent2.ochre;
+const GOLD_DEEP = "#85651b";
+const GOLD_SOFT = "#E8CF8F";
+const GOLD_HAIRLINE = "rgba(200,164,74,0.24)";
 
-  /* Navigation Bar */
+const TRUST: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+  { icon: "lock-closed-outline", label: "Secure payment" },
+  { icon: "mail-outline", label: "Email delivery" },
+  { icon: "shield-checkmark-outline", label: "Sent after payment" },
+];
+
+const SCHEDULE_PRESETS = [
+  { hours: 24, label: "1 day" },
+  { hours: 72, label: "3 days" },
+  { hours: 168, label: "1 week" },
+];
+
+function StepHeader({ n, eyebrow, title, accent }: { n: number; eyebrow: string; title: string; accent: string }) {
+  return (
+    <View style={styles.stepHeader}>
+      <LinearGradient colors={[GOLD_SOFT, GOLD]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.stepNum}>
+        <Text style={styles.stepNumText}>{String(n).padStart(2, "0")}</Text>
+      </LinearGradient>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.eyebrow}>{eyebrow}</Text>
+        <Text style={styles.cardTitle}>
+          {title} <Text style={styles.pageTitleAccent}>{accent}</Text>
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function Field({
+  icon,
+  label,
+  required,
+  optional,
+  multiline,
+  children,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  required?: boolean;
+  optional?: boolean;
+  multiline?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <View>
+      <View style={styles.fieldLabelRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {required ? <Text style={styles.fieldRequired}>Required</Text> : null}
+        {optional ? <Text style={styles.fieldOptional}>Optional</Text> : null}
+      </View>
+      <View style={[styles.fieldWrap, multiline && { alignItems: "flex-start", paddingTop: 12 }]}>
+        <Ionicons name={icon} size={16} color={colors.ink.mute} />
+        {children}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+
+  /* Nav */
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
-    paddingVertical: spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(22, 23, 15, 0.06)",
+    paddingVertical: spacing[2.5],
   },
   navBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#ffffff",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.paper.cream,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
+    borderColor: "rgba(22,23,15,0.08)",
     ...shadows.soft,
   },
-  navTitleWrap: {
-    alignItems: "center",
-  },
   navTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
-    letterSpacing: 2,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 18,
     color: colors.light.foreground,
-    textTransform: "uppercase",
-  },
-  navSubtitle: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    color: "#85651b",
-    marginTop: 1,
-    letterSpacing: 1,
   },
 
   scrollContent: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    gap: 14,
+    paddingTop: spacing[2],
+    gap: spacing[5],
   },
 
-  /* 1. Hero Card */
-  heroCard: {
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.35)",
-    ...shadows.editorial,
-  },
-  heroEyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  heroTagBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  heroTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  heroLiveBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  heroLiveDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: "#4ade80",
-  },
-  heroLiveText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: "rgba(255, 255, 255, 0.7)",
-    letterSpacing: 0.6,
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    color: "#ffffff",
-    letterSpacing: -0.3,
-  },
-  heroSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(255, 255, 255, 0.72)",
-    lineHeight: 18,
-    marginTop: 6,
-    marginBottom: 14,
-  },
-  noticePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.07)",
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-  },
-  noticePillText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "rgba(255, 255, 255, 0.8)",
-    lineHeight: 15,
-  },
-
-  /* Form Cards */
-  formCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.08)",
-    gap: 12,
-    ...shadows.soft,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-  cardEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-  },
-  cardTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: colors.light.foreground,
-    marginTop: 2,
-  },
-  currencyBadge: {
-    backgroundColor: "rgba(200, 164, 74, 0.12)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-  },
-  currencyBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
+  /* Heading */
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  eyebrowRule: { width: 18, height: 1, backgroundColor: GOLD },
+  eyebrow: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 10,
-    color: "#85651b",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: GOLD_DEEP,
   },
-
-  /* Amount Grid */
-  amtGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 2,
-  },
-  amtBtn: {
-    flexBasis: "31%",
-    flexGrow: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    backgroundColor: "#ffffff",
-  },
-  amtBtnActive: {
-    borderColor: "#181b12",
-    backgroundColor: "#181b12",
-  },
-  amtBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11.5,
+  pageTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 34,
+    letterSpacing: -0.8,
+    lineHeight: 40,
     color: colors.light.foreground,
   },
-  amtBtnTextActive: {
-    color: "#ffffff",
-  },
-
-  /* Custom Amount */
-  customAmountWrap: {
-    marginTop: 4,
-    gap: 4,
-  },
-  inputFieldLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 0.8,
-  },
-  customInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
-    borderRadius: radii.xl,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 11 : 7,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    gap: 8,
-  },
-  currencyPrefix: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
-  },
-  customInputText: {
-    flex: 1,
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-  },
-  errorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-  },
-  errorText: {
+  pageTitleAccent: { fontFamily: fontFamilies.display.italic, color: GOLD_DEEP },
+  pageSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.light.destructive,
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.light.mutedForeground,
+    marginTop: 6,
+    maxWidth: 330,
   },
 
-  /* Live Preview Card */
-  previewSection: {
-    gap: 6,
-  },
-  previewEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "#85651b",
-    letterSpacing: 1.2,
-    marginLeft: 4,
+  /* Preview */
+  previewShadow: {
+    borderRadius: 28,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.26,
+    shadowRadius: 28,
+    elevation: 12,
   },
   previewCard: {
-    borderRadius: 20,
+    borderRadius: 28,
     padding: spacing[5],
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(200, 164, 74, 0.3)",
-    ...shadows.soft,
-    gap: 14,
+    borderColor: "rgba(232,207,143,0.14)",
   },
-  previewTop: {
-    flexDirection: "row",
+  ribbonV: { position: "absolute", top: 0, bottom: 0, right: 64, width: 30 },
+  ribbonH: { position: "absolute", left: 0, right: 0, top: 29, height: 26 },
+  previewTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  previewWordmark: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 18,
+    letterSpacing: 6,
+    color: colors.paper.cream,
+  },
+  previewTag: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9.5,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: "rgba(232,207,143,0.85)",
+    marginTop: 4,
+  },
+  previewBow: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  previewLogoBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  previewLogoText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: "#E8CF8F",
-    letterSpacing: 1,
-  },
-  previewCodeMask: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 11,
-    color: "rgba(255, 255, 255, 0.5)",
-    letterSpacing: 1,
-  },
-  previewCenter: {
-    marginVertical: 4,
+    justifyContent: "center",
+    marginRight: 37,
+    borderWidth: 2,
+    borderColor: "#181b0f",
   },
   previewValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 28,
-    color: "#E8CF8F",
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 46,
+    lineHeight: 54,
+    letterSpacing: -1.4,
+    color: colors.paper.cream,
+    marginTop: spacing[6],
   },
-  previewBalanceLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8.5,
-    color: "rgba(255, 255, 255, 0.6)",
-    letterSpacing: 0.8,
-    marginTop: 2,
+  previewValueLabel: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 15,
+    color: GOLD_SOFT,
+  },
+  previewMessage: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: spacing[4],
+    padding: spacing[3],
+    borderRadius: 14,
+    backgroundColor: "rgba(250,248,241,0.06)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(232,207,143,0.2)",
+  },
+  previewQuote: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 28,
+    lineHeight: 28,
+    color: GOLD,
+  },
+  previewMessageText: {
+    flex: 1,
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "rgba(250,248,241,0.85)",
+    paddingTop: 2,
   },
   previewFooter: {
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    gap: spacing[3],
+    marginTop: spacing[5],
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(232,207,143,0.25)",
   },
-  previewToLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    color: "rgba(255, 255, 255, 0.5)",
-    letterSpacing: 0.8,
+  previewFootLabel: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 8.5,
+    letterSpacing: 1.6,
+    color: "rgba(250,248,241,0.5)",
   },
-  previewToName: {
+  previewFootValue: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: "#ffffff",
-    marginTop: 1,
+    fontSize: 14,
+    color: colors.paper.cream,
+    marginTop: 3,
   },
 
-  /* Inputs Stack */
-  inputsStack: {
-    gap: 12,
-  },
-  inputGroup: {
-    gap: 4,
-  },
-  textInputField: {
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
-    borderRadius: radii.xl,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 11 : 8,
-    borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  textAreaField: {
-    minHeight: 70,
-    paddingTop: 10,
-    textAlignVertical: "top",
-  },
-
-  /* Schedule Header */
-  scheduleHeaderRow: {
+  /* Trust */
+  trustRow: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    marginTop: -spacing[1],
   },
-  scheduleTitleRow: {
-    flexDirection: "row",
+  trustItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  trustText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: colors.ink.mute,
+  },
+
+  /* Cards */
+  card: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: GOLD_HAIRLINE,
+    padding: spacing[5],
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 4,
+  },
+  stepHeader: { flexDirection: "row", alignItems: "center", gap: spacing[3], marginBottom: spacing[4] },
+  stepNum: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     alignItems: "center",
-    gap: 6,
-  },
-  scheduleTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 15.5,
-    color: colors.light.foreground,
-  },
-  scheduleDesc: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  toggleTrack: {
-    width: 48,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(22, 23, 15, 0.1)",
-    padding: 2,
     justifyContent: "center",
   },
-  toggleTrackOn: {
-    backgroundColor: "#181b12",
+  stepNumText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 12,
+    color: colors.olive[950],
   },
-  toggleThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
-    ...shadows.soft,
+  cardTitle: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 21,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
+    marginTop: 2,
   },
-  toggleThumbOn: {
-    transform: [{ translateX: 20 }],
-    backgroundColor: "#E8CF8F",
+
+  /* Amounts */
+  amtGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 },
+  amtCell: { width: "33.333%", padding: 5 },
+  amtBtn: {
+    height: 74,
+    borderRadius: 18,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: colors.light.background,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.08)",
   },
-  scheduledHoursBox: {
-    marginTop: 8,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(22, 23, 15, 0.06)",
-    gap: 6,
+  amtBtnActive: {
+    borderColor: "rgba(232,207,143,0.4)",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
   },
-  hoursInputRow: {
+  amtCheck: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GOLD_SOFT,
+  },
+  amtCurrency: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9,
+    letterSpacing: 1.4,
+    color: colors.ink.mute,
+  },
+  amtValue: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.3,
+    color: colors.light.foreground,
+  },
+
+  fieldLabelRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  fieldLabel: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: colors.ink.mute,
+  },
+  fieldRequired: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 10,
+    color: GOLD_DEEP,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(200,164,74,0.14)",
+    overflow: "hidden",
+  },
+  fieldOptional: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 10,
+    color: colors.light.mutedForeground,
+  },
+
+  customRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-  },
-  hoursInputField: {
-    width: 70,
-    backgroundColor: "rgba(22, 23, 15, 0.03)",
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    marginTop: 8,
+    height: 58,
+    paddingLeft: 6,
+    paddingRight: 16,
+    borderRadius: 18,
+    backgroundColor: colors.light.background,
     borderWidth: 1,
-    borderColor: "rgba(22, 23, 15, 0.1)",
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 14,
-    color: colors.light.foreground,
-    textAlign: "center",
+    borderColor: "rgba(22,23,15,0.1)",
   },
-  hoursInputUnit: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: colors.light.mutedForeground,
+  customRowError: { borderColor: "rgba(192,57,43,0.45)" },
+  customPrefix: {
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.paper.warm,
+  },
+  customPrefixText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    letterSpacing: 1.2,
+    color: colors.ink.mute,
+  },
+  customInput: {
+    flex: 1,
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 22,
+    color: colors.light.foreground,
+    paddingVertical: Platform.OS === "android" ? 0 : 8,
+  },
+  errorRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
+  errorText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.light.destructive,
   },
 
-  /* Primary Checkout Button */
-  checkoutBtn: {
+  /* Recipient */
+  inputsStack: { gap: spacing[4] },
+  fieldWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: colors.light.background,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.1)",
+  },
+  fieldInput: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14.5,
+    color: colors.light.foreground,
+    paddingVertical: Platform.OS === "android" ? 8 : 14,
+  },
+  fieldTextArea: { minHeight: 88, paddingTop: 0 },
+
+  /* Delivery */
+  segment: {
+    flexDirection: "row",
+    padding: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.light.background,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.08)",
+  },
+  segmentBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: radii.full,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  segmentBtnActive: {
+    backgroundColor: colors.ink.DEFAULT,
+    shadowColor: "#16170f",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  segmentText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    color: colors.ink.mute,
+  },
+  segmentTextActive: { fontFamily: fontFamilies.sans.semibold, color: colors.paper.cream },
+  scheduleBox: { marginTop: spacing[4] },
+  quickRow: { flexDirection: "row", gap: spacing[2] },
+  quickChip: {
+    flex: 1,
+    height: 40,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.1)",
+    backgroundColor: colors.light.background,
+  },
+  quickChipActive: { borderColor: GOLD, backgroundColor: "rgba(200,164,74,0.14)" },
+  quickChipText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.ink.soft,
+  },
+  quickChipTextActive: { color: GOLD_DEEP },
+  hoursRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: spacing[3],
+  },
+  hoursInput: {
+    width: 86,
+    height: 48,
+    borderRadius: 14,
+    textAlign: "center",
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 20,
+    color: colors.light.foreground,
+    backgroundColor: colors.light.background,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.1)",
+  },
+  hoursUnit: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    color: colors.ink.mute,
+  },
+  arrivesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: spacing[4],
+    padding: spacing[3],
+    borderRadius: 14,
+    backgroundColor: "rgba(200,164,74,0.08)",
+  },
+  arrivesText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: colors.ink.soft,
+  },
+  arrivesStrong: { fontFamily: fontFamilies.sans.semibold, color: colors.light.foreground },
+
+  /* Pay bar */
+  payBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[4],
+    paddingTop: spacing[3],
+    paddingHorizontal: spacing[5],
+    backgroundColor: colors.paper.cream,
+    borderTopWidth: 1,
+    borderTopColor: GOLD_HAIRLINE,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  payLabel: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    color: colors.light.mutedForeground,
+  },
+  payAmount: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    letterSpacing: -0.5,
+    color: colors.light.foreground,
+  },
+  payTouch: {
+    borderRadius: radii.full,
+    shadowColor: "#c8a44a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  payBtn: {
+    height: 54,
+    minWidth: 180,
+    paddingHorizontal: 22,
+    borderRadius: radii.full,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#181b12",
-    borderRadius: radii.full,
-    paddingVertical: 14,
-    marginTop: 6,
-    ...shadows.soft,
   },
-  checkoutBtnDisabled: {
-    opacity: 0.5,
-  },
-  checkoutBtnText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: "#ffffff",
-    letterSpacing: 1.2,
+  payBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: colors.olive[950],
   },
 });

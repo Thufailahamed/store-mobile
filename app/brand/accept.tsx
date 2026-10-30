@@ -1,6 +1,7 @@
 import React from "react";
 import { View, StyleSheet, ActivityIndicator } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
+import { isBrandPortalEnabledMobile } from "@/lib/feature-flags";
 import { Ionicons } from "@/components/ui/Icon";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +11,13 @@ import { colors } from "@/lib/theme/tokens";
 
 type Status = "loading" | "ok" | "err";
 
-export default function BrandAccept() {
+export default function BrandAcceptRoute() {
+  // Brand portal is disabled — brands are admin-created.
+  if (!isBrandPortalEnabledMobile()) return <Redirect href="/(main)" />;
+  return <BrandAccept />;
+}
+
+function BrandAccept() {
   const { token } = useLocalSearchParams<{ token?: string }>();
   const [status, setStatus] = React.useState<Status>(token ? "loading" : "err");
   const [error, setError] = React.useState<string | null>(token ? null : "Missing invite token.");

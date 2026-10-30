@@ -7,12 +7,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Modal,
+
   TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout/ScreenHeader";
 import {

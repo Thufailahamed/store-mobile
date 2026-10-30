@@ -3,6 +3,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -10,7 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { ScreenHeader } from "@/components/layout";
-import { Badge, Button, useToast } from "@/components/ui";
+import { useToast } from "@/components/ui";
 import { Body, Display, Label, Price } from "@/components/ui/Typography";
 import { getOrderTracking, type OrderTracking, type TrackingEvent } from "@/lib/api";
 import { getShipmentByOrder, type CourierShipment } from "@/lib/api/courier-api";
@@ -22,6 +23,15 @@ import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { supabase } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/lib/types";
+import {
+  CardHeading,
+  HeroHeadline,
+  HeroStatusPill,
+  LUX,
+  LuxeHero,
+  ORDER_TONE,
+  StepRail,
+} from "@/components/orders/luxe-order";
 
 const STATUS_ORDER: OrderStatus[] = [
   "pending",
@@ -155,7 +165,6 @@ export default function OrderTrackScreen() {
         : colors.accent2.ochre;
 
   const heroMeta = STATUS_META[order.status];
-  const heroTone = isException ? exceptionTone : colors.accent2.ochre;
   const totalSteps = STATUS_ORDER.length;
   const stepsDone = isException ? reachedStep + 1 : currentStep + 1;
 
@@ -180,77 +189,61 @@ export default function OrderTrackScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* ── Status hero ───────────────────────────────────────── */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={styles.orderChip}>
-              <Label style={styles.orderChipText} selectable>
+        <LuxeHero>
+          <View style={styles.heroInner}>
+            <View style={styles.heroTop}>
+              <HeroStatusPill status={order.status as OrderStatus} live={!isTerminal} />
+              <Text style={styles.orderChipText} selectable>
                 #{order.order_number}
-              </Label>
+              </Text>
             </View>
-            {!isTerminal ? (
-              <View style={styles.livePill}>
-                <View style={styles.liveDot} />
-                <Label style={styles.liveText}>LIVE</Label>
+
+            <View style={{ marginTop: 18 }}>
+              {ORDER_TONE[order.status as OrderStatus] ? (
+                <HeroHeadline status={order.status as OrderStatus} size={36} />
+              ) : (
+                <Display size="2xl" style={styles.heroTitle}>
+                  {heroMeta?.label ?? order.status.replace(/_/g, " ")}
+                </Display>
+              )}
+              <Text style={styles.heroCopy}>
+                {ORDER_TONE[order.status as OrderStatus]?.copy ?? heroMeta?.copy ?? ""}
+              </Text>
+            </View>
+
+            <View style={styles.heroFacts}>
+              <View style={styles.heroFact}>
+                <Text style={styles.heroFactKey}>Placed</Text>
+                <Text style={styles.heroFactVal} numberOfLines={1}>{fmtDate(order.placed_at)}</Text>
+              </View>
+              <View style={styles.heroFact}>
+                <Text style={styles.heroFactKey}>Total</Text>
+                <Text style={styles.heroFactVal} numberOfLines={1}>{formatPrice(order.total, order.currency)}</Text>
+              </View>
+              <View style={styles.heroFact}>
+                <Text style={styles.heroFactKey}>{isException ? "Status" : "Step"}</Text>
+                <Text style={styles.heroFactVal} numberOfLines={1}>
+                  {isException ? "Stopped" : `${stepsDone} of ${totalSteps}`}
+                </Text>
+              </View>
+            </View>
+
+            {order.shipping_address ? (
+              <View style={styles.heroAddress}>
+                <Ionicons name="location" size={13} color={LUX.goldSoft} />
+                <Text numberOfLines={1} style={styles.heroAddressText}>
+                  {order.shipping_address.line1}, {order.shipping_address.city}
+                </Text>
               </View>
             ) : null}
           </View>
 
-          <View style={styles.heroMain}>
-            <View style={[styles.heroIcon, { borderColor: heroTone + "66" }]}>
-              <Ionicons name={heroMeta?.icon ?? "cube-outline"} size={24} color={heroTone} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Display size="2xl" style={styles.heroTitle}>
-                {heroMeta?.label ?? order.status.replace(/_/g, " ")}
-              </Display>
-              <Body size="sm" style={styles.heroCopy}>
-                {heroMeta?.copy ?? ""}
-              </Body>
-            </View>
-          </View>
-
-          <View style={styles.progressWrap}>
-            <View style={styles.progressTrack}>
-              {STATUS_ORDER.map((step, i) => (
-                <View
-                  key={step}
-                  style={[
-                    styles.progressSeg,
-                    i < stepsDone && { backgroundColor: i === stepsDone - 1 ? heroTone : colors.olive[300] },
-                  ]}
-                />
-              ))}
-            </View>
-            <Label style={styles.progressLabel}>
-              {isException ? "STOPPED" : `STEP ${stepsDone} OF ${totalSteps}`}
-            </Label>
-          </View>
-
-          <View style={styles.heroDivider} />
-
-          <View style={styles.heroFacts}>
-            <View style={styles.heroFact}>
-              <Label style={styles.heroFactKey}>PLACED</Label>
-              <Body size="sm" style={styles.heroFactVal}>
-                {fmtDate(order.placed_at)}
-              </Body>
-            </View>
-            <View style={styles.heroFact}>
-              <Label style={styles.heroFactKey}>TOTAL</Label>
-              <Body size="sm" style={styles.heroFactVal}>
-                {formatPrice(order.total, order.currency)}
-              </Body>
-            </View>
-          </View>
-          {order.shipping_address ? (
-            <View style={styles.heroAddress}>
-              <Ionicons name="location-outline" size={14} color={colors.olive[300]} />
-              <Body size="xs" numberOfLines={1} style={styles.heroAddressText}>
-                {order.shipping_address.line1}, {order.shipping_address.city}
-              </Body>
+          {!isException ? (
+            <View style={styles.heroRail}>
+              <StepRail status={order.status as OrderStatus} live={!isTerminal} />
             </View>
           ) : null}
-        </View>
+        </LuxeHero>
 
         {courier ? (
           <View style={styles.riderCard}>
@@ -286,16 +279,23 @@ export default function OrderTrackScreen() {
         ) : null}
 
         {rider ? (
-          <View style={styles.riderCard}>
+          <View style={[styles.riderCard, styles.riderCardDark]}>
             <View style={styles.riderLeft}>
-              <View style={styles.riderIcon}>
-                <Ionicons name="bicycle-outline" size={20} color={colors.olive[700]} />
+              <View style={[styles.riderIcon, styles.riderIconDark]}>
+                <Text style={styles.riderInitials}>
+                  {rider.name
+                    .split(" ")
+                    .map((p) => p[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Label style={styles.riderKicker}>YOUR RIDER</Label>
-                <Body size="sm" style={styles.riderName}>
+                <Label style={[styles.riderKicker, { color: LUX.goldSoft }]}>YOUR RIDER</Label>
+                <Text style={styles.riderNameDark} numberOfLines={1}>
                   {rider.name}
-                </Body>
+                </Text>
               </View>
             </View>
             {rider.phone ? (
@@ -312,11 +312,8 @@ export default function OrderTrackScreen() {
         ) : null}
 
         {/* ── Progress timeline ─────────────────────────────────── */}
-        <View style={styles.sectionHead}>
-          <Label style={styles.sectionKicker}>JOURNEY</Label>
-          <Display size="xl">Progress</Display>
-        </View>
         <View style={styles.card}>
+          <CardHeading index="01" eyebrow="Journey" title="Every" italic="milestone" />
           {visibleSteps.map((step, i) => {
             const done = i < currentStep || (i === currentStep && isTerminal);
             const current = i === currentStep && !isTerminal;
@@ -396,11 +393,8 @@ export default function OrderTrackScreen() {
         </View>
 
         {/* ── Activity feed ─────────────────────────────────────── */}
-        <View style={styles.sectionHead}>
-          <Label style={styles.sectionKicker}>UPDATES</Label>
-          <Display size="xl">Activity</Display>
-        </View>
-        <View style={[styles.card, { paddingVertical: spacing[2] }]}>
+        <View style={styles.card}>
+          <CardHeading index="02" eyebrow="Updates" title="Latest" italic="activity" />
           {activity.map((ev, i) => {
             const label = STATUS_META[ev.status]?.label ?? ev.status.replace(/_/g, " ");
             const desc = ev.description?.trim();
@@ -421,9 +415,9 @@ export default function OrderTrackScreen() {
                       {label}
                     </Body>
                     {i === 0 ? (
-                      <Badge style={{ backgroundColor: colors.olive[100] }}>
-                        <Label style={{ color: colors.olive[700], fontSize: 9 }}>LATEST</Label>
-                      </Badge>
+                      <View style={styles.nowPill}>
+                        <Label style={styles.nowText}>LATEST</Label>
+                      </View>
                     ) : null}
                   </View>
                   {showDesc ? (
@@ -441,8 +435,10 @@ export default function OrderTrackScreen() {
           })}
         </View>
 
-        <Button
-          variant="outline"
+        <TouchableOpacity
+          style={styles.detailsBtn}
+          activeOpacity={0.85}
+          accessibilityRole="button"
           onPress={() =>
             router.push({
               pathname: "/(main)/account/orders/[id]" as never,
@@ -450,8 +446,10 @@ export default function OrderTrackScreen() {
             })
           }
         >
-          View order details
-        </Button>
+          <Ionicons name="receipt-outline" size={15} color={LUX.cream} />
+          <Text style={styles.detailsBtnText}>View order details</Text>
+          <Ionicons name="arrow-forward" size={14} color={LUX.lime} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -477,85 +475,84 @@ const styles = StyleSheet.create({
   content: { padding: spacing[5], paddingBottom: spacing[10], gap: spacing[4] },
 
   // Hero
-  heroCard: {
-    backgroundColor: colors.olive[900],
-    borderRadius: radii["3xl"],
-    padding: spacing[5],
-    gap: spacing[4],
-  },
-  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  orderChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(250,248,241,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(250,248,241,0.14)",
-  },
+  heroInner: { padding: 22, paddingBottom: 18 },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   orderChipText: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.olive[100],
-    letterSpacing: 0.4,
-  },
-  livePill: { flexDirection: "row", alignItems: "center", gap: 6 },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent2.ochre },
-  liveText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: colors.accent2.ochre,
-  },
-  heroMain: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
-  heroIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    backgroundColor: "rgba(250,248,241,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
+    fontSize: 10.5,
+    letterSpacing: 0.6,
+    color: "rgba(250,248,241,0.5)",
   },
   heroTitle: { color: colors.paper.cream },
-  heroCopy: { color: colors.olive[200], marginTop: 2 },
-  progressWrap: { gap: spacing[2] },
-  progressTrack: { flexDirection: "row", gap: 4 },
-  progressSeg: {
+  heroCopy: {
+    marginTop: 8,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: "rgba(250,248,241,0.62)",
+  },
+  heroFacts: { flexDirection: "row", gap: 8, marginTop: 20 },
+  heroFact: {
     flex: 1,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(250,248,241,0.14)",
+    minWidth: 0,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(250,248,241,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(250,248,241,0.1)",
   },
-  progressLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: colors.olive[300],
-  },
-  heroDivider: { height: 1, backgroundColor: "rgba(250,248,241,0.1)" },
-  heroFacts: { flexDirection: "row", gap: spacing[6] },
-  heroFact: { gap: 2 },
   heroFactKey: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: colors.olive[300],
+    fontSize: 8.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(250,248,241,0.45)",
   },
-  heroFactVal: { color: colors.paper.cream, fontFamily: fontFamilies.sans.semibold },
-  heroAddress: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: -spacing[1] },
-  heroAddressText: { color: colors.olive[200], flex: 1 },
+  heroFactVal: {
+    marginTop: 4,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: LUX.cream,
+    fontVariant: ["tabular-nums"],
+  },
+  heroAddress: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14 },
+  heroAddressText: {
+    flex: 1,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: "rgba(250,248,241,0.6)",
+  },
+  heroRail: {
+    paddingHorizontal: 12,
+    paddingTop: 18,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(250,248,241,0.07)",
+  },
 
   // Rider / courier
   riderCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[3],
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[4],
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
+    padding: 16,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(22,23,15,0.07)",
   },
+  riderCardDark: { backgroundColor: LUX.ink, borderColor: "rgba(200,164,74,0.25)" },
+  riderIconDark: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: LUX.olive,
+    borderWidth: 1,
+    borderColor: "rgba(200,164,74,0.5)",
+  },
+  riderInitials: { fontFamily: fontFamilies.display.semibold, fontSize: 16, color: LUX.cream },
+  riderNameDark: { marginTop: 2, fontFamily: fontFamilies.display.semibold, fontSize: 18, color: LUX.cream },
   riderLeft: { flexDirection: "row", gap: spacing[3], alignItems: "center", flex: 1 },
   riderIcon: {
     width: 40,
@@ -579,7 +576,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: radii.full,
-    backgroundColor: colors.light.primary,
+    backgroundColor: LUX.lime,
   },
   riderCall: {
     width: 40,
@@ -592,7 +589,7 @@ const styles = StyleSheet.create({
     borderColor: colors.olive[200],
   },
   callLabel: {
-    color: colors.light.primaryForeground,
+    color: LUX.ink,
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
   },
@@ -606,12 +603,27 @@ const styles = StyleSheet.create({
     color: colors.light.mutedForeground,
   },
   card: {
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
-    padding: spacing[4],
+    backgroundColor: "#ffffff",
+    borderRadius: 26,
+    padding: 20,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(22,23,15,0.07)",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 2,
   },
+  detailsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    height: 54,
+    borderRadius: 999,
+    backgroundColor: LUX.ink,
+  },
+  detailsBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: LUX.cream },
 
   // Timeline
   stepRow: { flexDirection: "row", gap: spacing[3] },
@@ -627,13 +639,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  stepDotDone: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
+  stepDotDone: { backgroundColor: LUX.olive, borderColor: LUX.olive },
   stepDotInner: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.light.border },
   stepDotCurrentHalo: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: colors.accent2.ochre + "33",
+    backgroundColor: "rgba(200,224,138,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -641,7 +653,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: colors.accent2.ochre,
+    backgroundColor: LUX.ink,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -653,7 +665,7 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: colors.light.border,
   },
-  stepLineDone: { backgroundColor: colors.light.primary },
+  stepLineDone: { backgroundColor: "#869149" },
   stepBody: { flex: 1, paddingTop: 5, paddingBottom: spacing[5] },
   stepTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   stepLabel: { color: colors.light.mutedForeground },
@@ -696,7 +708,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  eventIconLatest: { backgroundColor: colors.light.primary, borderColor: colors.light.primary },
+  eventIconLatest: { backgroundColor: LUX.ink, borderColor: LUX.ink },
   eventTitle: { fontFamily: fontFamilies.sans.semibold, flexShrink: 1 },
   eventTime: {
     fontFamily: fontFamilies.mono.regular,

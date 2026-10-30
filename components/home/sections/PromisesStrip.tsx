@@ -19,7 +19,7 @@ const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 const DEFAULT_ITEMS: HomepagePromise[] = [
-  { n: "i", title: "Shipped slow, shipped right", description: "Carbon-conscious carriers. Free over LKR 15,000.", icon: "Truck" },
+  { n: "i", title: "Shipped slow, shipped right", description: "Carbon-conscious carriers. Island-wide shipping available.", icon: "Truck" },
   { n: "ii", title: "Thirty days to change your mind", description: "Returns are part of the design, not a bug.", icon: "RotateCcw" },
   { n: "iii", title: "Paid for in full, encrypted end-to-end", description: "We never store your card. Stripe, Apple, Google.", icon: "ShieldCheck" },
   { n: "iv", title: "Sourced from people we've met", description: "Every atelier is named, located, and verified.", icon: "Leaf" },

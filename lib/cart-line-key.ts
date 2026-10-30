@@ -77,8 +77,6 @@ export function mergeCartItemRecords(
       ...serverItem,
       quantity: Math.min(Math.max(serverItem.quantity, localItem.quantity), stockCap),
       image: serverItem.image ?? localItem.image,
-      is_gift: localItem.is_gift ?? serverItem.is_gift,
-      gift_message: localItem.gift_message ?? serverItem.gift_message,
     };
   }
 

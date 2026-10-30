@@ -1,110 +1,81 @@
 import React from "react";
-import { View, StyleSheet, TouchableOpacity, Dimensions, Animated, useWindowDimensions } from "react-native";
+import { View, StyleSheet, Dimensions, Animated, Text, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons } from "@/components/ui/Icon";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 // Fallback for any external consumer that needs a static height before the
 // component mounts. The component itself recomputes this reactively via
 // useWindowDimensions() below.
 const { width: INITIAL_SCREEN_WIDTH } = Dimensions.get("window");
-export const STORE_HERO_HEIGHT = Math.round(INITIAL_SCREEN_WIDTH * (10 / 16));
+export const STORE_HERO_HEIGHT = Math.round(INITIAL_SCREEN_WIDTH * 0.72);
 
 interface StoreHeroProps {
   bannerUrl?: string;
-  logoUrl?: string;
   storeName: string;
   scrollY: Animated.Value;
-  onBack: () => void;
-  onShare: () => void;
-  onMessage?: () => void;
 }
 
-export function StoreHero({
-  bannerUrl,
-  logoUrl,
-  storeName,
-  scrollY,
-  onBack,
-  onShare,
-  onMessage,
-}: StoreHeroProps) {
+/**
+ * Parallax banner for the boutique page. Purely visual — the logo, name and
+ * navigation controls are rendered by the page so they're never clipped by
+ * the banner's overflow.
+ */
+export function StoreHero({ bannerUrl, storeName, scrollY }: StoreHeroProps) {
   const { width: screenWidth } = useWindowDimensions();
-  const heroHeight = Math.round(screenWidth * (10 / 16));
+  const heroHeight = Math.round(screenWidth * 0.72);
 
   const translateY = scrollY.interpolate({
     inputRange: [-heroHeight, 0, heroHeight],
-    outputRange: [heroHeight / 2, 0, -heroHeight / 3],
+    outputRange: [-heroHeight / 2, 0, heroHeight / 3],
     extrapolate: "clamp",
   });
   const scale = scrollY.interpolate({
     inputRange: [-heroHeight, 0],
-    outputRange: [1.4, 1],
-    extrapolate: "clamp",
-  });
-  const overlayOpacity = scrollY.interpolate({
-    inputRange: [0, heroHeight * 0.6],
-    outputRange: [0.55, 0.85],
+    outputRange: [2, 1],
     extrapolate: "clamp",
   });
 
   return (
     <View style={[styles.wrap, { height: heroHeight }]}>
-      <Animated.View style={[styles.imageWrap, { transform: [{ translateY }, { scale }] }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY }, { scale }] }]}>
         {bannerUrl ? (
-          <Image
-            source={{ uri: bannerUrl }}
-            style={styles.image}
-            contentFit="cover"
-            transition={300}
-          />
+          <Image source={{ uri: bannerUrl }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
         ) : (
-          <View style={[styles.image, styles.placeholder]}>
-            <Ionicons name="image-outline" size={32} color={colors.olive[200]} />
-          </View>
+          <Placeholder name={storeName} />
         )}
-        <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
       </Animated.View>
+      {/* Top scrim keeps the floating controls legible; bottom fade melts into the paper. */}
       <LinearGradient
-        colors={["transparent", "rgba(22,23,15,0.35)", "rgba(22,23,15,0.7)"]}
-        style={StyleSheet.absoluteFill}
+        colors={["rgba(22,23,15,0.32)", "rgba(22,23,15,0)"]}
+        style={[StyleSheet.absoluteFill, { bottom: "60%" }]}
         pointerEvents="none"
       />
-      <View style={styles.topRow} pointerEvents="box-none">
-        <TouchableOpacity style={styles.iconBtn} onPress={onBack} activeOpacity={0.8}>
-          <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-        </TouchableOpacity>
-        <View style={styles.rightCluster}>
-          {onMessage ? (
-            <TouchableOpacity style={styles.iconBtn} onPress={onMessage} activeOpacity={0.8}>
-              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.light.foreground} />
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity style={styles.iconBtn} onPress={onShare} activeOpacity={0.8}>
-            <Ionicons name="share-outline" size={18} color={colors.light.foreground} />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <View style={styles.logoAnchor} pointerEvents="none">
-        <View style={styles.logoRing}>
-          {logoUrl ? (
-            <Image source={{ uri: logoUrl }} style={styles.logo} contentFit="cover" transition={200} />
-          ) : (
-            <View style={[styles.logo, styles.logoFallback]}>
-              <Ionicons name="storefront" size={28} color={colors.olive[600]} />
-            </View>
-          )}
-        </View>
-        <View style={styles.logoAccent} />
-      </View>
-      <View style={styles.namePlaque} pointerEvents="none">
-        <Animated.Text style={styles.boutiqueLabel} numberOfLines={1}>
-          {`BOUTIQUE · ${storeName.toUpperCase()}`}
-        </Animated.Text>
-      </View>
+      <LinearGradient
+        colors={["rgba(245,244,239,0)", "rgba(245,244,239,0.55)", colors.light.background]}
+        locations={[0, 0.55, 1]}
+        style={[StyleSheet.absoluteFill, { top: "45%" }]}
+        pointerEvents="none"
+      />
     </View>
+  );
+}
+
+/** Editorial fallback when the seller hasn't uploaded a banner. */
+function Placeholder({ name }: { name: string }) {
+  const initial = (name.trim().charAt(0) || "L").toUpperCase();
+  return (
+    <LinearGradient
+      colors={[colors.olive[900], colors.olive[700], colors.olive[500]]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[StyleSheet.absoluteFill, styles.placeholder]}
+    >
+      <Text style={styles.monogram} numberOfLines={1}>{initial}</Text>
+      <View style={styles.ring} />
+      <View style={[styles.ring, styles.ringInner]} />
+    </LinearGradient>
   );
 }
 
@@ -114,95 +85,34 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: colors.olive[900],
   },
-  imageWrap: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
   placeholder: {
-    backgroundColor: colors.olive[800],
     alignItems: "center",
     justifyContent: "center",
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#000",
-  },
-  topRow: {
+  monogram: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 220,
+    lineHeight: 240,
+    color: "rgba(250,248,241,0.08)",
     position: "absolute",
-    top: spacing[12],
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
+    right: -10,
+    bottom: -40,
   },
-  rightCluster: {
-    flexDirection: "row",
-    gap: spacing[2],
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(250,248,241,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoAnchor: {
+  ring: {
     position: "absolute",
-    bottom: -spacing[8],
-    left: spacing[5],
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+    borderWidth: 1,
+    borderColor: "rgba(250,248,241,0.08)",
+    left: -120,
+    top: -140,
   },
-  logoRing: {
-    width: 76,
-    height: 76,
-    borderRadius: 20,
-    padding: 3,
-    backgroundColor: colors.light.card,
-    ...{
-      shadowColor: "#16170f",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.18,
-      shadowRadius: 14,
-    },
-    elevation: 8,
-  },
-  logo: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 17,
-  },
-  logoFallback: {
-    backgroundColor: colors.olive[50],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  logoAccent: {
-    position: "absolute",
-    right: -2,
-    bottom: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.olive[600],
-    borderWidth: 3,
-    borderColor: colors.light.card,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  namePlaque: {
-    position: "absolute",
-    bottom: spacing[4],
-    right: spacing[5],
-  },
-  boutiqueLabel: {
-    color: "rgba(250,248,241,0.85)",
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1.6,
+  ringInner: {
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    left: -60,
+    top: -80,
   },
 });

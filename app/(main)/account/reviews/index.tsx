@@ -26,7 +26,7 @@ import {
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-type Tab = "all" | "published" | "pending";
+type Tab = "all" | "published";
 
 const GOLD = colors.accent2.ochre;
 const GOLD_DEEP = "#85651b";
@@ -37,7 +37,6 @@ const GREEN = "#15803d";
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "published", label: "Published" },
-  { key: "pending", label: "Pending" },
 ];
 
 const REVIEW_TIPS = [
@@ -129,7 +128,6 @@ export default function ReviewsScreen() {
   const totalPhotos = useMemo(() => reviews.reduce((sum, r) => sum + r.photos, 0), [reviews]);
   const totalHelpful = useMemo(() => reviews.reduce((sum, r) => sum + r.helpful, 0), [reviews]);
   const publishedCount = useMemo(() => reviews.filter((r) => r.status === "published").length, [reviews]);
-  const pendingCount = useMemo(() => reviews.filter((r) => r.status === "pending").length, [reviews]);
 
   const rank = useMemo(() => {
     if (reviews.length >= 10) return "Gold";
@@ -163,8 +161,7 @@ export default function ReviewsScreen() {
     );
   };
 
-  const tabCount = (key: Tab) =>
-    key === "all" ? reviews.length : key === "published" ? publishedCount : pendingCount;
+  const tabCount = (key: Tab) => (key === "all" ? reviews.length : publishedCount);
 
   return (
     <PaperBackground>

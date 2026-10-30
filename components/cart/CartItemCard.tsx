@@ -16,7 +16,6 @@ import { formatPrice } from "@/lib/utils";
 import type { CartItem } from "@/lib/stores/cart-store";
 import type { Product } from "@/lib/types";
 import { SizePickerSheet } from "@/components/cart/SizePickerSheet";
-import { GiftWrapToggle } from "@/components/cart/GiftWrapToggle";
 import {
   buildAvailableSizeOptions,
   getVariantStock,
@@ -43,7 +42,6 @@ interface CartItemCardProps {
   onRemove: () => void;
   onUpdateQuantity: (quantity: number) => void;
   onUpdateVariant?: (newVariantId: string, newVariantLabel: string) => void;
-  onGiftChange?: (isGift: boolean, message: string) => void;
   style?: ViewStyle;
 }
 
@@ -57,7 +55,6 @@ export function CartItemCard({
   onDecrement,
   onRemove,
   onUpdateVariant,
-  onGiftChange,
   style,
 }: CartItemCardProps) {
   const router = useRouter();
@@ -206,10 +203,18 @@ export function CartItemCard({
           </TouchableOpacity>
 
           <View style={styles.badgeRow}>
-            <View style={styles.badge}>
-              <Ionicons name="car-outline" size={11} color={INK} />
-              <Text style={styles.badgeText}>Free Returns</Text>
-            </View>
+            {/* 0357 — final-sale stores don't take returns. Unknown = available. */}
+            {product?.store?.accepts_returns === false ? (
+              <View style={[styles.badge, styles.dealBadge]} accessibilityLabel="Returns not available">
+                <Ionicons name="ban-outline" size={11} color={DEAL_TEXT} />
+                <Text style={[styles.badgeText, styles.dealBadgeText]}>Returns not available</Text>
+              </View>
+            ) : (
+              <View style={styles.badge} accessibilityLabel="Returns available">
+                <Ionicons name="refresh-outline" size={11} color={INK} />
+                <Text style={styles.badgeText}>Returns available</Text>
+              </View>
+            )}
             {isFlashSale ? (
               <View style={[styles.badge, styles.dealBadge]}>
                 <Ionicons name="flash" size={11} color={DEAL_TEXT} />
@@ -288,14 +293,6 @@ export function CartItemCard({
           <Text style={styles.deleteText}>Remove</Text>
         </TouchableOpacity>
       </View>
-
-      {onGiftChange ? (
-        <GiftWrapToggle
-          isGift={!!item.is_gift}
-          message={item.gift_message}
-          onChange={onGiftChange}
-        />
-      ) : null}
 
       <SizePickerSheet
         visible={sizeModalVisible}

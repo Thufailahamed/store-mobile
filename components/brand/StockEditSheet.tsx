@@ -2,7 +2,7 @@ import React from "react";
 import {
   View,
   Text,
-  Modal,
+
   Pressable,
   StyleSheet,
   TextInput,
@@ -11,6 +11,7 @@ import {
   ScrollView,
   type KeyboardTypeOptions,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import type { BrandInventoryRow } from "@/lib/api/backend";

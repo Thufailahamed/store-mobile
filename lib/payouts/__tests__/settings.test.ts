@@ -39,6 +39,11 @@ describe("coercePayoutSettings", () => {
     expect(row.account_name).toBe("Aura Boutique");
     expect(row.method).toBe("bank");
   });
+
+  it("drops legacy UPI, PayPal and Stripe methods back to bank", () => {
+    expect(coercePayoutSettings({ method: "upi", upi: "store@bank" }).method).toBeUndefined();
+    expect(coercePayoutSettings({ method: "stripe_connect" }).method).toBeUndefined();
+  });
 });
 
 describe("mergePayoutSettings", () => {
@@ -53,8 +58,8 @@ describe("mergePayoutSettings", () => {
 });
 
 describe("validatePayoutDraft", () => {
-  it("requires a method", () => {
-    expect(validatePayoutDraft({})).toMatch(/how you want to get paid/i);
+  it("requires the bank name", () => {
+    expect(validatePayoutDraft({})).toMatch(/bank name/i);
   });
 
   it("rejects placeholder bank details", () => {
@@ -68,7 +73,7 @@ describe("validatePayoutDraft", () => {
     ).toMatch(/real bank name/i);
   });
 
-  it("accepts a Sri Lankan bank payout", () => {
+  it("accepts a Sri Lankan bank payout with a saved account", () => {
     expect(
       validatePayoutDraft({
         method: "bank",
@@ -79,19 +84,26 @@ describe("validatePayoutDraft", () => {
     ).toBeNull();
   });
 
-  it("rejects a last-4 that is not 4 digits", () => {
+  it("requires the full account number when none is saved yet", () => {
     expect(
       validatePayoutDraft({
         method: "bank",
         bank_name: "Sampath Bank",
         account_name: "Aura Boutique",
-        account_number_last4: "123",
       }),
-    ).toMatch(/4 numbers/i);
+    ).toMatch(/full account number/i);
   });
 
-  it("lets Stripe Connect save before the account is linked", () => {
-    expect(validatePayoutDraft({ method: "stripe_connect" })).toBeNull();
+  it("rejects a typed account number outside 6 to 20 digits", () => {
+    expect(
+      validatePayoutDraft({
+        method: "bank",
+        bank_name: "Sampath Bank",
+        account_name: "Aura Boutique",
+        account_number: "12345",
+        account_number_last4: "4821",
+      }),
+    ).toMatch(/6 to 20 digits/i);
   });
 });
 
@@ -117,16 +129,27 @@ describe("isPayoutKycError", () => {
 });
 
 describe("toPayoutPayload", () => {
-  it("persists last 4 only", () => {
+  it("sends the full account number only when the seller typed one", () => {
     const payload = toPayoutPayload({
       method: "bank",
       schedule: "weekly",
       bank_name: "HNB",
       account_name: "Aura Boutique",
-      account_number_last4: "1234567890",
+      account_number: "1234567890",
     });
-    expect(payload.account_number_last4).toBe("7890");
+    expect(payload.account_number).toBe("1234567890");
     expect(payload.tax_form_submitted).toBe(true);
     expect(payload.schedule).toBe("weekly");
+  });
+
+  it("leaves the saved account number alone when nothing was typed", () => {
+    const payload = toPayoutPayload({
+      method: "bank",
+      bank_name: "HNB",
+      account_name: "Aura Boutique",
+      account_number_last4: "7890",
+    });
+    expect("account_number" in payload).toBe(false);
+    expect("account_number_last4" in payload).toBe(false);
   });
 });

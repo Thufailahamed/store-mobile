@@ -30,6 +30,11 @@ async function fetchServerWishlistItems(): Promise<Record<string, boolean>> {
   return serverItems;
 }
 
+/** Serialize server replays: two overlapping syncToServer calls would replay
+ *  opposite operations for the same product out of order server-side (a slow
+ *  add landing after its remove resurrects the item). */
+let replayQueue: Promise<void> = Promise.resolve();
+
 function applyPendingOperations(
   items: Record<string, boolean>,
   pending: Record<string, PendingWishlistOperation>,
@@ -76,22 +81,30 @@ export const useWishlist = create<WishlistStore>()(
       syncToServer: async (_userId) => {
         if (!get().hydrated) return;
         suppressRemoteSyncPull();
-        const operations = { ...get().pending };
-        for (const [productId, operation] of Object.entries(operations)) {
-          try {
-            const res = operation === "add"
-              ? await addWishlistBackend(productId)
-              : await removeWishlistBackend(productId);
-            if (!res.ok) continue;
-            set((state) => {
-              if (state.pending[productId] !== operation) return state;
-              const { [productId]: _, ...pending } = state.pending;
-              return { pending };
-            });
-          } catch {
-            // Silent fail — the persisted operation will retry on the next sync.
+        const replay = replayQueue.then(async () => {
+          const operations = { ...get().pending };
+          for (const [productId, operation] of Object.entries(operations)) {
+            try {
+              const res = operation === "add"
+                ? await addWishlistBackend(productId)
+                : await removeWishlistBackend(productId);
+              if (!res.ok) continue;
+              set((state) => {
+                if (state.pending[productId] !== operation) return state;
+                const { [productId]: _, ...pending } = state.pending;
+                return { pending };
+              });
+            } catch {
+              // Silent fail — the persisted operation will retry on the next sync.
+            }
           }
-        }
+        });
+        // A failure must not poison the queue — the next replay runs anyway.
+        replayQueue = replay.then(
+          () => undefined,
+          () => undefined,
+        );
+        return replay;
       },
 
       loadFromServer: async (_userId) => {
@@ -111,10 +124,18 @@ export const useWishlist = create<WishlistStore>()(
 
       refreshFromServer: async (_userId) => {
         if (!get().hydrated) return;
+        // Snapshot pending operations before the fetch. An add whose POST
+        // completes while this server read is in flight has its pending
+        // flag cleared — without the snapshot the stale server list would
+        // drop the just-added item.
+        const pendingSnapshot = { ...get().pending };
         try {
           const serverItems = await fetchServerWishlistItems();
           set((state) => ({
-            items: applyPendingOperations(serverItems, state.pending),
+            items: applyPendingOperations(serverItems, {
+              ...pendingSnapshot,
+              ...state.pending,
+            }),
           }));
         } catch {
           // Keep current local state on transient errors.

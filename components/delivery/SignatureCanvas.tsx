@@ -1,11 +1,11 @@
 import React, { useRef, useState } from "react";
 import {
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import SignatureScreen from "react-native-signature-canvas";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 

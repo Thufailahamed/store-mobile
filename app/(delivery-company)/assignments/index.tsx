@@ -8,9 +8,9 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
-  Modal,
   ScrollView,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";

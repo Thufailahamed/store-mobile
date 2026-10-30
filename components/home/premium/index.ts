@@ -14,3 +14,7 @@ export { PersonalisedSection } from "./PersonalisedSection";
 export { ContinueBrowsingRow } from "./ContinueBrowsingRow";
 export { ShopTheLookSection } from "./ShopTheLookSection";
 export { TrustStrip } from "./TrustStrip";
+export { FlashSaleSection } from "./FlashSaleSection";
+export { OffersRail } from "./OffersRail";
+export { ShopByPrice } from "./ShopByPrice";
+export { ShopByOccasion } from "./ShopByOccasion";

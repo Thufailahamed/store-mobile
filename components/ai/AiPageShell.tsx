@@ -36,7 +36,7 @@ export function AiPageShell({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -47,6 +47,7 @@ export function AiPageShell({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.navScroll}
         contentContainerStyle={styles.nav}
       >
         {LINKS.map((l) => {
@@ -63,8 +64,8 @@ export function AiPageShell({
             >
               <Ionicons
                 name={l.icon}
-                size={12}
-                color={active ? colors.paper.cream : colors.olive[700]}
+                size={13}
+                color={active ? colors.accent2.ochre : colors.olive[700]}
               />
               <Label style={[styles.navLink, active && styles.navLinkActive]}>
                 {l.label}
@@ -73,7 +74,9 @@ export function AiPageShell({
           );
         })}
       </ScrollView>
-      <Body muted size="sm" style={styles.desc}>{description}</Body>
+      {description ? (
+        <Body muted size="sm" style={styles.desc}>{description}</Body>
+      ) : null}
       {children}
       <View style={styles.disclaimerRow}>
         <Ionicons
@@ -91,31 +94,43 @@ export function AiPageShell({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.light.background },
+  navScroll: { flexGrow: 0 },
   nav: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: spacing[5],
-    paddingTop: 10,
+    paddingVertical: 12,
   },
   navChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    height: 30,
-    paddingHorizontal: 12,
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
+    borderColor: `${colors.ink.DEFAULT}0F`,
+    backgroundColor: "#ffffff",
+    shadowColor: colors.ink.DEFAULT,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
   },
   navChipActive: {
-    backgroundColor: colors.olive[800],
-    borderColor: colors.olive[800],
+    backgroundColor: colors.olive[950],
+    borderColor: colors.olive[950],
+    shadowColor: colors.olive[950],
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   navLink: {
-    color: colors.olive[700],
-    fontSize: 10,
-    letterSpacing: 0.4,
+    color: colors.olive[800],
+    fontSize: 11,
+    letterSpacing: 0.6,
     fontFamily: fontFamilies.sans.semibold,
   },
   navLinkActive: { color: colors.paper.cream },

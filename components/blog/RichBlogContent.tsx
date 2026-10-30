@@ -79,6 +79,7 @@ export function RichBlogContent({ content, style }: RichBlogContentProps) {
                 <Text style={styles.sectionKickerText}>
                   § {String(sectionCount).padStart(2, "0")}
                 </Text>
+                <View style={styles.sectionKickerRule} />
               </View>
               <Text style={styles.h1}>{renderInlineText(headingText)}</Text>
             </View>
@@ -237,25 +238,34 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   h1Container: {
-    marginTop: 32,
-    marginBottom: 12,
+    marginTop: 36,
+    marginBottom: 14,
   },
   sectionKicker: {
-    marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
   },
   sectionKickerText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 11,
-    letterSpacing: 1.2,
+    letterSpacing: 1.6,
     color: colors.accent2.rust,
     textTransform: "uppercase",
   },
+  sectionKickerRule: {
+    width: 28,
+    height: 1,
+    backgroundColor: colors.accent2.rust,
+    opacity: 0.5,
+  },
   h1: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 23,
-    lineHeight: 31,
+    fontSize: 26,
+    lineHeight: 32,
     color: colors.ink.DEFAULT,
-    letterSpacing: -0.2,
+    letterSpacing: -0.6,
   },
   h2Container: {
     marginTop: 26,
@@ -283,10 +293,10 @@ const styles = StyleSheet.create({
   },
   paragraph: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 15.5,
-    lineHeight: 26,
-    color: colors.ink.DEFAULT,
-    marginBottom: 18,
+    fontSize: 16,
+    lineHeight: 28,
+    color: colors.ink.soft,
+    marginBottom: 20,
   },
   mixedContainer: {
     marginBottom: 14,

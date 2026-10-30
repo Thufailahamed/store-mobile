@@ -5,7 +5,7 @@ import { colors } from "@/lib/theme/tokens";
 
 const TICKER = [
   "Issue Nº 014 · Summer / 26",
-  "Free shipping over LKR 15,000 — islandwide",
+  "Island-wide shipping available",
   "Members earn 2× rewards · this week",
   "New drop · Friday at 09:00 GMT",
   "200+ verified ateliers · curated weekly",

@@ -5,19 +5,23 @@ import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { isBrandPortalEnabledMobile } from "@/lib/feature-flags";
 
 export default function BrandLayout() {
   const { role, roleLoading, loading } = useAuth();
   const router = useRouter();
+  // Brand portal is disabled — brands are admin-created and sellers attach
+  // them to products — so everyone is bounced to the shop.
+  const allowed = isBrandPortalEnabledMobile() && (role === "brand_owner" || role === "admin");
 
   useEffect(() => {
     if (loading || roleLoading) return;
-    if (role !== "brand_owner" && role !== "admin") {
+    if (!allowed) {
       router.replace("/(main)");
     }
-  }, [role, roleLoading, loading, router]);
+  }, [allowed, roleLoading, loading, router]);
 
-  if (loading || roleLoading || (role !== "brand_owner" && role !== "admin")) {
+  if (loading || roleLoading || !allowed) {
     return (
       <View style={styles.guard}>
         <ActivityIndicator size="large" color={colors.light.primary} />

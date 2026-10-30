@@ -9,10 +9,11 @@ import {
   Alert,
   Linking,
   KeyboardAvoidingView,
-  Modal,
+
   Platform,
   Pressable,
 } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/supabase/auth";
 import {

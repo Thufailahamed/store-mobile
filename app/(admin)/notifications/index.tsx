@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert, Modal } from "react-native";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert } from "react-native";
+import { Modal } from "@/components/ui/Modal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { getAdminBroadcasts, sendBroadcast } from "@/lib/api";

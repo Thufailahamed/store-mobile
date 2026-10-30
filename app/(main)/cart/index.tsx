@@ -9,13 +9,14 @@ import { useAuth } from "@/lib/supabase/auth";
 import { Display, Label, Body, Price } from "@/components/ui/Typography";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { spacing, colors, radii, shadows } from "@/lib/theme/tokens";
-import { computeCartTotals, GIFT_WRAP_FEE } from "@/lib/cart-pricing";
+import { computeCartTotals } from "@/lib/cart-pricing";
 import { useCheckoutPricing } from "@/lib/hooks/useCheckoutPricing";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { CartItemCard } from "@/components/cart/CartItemCard";
 import { getVariantStock } from "@/components/cart/variant-utils";
 import { BagEmptyState } from "@/components/cart/BagEmptyState";
+import { BagDiscovery } from "@/components/cart/BagDiscovery";
 import { mapProducts } from "@/lib/api/product-mapper";
 import type { Product } from "@/lib/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -49,7 +50,6 @@ export default function CartScreen() {
     removeItem,
     updateQuantity,
     addItem,
-    setGift,
   } = useCart();
   const items = useMemo(() => cartRecord ?? {}, [cartRecord]);
   const wishlist = useWishlist();
@@ -286,8 +286,6 @@ export default function CartScreen() {
         image: newVariant.image_url || oldItem.image,
         stock: getVariantStock(newVariant, newVariant.stock ?? 99),
         quantity: oldItem.quantity,
-        is_gift: oldItem.is_gift,
-        gift_message: oldItem.gift_message,
       });
     },
     [items, productDetails, removeItem, addItem]
@@ -299,7 +297,13 @@ export default function CartScreen() {
   }, [addItem]);
 
   const navigateToCheckout = useCallback(
-    async (openAddress: boolean, asGuest = false) => {
+    async (openAddress: boolean) => {
+      if (!user) {
+        toast("Sign in to place your order", "info");
+        router.push("/(auth)/login");
+        return;
+      }
+
       const prep = await prepareCartForCheckout({
         items,
         selectedKeys,
@@ -307,11 +311,6 @@ export default function CartScreen() {
       });
       if (!prep.ok) {
         toast(prep.error, "error");
-        return;
-      }
-
-      if (asGuest || !user) {
-        router.push("/(main)/checkout?guest=1&openAddress=1");
         return;
       }
 
@@ -365,7 +364,6 @@ export default function CartScreen() {
     () =>
       computeCartTotals({
         lines: selectedPricingLines,
-        giftWrapCount: selectedCartItems.filter(([, item]) => item.is_gift).length,
         pricing,
       }),
     [selectedPricingLines, selectedCartItems, pricing],
@@ -373,7 +371,6 @@ export default function CartScreen() {
   const shippingFee = cartTotals.shipping;
   const tax = cartTotals.tax;
   const totalAmount = cartTotals.total;
-  const giftWrapFee = selectedCartItems.filter(([, item]) => item.is_gift).length * GIFT_WRAP_FEE;
   const count = useMemo(() => {
     return selectedCartItems.reduce((sum, [_, item]) => sum + item.quantity, 0);
   }, [selectedCartItems]);
@@ -438,6 +435,23 @@ export default function CartScreen() {
       cancelled = true;
     };
   }, []);
+
+  const wishlistIds = useMemo(
+    () => Object.keys(wishlist.items ?? {}).filter((id) => wishlist.items[id]),
+    [wishlist.items],
+  );
+  const discoveryCartProducts = useMemo(
+    () =>
+      cartItems
+        .map(([, item]) => productDetails[item.productId])
+        .filter((p): p is Product => Boolean(p)),
+    [cartItems, productDetails],
+  );
+  const buyAgainIds = useMemo(() => buyAgainProducts.map((p) => p.id), [buyAgainProducts]);
+  const handleDiscoverySeeAll = useCallback(
+    (path: string) => router.push(path as never),
+    [router],
+  );
 
   const handleAddressPress = () => {
     if (!user) {
@@ -624,7 +638,6 @@ export default function CartScreen() {
             onRemove={() => handleRemove(key, cartItem.name)}
             onUpdateQuantity={(quantity) => updateQuantity(key, quantity)}
             onUpdateVariant={(newVariantId, newVariantLabel) => handleUpdateVariant(key, newVariantId, newVariantLabel)}
-            onGiftChange={(isGift, message) => setGift(key, isGift, message)}
           />
           );
         }}
@@ -664,13 +677,6 @@ export default function CartScreen() {
                       {shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
                     </Body>
                   </View>
-
-                  {giftWrapFee > 0 ? (
-                    <View style={styles.pdRow}>
-                      <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>Gift wrap</Body>
-                      <Body style={[styles.priceRowValue, { color: theme.colors.foreground }]}>{formatPrice(giftWrapFee)}</Body>
-                    </View>
-                  ) : null}
 
                   <View style={styles.pdRow}>
                     <Body style={[styles.priceRowLabel, { color: theme.colors.foreground }]}>{`Platform fee · ${pricing.platform_fee_pct}%`}</Body>
@@ -724,26 +730,25 @@ export default function CartScreen() {
               </Body>
             </View>
 
-            {/* Buy It Again Section */}
-            {buyAgainProducts.length > 0 && (
-              <View style={styles.buyAgainSection}>
-                <View style={styles.buyAgainHeader}>
-                  <Display style={[styles.buyAgainTitle, { color: theme.colors.foreground }]}>Buy It Again</Display>
-                  <TouchableOpacity onPress={() => router.push("/(main)/products")} style={styles.moreItemsBtn}>
-                    <Body style={[styles.moreItemsText, { color: theme.colors.primary }]}>More items</Body>
-                    <Ionicons name="chevron-forward" size={12} color={theme.colors.primary} style={{ marginTop: 1 }} />
-                  </TouchableOpacity>
-                </View>
-                <FlatList
-                  data={buyAgainProducts}
-                  keyExtractor={(item) => item.id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.buyAgainList}
-                  renderItem={({ item }) => <ProductCard product={item} horizontal />}
-                />
-              </View>
-            )}
+            {/* Discovery rails: complete the look, for you, wishlist, recent */}
+            <View style={styles.buyAgainSection}>
+              <BagDiscovery
+                userId={user?.id ?? null}
+                cartProducts={discoveryCartProducts}
+                wishlistIds={wishlistIds}
+                excludeIds={buyAgainIds}
+                onSeeAll={handleDiscoverySeeAll}
+              />
+
+              {/* Buy It Again Section */}
+              <ProductRail
+                kicker="Back in rotation"
+                title="Buy it again"
+                products={buyAgainProducts}
+                showSaleBadge
+                onSeeAll={() => router.push("/(main)/products")}
+              />
+            </View>
 
             <View style={{ height: 100 }} />
           </View>
@@ -833,16 +838,6 @@ export default function CartScreen() {
               {selectedCount > 0 && !hasUnavailableItems && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
             </View>
           </TouchableOpacity>
-          {!user ? (
-            <TouchableOpacity
-              style={[styles.checkoutBtn, { marginTop: 8, backgroundColor: "transparent", borderWidth: 1, borderColor: theme.colors.border }]}
-              disabled={selectedCount === 0 || hasUnavailableItems}
-              onPress={() => void navigateToCheckout(true, true)}
-              activeOpacity={0.85}
-            >
-              <Body style={[styles.checkoutBtnText, { color: theme.colors.foreground }]}>Checkout as guest</Body>
-            </TouchableOpacity>
-          ) : null}
         </View>
       </View>
     </PaperBackground>

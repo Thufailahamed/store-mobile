@@ -40,17 +40,47 @@ export type CatalogProduct = {
   variants?: Array<{ id: string; sku?: string; size?: string; color?: string; color_hex?: string; price: number; mrp?: number; position?: number; is_active?: boolean; inventory?: { quantity: number; reserved: number } | null }>;
 };
 
+export type CatalogSort = "newest" | "price_asc" | "price_desc" | "rating" | "popularity" | "sale";
+
 export async function getProductsBackend(opts: {
   brand?: string;
   store?: string;
   category?: string;
   gender?: string;
   search?: string;
-  sort?: "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
+  sort?: CatalogSort;
+  /** Inclusive. */
+  min_price?: number;
+  /** Exclusive. */
+  max_price?: number;
+  occasion?: string;
   limit?: number;
   offset?: number;
-} = {}): Promise<ApiResult<{ count: number; limit: number; offset: number; products: CatalogProduct[] }>> {
+} = {}): Promise<ApiResult<{ count: number; total?: number | null; limit: number; offset: number; products: CatalogProduct[] }>> {
   return fetchJson("/api/catalog/products", { requireAuth: false, query: { ...opts } });
+}
+
+export type HomeShortcutOccasion = {
+  key: string;
+  label: string;
+  tagline: string;
+  count: number;
+  cover: string | null;
+};
+export type HomeShortcutPriceBand = {
+  key: string;
+  label: string;
+  min: number;
+  max: number | null;
+  count: number;
+  cover: string | null;
+};
+
+/** Shop-by-occasion + shop-by-price summary (counts + cover per bucket). */
+export async function getHomeShortcutsBackend(): Promise<
+  ApiResult<{ occasions: HomeShortcutOccasion[]; priceBands: HomeShortcutPriceBand[] }>
+> {
+  return fetchJson("/api/catalog/shortcuts", { requireAuth: false });
 }
 
 export async function getProductByIdBackend(id: string): Promise<ApiResult<{ product: CatalogProduct }>> {
@@ -102,7 +132,9 @@ export async function searchProductsBackend(opts: {
   sort?: "relevance" | "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
   limit?: number;
   offset?: number;
-} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; parsed_attrs?: SearchParsedAttrs | null; rescued?: boolean; dropped_attrs?: string[]; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
+  /** "off" disables backend typo correction ("Search instead for …"). */
+  spell?: "auto" | "off";
+} = { q: "" }): Promise<ApiResult<{ query: string; count: number; products: SearchResultRow[]; parsed_attrs?: SearchParsedAttrs | null; rescued?: boolean; dropped_attrs?: string[]; corrected_query?: string | null; ai_recalled?: number; expansion?: { tokens: string[]; gender: string | null; garment: string | null; suggestions?: string[] } }>> {
   return fetchJson("/api/catalog/search", { requireAuth: false, query: { ...opts } });
 }
 
@@ -541,6 +573,14 @@ export function isValidReferralCode(code: string): boolean {
   return /^[A-Z0-9]{4,12}$/.test(code.trim().toUpperCase());
 }
 
+/** Fixed-code phone login. Fails unless the backend flag is on and the code matches. */
+export async function verifyPhoneOtpBackend(
+  phone: string,
+  token: string,
+): Promise<ApiResult<{ token_hash: string; type: "magiclink" }>> {
+  return fetchJson("/api/auth/verify-phone-otp", { method: "POST", body: { phone, token }, requireAuth: false });
+}
+
 export async function applyReferralCodeBackend(
   code: string,
 ): Promise<ApiResult<{ applied: boolean; already?: boolean }>> {
@@ -755,9 +795,53 @@ export async function getGuestOrderBackend(token: string): Promise<ApiResult<{
   return fetchJson(`/api/orders/guest/${encodeURIComponent(token)}`, { requireAuth: false });
 }
 
-export async function getOrderInvoiceBackend(id: string): Promise<ApiResult<{
-  invoice: { id: string; invoice_url?: string | null; invoice_number?: string | null; total?: number; currency?: string };
-}>> {
+/** Customer invoice — same shape the web PDF renders (backend modules/orders/invoice.ts). */
+export type OrderInvoice = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  invoice_number: string;
+  status: "paid" | "unpaid" | "refunded" | "partially_refunded" | "void" | "failed";
+  issued_at: string | null;
+  paid_at: string | null;
+  delivered_at: string | null;
+  payment_method: string | null;
+  payment_label: string;
+  currency: string;
+  seller: { name: string; email?: string | null; phone?: string | null; origin?: string | null };
+  buyer: { name: string; email?: string | null; phone?: string | null; address_lines: string[] };
+  lines: Array<{
+    id: string;
+    name: string;
+    variant?: string | null;
+    sku?: string | null;
+    quantity: number;
+    unit_price: number;
+    total: number;
+    is_gift: boolean;
+    gift_message?: string | null;
+    image_url?: string | null;
+  }>;
+  totals: {
+    subtotal: number;
+    coupon_code: string | null;
+    coupon_discount: number;
+    points_redeemed: number;
+    points_discount: number;
+    shipping: number;
+    tax: number;
+    total: number;
+    gift_card_code: string | null;
+    gift_card_credit: number;
+    amount_paid: number;
+    amount_due: number;
+  };
+  notes: string | null;
+  /** Signed printable link (24h) — opens the PDF-ready invoice in the browser. */
+  invoice_url?: string | null;
+};
+
+export async function getOrderInvoiceBackend(id: string): Promise<ApiResult<{ invoice: OrderInvoice }>> {
   return fetchJson(`/api/orders/${id}/invoice`);
 }
 
@@ -953,12 +1037,13 @@ export async function getReturnByGroupIdBackend(groupId: string): Promise<ApiRes
   return fetchJson(`/api/returns/group/${groupId}`);
 }
 
+// Mirrors store-backend `CreateReturnSchema` (modules/returns/returns.ts).
 export async function createReturnRequestBackend(input: {
   order_id: string;
-  items: Array<{ order_item_id: string; reason: string; quantity: number; condition?: string; description?: string }>;
-  pickup_address_id?: string;
-  notes?: string;
-}): Promise<ApiResult<{ returns: ReturnRequest[] }>> {
+  reason: string;
+  description?: string;
+  items: Array<{ product_id: string; variant_id?: string; quantity: number }>;
+}): Promise<ApiResult<{ return_group_id?: string; return_number?: string; returns?: ReturnRequest[] }>> {
   return fetchJson("/api/returns", { method: "POST", body: input });
 }
 
@@ -1069,6 +1154,8 @@ export type Coupon = {
   max_uses?: number | null;
   usage_limit?: number | null;
   used_count?: number;
+  /** Admin-curated flag (0338) — only flagged coupons belong in the home offers rail. */
+  show_on_home?: boolean;
   // BXGY (migration 0291 + CouponSchema extension). All optional because
   // non-bxgy coupons never set them.
   bxgy_buy_product_ids?: string[];
@@ -1077,6 +1164,25 @@ export type Coupon = {
   bxgy_get_quantity?: number;
   bxgy_get_discount_pct?: number;
 };
+
+/** Redeemable-right-now offer, as served by GET /api/coupons/offers. */
+export type CouponOffer = {
+  id: string;
+  code: string;
+  type: "percentage" | "percent" | "fixed" | "free_shipping" | "bxgy" | string;
+  scope: string;
+  value: number;
+  min_order_value: number;
+  max_discount: number | null;
+  expires_at: string | null;
+  owner_name: string | null;
+  owner_slug: string | null;
+  owner_kind: "store" | "brand" | null;
+};
+
+export async function getCouponOffersBackend(): Promise<ApiResult<{ offers: CouponOffer[] }>> {
+  return fetchJson("/api/coupons/offers", { requireAuth: false });
+}
 
 export async function listCouponsBackend(): Promise<ApiResult<{ coupons: Coupon[] }>> {
   return fetchJson("/api/coupons");
@@ -1249,6 +1355,52 @@ export async function quickCreateProductBackend(input: {
   return fetchJson("/api/seller/products/quick", { method: "POST", body: input });
 }
 
+export interface QuickAnalyzeDraft {
+  name: string;
+  slug_suggestion?: string;
+  description: string;
+  short_description: string;
+  tags: string[];
+  category_guess: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  gender: string | null;
+  material: string | null;
+  pattern: string | null;
+  fit: string | null;
+  sleeve: string | null;
+  style: string | null;
+  occasion: string | null;
+  season: string | null;
+  care_instructions: string | null;
+  color: string | null;
+  color_hex: string | null;
+  colors: string[];
+  brand_hint: string | null;
+  confidence: number | null;
+  needs_review: boolean;
+  images: string[];
+  price: number | null;
+  mrp: number | null;
+}
+
+export interface QuickAnalyzeResult {
+  draft: QuickAnalyzeDraft;
+  extraction: { name_source: string; category_match: string; tags_added: number; description_source: string; confidence: number | null; vision_error: string | null };
+}
+
+/** Quick analyze — vision extraction with NO DB insert. Draft goes to the product-add form for review. */
+export async function quickAnalyzeProductBackend(input: {
+  image_url: string;
+  extra_images?: string[];
+  price?: number;
+  mrp?: number;
+  name?: string;
+  category_hint?: string;
+}): Promise<ApiResult<QuickAnalyzeResult>> {
+  return fetchJson("/api/seller/products/quick-analyze", { method: "POST", body: input });
+}
+
 export async function updateSellerProductBackend(id: string, patch: Partial<CatalogProduct>): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
   return fetchJson(`/api/seller/products/${id}`, { method: "PATCH", body: patch });
 }
@@ -1272,12 +1424,50 @@ export async function setSellerProductVariantsBackend(
   return fetchJson(`/api/seller/products/${productId}/variants`, { method: "PUT", body: input });
 }
 
+/** A size chart: header labels, then one array of cell strings per size. */
+export interface SizeGuideGrid {
+  columns: string[];
+  rows: string[][];
+}
+
+/** Standard charts are public reads, so no auth header is required. */
+export async function getStandardSizeGuidesBackend(): Promise<
+  ApiResult<Array<SizeGuideGrid & { size_system: string }>>
+> {
+  return fetchJson(`/api/size-guides/standard`, { requireAuth: false });
+}
+
+export async function getProductSizeGuideBackend(
+  productId: string,
+): Promise<ApiResult<(SizeGuideGrid & { size_system: string | null }) | null>> {
+  return fetchJson(`/api/size-guides/product/${productId}`, { requireAuth: false });
+}
+
+export async function setProductSizeGuideBackend(
+  productId: string,
+  input: SizeGuideGrid & { size_system: string | null },
+): Promise<ApiResult<unknown>> {
+  return fetchJson(`/api/size-guides/product/${productId}`, { method: "PUT", body: input });
+}
+
 export async function deleteSellerProductBackend(id: string): Promise<ApiResult<{ deleted: boolean }>> {
   return fetchJson(`/api/seller/products/${id}`, { method: "DELETE" });
 }
 
 export async function getSellerOrdersBackend(opts: { limit?: number; offset?: number; status?: string; search?: string } = {}): Promise<ApiResult<{ orders: Order[]; total?: number }>> {
   return fetchJson("/api/seller/orders", { query: { ...opts } });
+}
+
+export type SellerSettlement = {
+  gross: number;
+  commission: number;
+  payout: number;
+  rate_pct: number;
+  status: "accrued" | "reversed" | "paid_out";
+};
+
+export async function getSellerOrderInvoiceBackend(id: string): Promise<ApiResult<{ invoice: OrderInvoice; settlement?: SellerSettlement | null }>> {
+  return fetchJson(`/api/seller/orders/${encodeURIComponent(id)}/invoice`);
 }
 
 export async function getSellerOrderByIdBackend(id: string): Promise<ApiResult<{ order: Order }>> {
@@ -1977,12 +2167,15 @@ export async function updateUserRoleBackend(userId: string, role: string): Promi
   return fetchJson(`/api/admin/users/${userId}/role`, { method: "PATCH", body: { role } });
 }
 
-export async function getAdminStoresBackend(opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ stores: Store[]; total: number }>> {
+export async function getAdminStoresBackend(opts: { limit?: number; offset?: number; status?: string; search?: string } = {}): Promise<ApiResult<{ stores: Store[]; total: number }>> {
   return fetchJson("/api/admin/stores", { query: { ...opts } });
 }
 
 export async function approveStoreBackend(id: string, status: "approved" | "rejected" | "suspended"): Promise<ApiResult<{ store: Store }>> {
-  return fetchJson(`/api/admin/stores/${id}/approve`, { method: "PATCH", body: { status } });
+  // PATCH /stores/:id is the audited inline-edit route; it stamps
+  // approved_at/approved_by on approval. (/stores/:id/approve is POST-only
+  // and can't express reject/suspend.)
+  return fetchJson(`/api/admin/stores/${id}`, { method: "PATCH", body: { status } });
 }
 
 export async function getAdminStoreDetailBackend(id: string): Promise<ApiResult<{ store: Store; owner: UserProfile; products: CatalogProduct[] }>> {
@@ -1997,12 +2190,81 @@ export async function getAdminProductsBackend(opts: { limit?: number; offset?: n
   return fetchJson("/api/admin/products", { query: { ...opts } });
 }
 
+export type AdminAiHealthStatus = "healthy" | "warning" | "error" | "pending" | "missing";
+
+export interface AdminCatalogStore {
+  id: string;
+  name: string;
+  slug: string | null;
+  logo_url: string | null;
+  city: string | null;
+  total: number;
+  by_status: Record<string, number>;
+  flagged: number;
+  featured: number;
+  stock: number;
+  value: number;
+  ai: Record<AdminAiHealthStatus, number>;
+  ai_score: number | null;
+  thumbs: string[];
+  last_added: string | null;
+}
+
+export interface AdminCatalogProduct {
+  id: string;
+  name: string;
+  store_id: string | null;
+  status: string;
+  is_flagged: boolean;
+  is_featured: boolean;
+  is_active?: boolean;
+  price: number;
+  mrp: number | null;
+  created_at: string | null;
+  brand: { id: string; name: string } | null;
+  category: { id: string; name: string } | null;
+  image: string | null;
+  stock: number;
+  ai_health: { status: AdminAiHealthStatus; score: number };
+}
+
+/** Store-first catalogue rollups (same endpoint as web /admin/products). */
+export async function getAdminCatalogStoresBackend(): Promise<
+  ApiResult<{ stores: AdminCatalogStore[]; totals: Record<string, number>; truncated: boolean }>
+> {
+  return fetchJson("/api/admin/catalog/stores");
+}
+
+export async function getAdminCatalogStoreProductsBackend(
+  storeId: string,
+): Promise<ApiResult<{ store: Record<string, unknown>; products: AdminCatalogProduct[] }>> {
+  return fetchJson(`/api/admin/catalog/stores/${storeId}/products`);
+}
+
 export async function getAdminBrandsBackend(opts: { limit?: number; offset?: number; status?: string } = {}): Promise<ApiResult<{ brands: Brand[]; total: number }>> {
   return fetchJson("/api/admin/brands", { query: { ...opts } });
 }
 
 export async function getAdminBrandByIdBackend(id: string): Promise<ApiResult<{ brand: Brand & { products?: Array<{ id: string; name: string; status: string; total_sales: number }> } }>> {
   return fetchJson(`/api/admin/brands/${id}`);
+}
+
+export interface AdminBrandCreateInput {
+  name: string;
+  slug: string;
+  tagline?: string;
+  description?: string;
+  logo_url?: string;
+  banner_url?: string;
+  website?: string;
+  country?: string;
+  year_founded?: number;
+  status?: "approved" | "pending";
+}
+
+/** Admin-created brand (brand portal is disabled). Approved by default. */
+export async function createAdminBrandBackend(input: AdminBrandCreateInput): Promise<ApiResult<{ brand: Brand }>> {
+  return fetchJson("/api/admin/brands", { method: "POST", body: input });
 }
 
 export async function approveBrandBackend(id: string, status: "approved" | "rejected"): Promise<ApiResult<{ brand: Brand }>> {
@@ -2084,6 +2346,33 @@ export interface AdminProductDetail {
   }[];
 }
 
+/** Editable product row (products.*) from the admin catalog API. */
+export type AdminEditableProduct = {
+  [key: string]: unknown;
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  price: number;
+  mrp: number | null;
+  tags: string[] | null;
+  is_active?: boolean;
+  is_featured?: boolean;
+  store?: { id: string; name: string } | null;
+};
+
+export async function getAdminCatalogProductBackend(id: string): Promise<ApiResult<{ product: AdminEditableProduct }>> {
+  return fetchJson(`/api/admin/catalog/products/${id}`);
+}
+
+/** Admin correction of a seller's listing; every change is audit-logged server-side. */
+export async function updateAdminCatalogProductBackend(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<ApiResult<{ product: AdminEditableProduct }>> {
+  return fetchJson(`/api/admin/catalog/products/${id}`, { method: "PATCH", body: patch });
+}
+
 export async function getAdminProductByIdBackend(id: string): Promise<ApiResult<AdminProductDetail>> {
   return fetchJson(`/api/admin/products/${id}/analytics`);
 }
@@ -2156,12 +2445,14 @@ export async function toggleBlogPostBackend(id: string, status: "draft" | "publi
   return fetchJson(`/api/admin/blog/${id}/status`, { method: "PATCH", body: { status } });
 }
 
-export async function getAdminReviewsBackend(status = "pending"): Promise<ApiResult<{ reviews: Review[] }>> {
+export async function getAdminReviewsBackend(status = "all"): Promise<ApiResult<{ reviews: Review[] }>> {
   return fetchJson("/api/admin/reviews", { query: { status } });
 }
 
-export async function moderateReviewBackend(id: string, status: "approved" | "rejected"): Promise<ApiResult<{ review: Review }>> {
-  return fetchJson(`/api/admin/reviews/${id}/moderate`, { method: "PATCH", body: { status } });
+export async function deleteAdminReviewBackend(id: string): Promise<
+  ApiResult<{ deleted: boolean; id: string; images_removed: number; images_failed: number }>
+> {
+  return fetchJson(`/api/admin/reviews/${id}`, { method: "DELETE" });
 }
 
 export async function getAdminQABackend(status = "pending"): Promise<ApiResult<{ questions: Question[] }>> {
@@ -2836,20 +3127,19 @@ export async function getAiPricingBackend(): Promise<ApiResult<{ plans: Array<{ 
   return fetchJson("/api/seller/ai-studio/pricing");
 }
 
-// ───── Payouts / Stripe Connect ─────
+// ───── Payouts (bank transfer only) ─────
 
 export interface PayoutSettings {
   id?: string;
   store_id?: string;
-  method?: "bank" | "upi" | "paypal" | "stripe_connect";
+  method?: "bank";
   schedule?: "daily" | "weekly" | "biweekly" | "monthly";
   bank_name?: string | null;
   account_name?: string | null;
+  /** Write-only: full account number, sent when the seller types a new one. */
+  account_number?: string | null;
   account_number_last4?: string | null;
   ifsc?: string | null;
-  upi?: string | null;
-  paypal?: string | null;
-  stripe_account_id?: string | null;
   tax_form_submitted?: boolean;
 }
 

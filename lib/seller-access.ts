@@ -8,7 +8,6 @@ export interface SellerPayoutCompliance {
   tax_form_submitted?: boolean;
   kyc_status?: string | null;
   method?: string | null;
-  stripe_account_id?: string | null;
 }
 
 export type ComplianceDocType = "business_registration" | "tax_certificate";
@@ -174,7 +173,6 @@ export interface PayoutProfileView {
   kycTone: PayoutKycTone;
   method: string | null;
   bankSummary: string | null;
-  stripeConnected: boolean;
   missing: string[];
 }
 
@@ -194,7 +192,6 @@ export function describePayoutProfile(
       kycTone: "muted",
       method: null,
       bankSummary: null,
-      stripeConnected: false,
       missing: [],
     };
   }
@@ -229,7 +226,6 @@ export function describePayoutProfile(
     kycTone,
     method: firstNonEmpty(payout?.method),
     bankSummary,
-    stripeConnected: Boolean(firstNonEmpty(payout?.stripe_account_id)),
     missing,
   };
 }

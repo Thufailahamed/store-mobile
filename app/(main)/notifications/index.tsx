@@ -7,13 +7,13 @@ import {
   FlatList,
   Pressable,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
 } from "react-native";
 import { navigateHome } from "@/lib/navigation";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -28,7 +28,7 @@ import type { Notification } from "@/lib/types";
 import { Skeleton, useToast } from "@/components/ui";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { spacing, radii, shadows, typography } from "@/lib/theme/tokens";
+import { colors, spacing, radii, typography } from "@/lib/theme/tokens";
 import { PaperBackground } from "@/components/layout";
 import { useNotificationsRealtime } from "@/lib/hooks/useNotificationsRealtime";
 
@@ -126,6 +126,10 @@ function normalizeType(type: string): string {
   const t = (type ?? "").toLowerCase();
   if (t === "promotion" || t === "marketing") return "promo";
   if (t === "rewards") return "loyalty";
+  // Lifecycle types (order_shipped, order.delivered, payment_received, …).
+  if (t === "order_out_for_delivery" || t === "order.out_for_delivery" || t === "order_failed_attempt" || t === "order.failed_attempt") return "delivery";
+  if (t.startsWith("payment")) return "payment";
+  if (t.startsWith("order") || t.startsWith("return") || t.startsWith("refund")) return "order";
   return t;
 }
 
@@ -329,94 +333,121 @@ export default function NotificationsScreen() {
     [markReadMutation, router, toast]
   );
 
+  const sections = useMemo(() => {
+    const out: { label: string; items: Notification[] }[] = [];
+    visibleNotifications.forEach((n) => {
+      const label = dayLabel(n.created_at);
+      const last = out[out.length - 1];
+      if (last && last.label === label) last.items.push(n);
+      else out.push({ label, items: [n] });
+    });
+    return out;
+  }, [visibleNotifications]);
+
+  const todayCount = useMemo(
+    () => notifications.filter((n) => dayLabel(n.created_at) === "Today").length,
+    [notifications]
+  );
+
+  const confirmDelete = (id: string) =>
+    Alert.alert("Delete notification?", undefined, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(id) },
+    ]);
+
+  const unreadAll = unreadByFilter.all;
+
   return (
     <PaperBackground style={styles.screen}>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: insets.top + spacing[2],
-            borderBottomColor: theme.colors.border,
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => navigateHome(router)}
-          style={[
-            styles.headerBtn,
-            { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
-          ]}
-          hitSlop={8}
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={20} color={theme.colors.foreground} />
-        </TouchableOpacity>
-
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerEyebrow, { color: theme.accent2.rust }]}>
-            INBOX
-          </Text>
-          <Text style={[styles.headerTitle, { color: theme.colors.foreground }]}>
-            Notifications
-          </Text>
-          <Text
-            style={[styles.headerSub, { color: theme.colors.mutedForeground }]}
-          >
-            {unreadByFilter.all > 0
-              ? `${unreadByFilter.all} unread`
-              : "You're all caught up"}
-          </Text>
-        </View>
-
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={() => unreadByFilter.all > 0 && markAllMutation.mutate()}
-            style={[
-              styles.headerBtn,
-              { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
-            ]}
-            disabled={unreadByFilter.all === 0}
+      {/* ── Header ─────────────────────────────────────────── */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
+        <View style={styles.headerTop}>
+          <Pressable
+            onPress={() => navigateHome(router)}
+            style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]}
             hitSlop={8}
-            accessibilityLabel="Mark all as read"
+            accessibilityLabel="Go back"
           >
-            <Ionicons
-              name="checkmark-done-outline"
-              size={18}
-              color={
-                unreadByFilter.all > 0
-                  ? theme.olive[700]
-                  : theme.colors.mutedForeground
-              }
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
+            <Ionicons name="chevron-back" size={20} color={theme.ink.DEFAULT} />
+          </Pressable>
+          <Pressable
             onPress={() =>
               Alert.alert("Clear all notifications?", "This removes every notification from your inbox.", [
                 { text: "Cancel", style: "cancel" },
                 { text: "Clear all", style: "destructive", onPress: () => clearAllMutation.mutate() },
               ])
             }
-            style={[
-              styles.headerBtn,
-              { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
-            ]}
             disabled={notifications.length === 0}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              notifications.length === 0 && { opacity: 0.4 },
+              pressed && styles.pressed,
+            ]}
             hitSlop={8}
             accessibilityLabel="Clear all notifications"
           >
-            <Ionicons
-              name="trash-outline"
-              size={17}
-              color={
-                notifications.length > 0
-                  ? theme.accent2.rust
-                  : theme.colors.mutedForeground
-              }
-            />
-          </TouchableOpacity>
+            <Ionicons name="trash-outline" size={17} color={theme.accent2.rust} />
+          </Pressable>
         </View>
+
+        <View style={styles.titleBlock}>
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowBar} />
+            <Text style={styles.headerEyebrow}>YOUR INBOX</Text>
+          </View>
+          <Text style={styles.headerTitle}>
+            Notifi<Text style={styles.headerTitleAccent}>cations</Text>
+          </Text>
+        </View>
+
+        {/* Summary card */}
+        <LinearGradient
+          colors={["#3a4120", theme.olive[900], "#14170a"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.summary}
+        >
+          <View style={styles.summaryGlow} pointerEvents="none" />
+          <View style={styles.summaryHairline} pointerEvents="none" />
+          <View style={styles.summaryLeft}>
+            <View style={styles.summaryBell}>
+              <Ionicons
+                name={unreadAll > 0 ? "notifications" : "checkmark-done"}
+                size={18}
+                color={GOLD_LIGHT}
+              />
+              {unreadAll > 0 ? <View style={styles.summaryBellDot} /> : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.summaryValue}>
+                {unreadAll > 0 ? unreadAll : "All clear"}
+                {unreadAll > 0 ? <Text style={styles.summaryValueUnit}> unread</Text> : null}
+              </Text>
+              <Text style={styles.summarySub} numberOfLines={1}>
+                {notifications.length} total · {todayCount} today
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => unreadAll > 0 && markAllMutation.mutate()}
+            disabled={unreadAll === 0}
+            style={({ pressed }) => [pressed && styles.pressed, unreadAll === 0 && { opacity: 0.5 }]}
+            accessibilityLabel="Mark all as read"
+          >
+            <LinearGradient
+              colors={[GOLD_LIGHT, theme.accent2.ochre]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.summaryBtn}
+            >
+              <Ionicons name="checkmark-done" size={14} color={theme.olive[900]} />
+              <Text style={styles.summaryBtnText}>Read all</Text>
+            </LinearGradient>
+          </Pressable>
+        </LinearGradient>
       </View>
 
+      {/* ── Filters ─────────────────────────────────────────── */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -426,22 +457,14 @@ export default function NotificationsScreen() {
         {FILTERS.map((item) => {
           const selected = filter === item.key;
           const unread = unreadByFilter[item.key];
-
           return (
             <Pressable
               key={item.key}
               onPress={() => setFilter(item.key)}
               style={({ pressed }) => [
                 styles.filterChip,
-                {
-                  backgroundColor: selected
-                    ? theme.olive[800]
-                    : theme.colors.card,
-                  borderColor: selected
-                    ? theme.olive[800]
-                    : theme.colors.border,
-                },
-                pressed && { opacity: 0.8 },
+                selected && styles.filterChipActive,
+                pressed && styles.pressed,
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected }}
@@ -449,39 +472,19 @@ export default function NotificationsScreen() {
               <Ionicons
                 name={item.icon}
                 size={14}
-                color={
-                  selected ? theme.paper.cream : theme.colors.mutedForeground
-                }
+                color={selected ? GOLD_LIGHT : theme.ink.mute}
               />
-              <Text
-                style={[
-                  styles.filterChipText,
-                  {
-                    color: selected
-                      ? theme.paper.cream
-                      : theme.colors.foreground,
-                  },
-                ]}
-              >
+              <Text style={[styles.filterChipText, selected && { color: theme.paper.cream }]}>
                 {item.label}
               </Text>
               {unread > 0 && (
                 <View
                   style={[
                     styles.filterCount,
-                    {
-                      backgroundColor: selected
-                        ? theme.paper.cream
-                        : theme.accent2.rust,
-                    },
+                    { backgroundColor: selected ? GOLD_LIGHT : theme.accent2.rust },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.filterCountText,
-                      { color: selected ? theme.olive[800] : "#fff" },
-                    ]}
-                  >
+                  <Text style={[styles.filterCountText, { color: selected ? theme.olive[900] : "#fff" }]}>
                     {unread}
                   </Text>
                 </View>
@@ -493,81 +496,52 @@ export default function NotificationsScreen() {
 
       {notificationsQuery.isLoading ? (
         <View style={styles.loadingList}>
-          {[1, 2, 3, 4].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              <Skeleton width={42} height={42} borderRadius={12} />
-              <View style={{ flex: 1, gap: 8 }}>
-                <Skeleton width="85%" height={14} />
-                <Skeleton width="40%" height={11} />
+          <View style={styles.groupCard}>
+            {[1, 2, 3, 4].map((i) => (
+              <View key={i} style={[styles.row, i > 1 && styles.rowDivider]}>
+                <Skeleton width={46} height={46} borderRadius={15} />
+                <View style={{ flex: 1, gap: 8 }}>
+                  <Skeleton width="85%" height={14} />
+                  <Skeleton width="40%" height={11} />
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
       ) : notificationsQuery.isError ? (
-        <View style={styles.emptyWrap}>
-          <View
-            style={[styles.emptyIcon, { backgroundColor: theme.olive[50] }]}
-          >
-            <Ionicons
-              name="cloud-offline-outline"
-              size={30}
-              color={theme.olive[600]}
-            />
-          </View>
-          <Text style={[styles.emptyTitle, { color: theme.colors.foreground }]}>
-            Couldn't load notifications
-          </Text>
-          <Text style={[styles.emptySub, { color: theme.colors.mutedForeground }]}>
-            Check your connection and try again.
-          </Text>
-          <TouchableOpacity
-            onPress={() => notificationsQuery.refetch()}
-            style={[styles.retryBtn, { backgroundColor: theme.olive[800] }]}
-            accessibilityRole="button"
-          >
-            <Ionicons name="refresh" size={15} color={theme.paper.cream} />
-            <Text style={[styles.retryText, { color: theme.paper.cream }]}>
-              Retry
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          icon="cloud-offline-outline"
+          title="Couldn't load notifications"
+          sub="Check your connection and try again."
+          action={
+            <Pressable
+              onPress={() => notificationsQuery.refetch()}
+              style={({ pressed }) => [styles.retryBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="refresh" size={15} color={theme.paper.cream} />
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
+          }
+        />
       ) : visibleNotifications.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <View
-            style={[styles.emptyIcon, { backgroundColor: theme.olive[50] }]}
-          >
-            <Ionicons
-              name="notifications-off-outline"
-              size={30}
-              color={theme.olive[600]}
-            />
-          </View>
-          <Text style={[styles.emptyTitle, { color: theme.colors.foreground }]}>
-            {filter === "all" ? "No notifications" : "Nothing here yet"}
-          </Text>
-          <Text style={[styles.emptySub, { color: theme.colors.mutedForeground }]}>
-            {filter === "all"
-              ? "Order updates, offers and alerts will show up here."
-              : "Nothing in this category yet."}
-          </Text>
-        </View>
+        <EmptyState
+          icon={filter === "all" ? "notifications-off-outline" : "file-tray-outline"}
+          title={filter === "all" ? "Nothing new, yet" : "Nothing here yet"}
+          sub={
+            filter === "all"
+              ? "Order updates, offers and alerts will arrive here."
+              : "Nothing in this category yet."
+          }
+        />
       ) : (
         <FlatList
-          data={visibleNotifications}
-          keyExtractor={(item) => item.id}
+          data={sections}
+          keyExtractor={(s) => s.label}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
             paddingHorizontal: spacing[4],
-            paddingBottom: insets.bottom + spacing[6],
+            paddingBottom: insets.bottom + spacing[8],
           }}
           refreshControl={
             <RefreshControl
@@ -576,56 +550,82 @@ export default function NotificationsScreen() {
               tintColor={theme.colors.primary}
             />
           }
-          renderItem={({ item, index }) => {
-            const label = dayLabel(item.created_at);
-            const showLabel =
-              index === 0 ||
-              dayLabel(visibleNotifications[index - 1].created_at) !== label;
-            return (
-              <View>
-                {showLabel && (
-                  <Text
-                    style={[
-                      styles.dayLabel,
-                      { color: theme.colors.mutedForeground },
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                )}
-                <NotificationRow
-                  item={item}
-                  onPress={() => handlePress(item)}
-                  onDelete={() =>
-                    Alert.alert("Delete notification?", undefined, [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(item.id) },
-                    ])
-                  }
-                />
+          renderItem={({ item: section }) => (
+            <View>
+              <View style={styles.dayHeader}>
+                <Text style={styles.dayLabel}>{section.label}</Text>
+                <View style={styles.dayLine} />
+                <Text style={styles.dayCount}>{section.items.length}</Text>
               </View>
-            );
-          }}
+              <View style={styles.groupCard}>
+                {section.items.map((n, i) => (
+                  <NotificationRow
+                    key={n.id}
+                    item={n}
+                    first={i === 0}
+                    onPress={() => handlePress(n)}
+                    onDelete={() => confirmDelete(n.id)}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
         />
       )}
     </PaperBackground>
   );
 }
 
+const GOLD_LIGHT = "#e8d496";
+
+function EmptyState({
+  icon,
+  title,
+  sub,
+  action,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  sub: string;
+  action?: React.ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.emptyWrap}>
+      <View style={styles.emptyRingOuter}>
+        <View style={styles.emptyRingInner}>
+          <LinearGradient
+            colors={["#3a4120", theme.olive[900]]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.emptyIcon}
+          >
+            <Ionicons name={icon} size={26} color={GOLD_LIGHT} />
+          </LinearGradient>
+        </View>
+      </View>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptySub}>{sub}</Text>
+      {action}
+    </View>
+  );
+}
+
 function NotificationRow({
   item,
+  first,
   onPress,
   onDelete,
 }: {
   item: Notification;
+  first: boolean;
   onPress: () => void;
   onDelete: () => void;
 }) {
   const theme = useTheme();
   const isUnread = !item.read_at;
   const imageUrl = getNotificationImage(item);
-  const meta =
-    TYPE_META[(item.type ?? "").toLowerCase()] ?? DEFAULT_TYPE_META;
+  const meta = TYPE_META[normalizeType(item.type ?? "")] ?? DEFAULT_TYPE_META;
   const tint =
     meta.tone === "olive"
       ? theme.olive[600]
@@ -634,207 +634,336 @@ function NotificationRow({
         : meta.tone === "ochre"
           ? theme.accent2.ochre
           : theme.ink.soft;
-  const message = item.body?.trim() ? item.body : item.title;
+  const hasBody = !!item.body?.trim();
+  const title = item.title?.trim();
+  const message = hasBody ? item.body : item.title;
+  const showTitle = hasBody && !!title && title !== item.body?.trim();
+  const data = item.data;
+  const actionable =
+    (typeof data?.screen === "string" && data.screen.length > 0) ||
+    typeof data?.order_id === "string" ||
+    typeof data?.product_slug === "string";
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: isUnread ? theme.olive[50] : theme.colors.card,
-          borderColor: isUnread ? theme.olive[200] : theme.colors.border,
-        },
-        pressed && { opacity: 0.88 },
+        styles.row,
+        !first && styles.rowDivider,
+        isUnread && styles.rowUnread,
+        pressed && { backgroundColor: theme.olive[50] },
       ]}
       accessibilityRole="button"
     >
-      <View
-        style={[
-          styles.iconTile,
-          { backgroundColor: `${tint}1A` },
-        ]}
-      >
+      {isUnread ? <View style={styles.unreadBar} /> : null}
+
+      <View style={[styles.iconTile, { backgroundColor: `${tint}14`, borderColor: `${tint}30` }]}>
         <Ionicons name={meta.icon} size={19} color={tint} />
-        {isUnread && (
-          <View
-            style={[
-              styles.unreadDot,
-              {
-                backgroundColor: theme.accent2.rust,
-                borderColor: isUnread ? theme.olive[50] : theme.colors.card,
-              },
-            ]}
-          />
-        )}
+        {isUnread && <View style={styles.unreadDot} />}
       </View>
 
       <View style={styles.rowBody}>
+        <View style={styles.metaRow}>
+          <View style={[styles.typeChip, { backgroundColor: `${tint}14` }]}>
+            <Text style={[styles.typeLabel, { color: tint }]}>{meta.label.toUpperCase()}</Text>
+          </View>
+          <Text style={styles.time}>{formatRelativeShort(item.created_at)}</Text>
+          {isUnread ? <Text style={styles.newTag}>NEW</Text> : null}
+        </View>
+        {showTitle ? (
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
+          </Text>
+        ) : null}
         <Text
           style={[
             styles.message,
-            {
-              color: theme.colors.foreground,
-              fontFamily: isUnread
-                ? fontFamilies.sans.bold
-                : fontFamilies.sans.semibold,
-            },
+            showTitle && styles.messageSecondary,
+            !showTitle && isUnread && { fontFamily: fontFamilies.sans.bold },
           ]}
-          numberOfLines={3}
+          numberOfLines={showTitle ? 2 : 3}
         >
           {message}
         </Text>
-        <View style={styles.metaRow}>
-          <Text style={[styles.typeLabel, { color: tint }]}>
-            {meta.label.toUpperCase()}
-          </Text>
-          <View
-            style={[
-              styles.metaDot,
-              { backgroundColor: theme.colors.mutedForeground },
-            ]}
-          />
-          <Text style={[styles.time, { color: theme.colors.mutedForeground }]}>
-            {formatRelativeShort(item.created_at)}
-          </Text>
-        </View>
       </View>
 
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
-          style={[styles.thumb, { backgroundColor: theme.colors.muted }]}
+          style={styles.thumb}
           contentFit="cover"
           transition={200}
         />
       ) : null}
 
-      <TouchableOpacity
-        onPress={onDelete}
-        hitSlop={10}
-        accessibilityLabel="Delete notification"
-        style={[
-          styles.deleteBtn,
-          {
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.card,
-          },
-        ]}
-      >
-        <Ionicons name="close" size={13} color={theme.colors.mutedForeground} />
-      </TouchableOpacity>
+      <View style={styles.rowSide}>
+        <Pressable
+          onPress={onDelete}
+          hitSlop={10}
+          accessibilityLabel="Delete notification"
+          style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: theme.colors.muted }]}
+        >
+          <Ionicons name="close" size={14} color={theme.ink.mute} />
+        </Pressable>
+        {actionable ? (
+          <Ionicons name="chevron-forward" size={15} color={theme.colors.border} />
+        ) : null}
+      </View>
     </Pressable>
   );
 }
 
+const cardShadow = {
+  shadowColor: "#2c3119",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.07,
+  shadowRadius: 22,
+  elevation: 4,
+} as const;
+
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
+  screen: { flex: 1 },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+
+  /* Header */
   header: {
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: spacing[4],
-    paddingBottom: spacing[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    paddingBottom: spacing[2],
+  },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   headerBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.full,
-    borderWidth: 1,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.paper.cream,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
+    ...cardShadow,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
   },
-  headerCenter: {
-    flex: 1,
-  },
+  titleBlock: { marginTop: spacing[4], paddingHorizontal: 4 },
+  eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  eyebrowBar: { width: 18, height: 2, borderRadius: 1, backgroundColor: colors.accent2.ochre },
   headerEyebrow: {
     fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.editorial,
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    color: colors.accent2.rust,
   },
   headerTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: typography.fontSizes["2xl"],
-    lineHeight: 28,
+    fontSize: 40,
+    lineHeight: 46,
+    letterSpacing: -1.2,
+    color: colors.ink.DEFAULT,
+    marginTop: 4,
   },
-  headerSub: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    marginTop: 1,
+  headerTitleAccent: {
+    fontFamily: fontFamilies.display.italic,
+    color: colors.olive[600],
   },
-  headerActions: {
+
+  /* Summary */
+  summary: {
+    marginTop: spacing[4],
+    borderRadius: 22,
+    padding: 14,
+    paddingLeft: 16,
     flexDirection: "row",
-    gap: spacing[2],
+    alignItems: "center",
+    gap: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(232,212,150,0.16)",
+    shadowColor: "#161a0a",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.25,
+    shadowRadius: 22,
+    elevation: 10,
   },
-  filterScroll: {
-    flexGrow: 0,
+  summaryGlow: {
+    position: "absolute",
+    top: -60,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(200,164,74,0.16)",
   },
+  summaryHairline: {
+    position: "absolute",
+    top: 0,
+    left: 30,
+    right: 30,
+    height: 1,
+    backgroundColor: "rgba(232,212,150,0.45)",
+  },
+  summaryLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
+  summaryBell: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(232,212,150,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(232,212,150,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  summaryBellDot: {
+    position: "absolute",
+    top: 9,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent2.rust,
+    borderWidth: 1.5,
+    borderColor: colors.olive[900],
+  },
+  summaryValue: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 22,
+    color: colors.paper.cream,
+    letterSpacing: -0.4,
+  },
+  summaryValueUnit: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: "rgba(244,242,234,0.65)",
+    letterSpacing: 0,
+  },
+  summarySub: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: "rgba(244,242,234,0.5)",
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
+  summaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 13,
+    height: 36,
+    borderRadius: 18,
+  },
+  summaryBtnText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 12,
+    color: colors.olive[900],
+  },
+
+  /* Filters */
+  filterScroll: { flexGrow: 0 },
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[1],
+    paddingTop: spacing[2],
+    paddingBottom: spacing[2],
   },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    height: 34,
-    paddingHorizontal: spacing[3.5],
+    height: 38,
+    paddingHorizontal: 15,
     borderRadius: radii.full,
-    borderWidth: 1,
+    backgroundColor: colors.paper.cream,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+  },
+  filterChipActive: {
+    backgroundColor: colors.olive[900],
+    borderColor: colors.olive[900],
+    ...cardShadow,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
   },
   filterChipText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
+    fontSize: 12.5,
+    color: colors.ink.soft,
   },
   filterCount: {
-    minWidth: 17,
-    height: 17,
+    minWidth: 18,
+    height: 18,
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
   },
-  filterCountText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
-  },
-  dayLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: typography.letterSpacing.widest,
-    textTransform: "uppercase",
-    marginTop: spacing[4],
-    marginBottom: spacing[2],
-    marginLeft: spacing[1],
-  },
-  loadingList: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
-    gap: spacing[2.5],
-  },
-  card: {
+  filterCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 10 },
+
+  /* Day groups */
+  dayHeader: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    paddingVertical: spacing[3],
-    paddingLeft: spacing[3],
-    paddingRight: spacing[4],
-    gap: spacing[3],
+    gap: 10,
+    marginTop: spacing[5],
     marginBottom: spacing[2.5],
-    ...shadows.soft,
+    paddingHorizontal: 4,
+  },
+  dayLabel: {
+    fontFamily: fontFamilies.display.italic,
+    fontSize: 17,
+    color: colors.ink.DEFAULT,
+  },
+  dayLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.light.border },
+  dayCount: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    color: colors.ink.mute,
+    letterSpacing: 0.6,
+  },
+  groupCard: {
+    backgroundColor: colors.paper.cream,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    overflow: "hidden",
+    ...cardShadow,
+  },
+  loadingList: { paddingHorizontal: spacing[4], paddingTop: spacing[4] },
+
+  /* Row */
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 15,
+    paddingLeft: 16,
+    paddingRight: 12,
+    gap: 12,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  rowUnread: { backgroundColor: "#fbf8ec" },
+  unreadBar: {
+    position: "absolute",
+    left: 0,
+    top: 14,
+    bottom: 14,
+    width: 3,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
+    backgroundColor: colors.accent2.ochre,
   },
   iconTile: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -842,77 +971,116 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -3,
     right: -3,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
     borderWidth: 2,
+    borderColor: "#fbf8ec",
+    backgroundColor: colors.accent2.rust,
   },
-  rowBody: {
-    flex: 1,
-    gap: 4,
+  rowBody: { flex: 1, minWidth: 0, gap: 5 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  typeChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  typeLabel: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8.5,
+    letterSpacing: 0.9,
+  },
+  time: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 10,
+    color: colors.ink.mute,
+  },
+  newTag: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 8.5,
+    letterSpacing: 0.9,
+    color: colors.accent2.rust,
+  },
+  title: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.ink.DEFAULT,
   },
   message: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.ink.DEFAULT,
   },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  typeLabel: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: typography.letterSpacing.wider,
-  },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    opacity: 0.5,
-  },
-  time: {
+  messageSecondary: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.ink.mute,
   },
   thumb: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.lg,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.light.muted,
+  },
+  rowSide: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   deleteBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "flex-start",
-    marginTop: 2,
   },
+
+  /* Empty */
   emptyWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing[8],
+    paddingBottom: spacing[16],
     gap: spacing[2],
   },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+  emptyRingOuter: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    borderWidth: 1,
+    borderColor: "rgba(200,164,74,0.25)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing[2],
+    marginBottom: spacing[3],
+  },
+  emptyRingInner: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.paper.cream,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    ...cardShadow,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: typography.fontSizes.lg,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 24,
+    letterSpacing: -0.5,
+    color: colors.ink.DEFAULT,
   },
   emptySub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.base,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.ink.mute,
     textAlign: "center",
   },
   retryBtn: {
@@ -921,11 +1089,13 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: spacing[3],
     paddingHorizontal: spacing[5],
-    height: 40,
+    height: 42,
     borderRadius: radii.full,
+    backgroundColor: colors.olive[900],
   },
   retryText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
+    color: colors.paper.cream,
   },
 });

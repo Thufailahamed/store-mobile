@@ -34,11 +34,11 @@ import type { SellerInventoryRow as InventoryRow } from "@/lib/seller-inventory"
 import { groupSellerRows } from "@/lib/seller-inventory";
 import {
   SellerSearchField,
-  SellerFilterTab,
   SELLER_CREAM,
   SELLER_INK,
   SELLER_GOLD,
 } from "@/components/seller/chrome";
+import { HERO, LuxeHero, PressScale } from "@/components/seller/luxe";
 import type { Product, ProductVariant } from "@/lib/types";
 
 const GOLD = SELLER_GOLD;
@@ -57,6 +57,12 @@ function stockTone(available: number | null): StockTone {
 function money(n: number | null | undefined, currency = "LKR"): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return formatPrice(n, currency);
+}
+
+/** "LKR 33,439,000" → { currency: "LKR", amount: "33,439,000" } so the code can sit small beside the figure. */
+function splitMoney(label: string): { currency: string; amount: string } {
+  const m = label.match(/^([^\d\s-]+)\s*(.+)$/);
+  return m ? { currency: m[1], amount: m[2] } : { currency: "", amount: label };
 }
 
 function productImageUrl(p: Product): string | undefined {
@@ -386,6 +392,8 @@ export default function SellerInventory() {
       : `Showing ${filtered.length} of ${rows.length} SKUs`;
 
   const attention = stats.low + stats.out;
+  const productCount = useMemo(() => new Set(rows.map((r) => r.productId)).size, [rows]);
+  const valueParts = loading && rows.length === 0 ? { currency: "", amount: "—" } : splitMoney(money(totalValue));
   const healthItems = [
     { key: "out" as const, label: "Out", value: stats.out, color: "#D2714E" },
     { key: "low" as const, label: "Low", value: stats.low, color: GOLD },
@@ -413,7 +421,7 @@ export default function SellerInventory() {
                 disabled={filtered.length === 0}
                 accessibilityLabel="Select SKUs"
               >
-                <Ionicons name="checkmark-done-outline" size={19} color={INK} />
+                <Ionicons name="checkmark-done-outline" size={18} color={INK} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconBtn}
@@ -421,25 +429,33 @@ export default function SellerInventory() {
                 disabled={filtered.length === 0}
                 accessibilityLabel="Export CSV"
               >
-                <Ionicons name="share-outline" size={19} color={INK} />
+                <Ionicons name="share-outline" size={18} color={INK} />
               </TouchableOpacity>
             </>
           )}
         </View>
       </View>
 
-      <View style={styles.overviewCard}>
+      <LuxeHero style={styles.overviewCard}>
+
         <View style={styles.overviewTop}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.overviewLabel}>TOTAL ON-HAND VALUE</Text>
-            <Text style={styles.overviewValue} numberOfLines={1} adjustsFontSizeToFit>
-              {money(totalValue)}
+            <Text style={styles.overviewLabel}>On-hand value</Text>
+            <Text style={styles.overviewPeriod}>
+              Across {productCount} {productCount === 1 ? "product" : "products"}
             </Text>
           </View>
           <View style={styles.skuPill}>
-            <Ionicons name="layers-outline" size={12} color="#E8CF8F" />
+            <Ionicons name="layers-outline" size={12} color={colors.olive[800]} />
             <Text style={styles.skuPillText}>{rows.length} SKUs</Text>
           </View>
+        </View>
+
+        <View style={styles.overviewValueRow}>
+          {valueParts.currency ? <Text style={styles.overviewCurrency}>{valueParts.currency}</Text> : null}
+          <Text style={styles.overviewValue} numberOfLines={1}>
+            {valueParts.amount}
+          </Text>
         </View>
 
         {rows.length > 0 ? (
@@ -447,77 +463,108 @@ export default function SellerInventory() {
             <View style={styles.healthBar}>
               {healthItems.map((item) =>
                 item.value > 0 ? (
-                  <View key={item.key} style={{ flex: item.value, backgroundColor: item.color }} />
+                  <View key={item.key} style={{ flex: item.value, backgroundColor: item.color, borderRadius: 3 }} />
                 ) : null,
               )}
             </View>
-            <View style={styles.legend}>
-              {healthItems.map((item) => (
-                <TouchableOpacity
-                  key={item.key}
-                  style={[styles.legendItem, filter === item.key && styles.legendItemActive]}
-                  onPress={() => setFilter(filter === item.key ? "all" : item.key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: filter === item.key }}
-                  accessibilityLabel={`${item.value} ${item.label}`}
-                >
-                  <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                  <Text style={styles.legendValue}>{item.value}</Text>
-                  <Text style={styles.legendLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.statGrid}>
+              {healthItems.map((item) => {
+                const active = filter === item.key;
+                const pct = rows.length ? Math.round((item.value / rows.length) * 100) : 0;
+                return (
+                  <PressScale
+                    key={item.key}
+                    style={[styles.statTile, active && styles.statTileActive]}
+                    onPress={() => setFilter(active ? "all" : item.key)}
+                    accessibilityLabel={`${item.value} ${item.label}`}
+                  >
+                    <View style={styles.statHead}>
+                      <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                      <Text style={[styles.statLabel, active && styles.statTextActive]}>{item.label}</Text>
+                    </View>
+                    <View style={styles.statValueRow}>
+                      <Text style={[styles.statValue, active && styles.statTextActive]}>{item.value}</Text>
+                      <Text style={[styles.statPct, active && styles.statPctActive]}>{pct}%</Text>
+                    </View>
+                  </PressScale>
+                );
+              })}
             </View>
           </>
         ) : null}
 
         {attention > 0 ? (
-          <TouchableOpacity
+          <PressScale
             style={styles.attentionRow}
             onPress={() => setFilter(stats.out > 0 ? "out" : "low")}
-            accessibilityRole="button"
+            accessibilityLabel="Review SKUs that need attention"
           >
-            <Ionicons name="alert-circle" size={15} color="#E8A084" />
-            <Text style={styles.attentionText}>
-              {attention} SKU{attention === 1 ? "" : "s"} need{attention === 1 ? "s" : ""} attention
-            </Text>
-            <Text style={styles.attentionCta}>Review</Text>
-            <Ionicons name="arrow-forward" size={13} color="#E8CF8F" />
-          </TouchableOpacity>
+            <View style={styles.attentionIcon}>
+              <Ionicons name="flash" size={11} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.attentionText}>
+                {attention} SKU{attention === 1 ? "" : "s"} need{attention === 1 ? "s" : ""} attention
+              </Text>
+            </View>
+            <View style={styles.attentionCta}>
+              <Text style={styles.attentionCtaText}>Review</Text>
+              <Ionicons name="arrow-forward" size={13} color={CREAM} />
+            </View>
+          </PressScale>
         ) : (
-          <Text style={styles.overviewHint}>
-            {rows.length > 0 ? "Stock levels look healthy" : "Your inventory summary will appear here"}
-          </Text>
+          <View style={styles.overviewHintRow}>
+            <Ionicons name="checkmark-circle" size={15} color={colors.olive[600]} />
+            <Text style={styles.overviewHint}>
+              {rows.length > 0 ? "Stock levels look healthy" : "Your inventory summary will appear here"}
+            </Text>
+          </View>
         )}
-      </View>
+      </LuxeHero>
 
       <View style={styles.searchWrap}>
         <SellerSearchField
           value={search}
           onChangeText={setSearch}
           placeholder="Search SKU, product, size or colour"
+          style={styles.searchField}
         />
       </View>
-      <View style={styles.filterTabs}>
+      <View style={styles.segment}>
         {([
           { key: "all" as const, label: "All", count: rows.length },
           { key: "healthy" as const, label: "Healthy", count: stats.healthy },
           { key: "low" as const, label: "Low", count: stats.low },
           { key: "out" as const, label: "Out", count: stats.out },
-        ]).map((item) => (
-          <SellerFilterTab
-            key={item.key}
-            label={item.label}
-            count={item.count}
-            active={filter === item.key}
-            onPress={() => setFilter(item.key)}
-          />
-        ))}
+        ]).map((item) => {
+          const active = filter === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.segmentItem, active && styles.segmentItemActive]}
+              onPress={() => setFilter(item.key)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${item.label}, ${item.count}`}
+            >
+              <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>{item.label}</Text>
+              <Text style={[styles.segmentCount, active && styles.segmentCountActive]}>{item.count}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View style={styles.resultsHeader}>
-        <Text style={styles.resultsMeta}>
-          {groups.length} {groups.length === 1 ? "product" : "products"} · most urgent first
-        </Text>
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={styles.resultsEyebrowRow}>
+            <View style={styles.resultsRule} />
+            <Text style={styles.resultsMeta}>MOST URGENT FIRST</Text>
+          </View>
+          <Text style={styles.resultsTitle}>
+            {groups.length} {groups.length === 1 ? "product" : "products"}
+          </Text>
+        </View>
         {filter !== "all" || search ? (
           <TouchableOpacity
             style={styles.clearButton}
@@ -557,6 +604,7 @@ export default function SellerInventory() {
         renderItem={({ item }) => (
           <SellerProductGroup
             group={item}
+            autoExpand={search.trim().length > 0 || filter !== "all"}
             savingId={savingId}
             selectMode={selectMode}
             selectedIds={selectedIds}
@@ -640,25 +688,31 @@ export default function SellerInventory() {
       />
 
       {selectMode && (
-        <View style={[styles.bulkBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-          <Text style={styles.bulkCount}>{selectedIds.size} selected</Text>
-          <View style={styles.bulkControls}>
-            <Text style={styles.bulkLabel}>On-hand</Text>
-            <TextInput
-              style={styles.bulkInput}
-              value={bulkStock}
-              onChangeText={setBulkStock}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor="rgba(250,248,241,0.45)"
-            />
-            <TouchableOpacity
-              style={[styles.bulkApplyBtn, bulkBusy && { opacity: 0.5 }]}
-              onPress={bulkApply}
-              disabled={bulkBusy || selectedIds.size === 0}
-            >
-              <Text style={styles.bulkApplyText}>{bulkBusy ? "…" : "Apply"}</Text>
-            </TouchableOpacity>
+        <View style={[styles.bulkWrap, { paddingBottom: Math.max(insets.bottom, 10) }]} pointerEvents="box-none">
+          <View style={styles.bulkBar}>
+            <View style={styles.bulkCountWrap}>
+              <Text style={styles.bulkCountValue}>{selectedIds.size}</Text>
+              <Text style={styles.bulkCount}>selected</Text>
+            </View>
+            <View style={styles.bulkControls}>
+              <Text style={styles.bulkLabel}>Set on-hand</Text>
+              <TextInput
+                style={styles.bulkInput}
+                value={bulkStock}
+                onChangeText={setBulkStock}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor="rgba(250,248,241,0.45)"
+              />
+              <TouchableOpacity
+                style={[styles.bulkApplyBtn, (bulkBusy || selectedIds.size === 0) && { opacity: 0.5 }]}
+                onPress={bulkApply}
+                disabled={bulkBusy || selectedIds.size === 0}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.bulkApplyText}>{bulkBusy ? "…" : "Apply"}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -702,14 +756,18 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    borderColor: "rgba(83,94,44,0.12)",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: INK,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   cancelSelectBtn: {
     paddingHorizontal: 16,
@@ -723,49 +781,79 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontFamily: fontFamilies.sans.semibold,
   },
-  overviewCard: {
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
-    borderRadius: 24,
-    backgroundColor: "#1A1915",
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 6,
-  },
+  overviewCard: { marginHorizontal: spacing[5], marginBottom: spacing[4] },
   overviewTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
-  overviewLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1.2, color: "#AAA396" },
-  overviewValue: { marginTop: 6, fontFamily: fontFamilies.display.semibold, fontSize: 28, lineHeight: 34, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
-  overviewHint: { marginTop: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.12)", fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396" },
-  skuPill: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: radii.full, paddingHorizontal: 9, paddingVertical: 6, backgroundColor: "rgba(200,164,74,0.14)" },
-  skuPillText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 0.5, color: "#E8CF8F" },
-  healthBar: { marginTop: 18, height: 8, borderRadius: 4, flexDirection: "row", gap: 3, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.08)" },
-  legend: { flexDirection: "row", marginTop: 10, marginHorizontal: -8 },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8, paddingVertical: 7, borderRadius: radii.full },
-  legendItemActive: { backgroundColor: "rgba(255,255,255,0.1)" },
-  legendDot: { width: 7, height: 7, borderRadius: 4 },
-  legendValue: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: "#FAF8F1", fontVariant: ["tabular-nums"] },
-  legendLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: "#AAA396" },
+  overviewLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, letterSpacing: 1.6, textTransform: "uppercase", color: HERO.kicker },
+  overviewPeriod: { fontFamily: fontFamilies.display.italic, fontSize: 13, color: HERO.mute, marginTop: 2 },
+  overviewValueRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 8 },
+  overviewCurrency: { fontFamily: fontFamilies.mono.medium, fontSize: 11, letterSpacing: 1.1, color: HERO.mute },
+  overviewValue: { flex: 1, fontFamily: fontFamilies.display.regular, fontSize: 34, lineHeight: 40, letterSpacing: -0.9, color: HERO.ink, fontVariant: ["tabular-nums"] },
+  overviewHintRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: HERO.divider },
+  overviewHint: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 12, color: HERO.text },
+  skuPill: { flexDirection: "row", alignItems: "center", gap: 5, height: 28, paddingHorizontal: 10, borderRadius: radii.full, backgroundColor: HERO.chip, borderWidth: StyleSheet.hairlineWidth, borderColor: HERO.chipBorder },
+  skuPillText: { fontFamily: fontFamilies.mono.semibold, fontSize: 9.5, letterSpacing: 0.5, color: HERO.text },
+  healthBar: { marginTop: 12, height: 5, borderRadius: 3, flexDirection: "row", gap: 3, overflow: "hidden", backgroundColor: "rgba(83,94,44,0.08)" },
+  statGrid: { flexDirection: "row", gap: 6, marginTop: 10 },
+  statTile: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: HERO.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: HERO.tileBorder,
+  },
+  statTileActive: { backgroundColor: HERO.ink, borderColor: HERO.ink },
+  statHead: { flexDirection: "row", alignItems: "center", gap: 5 },
+  statLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 10.5, color: HERO.mute },
+  statValueRow: { flexDirection: "row", alignItems: "baseline", gap: 5, marginTop: 3 },
+  statValue: { fontFamily: fontFamilies.display.semibold, fontSize: 19, color: HERO.ink, fontVariant: ["tabular-nums"] },
+  statPct: { fontFamily: fontFamilies.sans.regular, fontSize: 10, color: HERO.mute },
+  statTextActive: { color: CREAM },
+  statPctActive: { color: "rgba(250,248,241,0.6)" },
+  legendDot: { width: 6, height: 6, borderRadius: 3 },
   attentionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 8,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    gap: 10,
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingLeft: 8,
+    paddingRight: 7,
+    borderRadius: 16,
+    backgroundColor: "rgba(184,92,58,0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(184,92,58,0.28)",
   },
-  attentionText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "#EDE8DC" },
-  attentionCta: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#E8CF8F" },
+  attentionIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#C8643F", alignItems: "center", justifyContent: "center" },
+  attentionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: HERO.ink },
+  attentionCta: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: HERO.ink },
+  attentionCtaText: { fontFamily: fontFamilies.sans.bold, fontSize: 11.5, color: CREAM },
   searchWrap: { marginHorizontal: spacing[5], marginBottom: 10 },
-  filterTabs: {
+  searchField: { backgroundColor: "#FFFFFF", borderColor: "rgba(83,94,44,0.12)" },
+  segment: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingHorizontal: spacing[5],
-    marginBottom: spacing[4],
+    marginHorizontal: spacing[5],
+    marginBottom: spacing[2],
+    padding: 4,
+    gap: 4,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
   },
-  resultsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 30, paddingHorizontal: spacing[5], marginBottom: 10, gap: 10 },
-  resultsMeta: { flex: 1, fontFamily: fontFamilies.mono.semibold, fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: colors.olive[600] },
+  segmentItem: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 1 },
+  segmentItemActive: { backgroundColor: colors.olive[900] },
+  segmentLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: colors.ink.soft },
+  segmentLabelActive: { color: CREAM },
+  segmentCount: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, color: colors.ink.mute },
+  segmentCountActive: { color: "#E8CF8F" },
+  resultsHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: spacing[5], marginTop: spacing[5], marginBottom: 12, gap: 10 },
+  resultsEyebrowRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  resultsRule: { width: 14, height: 1.5, borderRadius: 1, backgroundColor: GOLD },
+  resultsMeta: { fontFamily: fontFamilies.mono.semibold, fontSize: 8.5, letterSpacing: 1.4, color: colors.olive[600] },
+  resultsTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 22, color: INK, letterSpacing: -0.2 },
   clearButton: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radii.full, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.olive[50] },
   clearButtonText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.olive[800] },
 
@@ -822,21 +910,25 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
 
+  bulkWrap: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 12 },
   bulkBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 12,
-    paddingHorizontal: 16,
-    backgroundColor: INK,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    paddingVertical: 10,
+    paddingLeft: 16,
+    paddingRight: 10,
+    backgroundColor: colors.olive[950],
+    borderRadius: 22,
     gap: 12,
+    shadowColor: INK,
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
   },
+  bulkCountWrap: { flexDirection: "row", alignItems: "baseline", gap: 5 },
+  bulkCountValue: { fontFamily: fontFamilies.display.semibold, fontSize: 20, color: CREAM },
   bulkCount: {
     color: CREAM,
     fontSize: typography.fontSizes.sm,
@@ -849,9 +941,10 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.medium,
   },
   bulkInput: {
-    width: 56,
-    minHeight: 36,
-    borderRadius: radii.md,
+    width: 60,
+    minHeight: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(250,248,241,0.08)",
     borderWidth: 1,
     borderColor: "rgba(250,248,241,0.35)",
     color: CREAM,
@@ -861,9 +954,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   bulkApplyBtn: {
-    paddingHorizontal: 14,
-    minHeight: 36,
-    borderRadius: radii.md,
+    paddingHorizontal: 16,
+    minHeight: 40,
+    borderRadius: 12,
     backgroundColor: GOLD,
     justifyContent: "center",
   },

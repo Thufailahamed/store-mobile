@@ -1,77 +1,210 @@
-import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Switch, Modal } from "react-native";
+import React, { useMemo, useState } from "react";
+import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet, Switch, Alert } from "react-native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { Modal } from "@/components/ui/Modal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { getAdminBanners, createBanner, updateBanner, deleteBanner } from "@/lib/api";
-import { Card, EmptyState, Skeleton, Input, Button } from "@/components/ui";
-import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
+import { EmptyState, Skeleton, Input, Button } from "@/components/ui";
+import { AdminMasthead, StatBand, Segmented, SectionLabel, premiumCard, RUST } from "@/components/admin/premium-kit";
+import type { Banner } from "@/lib/types";
+import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-function rel(s: string) {
+function rel(s?: string) {
+  if (!s) return null;
   const d = new Date(s).getTime();
-  const m = Math.floor((Date.now() - d) / 60000);
-  if (m < 60) return `${m}m`;
+  if (!Number.isFinite(d)) return null;
+  const m = Math.max(0, Math.floor((Date.now() - d) / 60000));
+  if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
+
+const prettyPlacement = (p?: string) =>
+  (p || "hero").replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+type BannerRow = Banner & { created_at?: string };
+type Filter = "all" | "live" | "paused";
 
 export default function AdminBanners() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
   const q = useQuery({
     queryKey: ["admin-banners"],
     queryFn: async () => {
       const r = await getAdminBanners();
-      return r.ok ? r.data : [];
+      return (r.ok ? r.data : []) as BannerRow[];
     },
   });
   const toggleM = useMutation({ mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => updateBanner(id, { is_active }), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-banners"] }) });
   const remove = useMutation({ mutationFn: (id: string) => deleteBanner(id), onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-banners"] }) });
 
+  const all = q.data ?? [];
+  const live = all.filter((b) => b.is_active).length;
+  const visible = all.filter((b) => (filter === "all" ? true : filter === "live" ? b.is_active : !b.is_active));
+
+  const groups = useMemo(() => {
+    const map = new Map<string, BannerRow[]>();
+    for (const b of visible) {
+      const k = b.position || "hero";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(b);
+    }
+    return [...map.entries()];
+  }, [visible]);
+
+  const confirmDelete = (b: BannerRow) =>
+    Alert.alert("Delete banner?", `“${b.title}” will be removed from the storefront. This can't be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => remove.mutate(b.id) },
+    ]);
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>PROMOTIONS</Text>
-          <Text style={styles.title}>Banners</Text>
-        </View>
-        <Pressable onPress={() => setShowCreate(true)} style={styles.addBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
-        </Pressable>
-      </View>
-
-      <FlatList
-        data={q.data ?? []}
-        keyExtractor={(b: any) => b.id}
+      <ScrollView
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} />}
-        ListEmptyComponent={q.isLoading ? <Skeleton height={80} /> : <EmptyState icon="image-outline" title="No banners" />}
-        renderItem={({ item, index }: any) => (
-          <Card style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.index}>{String(index + 1).padStart(2, "0")}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.title}</Text>
-                <Text style={styles.meta}>
-                  {item.position ?? "hero"} · {rel(item.created_at)} ago
-                </Text>
-              </View>
-              <Switch
-                value={item.is_active}
-                onValueChange={(v) => toggleM.mutate({ id: item.id, is_active: v })}
-                trackColor={{ true: colors.olive[500], false: colors.light.border }}
-                thumbColor={colors.light.card}
-              />
-              <Pressable onPress={() => remove.mutate(item.id)} style={styles.trash}>
-                <Ionicons name="trash-outline" size={16} color={colors.light.muted} />
-              </Pressable>
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={q.isFetching && !q.isLoading} onRefresh={() => q.refetch()} tintColor={colors.light.primary} />}
+      >
+        <AdminMasthead
+          eyebrow="Promotions"
+          title="Banner"
+          italic="Gallery"
+          subtitle="The first thing shoppers see. Toggle to publish or pause instantly."
+          onAdd={() => setShowCreate(true)}
+        />
+
+        {all.length ? (
+          <>
+            <StatBand
+              items={[
+                { label: "Banners", value: all.length },
+                { label: "Live", value: live, accent: true },
+                { label: "Paused", value: all.length - live },
+              ]}
+            />
+            <Segmented<Filter>
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: "all", label: "All", count: all.length },
+                { value: "live", label: "Live", count: live },
+                { value: "paused", label: "Paused", count: all.length - live },
+              ]}
+            />
+          </>
+        ) : null}
+
+        <View style={styles.body}>
+          {q.isLoading ? (
+            <View style={{ gap: 14 }}>
+              <Skeleton height={230} style={{ borderRadius: radii["2xl"] }} />
+              <Skeleton height={230} style={{ borderRadius: radii["2xl"] }} />
             </View>
-          </Card>
-        )}
-      />
+          ) : !all.length ? (
+            <EmptyState icon="image-outline" title="No banners yet" description="Tap + to compose your first hero." />
+          ) : !visible.length ? (
+            <Text style={styles.noMatch}>No {filter} banners.</Text>
+          ) : (
+            groups.map(([placement, items]) => (
+              <View key={placement}>
+                <SectionLabel label={prettyPlacement(placement)} count={items.length} />
+                <View style={{ gap: 14 }}>
+                  {items.map((b, i) => (
+                    <BannerCard
+                      key={b.id}
+                      item={b}
+                      index={i}
+                      busy={toggleM.isPending}
+                      onToggle={(v) => toggleM.mutate({ id: b.id, is_active: v })}
+                      onDelete={() => confirmDelete(b)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
 
       <CreateModal visible={showCreate} onClose={() => setShowCreate(false)} onCreated={() => { qc.invalidateQueries({ queryKey: ["admin-banners"] }); setShowCreate(false); }} />
+    </View>
+  );
+}
+
+function BannerCard({
+  item,
+  index,
+  busy,
+  onToggle,
+  onDelete,
+}: {
+  item: BannerRow;
+  index: number;
+  busy: boolean;
+  onToggle: (v: boolean) => void;
+  onDelete: () => void;
+}) {
+  const age = rel(item.created_at);
+  return (
+    <View style={[styles.card, !item.is_active && styles.cardPaused]}>
+      <View style={styles.media}>
+        {item.image_url ? (
+          <Image source={{ uri: item.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+        ) : (
+          <LinearGradient colors={["#3a4120", "#1c200f"]} style={[StyleSheet.absoluteFill, styles.mediaEmpty]}>
+            <Ionicons name="image-outline" size={28} color="rgba(250,248,241,0.4)" />
+          </LinearGradient>
+        )}
+        <LinearGradient
+          colors={["rgba(14,15,9,0.05)", "rgba(14,15,9,0.15)", "rgba(14,15,9,0.82)"]}
+          locations={[0, 0.4, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.mediaTop}>
+          <View style={styles.glassChip}>
+            <Text style={styles.glassChipText}>{String((item.display_order ?? index) + 1).padStart(2, "0")}</Text>
+          </View>
+          <View style={[styles.glassChip, styles.statusChip]}>
+            <View style={[styles.statusDot, { backgroundColor: item.is_active ? "#8fd16a" : "rgba(250,248,241,0.5)" }]} />
+            <Text style={styles.glassChipText}>{item.is_active ? "LIVE" : "PAUSED"}</Text>
+          </View>
+        </View>
+        <View style={styles.mediaText}>
+          <Text style={styles.bTitle} numberOfLines={2}>{item.title}</Text>
+          {item.subtitle ? <Text style={styles.bSub} numberOfLines={1}>{item.subtitle}</Text> : null}
+          {item.cta_text ? (
+            <View style={styles.cta}>
+              <Text style={styles.ctaText}>{item.cta_text}</Text>
+              <Ionicons name="arrow-forward" size={11} color={colors.ink.DEFAULT} />
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.footer}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.footLabel}>{prettyPlacement(item.position).toUpperCase()}</Text>
+          <Text style={styles.footMeta} numberOfLines={1}>
+            {[age, item.link].filter(Boolean).join(" · ") || "No link set"}
+          </Text>
+        </View>
+        <Switch
+          value={item.is_active}
+          disabled={busy}
+          onValueChange={onToggle}
+          trackColor={{ true: colors.olive[600], false: colors.light.border }}
+          thumbColor={colors.light.card}
+          ios_backgroundColor={colors.light.border}
+        />
+        <Pressable onPress={onDelete} hitSlop={8} style={styles.trash} accessibilityLabel={`Delete ${item.title}`}>
+          <Ionicons name="trash-outline" size={15} color={RUST} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -121,17 +254,53 @@ function CreateModal({ visible, onClose, onCreated }: { visible: boolean; onClos
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.light.background },
-  header: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", padding: 20, paddingBottom: 12 },
-  eyebrow: { fontFamily: fontFamilies.mono.medium, fontSize: 10, color: colors.light.primary, letterSpacing: 1.4 },
-  title: { fontFamily: fontFamilies.display.regular, fontSize: 28, color: colors.light.foreground, marginTop: 4, letterSpacing: -0.5 },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.light.primary, alignItems: "center", justifyContent: "center" },
-  list: { padding: 20, paddingBottom: 100, gap: 10 },
-  card: { padding: 14, ...shadows.soft },
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  index: { fontFamily: fontFamilies.mono.regular, fontSize: 11, color: colors.light.mutedForeground, width: 24 },
-  name: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.light.foreground },
-  meta: { fontFamily: fontFamilies.mono.regular, fontSize: 10, color: colors.light.mutedForeground, marginTop: 2, letterSpacing: 0.5, textTransform: "uppercase" },
-  trash: { paddingLeft: 8, paddingVertical: 4 },
+  list: { paddingBottom: 140 },
+  body: { paddingHorizontal: 16, gap: 12 },
+  noMatch: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.mutedForeground, textAlign: "center", paddingVertical: 24 },
+  card: { ...premiumCard, overflow: "hidden" },
+  cardPaused: { opacity: 0.78 },
+  media: { height: 190, justifyContent: "space-between", backgroundColor: colors.olive[900] },
+  mediaEmpty: { alignItems: "center", justifyContent: "center" },
+  mediaTop: { flexDirection: "row", justifyContent: "space-between", padding: 12 },
+  glassChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(14,15,9,0.45)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(250,248,241,0.3)",
+  },
+  statusChip: { flexDirection: "row", alignItems: "center", gap: 6 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  glassChipText: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, color: colors.paper.cream, letterSpacing: 1.2 },
+  mediaText: { padding: 16, paddingTop: 0, gap: 4 },
+  bTitle: { fontFamily: fontFamilies.display.semibold, fontSize: 24, lineHeight: 28, color: colors.paper.cream, letterSpacing: -0.5 },
+  bSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: "rgba(250,248,241,0.78)" },
+  cta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.paper.cream,
+  },
+  ctaText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: colors.ink.DEFAULT },
+  footer: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  footLabel: { fontFamily: fontFamilies.mono.medium, fontSize: 9.5, color: colors.olive[700], letterSpacing: 1.4 },
+  footMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground, marginTop: 2 },
+  trash: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(184,92,58,0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(184,92,58,0.3)",
+  },
   modal: { flex: 1, backgroundColor: colors.light.background, padding: 20, paddingTop: 60 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   modalTitle: { fontFamily: fontFamilies.display.regular, fontSize: 22, color: colors.light.foreground },

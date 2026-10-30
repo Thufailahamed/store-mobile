@@ -93,7 +93,9 @@ module.exports = ({ config }) => {
         ...config.android?.config,
         googleMaps: {
           ...config.android?.config?.googleMaps,
-          apiKey: googleMapsApiKey,
+          // Native Maps SDK needs an Android-restricted key; the web key is
+          // referrer-restricted and renders a blank map.
+          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY || googleMapsApiKey,
         },
       },
     },

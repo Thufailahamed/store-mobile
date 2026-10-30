@@ -1,5 +1,6 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { Body, Display, MonoLabel } from "@/components/ui/Typography";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
@@ -14,9 +15,14 @@ interface StoreRatingSummaryProps {
 export function StoreRatingSummary({ avg, total, breakdown }: StoreRatingSummaryProps) {
   const max = Math.max(1, ...Object.values(breakdown).map((v) => v || 0));
   return (
-    <View style={styles.wrap}>
+    <LinearGradient
+      colors={[colors.olive[900], colors.olive[950]]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.wrap}
+    >
       <View style={styles.left}>
-        <Display size="4xl" style={styles.avg}>{avg ? avg.toFixed(1) : "—"}</Display>
+        <Display size="4xl" style={styles.avg}>{total > 0 ? avg.toFixed(1) : "New"}</Display>
         <View style={styles.starsRow}>
           {[1, 2, 3, 4, 5].map((s) => (
             <Ionicons
@@ -28,7 +34,7 @@ export function StoreRatingSummary({ avg, total, breakdown }: StoreRatingSummary
           ))}
         </View>
         <Body size="xs" muted style={styles.totalLabel}>
-          {total} verified reviews
+          {total} review{total === 1 ? "" : "s"}
         </Body>
       </View>
       <View style={styles.right}>
@@ -38,7 +44,7 @@ export function StoreRatingSummary({ avg, total, breakdown }: StoreRatingSummary
           return (
             <View key={stars} style={styles.barRow}>
               <MonoLabel style={styles.starLabel}>{stars}</MonoLabel>
-              <Ionicons name="star" size={9} color={colors.olive[600]} />
+              <Ionicons name="star" size={9} color={colors.accent2.ochre} />
               <View style={styles.barTrack}>
                 <View style={[styles.barFill, { width: `${pct}%` }]} />
               </View>
@@ -47,21 +53,20 @@ export function StoreRatingSummary({ avg, total, breakdown }: StoreRatingSummary
           );
         })}
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
-    marginHorizontal: spacing[5],
-    backgroundColor: colors.light.card,
-    borderRadius: radii["2xl"],
+    marginHorizontal: spacing[4],
+    borderRadius: 26,
     padding: spacing[5],
     borderWidth: 1,
-    borderColor: `${colors.olive[600]}10`,
+    borderColor: "rgba(200,164,74,0.3)",
     gap: spacing[5],
-    ...shadows.soft,
+    ...shadows.editorial,
   },
   left: {
     alignItems: "center",
@@ -69,12 +74,12 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingRight: spacing[4],
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: colors.light.border,
+    borderRightColor: "rgba(250,248,241,0.15)",
   },
   avg: {
     fontFamily: fontFamilies.display.regular,
-    color: colors.light.foreground,
-    lineHeight: 44,
+    color: colors.paper.cream,
+    lineHeight: 48,
   },
   starsRow: {
     flexDirection: "row",
@@ -82,6 +87,7 @@ const styles = StyleSheet.create({
   },
   totalLabel: {
     marginTop: 2,
+    color: "rgba(250,248,241,0.6)",
   },
   right: {
     flex: 1,
@@ -96,24 +102,24 @@ const styles = StyleSheet.create({
   starLabel: {
     width: 8,
     fontSize: 9,
-    color: colors.light.mutedForeground,
+    color: "rgba(250,248,241,0.6)",
   },
   barTrack: {
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: `${colors.olive[600]}15`,
+    backgroundColor: "rgba(250,248,241,0.12)",
     overflow: "hidden",
   },
   barFill: {
     height: "100%",
-    backgroundColor: colors.olive[600],
+    backgroundColor: colors.accent2.ochre,
     borderRadius: 3,
   },
   barCount: {
     width: 22,
     textAlign: "right",
     fontSize: 10,
-    color: colors.light.mutedForeground,
+    color: "rgba(250,248,241,0.7)",
   },
 });

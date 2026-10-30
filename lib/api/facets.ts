@@ -3,21 +3,28 @@
  * Mirrors `store/src/components/search/facet-data.ts` but RN-native.
  */
 
+import { COLOR_FAMILIES, OCCASIONS as OCCASION_OPTS, MATERIALS as MATERIAL_OPTS } from "@/lib/facet-vocab";
+
 export interface FacetColor {
+  /** Canonical family key — the value stored in `filters.colors`. */
+  key: string;
   name: string;
   hex: string;
+  /** Light swatch → needs a border + dark checkmark. */
+  light: boolean;
 }
 
-export const COLORS: FacetColor[] = [
-  { name: "Black", hex: "#16170f" },
-  { name: "White", hex: "#f5f4ef" },
-  { name: "Olive", hex: "#535e2c" },
-  { name: "Sand", hex: "#cccca0" },
-  { name: "Rust", hex: "#b85c3a" },
-  { name: "Blue", hex: "#2563EB" },
-  { name: "Pink", hex: "#e2a4b8" },
-  { name: "Grey", hex: "#7a7a72" },
-];
+/**
+ * Colour *families* — variant colours are free text ("Cobalt Blue"), so
+ * filtering matches on `colorFamilies()` from `@/lib/facet-vocab`.
+ * RN can't paint CSS gradients, so "Multi" gets a flat swatch.
+ */
+export const COLORS: FacetColor[] = COLOR_FAMILIES.map((f) => ({
+  key: f.key,
+  name: f.label,
+  hex: f.hex.startsWith("#") ? f.hex : "#a78bfa",
+  light: ["white", "beige", "silver", "yellow"].includes(f.key),
+}));
 
 export const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 
@@ -95,11 +102,11 @@ export interface ProductFilters {
 /*  AI-extracted attr facets (GLM vision ingest)                             */
 /* ------------------------------------------------------------------------- */
 
-/** Curated occasion chips — reveal-if-present over the loaded page. */
-export const OCCASIONS = ["Party", "Casual", "Formal", "Office", "Wedding", "Evening", "Sport"] as const;
+/** Canonical occasion chips (AI-extracted, normalized) — reveal-if-present. */
+export const OCCASIONS = OCCASION_OPTS;
 
-/** Curated material chips — reveal-if-present over the loaded page. */
-export const MATERIALS = ["Cotton", "Silk", "Leather", "Velvet", "Chiffon", "Linen", "Denim", "Wool"] as const;
+/** Canonical material chips (AI-extracted, normalized) — reveal-if-present. */
+export const MATERIALS = MATERIAL_OPTS;
 
 export const EMPTY_FILTERS: ProductFilters = {
   price: [PRICE_BOUNDS.min, PRICE_BOUNDS.max],
@@ -110,6 +117,12 @@ export const EMPTY_FILTERS: ProductFilters = {
   minRating: 0,
   minDiscount: 0,
 };
+
+/** Price refinement for a "Shop by price" band; an unbounded side uses the catalogue bound. */
+export function priceFilterFor(minPrice?: number, maxPrice?: number): [number, number] {
+  if (minPrice == null && maxPrice == null) return [PRICE_BOUNDS.min, PRICE_BOUNDS.max];
+  return [minPrice ?? PRICE_BOUNDS.min, maxPrice ?? PRICE_BOUNDS.max];
+}
 
 export function filtersEqual(a: ProductFilters, b: ProductFilters): boolean {
   return JSON.stringify(a) === JSON.stringify(b);

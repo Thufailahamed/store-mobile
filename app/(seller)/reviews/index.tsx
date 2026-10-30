@@ -9,7 +9,6 @@ import {
   StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -18,6 +17,7 @@ import { ReplyModal } from "@/components/seller/ReplyModal";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { SellerFilterTab, SellerStateView } from "@/components/seller/chrome";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { HERO, LuxeHero } from "@/components/seller/luxe";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { pluralize } from "@/lib/utils";
@@ -33,6 +33,7 @@ interface ReviewsData {
 const CREAM = colors.paper.cream;
 const GOLD = colors.accent2.ochre;
 const INK = colors.olive[950];
+const RUST = colors.accent2.rust;
 
 const RATING_FILTERS = [
   { label: "All", value: 0 },
@@ -48,6 +49,20 @@ const REVIEW_STEPS: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = 
   { icon: "chatbubble-outline", label: "You reply" },
   { icon: "trending-up-outline", label: "Trust grows" },
 ];
+
+const AVATAR_TONES = [
+  { bg: "#e9ecd9", fg: colors.olive[800] },
+  { bg: "#f3e6cf", fg: "#8a6a2a" },
+  { bg: "#f2dcd3", fg: "#9a4a2e" },
+  { bg: "#dfe6e4", fg: "#2f5e5a" },
+  { bg: "#e7e0ee", fg: "#5a4680" },
+];
+
+function avatarTone(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[h % AVATAR_TONES.length];
+}
 
 function Stars({ rating, size = 13 }: { rating: number; size?: number }) {
   return (
@@ -209,9 +224,15 @@ export default function SellerReviews() {
       : total === 0
         ? "No reviews yet"
         : unansweredCount > 0
-          ? `${total} ${total === 1 ? "review" : "reviews"} · ${pluralize(unansweredCount, "reply")} needed`
+          ? `${total} ${total === 1 ? "review" : "reviews"} · ${unansweredCount} ${pluralize(unansweredCount, "reply", "replies")} needed`
           : `${total} ${total === 1 ? "review" : "reviews"} · all answered`;
 
+  const reviewsList = data?.reviews ?? [];
+  const replyRate = total > 0 ? Math.round((replyCount / total) * 100) : 0;
+  const positivePct = total > 0
+    ? Math.round((((data?.ratingBreakdown[5] ?? 0) + (data?.ratingBreakdown[4] ?? 0)) / total) * 100)
+    : 0;
+  const verifiedCount = reviewsList.filter((r) => r.is_verified_purchase).length;
   const maxBreakdown = Math.max(...Object.values(data?.ratingBreakdown ?? { 1: 1 }), 1);
   const isFiltered = filterRating !== 0 || unansweredOnly;
 
@@ -235,51 +256,86 @@ export default function SellerReviews() {
     return (
       <>
         {total > 0 ? (
-          <View style={s.avgCard}>
-            <View style={s.avgLeft}>
-              <Text style={s.avgNumber}>{(data?.avgRating ?? 0).toFixed(1)}</Text>
-              <Stars rating={data?.avgRating ?? 0} />
-              <Text style={s.avgCount}>{pluralize(total, "review")}</Text>
+          <LuxeHero style={{ marginBottom: 14 }}>
+            <View style={s.avgCard}>
+              <View style={s.avgLeft}>
+                <Text style={s.avgKicker}>AVERAGE</Text>
+                <Text style={s.avgNumber}>{(data?.avgRating ?? 0).toFixed(1)}</Text>
+                <Stars rating={data?.avgRating ?? 0} size={13} />
+                <Text style={s.avgCount}>{total} {pluralize(total, "review")}</Text>
+              </View>
+              <View style={s.avgDivider} />
+              <View style={s.avgRight}>
+                {[5, 4, 3, 2, 1].map((star) => {
+                  const count = data?.ratingBreakdown[star] ?? 0;
+                  const pct = maxBreakdown > 0 ? (count / maxBreakdown) * 100 : 0;
+                  const active = filterRating === star && !unansweredOnly;
+                  return (
+                    <TouchableOpacity
+                      key={star}
+                      style={[s.breakdownRow, active && s.breakdownRowActive]}
+                      onPress={() => {
+                        setFilterRating(filterRating === star ? 0 : star);
+                        setUnansweredOnly(false);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Filter ${star} star reviews`}
+                    >
+                      <Text style={s.breakdownStar}>{star}</Text>
+                      <Ionicons name="star" size={10} color={GOLD} />
+                      <View style={s.breakdownBarBg}>
+                        <View style={[s.breakdownBarFill, { width: `${pct}%` }]} />
+                      </View>
+                      <Text style={s.breakdownCount}>{count}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-            <View style={s.avgDivider} />
-            <View style={s.avgRight}>
-              {[5, 4, 3, 2, 1].map((star) => {
-                const count = data?.ratingBreakdown[star] ?? 0;
-                const pct = maxBreakdown > 0 ? (count / maxBreakdown) * 100 : 0;
-                return (
-                  <TouchableOpacity
-                    key={star}
-                    style={s.breakdownRow}
-                    onPress={() => setFilterRating(filterRating === star ? 0 : star)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Filter ${star} star reviews`}
-                  >
-                    <Text style={s.breakdownStar}>{star}</Text>
-                    <Ionicons name="star" size={10} color={GOLD} />
-                    <View style={s.breakdownBarBg}>
-                      <View style={[s.breakdownBarFill, { width: `${pct}%` }]} />
-                    </View>
-                    <Text style={s.breakdownCount}>{count}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+            <View style={s.heroStats}>
+              <View style={s.heroStat}>
+                <Text style={s.heroStatValue}>{replyRate}%</Text>
+                <Text style={s.heroStatLabel}>Reply rate</Text>
+              </View>
+              <View style={s.heroStatDivider} />
+              <View style={s.heroStat}>
+                <Text style={s.heroStatValue}>{positivePct}%</Text>
+                <Text style={s.heroStatLabel}>4★ & above</Text>
+              </View>
+              <View style={s.heroStatDivider} />
+              <View style={s.heroStat}>
+                <Text style={s.heroStatValue}>{verifiedCount}</Text>
+                <Text style={s.heroStatLabel}>Verified</Text>
+              </View>
             </View>
-          </View>
+          </LuxeHero>
         ) : null}
 
         {unansweredCount > 0 ? (
-          <TouchableOpacity
-            style={s.unansweredStrip}
-            onPress={() => setUnansweredOnly(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Show reviews awaiting a reply"
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={15} color="#8a6a2a" />
-            <Text style={s.unansweredText}>
-              {pluralize(unansweredCount, "review")} waiting for your reply
-            </Text>
-            <Ionicons name="arrow-forward" size={13} color="#8a6a2a" />
-          </TouchableOpacity>
+          <View style={s.unansweredCard}>
+            <View style={s.unansweredIcon}>
+              <Ionicons name="chatbubble-ellipses" size={16} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.unansweredKicker}>NEEDS REPLY</Text>
+              <Text style={s.unansweredText}>
+                {unansweredCount} {pluralize(unansweredCount, "review")} waiting for you
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={s.unansweredBtn}
+              onPress={() => {
+                setUnansweredOnly(true);
+                setFilterRating(0);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Show reviews awaiting a reply"
+              activeOpacity={0.85}
+            >
+              <Text style={s.unansweredBtnText}>Reply now</Text>
+              <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         ) : null}
 
         <ScrollView
@@ -357,29 +413,34 @@ export default function SellerReviews() {
             const productThumb = review.product?.images?.find((i) => i.is_primary)?.url
               ?? review.product?.images?.[0]?.url;
             return (
-              <View key={review.id} style={s.reviewCard}>
+              <View key={review.id} style={[s.reviewCard, !reply && s.reviewCardPending]}>
+                {!reply ? <View style={s.pendingRail} /> : null}
                 <View style={s.reviewHeader}>
-                  <View style={s.avatarPlaceholder}>
-                    <Text style={s.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+                  <View style={[s.avatarPlaceholder, { backgroundColor: avatarTone(name).bg }]}>
+                    <Text style={[s.avatarText, { color: avatarTone(name).fg }]}>{name.charAt(0).toUpperCase()}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={s.nameRow}>
                       <Text style={s.reviewerName} numberOfLines={1}>{name}</Text>
                       {review.is_verified_purchase ? (
-                        <View style={s.verifiedBadge}>
-                          <Ionicons name="checkmark-circle" size={11} color={colors.olive[600]} />
-                          <Text style={s.verifiedText}>Verified</Text>
-                        </View>
+                        <Ionicons name="checkmark-circle" size={14} color={colors.olive[600]} accessibilityLabel="Verified purchase" />
                       ) : null}
                     </View>
                     <Text style={s.reviewDate}>
                       {new Date(review.created_at).toLocaleDateString("en-LK", {
                         month: "short", day: "numeric", year: "numeric",
                       })}
+                      {review.is_verified_purchase ? " · Verified buyer" : ""}
                     </Text>
                   </View>
-                  <Stars rating={review.rating} size={11} />
+                  <View style={[s.ratingPill, review.rating <= 2 && s.ratingPillLow]}>
+                    <Ionicons name="star" size={11} color={review.rating <= 2 ? RUST : GOLD} />
+                    <Text style={[s.ratingPillText, review.rating <= 2 && { color: RUST }]}>{review.rating.toFixed(1)}</Text>
+                  </View>
                 </View>
+
+                {review.title ? <Text style={s.reviewTitle}>{review.title}</Text> : null}
+                {review.content ? <Text style={s.reviewBody}>{review.content}</Text> : null}
 
                 {review.product?.name ? (
                   <View style={s.productRow}>
@@ -387,20 +448,22 @@ export default function SellerReviews() {
                       <Image source={{ uri: productThumb }} style={s.productThumb} contentFit="cover" />
                     ) : (
                       <View style={[s.productThumb, s.productThumbFallback]}>
-                        <Ionicons name="cube-outline" size={12} color={colors.ink.mute} />
+                        <Ionicons name="cube-outline" size={14} color={colors.ink.mute} />
                       </View>
                     )}
-                    <Text style={s.productName} numberOfLines={1}>{review.product.name}</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.productEyebrow}>REVIEWED ITEM</Text>
+                      <Text style={s.productName} numberOfLines={1}>{review.product.name}</Text>
+                    </View>
                   </View>
                 ) : null}
-
-                {review.title ? <Text style={s.reviewTitle}>{review.title}</Text> : null}
-                {review.content ? <Text style={s.reviewBody}>{review.content}</Text> : null}
 
                 {reply.length > 0 ? (
                   <View style={s.replyCard}>
                     <View style={s.replyCardHeader}>
-                      <Ionicons name="storefront-outline" size={12} color={colors.olive[700]} />
+                      <View style={s.replyIcon}>
+                        <Ionicons name="storefront" size={10} color={CREAM} />
+                      </View>
                       <Text style={s.replyCardLabel}>Your reply</Text>
                       {review.seller_replied_at ? (
                         <Text style={s.replyCardDate}>
@@ -422,7 +485,10 @@ export default function SellerReviews() {
                       <Text style={s.awaitingText}>Awaiting reply</Text>
                     </View>
                   ) : (
-                    <View />
+                    <View style={[s.awaitingChip, s.repliedChip]}>
+                      <Ionicons name="checkmark-done" size={12} color={colors.olive[700]} />
+                      <Text style={[s.awaitingText, { color: colors.olive[700] }]}>Replied</Text>
+                    </View>
                   )}
                   <TouchableOpacity
                     style={[s.replyBtn, !reply && s.replyBtnPrimary]}
@@ -458,12 +524,7 @@ export default function SellerReviews() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={["#F9F7F1", "#EEEADD"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}
-        >
+        <View style={[s.header, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
           <SellerBackButton label="More" fallbackHref="/(seller)/more" style={{ marginBottom: 6 }} />
           <View style={s.headerRow}>
             <View style={{ flex: 1 }}>
@@ -480,14 +541,13 @@ export default function SellerReviews() {
                 )}
                 <Text style={[s.queuePillText, unansweredCount > 0 && s.queuePillTextWarn]}>
                   {unansweredCount > 0
-                    ? `${unansweredCount} need reply`
+                    ? `${unansweredCount} ${unansweredCount === 1 ? "needs" : "need"} reply`
                     : `${(data?.avgRating ?? 0).toFixed(1)} avg`}
                 </Text>
               </View>
             ) : null}
           </View>
-        </LinearGradient>
-        <View style={s.goldRule} />
+        </View>
 
         {loading ? (
           <ReviewsSkeleton />
@@ -523,12 +583,12 @@ export default function SellerReviews() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper.DEFAULT },
+  container: { flex: 1, backgroundColor: colors.light.background },
   content: { paddingBottom: 20 },
   body: { paddingHorizontal: spacing[5] },
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[5],
   },
   kicker: {
     fontFamily: fontFamilies.mono.medium,
@@ -587,93 +647,55 @@ const s = StyleSheet.create({
     color: colors.olive[800],
   },
   queuePillTextWarn: { color: "#8a6a2a" },
-  goldRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(200,164,74,0.55)",
-    marginHorizontal: spacing[5],
-    marginBottom: spacing[4],
-  },
 
-  avgCard: {
-    flexDirection: "row",
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.12)",
-    padding: 18,
-    marginBottom: 12,
-    gap: 16,
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  avgLeft: { alignItems: "center", justifyContent: "center", minWidth: 96 },
-  avgNumber: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 44,
-    color: INK,
-    lineHeight: 48,
-    letterSpacing: -1,
-  },
-  avgCount: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: typography.fontSizes.xs,
-    color: colors.ink.mute,
-    marginTop: 4,
-  },
-  avgDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(83,94,44,0.14)",
-  },
-  avgRight: { flex: 1, justifyContent: "center", gap: 7 },
-  breakdownRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  breakdownStar: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.ink.mute,
-    width: 10,
-    textAlign: "right",
-  },
-  breakdownBarBg: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[100],
-    overflow: "hidden",
-  },
-  breakdownBarFill: {
-    height: "100%",
-    borderRadius: 3,
-    backgroundColor: GOLD,
-  },
-  breakdownCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 11,
-    color: colors.ink.mute,
-    width: 20,
-    textAlign: "right",
-  },
-
-  unansweredStrip: {
+  avgCard: { flexDirection: "row", gap: 14 },
+  avgLeft: { alignItems: "center", justifyContent: "center", minWidth: 84, gap: 3 },
+  avgKicker: { fontFamily: fontFamilies.mono.medium, fontSize: 9, letterSpacing: 1.5, color: HERO.kicker },
+  avgNumber: { fontFamily: fontFamilies.display.regular, fontSize: 38, color: HERO.ink, lineHeight: 44, letterSpacing: -1 },
+  avgCount: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: HERO.mute, marginTop: 1 },
+  avgDivider: { width: StyleSheet.hairlineWidth, backgroundColor: HERO.divider },
+  avgRight: { flex: 1, justifyContent: "center", gap: 1 },
+  breakdownRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2, paddingHorizontal: 6, borderRadius: 8 },
+  breakdownRowActive: { backgroundColor: HERO.tile },
+  breakdownStar: { fontFamily: fontFamilies.mono.semibold, fontSize: 10.5, color: HERO.text, width: 10, textAlign: "right" },
+  breakdownBarBg: { flex: 1, height: 5, borderRadius: 3, backgroundColor: "rgba(83,94,44,0.08)", overflow: "hidden" },
+  breakdownBarFill: { height: "100%", borderRadius: 3, backgroundColor: GOLD },
+  breakdownCount: { fontFamily: fontFamilies.mono.semibold, fontSize: 10.5, color: HERO.text, width: 22, textAlign: "right" },
+  heroStats: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(200,164,74,0.14)",
+    marginTop: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: HERO.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: HERO.tileBorder,
+  },
+  heroStat: { flex: 1, alignItems: "center", gap: 1 },
+  heroStatValue: { fontFamily: fontFamilies.display.semibold, fontSize: 16, color: HERO.ink },
+  heroStatLabel: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 0.8, color: HERO.mute, textTransform: "uppercase" },
+  heroStatDivider: { width: StyleSheet.hairlineWidth, height: 20, backgroundColor: HERO.divider },
+
+  unansweredCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(200,164,74,0.4)",
-    borderRadius: radii.xl,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    marginBottom: 12,
+    borderRadius: 20,
+    padding: 12,
+    marginBottom: 14,
+    shadowColor: GOLD,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  unansweredText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: "#8a6a2a",
-  },
+  unansweredIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" },
+  unansweredKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.3, color: "#8a6a2a" },
+  unansweredText: { marginTop: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: INK },
+  unansweredBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, backgroundColor: INK },
+  unansweredBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "#FFFFFF" },
 
   filterScroll: { flexGrow: 0, marginHorizontal: -spacing[5] },
   filterRow: { paddingHorizontal: spacing[5], gap: 8, marginBottom: 8, paddingTop: 2 },
@@ -697,43 +719,47 @@ const s = StyleSheet.create({
   },
 
   reviewCard: {
-    backgroundColor: CREAM,
-    borderRadius: radii["2xl"],
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.12)",
-    padding: 16,
-    marginBottom: 12,
+    padding: 18,
+    marginBottom: 14,
+    overflow: "hidden",
     shadowColor: colors.olive[950],
     shadowOpacity: 0.05,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
-  reviewHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    marginBottom: 10,
-  },
+  reviewCardPending: { borderColor: "rgba(200,164,74,0.35)" },
+  pendingRail: { position: "absolute", left: 0, top: 18, width: 3, height: 40, borderTopRightRadius: 3, borderBottomRightRadius: 3, backgroundColor: GOLD },
+  reviewHeader: { flexDirection: "row", alignItems: "center", gap: 11, marginBottom: 12 },
+  ratingPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(200,164,74,0.14)" },
+  ratingPillLow: { backgroundColor: "rgba(184,92,58,0.1)" },
+  ratingPillText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: "#8a6a2a" },
   avatarPlaceholder: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.olive[100],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    shadowColor: INK,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
     justifyContent: "center",
     alignItems: "center",
   },
   avatarText: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontSize: 18,
     color: colors.olive[700],
   },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   reviewerName: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 15,
     color: INK,
     flexShrink: 1,
   },
@@ -761,58 +787,54 @@ const s = StyleSheet.create({
   productRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.1)",
-    borderRadius: radii.lg,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    marginBottom: 10,
-    alignSelf: "flex-start",
-    maxWidth: "100%",
+    gap: 10,
+    backgroundColor: colors.paper.DEFAULT,
+    borderRadius: 14,
+    padding: 8,
+    marginTop: 12,
   },
-  productThumb: { width: 22, height: 22, borderRadius: 6 },
+  productThumb: { width: 38, height: 38, borderRadius: 10 },
+  productEyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 8, letterSpacing: 1.2, color: colors.ink.mute, marginBottom: 1 },
   productThumbFallback: {
     backgroundColor: colors.paper.DEFAULT,
     alignItems: "center",
     justifyContent: "center",
   },
   productName: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
     color: colors.ink.soft,
-    flexShrink: 1,
   },
 
   reviewTitle: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 15,
+    fontSize: 17,
     color: INK,
-    marginBottom: 4,
+    marginBottom: 5,
     letterSpacing: -0.2,
   },
   reviewBody: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: typography.fontSizes.sm,
     color: colors.ink.soft,
-    lineHeight: 20,
+    lineHeight: 21,
   },
 
   replyCard: {
     marginTop: 12,
     padding: 12,
-    borderRadius: radii.lg,
+    borderRadius: 16,
     backgroundColor: colors.olive[50],
-    borderLeftWidth: 3,
-    borderLeftColor: colors.olive[600],
-    gap: 4,
+    borderWidth: 1,
+    borderColor: "rgba(83,94,44,0.12)",
+    gap: 6,
   },
   replyCardHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
+  replyIcon: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.olive[800], alignItems: "center", justifyContent: "center" },
   replyCardLabel: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.xs,
@@ -844,7 +866,12 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(200,164,74,0.14)",
   },
+  repliedChip: { backgroundColor: colors.olive[50] },
   awaitingDot: {
     width: 7,
     height: 7,
@@ -860,16 +887,16 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
     borderRadius: radii.full,
     borderWidth: 1,
     borderColor: "rgba(83,94,44,0.25)",
     backgroundColor: colors.paper.DEFAULT,
   },
   replyBtnPrimary: {
-    backgroundColor: colors.olive[800],
-    borderColor: colors.olive[800],
+    backgroundColor: INK,
+    borderColor: INK,
   },
   replyBtnLabel: {
     fontFamily: fontFamilies.sans.semibold,
