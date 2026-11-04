@@ -10,7 +10,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from "react-native";
 import {
   SafeAreaView,
@@ -19,7 +18,6 @@ import {
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground } from "@/components/layout";
 import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -27,9 +25,9 @@ import {
   tierProgress,
   type LoyaltyTier,
 } from "@/lib/hooks/useLoyalty";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { UserPageFrame, UP as C } from "@/components/user/user-page";
 
 interface LoyaltyTxn {
   id: string;
@@ -42,7 +40,6 @@ interface LoyaltyTxn {
 const GOLD = colors.accent2.ochre;
 const GOLD_DEEP = "#85651b";
 const GOLD_SOFT = "#E8CF8F";
-const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 
 const TIER_DETAILS: Record<
   LoyaltyTier,
@@ -213,7 +210,6 @@ const TIER_FINISH: Record<
 export default function LoyaltyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const { user } = useAuth();
   const loyalty = useLoyalty();
   const [transactions, setTransactions] = useState<LoyaltyTxn[]>([]);
@@ -280,40 +276,32 @@ export default function LoyaltyScreen() {
     }).start();
   }, [tier.pct, progressAnim]);
 
-  const cardWidth = width - spacing[5] * 2;
-  const cardHeight = Math.round(cardWidth / 1.58);
 
   return (
     <UserPageFrame
       title="Rewards"
       right={
-        <>
-          <TouchableOpacity
-            style={styles.navBtn}
-            onPress={onRefresh}
-            disabled={refreshing}
-            activeOpacity={0.7}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Refresh"
-          >
-            {refreshing ? (
-              <ActivityIndicator size="small" color={GOLD} />
-            ) : (
-              <Ionicons
-                name="refresh-outline"
-                size={18}
-                color={colors.light.foreground}
-              />
-            )}
-          </TouchableOpacity>
-        </>
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={onRefresh}
+          disabled={refreshing}
+          activeOpacity={0.7}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh"
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={C.accent} />
+          ) : (
+            <Ionicons name="refresh-outline" size={19} color={C.text} />
+          )}
+        </TouchableOpacity>
       }
     >
       <SafeAreaView style={styles.container} edges={[]}>
         {loyalty.loading && !refreshing ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color={GOLD} size="small" />
+            <ActivityIndicator color={C.accent} size="small" />
             <Text style={styles.loadingText}>Loading your rewards…</Text>
           </View>
         ) : (
@@ -327,233 +315,96 @@ export default function LoyaltyScreen() {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={onRefresh}
-                tintColor={GOLD}
+                tintColor={C.accent}
               />
             }
           >
-            {/* Heading */}
-            <View style={styles.pageHead}>
-              <View style={styles.eyebrowRow}>
-                <View style={styles.eyebrowRule} />
-                <Text style={styles.eyebrow}>Patron program</Text>
-              </View>
-              <Text style={styles.pageTitle}>
-                Privilege &amp;{" "}
-                <Text style={styles.pageTitleAccent}>rewards.</Text>
-              </Text>
-            </View>
-
-            {/* Membership card */}
+            {/* Membership summary */}
             <View style={styles.cardShadow}>
-              <LinearGradient
-                colors={finish.card}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.memberCard, { height: cardHeight }]}
-              >
-                {/* Guilloché-style rings + sheen */}
-                <View
-                  style={[
-                    styles.ring,
-                    {
-                      borderColor: `${finish.accent}22`,
-                      width: cardWidth,
-                      height: cardWidth,
-                      borderRadius: cardWidth / 2,
-                      right: -cardWidth * 0.45,
-                      top: -cardWidth * 0.35,
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.ring,
-                    {
-                      borderColor: `${finish.accent}18`,
-                      width: cardWidth * 0.75,
-                      height: cardWidth * 0.75,
-                      borderRadius: cardWidth,
-                      right: -cardWidth * 0.3,
-                      top: -cardWidth * 0.22,
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.ring,
-                    {
-                      borderColor: `${finish.accent}12`,
-                      width: cardWidth * 0.5,
-                      height: cardWidth * 0.5,
-                      borderRadius: cardWidth,
-                      right: -cardWidth * 0.15,
-                      top: -cardWidth * 0.1,
-                    },
-                  ]}
-                />
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.14)", "rgba(255,255,255,0)"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0.6, y: 0.6 }}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
-                />
-
+              <View style={styles.card}>
                 <View style={styles.memberTop}>
-                  <View>
-                    <Text style={[styles.wordmark, { color: finish.ink }]}>
-                      LUXE
-                    </Text>
-                    <Text style={[styles.memberTag, { color: finish.accent }]}>
-                      {shownTierLabel(currentTier)}
-                    </Text>
-                  </View>
                   <LinearGradient
-                    colors={[finish.swatch[0], finish.swatch[1]]}
+                    colors={finish.swatch}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.emblem}
                   >
-                    <Ionicons
-                      name="diamond-outline"
-                      size={16}
-                      color={finish.card[2]}
-                    />
+                    <Ionicons name="diamond" size={22} color={finish.card[2]} />
                   </LinearGradient>
-                </View>
-
-                <View style={{ flex: 1 }} />
-
-                <Text
-                  style={[styles.memberPointsLabel, { color: finish.inkSoft }]}
-                >
-                  AVAILABLE POINTS
-                </Text>
-                <View style={styles.memberPointsRow}>
-                  <Text style={[styles.memberPoints, { color: finish.ink }]}>
-                    {loyalty.state.points.toLocaleString()}
-                  </Text>
-                  <Text style={[styles.memberPts, { color: finish.accent }]}>
-                    pts
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.memberFoot,
-                    { borderTopColor: `${finish.accent}30` },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        styles.memberFootLabel,
-                        { color: finish.inkSoft },
-                      ]}
-                    >
-                      MEMBER
-                    </Text>
-                    <Text
-                      style={[styles.memberFootValue, { color: finish.ink }]}
-                      numberOfLines={1}
-                    >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.memberTier}>{TIER_DETAILS[currentTier].tag}</Text>
+                    <Text style={styles.memberSub} numberOfLines={1}>
                       {memberName}
+                      {memberSince ? ` · since ${memberSince}` : ""}
                     </Text>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text
-                      style={[
-                        styles.memberFootLabel,
-                        { color: finish.inkSoft },
-                      ]}
-                    >
-                      {memberSince ? `SINCE ${memberSince}` : "NO."}
-                    </Text>
-                    <Text
-                      style={[styles.memberFootMono, { color: finish.ink }]}
-                    >
-                      {memberNo}
-                    </Text>
+                  <View style={styles.memberNo}>
+                    <Text style={styles.memberNoText}>#{memberNo}</Text>
                   </View>
                 </View>
-              </LinearGradient>
+
+                <View style={styles.statsStrip}>
+                  <SummaryStat value={loyalty.state.points.toLocaleString()} label="Available pts" />
+                  <View style={styles.statDivider} />
+                  <SummaryStat value={lifetime.toLocaleString()} label="Lifetime pts" />
+                  <View style={styles.statDivider} />
+                  <SummaryStat value={`${EARN_RATE[currentTier]}×`} label="Per LKR 100" />
+                </View>
+              </View>
             </View>
 
             {/* Progress to next tier */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.eyebrow}>Your journey</Text>
-                <Text style={styles.cardCount}>
-                  {lifetime.toLocaleString()} lifetime pts
-                </Text>
-              </View>
-
-              {nextTierName ? (
-                <>
-                  <Text style={styles.progressHeadline}>
-                    <Text style={styles.progressHeadlineNum}>
-                      {pointsToNext.toLocaleString()}
-                    </Text>{" "}
-                    points to{" "}
-                    <Text style={styles.progressHeadlineTier}>
-                      {nextTierName}
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                {nextTierName ? (
+                  <View>
+                    <Text style={styles.progressHeadline}>
+                      {pointsToNext.toLocaleString()} points to {nextTierName}
                     </Text>
-                  </Text>
-                  <Text style={styles.cardCopy}>
-                    About LKR {spendToNext.toLocaleString()} in purchases at
-                    your current earning rate.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.progressHeadline}>
-                    You've reached{" "}
-                    <Text style={styles.progressHeadlineTier}>Platinum</Text>
-                  </Text>
-                  <Text style={styles.cardCopy}>
-                    The highest tier of patronage — thank you.
-                  </Text>
-                </>
-              )}
-
-              <View style={styles.progressBlock}>
-                <View style={styles.progressTrack}>
-                  <Animated.View
-                    style={[
-                      styles.progressFillWrap,
-                      {
-                        width: progressAnim.interpolate({
-                          inputRange: [0, 100],
-                          outputRange: ["0%", "100%"],
-                        }),
-                      },
-                    ]}
-                  >
-                    <LinearGradient
-                      colors={[GOLD_SOFT, GOLD, GOLD_DEEP]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </Animated.View>
-                </View>
-                <View style={styles.progressEnds}>
-                  <View style={styles.progressEnd}>
-                    <TierDot tier={currentTier} size={10} />
-                    <Text style={styles.progressEndText}>
-                      {currentTier} ·{" "}
-                      {TIER_RANGES[currentTier].min.toLocaleString()}
+                    <Text style={styles.cardCopy}>
+                      About LKR {spendToNext.toLocaleString()} in purchases at
+                      your current earning rate.
                     </Text>
                   </View>
-                  {nextTierName ? (
+                ) : (
+                  <View>
+                    <Text style={styles.progressHeadline}>You&apos;ve reached Platinum</Text>
+                    <Text style={styles.cardCopy}>
+                      The highest tier of patronage — thank you.
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.progressBlock}>
+                  <View style={styles.progressTrack}>
+                    <Animated.View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width: progressAnim.interpolate({
+                            inputRange: [0, 100],
+                            outputRange: ["0%", "100%"],
+                          }),
+                        },
+                      ]}
+                    />
+                  </View>
+                  <View style={styles.progressEnds}>
                     <View style={styles.progressEnd}>
+                      <TierDot tier={currentTier} size={12} />
                       <Text style={styles.progressEndText}>
-                        {nextTierName} ·{" "}
-                        {TIER_RANGES[nextTierName].min.toLocaleString()}
+                        {currentTier} · {TIER_RANGES[currentTier].min.toLocaleString()}
                       </Text>
-                      <TierDot tier={nextTierName} size={10} />
                     </View>
-                  ) : null}
+                    {nextTierName ? (
+                      <View style={styles.progressEnd}>
+                        <Text style={styles.progressEndText}>
+                          {nextTierName} · {TIER_RANGES[nextTierName].min.toLocaleString()}
+                        </Text>
+                        <TierDot tier={nextTierName} size={12} />
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
               </View>
             </View>
@@ -561,11 +412,9 @@ export default function LoyaltyScreen() {
             {/* Tier selector */}
             <View>
               <View style={styles.sectionHead}>
-                <Text style={styles.eyebrow}>Tiers</Text>
-                <Text style={styles.sectionTitle}>Patron progression</Text>
+                <Text style={styles.sectionTitle}>Tiers</Text>
                 <Text style={styles.sectionSub}>
-                  Lifetime points set your status. Tap a tier to preview its
-                  privileges.
+                  Lifetime points set your status. Tap a tier to preview it.
                 </Text>
               </View>
               <ScrollView
@@ -583,9 +432,7 @@ export default function LoyaltyScreen() {
                   return (
                     <Pressable
                       key={t}
-                      onPress={() =>
-                        setPreviewTier(t === currentTier ? null : t)
-                      }
+                      onPress={() => setPreviewTier(t === currentTier ? null : t)}
                       style={({ pressed }) => [
                         styles.tierTile,
                         selected && styles.tierTileSelected,
@@ -595,42 +442,31 @@ export default function LoyaltyScreen() {
                       accessibilityState={{ selected }}
                       accessibilityLabel={`${t} tier${unlocked ? ", unlocked" : ", locked"}`}
                     >
-                      <LinearGradient
-                        colors={f.card}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.tierSwatch}
-                      >
-                        <View
-                          style={[
-                            styles.tierSwatchRing,
-                            { borderColor: `${f.accent}30` },
-                          ]}
-                        />
-                        <Ionicons
-                          name={unlocked ? "diamond" : "lock-closed"}
-                          size={15}
-                          color={f.accent}
-                        />
-                      </LinearGradient>
-                      <View style={styles.tierTileNameRow}>
-                        <Text style={styles.tierTileName}>{t}</Text>
+                      <View style={styles.tierTileTop}>
+                        <LinearGradient
+                          colors={f.swatch}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={styles.tierSwatch}
+                        >
+                          <Ionicons
+                            name={unlocked ? "diamond" : "lock-closed"}
+                            size={15}
+                            color={f.card[2]}
+                          />
+                        </LinearGradient>
                         {isCurrent ? (
                           <View style={styles.youBadge}>
                             <Text style={styles.youBadgeText}>You</Text>
                           </View>
                         ) : null}
                       </View>
+                      <Text style={styles.tierTileName}>{t}</Text>
                       <Text style={styles.tierTileRange}>
                         {range.min.toLocaleString()}
                         {range.cap ? `–${range.cap.toLocaleString()}` : "+"} pts
                       </Text>
-                      <Text
-                        style={[
-                          styles.tierTileStatus,
-                          unlocked && { color: colors.olive[700] },
-                        ]}
-                      >
+                      <Text style={[styles.tierTileStatus, unlocked && styles.tierTileStatusOn]}>
                         {unlocked
                           ? "Unlocked"
                           : `${(range.min - lifetime).toLocaleString()} to go`}
@@ -642,186 +478,121 @@ export default function LoyaltyScreen() {
             </View>
 
             {/* Tier perks */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.eyebrow}>
-                  {shownUnlocked ? "Your benefits" : "Preview"}
-                </Text>
-                {shownUnlocked ? (
-                  <View style={styles.activePill}>
-                    <View style={styles.activeDot} />
-                    <Text style={styles.activePillText}>Active</Text>
-                  </View>
-                ) : (
-                  <View style={[styles.activePill, styles.lockedPill]}>
-                    <Ionicons
-                      name="lock-closed"
-                      size={10}
-                      color={colors.ink.mute}
-                    />
-                    <Text
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={[styles.cardTitle, { flex: 1 }]}>
+                    {shownTier} privileges
+                  </Text>
+                  {shownUnlocked ? (
+                    <View style={styles.activePill}>
+                      <Ionicons name="checkmark-circle" size={13} color={C.accent} />
+                      <Text style={styles.activePillText}>Active</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.activePill, styles.lockedPill]}>
+                      <Ionicons name="lock-closed" size={11} color={C.muted} />
+                      <Text style={[styles.activePillText, { color: C.muted }]}>Locked</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.cardCopy}>{shownDetails.copy}</Text>
+
+                <View>
+                  {shownDetails.perks.map((p, i) => (
+                    <View
+                      key={`${shownTier}-${i}`}
                       style={[
-                        styles.activePillText,
-                        { color: colors.ink.mute },
+                        styles.perkRow,
+                        i > 0 && styles.rowDivider,
+                        !shownUnlocked && { opacity: 0.6 },
                       ]}
                     >
-                      Locked
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.cardTitle}>
-                {shownTier}{" "}
-                <Text style={styles.cardTitleItalic}>privileges</Text>
-              </Text>
-              <Text style={styles.cardCopy}>{shownDetails.copy}</Text>
-
-              <View style={styles.perkGrid}>
-                {shownDetails.perks.map((p, i) => (
-                  <View
-                    key={`${shownTier}-${i}`}
-                    style={[
-                      styles.perkTile,
-                      !shownUnlocked && { opacity: 0.72 },
-                    ]}
-                  >
-                    <LinearGradient
-                      colors={
-                        shownUnlocked
-                          ? [GOLD_SOFT, GOLD]
-                          : ["#e6e4da", "#cfccbf"]
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.perkIcon}
-                    >
-                      <Ionicons
-                        name={p.icon}
-                        size={16}
-                        color={
-                          shownUnlocked ? colors.olive[950] : colors.ink.mute
-                        }
-                      />
-                    </LinearGradient>
-                    <View style={styles.perkBody}>
-                      <Text style={styles.perkTitle}>{p.title}</Text>
-                      <Text style={styles.perkDesc}>{p.desc}</Text>
+                      <View style={styles.perkIcon}>
+                        <Ionicons name={p.icon} size={18} color={C.accent} />
+                      </View>
+                      <View style={styles.perkBody}>
+                        <Text style={styles.perkTitle}>{p.title}</Text>
+                        <Text style={styles.perkDesc}>{p.desc}</Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  ))}
+                </View>
               </View>
             </View>
 
             {/* History */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.eyebrow}>Ledger</Text>
-                <Text style={styles.cardCount}>
-                  {transactions.length}{" "}
-                  {transactions.length === 1 ? "entry" : "entries"}
-                </Text>
-              </View>
-              <Text style={styles.cardTitle}>
-                Points <Text style={styles.cardTitleItalic}>history</Text>
-              </Text>
-
-              {transactions.length === 0 ? (
-                <View style={styles.emptyHistory}>
-                  <View style={styles.emptyHalo}>
-                    <LinearGradient
-                      colors={[colors.olive[800], colors.olive[950]]}
-                      style={styles.emptyHistoryIcon}
-                    >
-                      <Ionicons name="receipt-outline" size={20} color={GOLD} />
-                    </LinearGradient>
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={[styles.cardTitle, { flex: 1 }]}>Points history</Text>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{transactions.length}</Text>
                   </View>
-                  <Text style={styles.emptyHistoryTitle}>No activity yet</Text>
-                  <Text style={styles.emptyHistorySub}>
-                    Confirmed orders and reviews credit points automatically.
-                  </Text>
                 </View>
-              ) : (
-                <View style={styles.ledger}>
-                  {transactions.map((t, i) => {
-                    const isEarn = t.points > 0;
-                    const d = new Date(t.created_at);
-                    return (
-                      <View
-                        key={t.id ?? i}
-                        style={[styles.histRow, i > 0 && styles.rowDivider]}
-                      >
-                        <View style={styles.histDate}>
-                          <Text style={styles.histDay}>{d.getDate()}</Text>
-                          <Text style={styles.histMonth}>
-                            {d
-                              .toLocaleDateString(undefined, { month: "short" })
-                              .toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={styles.histBody}>
-                          <Text style={styles.histReason} numberOfLines={1}>
-                            {t.reason ||
-                              (isEarn ? "Points credited" : "Points redeemed")}
-                          </Text>
-                          <Text style={styles.histMeta}>
-                            {isEarn ? "Earned" : "Redeemed"} · {d.getFullYear()}
-                          </Text>
-                        </View>
+
+                {transactions.length === 0 ? (
+                  <View style={styles.emptyHistory}>
+                    <View style={styles.emptyHistoryIcon}>
+                      <Ionicons name="receipt-outline" size={26} color={C.accent} />
+                    </View>
+                    <Text style={styles.emptyHistoryTitle}>No activity yet</Text>
+                    <Text style={styles.emptyHistorySub}>
+                      Confirmed orders and reviews credit points automatically.
+                    </Text>
+                  </View>
+                ) : (
+                  <View>
+                    {transactions.map((t, i) => {
+                      const isEarn = t.points > 0;
+                      const d = new Date(t.created_at);
+                      return (
                         <View
-                          style={[
-                            styles.histPtsPill,
-                            isEarn
-                              ? styles.histPtsPillEarn
-                              : styles.histPtsPillSpend,
-                          ]}
+                          key={t.id ?? i}
+                          style={[styles.histRow, i > 0 && styles.rowDivider]}
                         >
-                          <Text
-                            style={[
-                              styles.histPts,
-                              isEarn ? styles.histPtsEarn : styles.histPtsSpend,
-                            ]}
-                          >
+                          <View style={styles.histDate}>
+                            <Text style={styles.histDay}>{d.getDate()}</Text>
+                            <Text style={styles.histMonth}>
+                              {d.toLocaleDateString(undefined, { month: "short" })}
+                            </Text>
+                          </View>
+                          <View style={styles.histBody}>
+                            <Text style={styles.histReason} numberOfLines={1}>
+                              {t.reason || (isEarn ? "Points credited" : "Points redeemed")}
+                            </Text>
+                            <Text style={styles.histMeta}>
+                              {isEarn ? "Earned" : "Redeemed"} · {d.getFullYear()}
+                            </Text>
+                          </View>
+                          <Text style={[styles.histPts, isEarn ? styles.histPtsEarn : styles.histPtsSpend]}>
                             {isEarn ? "+" : "−"}
                             {Math.abs(t.points).toLocaleString()}
                           </Text>
                         </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
             </View>
 
             {/* CTA */}
             <TouchableOpacity
-              style={styles.ctaShadow}
+              style={styles.primaryBtn}
               onPress={() => router.push("/(main)/products" as any)}
               activeOpacity={0.9}
               accessibilityRole="button"
             >
-              <LinearGradient
-                colors={[colors.olive[800], colors.olive[950]]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.primaryBtn}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.primaryBtnText}>Shop to earn points</Text>
-                  <Text style={styles.primaryBtnSub}>
-                    {EARN_RATE[currentTier]} pt per LKR 100 at {currentTier}
-                  </Text>
-                </View>
-                <LinearGradient
-                  colors={[GOLD_SOFT, GOLD]}
-                  style={styles.primaryBtnArrow}
-                >
-                  <Ionicons
-                    name="arrow-forward"
-                    size={16}
-                    color={colors.olive[950]}
-                  />
-                </LinearGradient>
-              </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.primaryBtnText}>Shop to earn points</Text>
+                <Text style={styles.primaryBtnSub}>
+                  {EARN_RATE[currentTier]} pt per LKR 100 at {currentTier}
+                </Text>
+              </View>
+              <View style={styles.primaryBtnArrow}>
+                <Ionicons name="arrow-forward" size={17} color={C.ink} />
+              </View>
             </TouchableOpacity>
           </ScrollView>
         )}
@@ -830,8 +601,15 @@ export default function LoyaltyScreen() {
   );
 }
 
-function shownTierLabel(t: LoyaltyTier) {
-  return TIER_DETAILS[t].tag.toUpperCase();
+function SummaryStat({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={styles.stat} accessible accessibilityLabel={`${value} ${label}`}>
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
+      <Text style={styles.statLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
 }
 
 function TierDot({ tier, size }: { tier: LoyaltyTier; size: number }) {
@@ -846,509 +624,202 @@ function TierDot({ tier, size }: { tier: LoyaltyTier; size: number }) {
   );
 }
 
-const styles = withUserTheme(
-  StyleSheet.create({
-    container: { flex: 1 },
-    loadingWrap: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-    },
-    loadingText: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 14,
-      color: colors.light.mutedForeground,
-    },
+const SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
 
-    /* Nav */
-    navBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: spacing[5],
-      paddingVertical: spacing[2.5],
-    },
-    navBtn: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      backgroundColor: colors.paper.cream,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      ...shadows.soft,
-    },
-    navTitle: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 18,
-      color: colors.light.foreground,
-    },
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "transparent" },
+  navBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  loadingText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: C.muted },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 2, gap: 16 },
 
-    scrollContent: {
-      paddingHorizontal: spacing[5],
-      paddingTop: spacing[2],
-      gap: spacing[5],
-    },
+  cardShadow: { borderRadius: 26, backgroundColor: C.card, ...SHADOW },
+  card: {
+    backgroundColor: C.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.line,
+    gap: 14,
+  },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cardTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+  cardCopy: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, lineHeight: 19, color: C.muted, marginTop: 3 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: C.line },
 
-    /* Heading */
-    pageHead: {},
-    eyebrowRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 4,
-    },
-    eyebrowRule: { width: 18, height: 1, backgroundColor: GOLD },
-    eyebrow: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 10,
-      letterSpacing: 2,
-      textTransform: "uppercase",
-      color: GOLD_DEEP,
-    },
-    pageTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 34,
-      letterSpacing: -0.8,
-      lineHeight: 40,
-      color: colors.light.foreground,
-    },
-    pageTitleAccent: {
-      fontFamily: fontFamilies.sans.medium,
-      color: GOLD_DEEP,
-    },
+  /* Membership */
+  memberTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+  emblem: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
+  memberTier: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+  memberSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 1 },
+  memberNo: {
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    justifyContent: "center",
+    backgroundColor: "#f3f1e8",
+  },
+  memberNoText: { fontFamily: fontFamilies.mono.semibold, fontSize: 11, letterSpacing: 0.6, color: C.muted },
+  statsStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+  },
+  stat: { flex: 1, alignItems: "center", gap: 2, paddingHorizontal: 4 },
+  statValue: { fontFamily: fontFamilies.sans.bold, fontSize: 20, color: C.cream, fontVariant: ["tabular-nums"] },
+  statLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+  statDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
 
-    /* Membership card */
-    cardShadow: {
-      borderRadius: 26,
-      shadowColor: "#16170f",
-      shadowOffset: { width: 0, height: 20 },
-      shadowOpacity: 0.28,
-      shadowRadius: 30,
-      elevation: 14,
-    },
-    memberCard: {
-      borderRadius: 26,
-      padding: spacing[5],
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.08)",
-    },
-    ring: { position: "absolute", borderWidth: 1 },
-    memberTop: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-    },
-    wordmark: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 20,
-      letterSpacing: 6,
-    },
-    memberTag: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 9.5,
-      letterSpacing: 2,
-      marginTop: 4,
-    },
-    emblem: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    memberPointsLabel: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 9,
-      letterSpacing: 1.8,
-    },
-    memberPointsRow: { flexDirection: "row", alignItems: "baseline", gap: 6 },
-    memberPoints: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 46,
-      lineHeight: 54,
-      letterSpacing: -1.4,
-    },
-    memberPts: { fontFamily: fontFamilies.sans.medium, fontSize: 18 },
-    memberFoot: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      gap: spacing[3],
-      marginTop: spacing[3],
-      paddingTop: spacing[3],
-      borderTopWidth: StyleSheet.hairlineWidth,
-    },
-    memberFootLabel: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 8.5,
-      letterSpacing: 1.6,
-    },
-    memberFootValue: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 14,
-      marginTop: 3,
-    },
-    memberFootMono: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 12,
-      letterSpacing: 2,
-      marginTop: 3,
-    },
+  /* Progress */
+  progressHeadline: { fontFamily: fontFamilies.sans.bold, fontSize: 20, letterSpacing: -0.5, color: C.text },
+  progressBlock: { gap: 10 },
+  progressTrack: { height: 10, borderRadius: 5, backgroundColor: "#f1efe6", overflow: "hidden" },
+  progressFill: { height: 10, borderRadius: 5, backgroundColor: C.ink },
+  progressEnds: { flexDirection: "row", justifyContent: "space-between" },
+  progressEnd: { flexDirection: "row", alignItems: "center", gap: 6 },
+  progressEndText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.muted },
 
-    /* Cards */
-    card: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 26,
-      borderWidth: 1,
-      borderColor: "rgba(200,164,74,0.22)",
-      padding: spacing[5],
-      shadowColor: "#16170f",
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.07,
-      shadowRadius: 20,
-      elevation: 4,
-    },
-    cardHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 4,
-    },
-    cardTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 22,
-      letterSpacing: -0.4,
-      color: colors.light.foreground,
-      marginTop: 2,
-    },
-    cardTitleItalic: {
-      fontFamily: fontFamilies.sans.medium,
-      color: GOLD_DEEP,
-    },
-    cardCopy: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13,
-      lineHeight: 19,
-      color: colors.light.mutedForeground,
-      marginTop: 6,
-    },
-    cardCount: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 10,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      color: colors.light.mutedForeground,
-    },
-    activePill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: radii.full,
-      backgroundColor: "rgba(200, 164, 74, 0.14)",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(200,164,74,0.4)",
-    },
-    lockedPill: {
-      backgroundColor: "rgba(22,23,15,0.05)",
-      borderColor: "rgba(22,23,15,0.12)",
-    },
-    activeDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: GOLD_DEEP,
-    },
-    activePillText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 11,
-      color: GOLD_DEEP,
-    },
+  /* Tiers */
+  sectionHead: { paddingHorizontal: 2, marginTop: 6 },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+  sectionSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 2 },
+  tierScroller: { marginHorizontal: -20, marginTop: 12 },
+  tierRow: { paddingHorizontal: 20, paddingBottom: 14, gap: 10 },
+  tierTile: {
+    width: 136,
+    padding: 14,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1.5,
+    borderColor: C.line,
+    gap: 2,
+    ...SHADOW,
+  },
+  tierTileSelected: { borderColor: C.ink },
+  tierTileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  tierSwatch: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  youBadge: {
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 11,
+    justifyContent: "center",
+    backgroundColor: C.ink,
+  },
+  youBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 11, color: C.lime },
+  tierTileName: { fontFamily: fontFamilies.sans.bold, fontSize: 16, letterSpacing: -0.3, color: C.text },
+  tierTileRange: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted },
+  tierTileStatus: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.muted, marginTop: 6 },
+  tierTileStatusOn: { color: C.accent },
 
-    /* Progress */
-    progressHeadline: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 22,
-      lineHeight: 28,
-      letterSpacing: -0.3,
-      color: colors.light.foreground,
-      marginTop: 4,
-    },
-    progressHeadlineNum: { fontFamily: fontFamilies.sans.bold },
-    progressHeadlineTier: {
-      fontFamily: fontFamilies.sans.medium,
-      color: GOLD_DEEP,
-    },
-    progressBlock: { marginTop: spacing[4], gap: 10 },
-    progressTrack: {
-      height: 10,
-      borderRadius: 5,
-      backgroundColor: colors.paper.warm,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(22,23,15,0.1)",
-      overflow: "hidden",
-    },
-    progressFillWrap: { height: "100%", borderRadius: 5, overflow: "hidden" },
-    progressEnds: { flexDirection: "row", justifyContent: "space-between" },
-    progressEnd: { flexDirection: "row", alignItems: "center", gap: 6 },
-    progressEndText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 11,
-      color: colors.light.mutedForeground,
-    },
+  /* Perks */
+  activePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: C.accentSoft,
+  },
+  lockedPill: { backgroundColor: "#f3f1e8" },
+  activePillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.accent },
+  perkRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  perkIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  perkBody: { flex: 1, gap: 2 },
+  perkTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14.5, color: C.text },
+  perkDesc: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, lineHeight: 17, color: C.muted },
 
-    /* Tier selector */
-    sectionHead: { marginBottom: spacing[3] },
-    sectionTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 24,
-      letterSpacing: -0.4,
-      color: colors.light.foreground,
-      marginTop: 4,
-    },
-    sectionSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13,
-      lineHeight: 19,
-      color: colors.light.mutedForeground,
-      marginTop: 4,
-    },
-    tierScroller: { marginHorizontal: -spacing[5] },
-    tierRow: {
-      paddingHorizontal: spacing[5],
-      gap: spacing[3],
-      paddingVertical: 6,
-    },
-    tierTile: {
-      width: 138,
-      padding: spacing[3],
-      borderRadius: 22,
-      backgroundColor: "#FFFFFF",
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      ...shadows.soft,
-    },
-    tierTileSelected: {
-      borderColor: GOLD,
-      borderWidth: 1.5,
-      shadowOpacity: 0.14,
-      shadowRadius: 14,
-    },
-    tierSwatch: {
-      height: 64,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      overflow: "hidden",
-    },
-    tierSwatchRing: {
-      position: "absolute",
-      width: 110,
-      height: 110,
-      borderRadius: 55,
-      borderWidth: 1,
-      right: -50,
-      top: -50,
-    },
-    tierTileNameRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: spacing[3],
-    },
-    tierTileName: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 17,
-      color: colors.light.foreground,
-    },
-    tierTileRange: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 11.5,
-      color: colors.light.mutedForeground,
-      marginTop: 2,
-    },
-    tierTileStatus: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 10,
-      letterSpacing: 0.6,
-      textTransform: "uppercase",
-      color: colors.ink.mute,
-      marginTop: 8,
-    },
-    youBadge: {
-      paddingHorizontal: 7,
-      paddingVertical: 2,
-      borderRadius: radii.full,
-      backgroundColor: colors.ink.DEFAULT,
-    },
-    youBadgeText: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 9.5,
-      color: GOLD_SOFT,
-    },
+  /* History */
+  countBadge: {
+    minWidth: 26,
+    height: 26,
+    paddingHorizontal: 8,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  countBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.muted },
+  emptyHistory: { alignItems: "center", paddingVertical: 16, gap: 6 },
+  emptyHistoryIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+    marginBottom: 6,
+  },
+  emptyHistoryTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.text },
+  emptyHistorySub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 18, color: C.muted, textAlign: "center" },
+  histRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  histDate: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f3f1e8",
+  },
+  histDay: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.text, lineHeight: 18 },
+  histMonth: { fontFamily: fontFamilies.sans.medium, fontSize: 11, color: C.muted },
+  histBody: { flex: 1, gap: 1 },
+  histReason: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  histMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
+  histPts: { fontFamily: fontFamilies.sans.bold, fontSize: 15, fontVariant: ["tabular-nums"] },
+  histPtsEarn: { color: C.accent },
+  histPtsSpend: { color: C.rust },
 
-    /* Perks */
-    perkGrid: { marginTop: spacing[4], gap: spacing[2.5] },
-    perkTile: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: spacing[3],
-      padding: spacing[3.5],
-      borderRadius: 18,
-      backgroundColor: "#FFFFFF",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(22,23,15,0.08)",
-    },
-    perkIcon: {
-      width: 38,
-      height: 38,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    perkBody: { flex: 1, gap: 3 },
-    perkTitle: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 14,
-      color: colors.light.foreground,
-    },
-    perkDesc: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 12.5,
-      lineHeight: 18,
-      color: colors.light.mutedForeground,
-    },
-
-    /* History */
-    emptyHistory: {
-      alignItems: "center",
-      paddingTop: spacing[5],
-      paddingBottom: spacing[2],
-      gap: 4,
-    },
-    emptyHalo: {
-      width: 76,
-      height: 76,
-      borderRadius: 38,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "rgba(200,164,74,0.08)",
-      borderWidth: 1,
-      borderColor: "rgba(200,164,74,0.28)",
-      marginBottom: 10,
-    },
-    emptyHistoryIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    emptyHistoryTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 18,
-      color: colors.light.foreground,
-    },
-    emptyHistorySub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 12.5,
-      lineHeight: 18,
-      color: colors.light.mutedForeground,
-      textAlign: "center",
-      maxWidth: 250,
-    },
-    ledger: { marginTop: spacing[3] },
-    rowDivider: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.light.border,
-    },
-    histRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing[3],
-      paddingVertical: spacing[3],
-    },
-    histDate: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.paper.warm,
-    },
-    histDay: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 16,
-      lineHeight: 18,
-      color: colors.light.foreground,
-    },
-    histMonth: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 8.5,
-      letterSpacing: 1,
-      color: colors.ink.mute,
-    },
-    histBody: { flex: 1, gap: 2 },
-    histReason: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 13.5,
-      color: colors.light.foreground,
-    },
-    histMeta: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 11.5,
-      color: colors.light.mutedForeground,
-    },
-    histPtsPill: {
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: radii.full,
-    },
-    histPtsPillEarn: { backgroundColor: "rgba(200, 164, 74, 0.14)" },
-    histPtsPillSpend: { backgroundColor: "rgba(184, 92, 58, 0.1)" },
-    histPts: { fontFamily: fontFamilies.sans.bold, fontSize: 14 },
-    histPtsEarn: { color: GOLD_DEEP },
-    histPtsSpend: { color: colors.accent2.rust },
-
-    /* CTA */
-    ctaShadow: {
-      borderRadius: 24,
-      shadowColor: "#16170f",
-      shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.22,
-      shadowRadius: 20,
-      elevation: 8,
-    },
-    primaryBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing[3],
-      borderRadius: 24,
-      paddingVertical: spacing[3.5],
-      paddingLeft: spacing[5],
-      paddingRight: spacing[3],
-    },
-    primaryBtnText: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 15,
-      color: colors.paper.cream,
-    },
-    primaryBtnSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 11.5,
-      color: "rgba(250,248,241,0.6)",
-      marginTop: 2,
-    },
-    primaryBtnArrow: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-  }),
-);
+  /* CTA */
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 64,
+    paddingLeft: 22,
+    paddingRight: 8,
+    paddingVertical: 8,
+    borderRadius: 32,
+    backgroundColor: C.ink,
+  },
+  primaryBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, color: C.cream },
+  primaryBtnSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: "rgba(250,248,241,0.6)", marginTop: 1 },
+  primaryBtnArrow: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.lime,
+  },
+});

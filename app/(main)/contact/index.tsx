@@ -10,14 +10,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground } from "@/components/layout";
+import { UserPageFrame, UP as C } from "@/components/user/user-page";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { submitContactSubmission } from "@/lib/api";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+
 import { fontFamilies } from "@/lib/theme/fonts";
 
 const TOPICS = [
@@ -29,9 +29,6 @@ const TOPICS = [
   { id: "Other", label: "Other", icon: "chatbubble-ellipses-outline" as const },
 ];
 
-const GOLD = colors.accent2.ochre;
-const GOLD_DEEP = "#85651b";
-const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 
 export default function ContactScreen() {
   const router = useRouter();
@@ -44,6 +41,8 @@ export default function ContactScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [subject, setSubject] = useState("");
+  // Topic is its own field — picking one must not wipe a subject already typed.
+  const [topic, setTopic] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
@@ -58,11 +57,19 @@ export default function ContactScreen() {
   }, [user, params.subject, params.message]);
 
   const handleSelectTopic = (topicId: string) => {
-    setSubject(topicId);
+    setTopic((prev) => (prev === topicId ? null : topicId));
   };
 
+  const resolvedSubject = subject.trim()
+    ? topic
+      ? `${topic}: ${subject.trim()}`
+      : subject.trim()
+    : (topic ?? "");
+  const canSend =
+    !!name.trim() && !!email.trim() && !!resolvedSubject && !!message.trim();
+
   const handleSubmit = async () => {
-    if (!name.trim() || !email.trim() || !subject.trim() || !message.trim()) {
+    if (!canSend) {
       toast("Please complete all required fields.", "error");
       return;
     }
@@ -76,7 +83,7 @@ export default function ContactScreen() {
       name,
       email,
       phone,
-      subject,
+      subject: resolvedSubject,
       message,
       userId: user?.id,
     });
@@ -91,35 +98,12 @@ export default function ContactScreen() {
     toast("Message sent to support", "success");
   };
 
-  const navBar = (title: string) => (
-    <View style={styles.navBar}>
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={styles.navBtn}
-        activeOpacity={0.7}
-        hitSlop={10}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-      >
-        <Ionicons name="chevron-back" size={20} color={colors.light.foreground} />
-      </TouchableOpacity>
-
-      <Text style={styles.navTitle}>{title}</Text>
-
-      <View style={styles.navBtn}>
-        <Ionicons name="headset-outline" size={17} color={GOLD_DEEP} />
-      </View>
-    </View>
-  );
-
   if (sent) {
     return (
-      <PaperBackground>
-        <SafeAreaView style={styles.container} edges={["top"]}>
-          {navBar("Message sent")}
+      <UserPageFrame title="Message sent">
           <View style={styles.successWrap}>
             <View style={styles.successIcon}>
-              <Ionicons name="checkmark" size={26} color={colors.olive[700]} />
+              <Ionicons name="checkmark" size={30} color={C.accent} />
             </View>
             <Text style={styles.successTitle}>Message sent</Text>
             <Text style={styles.successSub}>
@@ -136,7 +120,7 @@ export default function ContactScreen() {
             >
               <Text style={styles.primaryBtnText}>Back to account</Text>
               <View style={styles.primaryBtnArrow}>
-                <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
+                <Ionicons name="arrow-forward" size={17} color={C.ink} />
               </View>
             </TouchableOpacity>
 
@@ -151,16 +135,12 @@ export default function ContactScreen() {
               <Text style={styles.textLinkText}>View my tickets</Text>
             </TouchableOpacity>
           </View>
-        </SafeAreaView>
-      </PaperBackground>
+      </UserPageFrame>
     );
   }
 
   return (
-    <PaperBackground>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {navBar("Contact support")}
-
+    <UserPageFrame title="Contact support">
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -174,14 +154,18 @@ export default function ContactScreen() {
             showsVerticalScrollIndicator={false}
           >
             {/* Heading */}
-            <View style={styles.pageHead}>
-              <Text style={styles.eyebrow}>Help &amp; concierge</Text>
-              <Text style={styles.pageTitle}>
-                How can we <Text style={styles.pageTitleAccent}>help?</Text>
-              </Text>
-              <Text style={styles.pageSub}>
-                Send us a note — a real person replies within 24 hours.
-              </Text>
+            <View style={styles.cardShadow}>
+              <View style={styles.introCard}>
+                <View style={styles.introIcon}>
+                  <Ionicons name="headset" size={22} color={C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.introTitle}>How can we help?</Text>
+                  <Text style={styles.introSub}>
+                    A real person replies within 24 hours.
+                  </Text>
+                </View>
+              </View>
             </View>
 
             {/* Topics */}
@@ -193,20 +177,21 @@ export default function ContactScreen() {
                 contentContainerStyle={styles.topicsRow}
                 style={styles.topicsScroll}
               >
-                {TOPICS.map((topic) => {
-                  const active = subject === topic.id;
+                {TOPICS.map((t) => {
+                  const active = topic === t.id;
                   return (
                     <TouchableOpacity
-                      key={topic.id}
+                      key={t.id}
                       style={[styles.topicChip, active && styles.topicChipActive]}
-                      onPress={() => handleSelectTopic(topic.id)}
+                      onPress={() => handleSelectTopic(t.id)}
                       activeOpacity={0.8}
                       accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
                     >
                       <Ionicons
-                        name={topic.icon}
-                        size={13}
-                        color={active ? colors.paper.cream : GOLD_DEEP}
+                        name={t.icon}
+                        size={15}
+                        color={active ? C.lime : C.text}
                       />
                       <Text
                         style={[
@@ -214,7 +199,7 @@ export default function ContactScreen() {
                           active && styles.topicChipTextActive,
                         ]}
                       >
-                        {topic.label}
+                        {t.label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -230,7 +215,7 @@ export default function ContactScreen() {
                   value={name}
                   onChangeText={setName}
                   placeholder="Full name"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholderTextColor={C.faint}
                   autoCapitalize="words"
                 />
               </Field>
@@ -241,7 +226,7 @@ export default function ContactScreen() {
                   value={email}
                   onChangeText={setEmail}
                   placeholder="you@example.com"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholderTextColor={C.faint}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -254,18 +239,18 @@ export default function ContactScreen() {
                   value={phone}
                   onChangeText={setPhone}
                   placeholder="+94 7X XXX XXXX"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholderTextColor={C.faint}
                   keyboardType="phone-pad"
                 />
               </Field>
 
-              <Field label="Subject" required>
+              <Field label="Subject" required={!topic} optional={!!topic}>
                 <TextInput
                   style={styles.input}
                   value={subject}
                   onChangeText={setSubject}
-                  placeholder="e.g. Change my delivery address"
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholder={topic ? "Add a short summary" : "e.g. Change my delivery address"}
+                  placeholderTextColor={C.faint}
                 />
               </Field>
 
@@ -275,48 +260,35 @@ export default function ContactScreen() {
                   value={message}
                   onChangeText={setMessage}
                   placeholder="Tell us what you need — include order numbers if relevant."
-                  placeholderTextColor={colors.light.mutedForeground}
+                  placeholderTextColor={C.faint}
                   multiline
                   textAlignVertical="top"
                 />
               </Field>
 
               <TouchableOpacity
-                style={[
-                  styles.primaryBtn,
-                  (!name.trim() ||
-                    !email.trim() ||
-                    !subject.trim() ||
-                    !message.trim() ||
-                    submitting) && { opacity: 0.5 },
-                ]}
+                style={[styles.primaryBtn, (!canSend || submitting) && styles.primaryBtnDisabled]}
                 onPress={handleSubmit}
-                disabled={
-                  !name.trim() ||
-                  !email.trim() ||
-                  !subject.trim() ||
-                  !message.trim() ||
-                  submitting
-                }
+                disabled={!canSend || submitting}
                 activeOpacity={0.88}
                 accessibilityRole="button"
               >
-                {submitting ? (
-                  <ActivityIndicator color={colors.paper.cream} size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.primaryBtnText}>Send message</Text>
-                    <View style={styles.primaryBtnArrow}>
-                      <Ionicons name="arrow-forward" size={14} color={colors.olive[900]} />
-                    </View>
-                  </>
-                )}
+                <Text style={styles.primaryBtnText}>
+                  {submitting ? "Sending…" : "Send message"}
+                </Text>
+                <View style={styles.primaryBtnArrow}>
+                  {submitting ? (
+                    <ActivityIndicator color={C.ink} size="small" />
+                  ) : (
+                    <Ionicons name="arrow-forward" size={17} color={C.ink} />
+                  )}
+                </View>
               </TouchableOpacity>
             </View>
 
             {/* Footnote */}
             <View style={styles.footnote}>
-              <Ionicons name="shield-checkmark-outline" size={13} color={GOLD_DEEP} />
+              <Ionicons name="shield-checkmark-outline" size={15} color={C.muted} />
               <Text style={styles.footnoteText}>
                 Every message is read by a member of our team — no automated
                 replies.
@@ -324,8 +296,7 @@ export default function ContactScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </SafeAreaView>
-    </PaperBackground>
+    </UserPageFrame>
   );
 }
 
@@ -355,256 +326,157 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
+  flex: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 2, gap: 16 },
 
-  /* Nav */
-  navBar: {
+  cardShadow: {
+    borderRadius: 26,
+    backgroundColor: C.card,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  introCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[5],
-    paddingVertical: spacing[2.5],
+    gap: 14,
+    padding: 18,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
   },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.paper.cream,
+  introIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
+    backgroundColor: C.accentSoft,
   },
-  navTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: colors.light.foreground,
-  },
-
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2],
-    gap: 14,
-  },
-
-  /* Heading */
-  pageHead: {
-    marginBottom: spacing[2],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: GOLD_DEEP,
-    marginBottom: 4,
-  },
-  pageTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 32,
-    letterSpacing: -0.6,
-    lineHeight: 38,
-    color: colors.light.foreground,
-  },
-  pageTitleAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: GOLD_DEEP,
-  },
-  pageSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.light.mutedForeground,
-    marginTop: 6,
-    maxWidth: 300,
-  },
+  introTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, letterSpacing: -0.4, color: C.text },
+  introSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 2 },
 
   /* Topics */
-  topicsSection: {
-    gap: 10,
-  },
-  sectionLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: colors.light.foreground,
-  },
-  topicsScroll: {
-    marginHorizontal: -spacing[5],
-  },
-  topicsRow: {
-    paddingHorizontal: spacing[5],
-    gap: 8,
-  },
+  topicsSection: { gap: 10 },
+  sectionLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text, paddingHorizontal: 2 },
+  topicsScroll: { marginHorizontal: -20 },
+  topicsRow: { paddingHorizontal: 20, gap: 10 },
   topicChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.cream,
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 16,
+    borderRadius: 21,
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: HAIRLINE,
+    borderColor: C.line,
   },
-  topicChipActive: {
-    backgroundColor: colors.olive[900],
-    borderColor: colors.olive[900],
-  },
-  topicChipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  topicChipTextActive: {
-    color: colors.paper.cream,
-  },
+  topicChipActive: { backgroundColor: C.ink, borderColor: C.ink },
+  topicChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text },
+  topicChipTextActive: { color: C.cream },
 
   /* Form */
   formCard: {
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
+    backgroundColor: C.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: HAIRLINE,
-    padding: spacing[5],
-    gap: spacing[4],
-    ...shadows.soft,
+    borderColor: C.line,
+    padding: 18,
+    gap: 16,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  field: {
-    gap: 6,
-  },
+  field: { gap: 7 },
   fieldHeader: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
-  fieldLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  fieldRequired: {
-    color: colors.accent2.rust,
-  },
-  fieldOptional: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  inputWrap: {
-    backgroundColor: colors.paper.warm,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    paddingHorizontal: 14,
-  },
+  fieldLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.text },
+  fieldRequired: { color: C.rust },
+  fieldOptional: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted },
+  inputWrap: { backgroundColor: "#f5f3ec", borderRadius: 16, paddingHorizontal: 15 },
   input: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    color: colors.light.foreground,
-    paddingVertical: Platform.OS === "ios" ? 12 : 9,
+    fontSize: 15,
+    color: C.text,
+    height: 52,
   },
   textArea: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    lineHeight: 20,
-    minHeight: 110,
-    color: colors.light.foreground,
-    paddingTop: 12,
-    paddingBottom: 12,
+    fontSize: 15,
+    lineHeight: 21,
+    minHeight: 120,
+    color: C.text,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    height: 50,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[900],
+    justifyContent: "space-between",
+    gap: 14,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: C.ink,
+    paddingLeft: 22,
     paddingRight: 6,
     marginTop: 2,
   },
-  primaryBtnText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.paper.cream,
-  },
+  primaryBtnDisabled: { opacity: 0.35 },
+  primaryBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, color: C.cream },
   primaryBtnArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.paper.cream,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },
 
   /* Footnote */
-  footnote: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    paddingHorizontal: spacing[2],
-  },
-  footnoteText: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: colors.light.mutedForeground,
-  },
+  footnote: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 },
+  footnoteText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 12.5, lineHeight: 17, color: C.muted },
 
   /* Success */
   successWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing[6],
+    paddingHorizontal: 28,
+    paddingBottom: 80,
   },
   successIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(200, 164, 74, 0.14)",
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing[5],
+    marginBottom: 18,
   },
-  successTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 26,
-    letterSpacing: -0.4,
-    color: colors.light.foreground,
-  },
+  successTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 22, letterSpacing: -0.5, color: C.text },
   successSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13.5,
+    fontSize: 14,
     lineHeight: 20,
-    color: colors.light.mutedForeground,
+    color: C.muted,
     textAlign: "center",
     marginTop: 8,
+    marginBottom: 22,
     maxWidth: 300,
   },
-  successEmail: {
-    fontFamily: fontFamilies.sans.semibold,
-    color: colors.light.foreground,
-  },
-  textLink: {
-    marginTop: spacing[3],
-    paddingVertical: 4,
-  },
-  textLinkText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
-    textDecorationLine: "underline",
-  },
+  successEmail: { fontFamily: fontFamilies.sans.semibold, color: C.text },
+  textLink: { marginTop: 14, paddingVertical: 4 },
+  textLinkText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.accent },
 });

@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Pressable,
   ScrollView,
+  Text,
   Dimensions,
   TextInput,
   KeyboardAvoidingView,
@@ -16,10 +17,10 @@ import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-rea
 import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { Display, Label, Body } from "@/components/ui/Typography";
-import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { getSizeChartsBackend } from "@/lib/api/backend";
+import { C } from "@/components/orders/parcel-track";
 
 interface SizeGuideModalProps {
   visible: boolean;
@@ -63,8 +64,6 @@ const TIPS = [
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const toIn = (cm: number) => Math.round((cm / 2.54) * 10) / 10;
 
-const ink = colors.light.foreground;
-const hair = `${colors.light.primary}1A`;
 const gold = colors.accent2.ochre;
 
 export function SizeGuideModal({ visible, onClose, category, brandId, categoryId }: SizeGuideModalProps) {
@@ -123,13 +122,22 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
   const activeSize = recommended && recommended !== "beyond" ? recommended : picked;
   const recRow = sorted.find((r) => r.size === recommended);
 
-  // Position of the reader's measurement along the chest range, for the gauge.
-  const range = useMemo(() => {
-    const lo = (sorted[0]?.chestCm ?? 80) - 6;
-    const hi = (sorted[sorted.length - 1]?.chestCm ?? 120) + 6;
-    const pct = (cm: number) => Math.min(100, Math.max(0, ((cm - lo) / (hi - lo)) * 100));
-    return { pct };
-  }, [sorted]);
+  // Sizes sit at even steps on the rail; the reader's marker interpolates
+  // between the two sizes whose chest values bracket the measurement.
+  const markerPct = (cm: number) => {
+    const n = sorted.length;
+    if (n === 0) return 50;
+    const stop = (i: number) => ((i + 0.5) / n) * 100;
+    const half = 50 / n;
+    const first = sorted[0].chestCm;
+    const last = sorted[n - 1].chestCm;
+    if (cm <= first) return Math.max(0, stop(0) - half * Math.min(1, (first - cm) / 6));
+    if (cm >= last) return Math.min(100, stop(n - 1) + half * Math.min(1, (cm - last) / 6));
+    const i = sorted.findIndex((r) => r.chestCm >= cm) - 1;
+    const a = sorted[i].chestCm;
+    const b = sorted[i + 1].chestCm;
+    return stop(i) + (stop(i + 1) - stop(i)) * ((cm - a) / (b - a || 1));
+  };
 
   // Convert the typed measurement when the unit flips, so the result is stable.
   const switchUnit = (next: "cm" | "in") => {
@@ -149,36 +157,33 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
       >
         <TouchableOpacity style={styles.dismissOverlay} activeOpacity={1} onPress={onClose} />
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing[5]) }]}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={[C.glow, C.glowSoft, C.paper]}
+            locations={[0, 0.55, 1]}
+            style={styles.sheetGlow}
+          />
           {/* Header */}
           <View style={styles.sheetHeader}>
             <View style={styles.sheetHandle} />
             <View style={styles.titleRow}>
               <View style={{ flex: 1 }}>
-                <View style={styles.kickerRow}>
-                  <View style={styles.kickerRule} />
-                  <Label style={styles.kicker}>ATELIER SIZING</Label>
-                  {category ? (
-                    <>
-                      <View style={styles.kickerDot} />
-                      <Label style={styles.kickerMuted} numberOfLines={1}>
-                        {category.toUpperCase()}
-                      </Label>
-                    </>
-                  ) : null}
+                <Text style={styles.title} accessibilityRole="header">Size Guide</Text>
+                <View style={styles.subRow}>
+                  <Ionicons name="resize-outline" size={13} color={C.muted} />
+                  <Text style={styles.subtitle} numberOfLines={1}>
+                    {category ? `${category} · ` : ""}body measurements
+                  </Text>
                 </View>
-                <Display size="xl" style={styles.title}>
-                  The Fit{" "}
-                  <Display size="xl" italic style={styles.titleItalic}>Guide</Display>
-                </Display>
               </View>
               <TouchableOpacity
                 onPress={onClose}
                 style={styles.closeBtn}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
                 hitSlop={8}
                 accessibilityLabel="Close size guide"
               >
-                <Ionicons name="close" size={17} color={ink} />
+                <Ionicons name="close" size={19} color={C.text} />
               </TouchableOpacity>
             </View>
           </View>
@@ -188,222 +193,209 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
           >
-            {/* Find your size — hero */}
-            <Animated.View layout={LinearTransition.duration(220)} style={styles.heroShadow}>
-              <LinearGradient
-                colors={[colors.olive[800], colors.olive[950]]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.hero}
-              >
-                <View style={styles.heroTop}>
-                  <View style={{ flex: 1 }}>
-                    <Label style={styles.heroKicker}>FIND YOUR SIZE</Label>
-                    <Body size="xs" style={styles.heroSub}>
-                      Enter your chest measurement
-                    </Body>
-                  </View>
-                  <UnitToggle unit={unit} onChange={switchUnit} dark />
+            {/* Find your size */}
+            <Animated.View layout={LinearTransition.duration(220)} style={styles.finder}>
+              <View style={styles.finderTop}>
+                <View style={styles.finderIcon}>
+                  <Ionicons name="body-outline" size={18} color={C.lime} />
                 </View>
-
-                <View style={styles.heroInputRow}>
-                  <Pressable
-                    onPress={() => inputRef.current?.focus()}
-                    style={[styles.heroInputWrap, focused && styles.heroInputWrapFocused]}
-                  >
-                    <TextInput
-                      ref={inputRef}
-                      value={chestInput}
-                      onChangeText={setChestInput}
-                      onFocus={() => setFocused(true)}
-                      onBlur={() => setFocused(false)}
-                      keyboardType="decimal-pad"
-                      placeholder={unit === "cm" ? "96" : "38"}
-                      placeholderTextColor={`${colors.light.primaryForeground}40`}
-                      style={styles.heroInput}
-                      maxLength={5}
-                      returnKeyType="done"
-                      selectionColor={gold}
-                      accessibilityLabel={`Chest measurement in ${unit === "cm" ? "centimetres" : "inches"}`}
-                    />
-                    <Label style={styles.heroUnit}>{unit.toUpperCase()}</Label>
-                  </Pressable>
-
-                  <View style={styles.heroResult}>
-                    <Label style={styles.heroResultKicker}>YOUR SIZE</Label>
-                    {recommended && recommended !== "beyond" ? (
-                      <Animated.View key={recommended} entering={FadeIn.duration(260)}>
-                        <Display size="3xl" style={styles.heroResultSize}>{recommended}</Display>
-                      </Animated.View>
-                    ) : (
-                      <Display size="3xl" style={styles.heroResultEmpty}>—</Display>
-                    )}
-                  </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.finderTitle}>Find your size</Text>
+                  <Text style={styles.finderSub}>Enter your chest measurement</Text>
                 </View>
+                <UnitToggle unit={unit} onChange={switchUnit} dark />
+              </View>
 
-                {/* Chest-range gauge */}
-                <View style={styles.gauge}>
-                  <View style={styles.gaugeTrack} />
-                  {sorted.map((r) => (
-                    <View
-                      key={r.size}
-                      style={[styles.gaugeTick, { left: `${range.pct(r.chestCm)}%` }]}
-                    >
-                      <View
-                        style={[
-                          styles.gaugeTickMark,
-                          activeSize === r.size && styles.gaugeTickMarkActive,
-                        ]}
-                      />
-                      <Label
-                        style={[
-                          styles.gaugeTickLabel,
-                          activeSize === r.size && styles.gaugeTickLabelActive,
-                        ]}
-                      >
-                        {r.size}
-                      </Label>
-                    </View>
-                  ))}
-                  {chestCm != null && (
-                    <View style={[styles.gaugeMarker, { left: `${range.pct(chestCm)}%` }]}>
-                      <View style={styles.gaugeMarkerDiamond} />
-                    </View>
+              <View style={styles.finderRow}>
+                <Pressable
+                  onPress={() => inputRef.current?.focus()}
+                  style={[styles.inputWrap, focused && styles.inputWrapFocused]}
+                >
+                  <TextInput
+                    ref={inputRef}
+                    value={chestInput}
+                    onChangeText={setChestInput}
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    keyboardType="decimal-pad"
+                    placeholder={unit === "cm" ? "e.g. 96" : "e.g. 38"}
+                    placeholderTextColor="rgba(250,248,241,0.3)"
+                    style={styles.input}
+                    maxLength={5}
+                    returnKeyType="done"
+                    selectionColor={C.lime}
+                    accessibilityLabel={`Chest measurement in ${unit === "cm" ? "centimetres" : "inches"}`}
+                  />
+                  <Text style={styles.inputUnit}>{unit}</Text>
+                </Pressable>
+
+                <View style={[styles.result, recRow && styles.resultOn]}>
+                  <Text style={[styles.resultLabel, recRow && styles.resultLabelOn]}>Your size</Text>
+                  {recRow ? (
+                    <Animated.Text key={recRow.size} entering={FadeIn.duration(260)} style={styles.resultSize}>
+                      {recRow.size}
+                    </Animated.Text>
+                  ) : (
+                    <Text style={styles.resultEmpty}>—</Text>
                   )}
                 </View>
+              </View>
 
-                {recommended === "beyond" && (
-                  <Animated.View entering={FadeInDown.duration(220)} style={styles.heroNote}>
-                    <Ionicons name="color-wand-outline" size={14} color={gold} />
-                    <Body size="xs" style={styles.heroNoteText}>
-                      Beyond our standard range — contact the store about made-to-measure.
-                    </Body>
-                  </Animated.View>
+              {/* Evenly spaced size rail; the marker interpolates between sizes */}
+              <View style={styles.rail}>
+                <View style={styles.railTrack} />
+                {chestCm != null && (
+                  <View style={[styles.railMarker, { left: `${markerPct(chestCm)}%` }]} />
                 )}
-                {recRow && (
-                  <Animated.View entering={FadeInDown.duration(220)} style={styles.heroNote}>
-                    <Ionicons name="sparkles-outline" size={14} color={gold} />
-                    <Body size="xs" style={styles.heroNoteText}>
-                      Size {recRow.size} is cut for up to a{" "}
-                      {fmt(unit === "cm" ? recRow.chestCm : recRow.chestIn)} {unit} chest.
-                    </Body>
-                  </Animated.View>
-                )}
-              </LinearGradient>
-            </Animated.View>
-
-            {/* The fit */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Label style={styles.cardKicker}>THE CUT</Label>
-                <View style={styles.verdict}>
-                  <View style={styles.verdictDot} />
-                  <Label style={styles.verdictText}>TRUE TO SIZE</Label>
+                <View style={styles.railStops}>
+                  {sorted.map((r) => {
+                    const on = activeSize === r.size;
+                    return (
+                      <View key={r.size} style={styles.railStop}>
+                        <View style={[styles.railDot, on && styles.railDotOn]} />
+                        <Text style={[styles.railLabel, on && styles.railLabelOn]}>{r.size}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
-              <View style={styles.fitScale}>
-                {FIT_STOPS.map((stop, i) => {
-                  const active = i === FIT_INDEX;
+
+              {recommended === "beyond" && (
+                <Animated.View entering={FadeInDown.duration(220)} style={styles.note}>
+                  <Ionicons name="color-wand-outline" size={15} color={C.lime} />
+                  <Text style={styles.noteText}>
+                    Beyond our standard range — contact the store about made-to-measure.
+                  </Text>
+                </Animated.View>
+              )}
+              {recRow && (
+                <Animated.View entering={FadeInDown.duration(220)} style={styles.note}>
+                  <Ionicons name="sparkles" size={14} color={C.lime} />
+                  <Text style={styles.noteText}>
+                    Size {recRow.size} fits up to a{" "}
+                    {fmt(unit === "cm" ? recRow.chestCm : recRow.chestIn)} {unit} chest.
+                  </Text>
+                </Animated.View>
+              )}
+            </Animated.View>
+
+            {/* The cut */}
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <View style={styles.cardHead}>
+                  <Text style={styles.cardTitle}>The cut</Text>
+                  <View style={styles.verdict}>
+                    <Ionicons name="checkmark-circle" size={13} color={C.accent} />
+                    <Text style={styles.verdictText}>True to size</Text>
+                  </View>
+                </View>
+                <View style={styles.chips}>
+                  {FIT_STOPS.map((stop, i) => {
+                    const on = i === FIT_INDEX;
+                    return (
+                      <View key={stop} style={[styles.chip, on && styles.chipOn]}>
+                        <Text style={[styles.chipText, on && styles.chipTextOn]}>{stop}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={styles.bodyText}>
+                  A tailored, regular drape. Between sizes? Size up for a softer, more relaxed silhouette.
+                </Text>
+              </View>
+            </View>
+
+            {/* Measurements */}
+            <View style={styles.sectionRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Measurements</Text>
+                <Text style={styles.sectionSub}>
+                  Body sizes in {unit === "cm" ? "centimetres" : "inches"}
+                </Text>
+              </View>
+              <UnitToggle unit={unit} onChange={switchUnit} />
+            </View>
+
+            <View style={styles.cardShadow}>
+              <View style={styles.table}>
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.th, styles.colSize]}>SIZE</Text>
+                  {COLUMNS.map((c) => (
+                    <Text key={c} style={styles.th}>{c.toUpperCase()}</Text>
+                  ))}
+                </View>
+                {rows.map((row, idx) => {
+                  const active = activeSize === row.size;
+                  const vals = unit === "cm"
+                    ? [row.chestCm, row.waistCm, row.hipCm, row.lengthCm]
+                    : [row.chestIn, row.waistIn, row.hipIn, row.lengthIn];
                   return (
-                    <View key={stop} style={[styles.fitSeg, active && styles.fitSegActive]}>
-                      <Display
-                        size="sm"
-                        italic={active}
-                        style={[styles.fitSegText, active && styles.fitSegTextActive]}
-                      >
-                        {stop}
-                      </Display>
-                    </View>
+                    <Pressable
+                      key={row.size}
+                      onPress={() => setPicked(active && !recommended ? null : row.size)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Size ${row.size}`}
+                      style={({ pressed }) => [
+                        styles.tableRow,
+                        idx < rows.length - 1 && !active && styles.tableRowDivider,
+                        pressed && !active && styles.tableRowPressed,
+                        active && styles.tableRowActive,
+                      ]}
+                    >
+                      <View style={styles.colSize}>
+                        <View style={[styles.sizeBadge, active && styles.sizeBadgeOn]}>
+                          <Text
+                            style={[styles.sizeText, active && styles.sizeTextOn]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                          >
+                            {row.size}
+                          </Text>
+                        </View>
+                      </View>
+                      {vals.map((v, i) => (
+                        <Text key={i} style={[styles.td, active && styles.tdOn]}>
+                          {fmt(v)}
+                        </Text>
+                      ))}
+                    </Pressable>
                   );
                 })}
               </View>
-              <Body size="xs" muted style={styles.fitCopy}>
-                A tailored, regular drape. Between sizes? Size up for a softer, more relaxed silhouette.
-              </Body>
             </View>
-
-            {/* Measurements table */}
-            <View style={styles.sectionRow}>
-              <View>
-                <Label style={styles.sectionLabel}>MEASUREMENTS</Label>
-                <Body size="xs" muted style={styles.sectionSub}>
-                  Body sizes in {unit === "cm" ? "centimetres" : "inches"}
-                </Body>
-              </View>
-              <Label style={styles.sectionUnit}>{unit.toUpperCase()}</Label>
-            </View>
-
-            <View style={styles.table}>
-              <View style={styles.tableHeader}>
-                <Label style={[styles.th, styles.colSize, { textAlign: "left" }]}>SIZE</Label>
-                {COLUMNS.map((c) => (
-                  <Label key={c} style={styles.th}>{c.toUpperCase()}</Label>
-                ))}
-              </View>
-              {rows.map((row, idx) => {
-                const active = activeSize === row.size;
-                const vals = unit === "cm"
-                  ? [row.chestCm, row.waistCm, row.hipCm, row.lengthCm]
-                  : [row.chestIn, row.waistIn, row.hipIn, row.lengthIn];
-                return (
-                  <Pressable
-                    key={row.size}
-                    onPress={() => setPicked(active && !recommended ? null : row.size)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={`Size ${row.size}`}
-                    style={({ pressed }) => [
-                      styles.tableRow,
-                      idx < rows.length - 1 && styles.tableRowDivider,
-                      pressed && !active && styles.tableRowPressed,
-                      active && styles.tableRowActive,
-                    ]}
-                  >
-                    {active && <View style={styles.activeBar} />}
-                    <View style={[styles.colSize, styles.sizeCell]}>
-                      <Display size="lg" style={[styles.sizeText, active && styles.sizeTextActive]}>
-                        {row.size}
-                      </Display>
-                    </View>
-                    {vals.map((v, i) => (
-                      <View key={i} style={styles.tdCell}>
-                        <Body size="xs" style={[styles.cellText, active && styles.cellTextActive]}>
-                          {fmt(v)}
-                        </Body>
-                      </View>
-                    ))}
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Body size="xs" muted style={styles.footnote}>
-              Tap a size to highlight it across the chart.
-            </Body>
+            <Text style={styles.footnote}>Tap a size to highlight it across the chart.</Text>
 
             {/* How to measure */}
-            <View style={styles.card}>
-              <Label style={styles.cardKicker}>HOW TO MEASURE</Label>
-              <View style={styles.measureBody}>
-                <MeasureFigure />
-                <View style={styles.tipList}>
-                  {TIPS.map((tip, i) => (
-                    <View key={tip.lead} style={styles.tipItem}>
-                      <View style={styles.tipBadge}>
-                        <Label style={styles.tipNum}>{i + 1}</Label>
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>How to measure</Text>
+                <View style={styles.measureBody}>
+                  <View style={styles.figureWrap}>
+                    <MeasureFigure />
+                  </View>
+                  <View style={styles.tipList}>
+                    {TIPS.map((tip, i) => (
+                      <View key={tip.lead} style={styles.tipItem}>
+                        <View style={styles.tipBadge}>
+                          <Text style={styles.tipNum}>{i + 1}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.tipLead}>{tip.lead}</Text>
+                          <Text style={styles.tipBody}>{tip.body}</Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Body size="sm" style={styles.tipLead}>{tip.lead}</Body>
-                        <Body size="xs" muted style={styles.tipBody}>{tip.body}</Body>
-                      </View>
-                    </View>
-                  ))}
+                    ))}
+                  </View>
                 </View>
-              </View>
-              <View style={styles.proTip}>
-                <Ionicons name="bulb-outline" size={14} color={colors.olive[700]} />
-                <Body size="xs" style={styles.proTipText}>
-                  Measure over light underwear with a soft tape — snug, never tight.
-                </Body>
+                <View style={styles.proTip}>
+                  <View style={styles.proTipIcon}>
+                    <Ionicons name="bulb-outline" size={15} color={C.accent} />
+                  </View>
+                  <Text style={styles.proTipText}>
+                    Measure over light underwear with a soft tape — snug, never tight.
+                  </Text>
+                </View>
               </View>
             </View>
           </ScrollView>
@@ -432,21 +424,19 @@ function UnitToggle({
             onPress={() => onChange(u)}
             activeOpacity={0.8}
             accessibilityRole="button"
+            accessibilityLabel={u === "cm" ? "Centimetres" : "Inches"}
             accessibilityState={{ selected: active }}
-            style={[
-              styles.toggleOpt,
-              active && (dark ? styles.toggleOptActiveDark : styles.toggleOptActive),
-            ]}
+            style={[styles.toggleOpt, active && (dark ? styles.toggleOptOnDark : styles.toggleOptOn)]}
           >
-            <Label
+            <Text
               style={[
                 styles.toggleText,
                 dark && styles.toggleTextDark,
-                active && (dark ? styles.toggleTextActiveDark : styles.toggleTextActive),
+                active && (dark ? styles.toggleTextOnDark : styles.toggleTextOn),
               ]}
             >
-              {u.toUpperCase()}
-            </Label>
+              {u}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -493,253 +483,294 @@ function MeasureFigure() {
   );
 }
 
+const SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
+
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(22, 23, 15, 0.62)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, backgroundColor: "rgba(22, 23, 15, 0.55)", justifyContent: "flex-end" },
   dismissOverlay: { flex: 1 },
   sheet: {
-    backgroundColor: colors.light.background,
+    backgroundColor: C.paper,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    maxHeight: Dimensions.get("window").height * 0.92,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: hair,
-    ...shadows.editorial,
-  },
-
-  // Header
-  sheetHeader: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[2.5],
-    paddingBottom: spacing[4],
-    gap: spacing[3.5],
-  },
-  sheetHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: `${colors.light.border}CC`, alignSelf: "center",
-  },
-  titleRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing[3] },
-  kickerRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  kickerRule: { width: 18, height: 1, backgroundColor: gold },
-  kicker: { color: colors.olive[600], fontSize: 9.5, letterSpacing: 2.6, fontFamily: fontFamilies.mono.semibold },
-  kickerDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.light.border },
-  kickerMuted: {
-    flexShrink: 1, color: colors.light.mutedForeground, fontSize: 9.5, letterSpacing: 2,
-    fontFamily: fontFamilies.mono.medium,
-  },
-  title: { marginTop: spacing[2], fontSize: 30, lineHeight: 34, letterSpacing: -0.6, color: ink },
-  titleItalic: { color: colors.olive[600], fontSize: 30, letterSpacing: -0.4 },
-  closeBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: colors.light.card,
-    borderWidth: 1, borderColor: hair,
-    alignItems: "center", justifyContent: "center",
-    ...shadows.soft,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[1],
-    paddingBottom: spacing[6],
-    gap: spacing[4],
-  },
-
-  // Hero finder
-  heroShadow: {
-    borderRadius: 24,
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  hero: {
-    borderRadius: 24,
-    padding: spacing[5],
-    gap: spacing[4],
+    borderCurve: "continuous",
     overflow: "hidden",
+    maxHeight: Dimensions.get("window").height * 0.92,
   },
-  heroTop: { flexDirection: "row", alignItems: "flex-start", gap: spacing[3] },
-  heroKicker: { color: gold, fontSize: 10, letterSpacing: 2.2, fontFamily: fontFamilies.mono.semibold },
-  heroSub: { color: `${colors.light.primaryForeground}A6`, marginTop: 4 },
-  heroInputRow: { flexDirection: "row", alignItems: "stretch", gap: spacing[3] },
-  heroInputWrap: {
+  sheetGlow: { position: "absolute", top: 0, left: 0, right: 0, height: 260 },
+
+  // Header — same language as My Orders
+  sheetHeader: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16, gap: 14 },
+  sheetHandle: {
+    width: 40, height: 5, borderRadius: 3,
+    backgroundColor: "rgba(22,23,15,0.14)", alignSelf: "center",
+  },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  title: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
+    letterSpacing: -0.8,
+    color: C.text,
+  },
+  subRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  subtitle: {
+    flexShrink: 1,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: C.muted,
+    textTransform: "capitalize",
+  },
+  closeBtn: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: C.card,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 24, gap: 16 },
+
+  // Finder — ink card, lime accents
+  finder: {
+    borderRadius: 26,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+    padding: 20,
+    gap: 18,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+  finderTop: { flexDirection: "row", alignItems: "center", gap: 12 },
+  finderIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(200,224,138,0.14)",
+  },
+  finderTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16.5, letterSpacing: -0.3, color: C.cream },
+  finderSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: "rgba(250,248,241,0.6)", marginTop: 1 },
+  finderRow: { flexDirection: "row", gap: 10 },
+  inputWrap: {
     flex: 1,
+    height: 72,
     flexDirection: "row",
-    alignItems: "baseline",
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[2],
-    paddingBottom: spacing[1],
-    borderRadius: 18,
-    backgroundColor: "rgba(250, 248, 241, 0.06)",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    backgroundColor: "rgba(250,248,241,0.07)",
     borderWidth: 1,
-    borderColor: "rgba(250, 248, 241, 0.14)",
+    borderColor: "rgba(250,248,241,0.12)",
   },
-  heroInputWrapFocused: { borderColor: `${gold}B3`, backgroundColor: "rgba(250, 248, 241, 0.09)" },
-  heroInput: {
+  inputWrapFocused: { borderColor: "rgba(200,224,138,0.7)", backgroundColor: "rgba(250,248,241,0.1)" },
+  input: {
     flex: 1,
-    fontSize: 40,
-    lineHeight: 50,
-    color: colors.light.primaryForeground,
-    fontFamily: fontFamilies.display.regular,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 30,
+    letterSpacing: -0.6,
+    color: C.cream,
     paddingVertical: 0,
-    letterSpacing: -1,
+    fontVariant: ["tabular-nums"],
   },
-  heroUnit: {
-    marginLeft: 6, fontSize: 11, letterSpacing: 1.6,
-    color: `${colors.light.primaryForeground}80`, fontFamily: fontFamilies.mono.medium,
-  },
-  heroResult: {
-    width: 96,
-    borderRadius: 18,
+  inputUnit: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: "rgba(250,248,241,0.5)" },
+  result: {
+    width: 92,
+    height: 72,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(250,248,241,0.07)",
     borderWidth: 1,
-    borderColor: `${gold}55`,
-    backgroundColor: `${gold}14`,
-    paddingVertical: spacing[2],
+    borderColor: "rgba(250,248,241,0.12)",
   },
-  heroResultKicker: { color: `${gold}D9`, fontSize: 8.5, letterSpacing: 1.8, fontFamily: fontFamilies.mono.semibold },
-  heroResultSize: {
-    color: colors.light.primaryForeground, fontSize: 34, lineHeight: 42,
-    fontFamily: fontFamilies.display.italic,
-  },
-  heroResultEmpty: { color: `${colors.light.primaryForeground}40`, fontSize: 34, lineHeight: 42 },
+  resultOn: { backgroundColor: C.lime, borderColor: C.lime },
+  resultLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: "rgba(250,248,241,0.55)" },
+  resultLabelOn: { color: "rgba(22,23,15,0.6)" },
+  resultSize: { fontFamily: fontFamilies.sans.bold, fontSize: 26, letterSpacing: -0.5, color: C.ink, marginTop: 1 },
+  resultEmpty: { fontFamily: fontFamilies.sans.bold, fontSize: 24, color: "rgba(250,248,241,0.3)", marginTop: 1 },
 
-  gauge: { height: 34, marginHorizontal: spacing[2], marginTop: spacing[1] },
-  gaugeTrack: {
-    position: "absolute", left: 0, right: 0, top: 6, height: 1,
-    backgroundColor: "rgba(250, 248, 241, 0.18)",
+  rail: { height: 40, justifyContent: "flex-start" },
+  railTrack: {
+    position: "absolute", top: 5, left: 0, right: 0, height: 2, borderRadius: 1,
+    backgroundColor: "rgba(250,248,241,0.12)",
   },
-  gaugeTick: { position: "absolute", top: 2, width: 30, marginLeft: -15, alignItems: "center", gap: 6 },
-  gaugeTickMark: { width: 1, height: 9, backgroundColor: "rgba(250, 248, 241, 0.35)" },
-  gaugeTickMarkActive: { width: 2, backgroundColor: gold },
-  gaugeTickLabel: {
-    fontSize: 9, letterSpacing: 0.8, color: "rgba(250, 248, 241, 0.45)",
-    fontFamily: fontFamilies.mono.medium,
+  railStops: { flexDirection: "row" },
+  railStop: { flex: 1, alignItems: "center", gap: 8 },
+  railDot: {
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: C.ink,
+    borderWidth: 2, borderColor: "rgba(250,248,241,0.3)",
   },
-  gaugeTickLabelActive: { color: gold, fontFamily: fontFamilies.mono.semibold },
-  gaugeMarker: { position: "absolute", top: 1, width: 12, marginLeft: -6, alignItems: "center" },
-  gaugeMarkerDiamond: {
-    width: 10, height: 10, backgroundColor: gold, transform: [{ rotate: "45deg" }],
-    borderWidth: 2, borderColor: colors.olive[900],
+  railDotOn: { backgroundColor: C.lime, borderColor: C.lime },
+  railLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: "rgba(250,248,241,0.5)" },
+  railLabelOn: { color: C.lime },
+  railMarker: {
+    position: "absolute", top: -1, width: 14, height: 14, marginLeft: -7, borderRadius: 7,
+    backgroundColor: C.cream, borderWidth: 3, borderColor: C.lime, zIndex: 2,
   },
-  heroNote: {
-    flexDirection: "row", alignItems: "center", gap: spacing[2],
-    paddingTop: spacing[3.5],
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(250, 248, 241, 0.16)",
+  note: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(200,224,138,0.1)",
   },
-  heroNoteText: { flex: 1, color: `${colors.light.primaryForeground}D9`, lineHeight: 17 },
+  noteText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 13, lineHeight: 18, color: "rgba(250,248,241,0.88)" },
 
-  // Cards
+  // White cards
+  cardShadow: { borderRadius: 26, backgroundColor: C.card, ...SHADOW },
   card: {
-    backgroundColor: colors.light.card,
-    borderRadius: 22,
-    borderWidth: 1, borderColor: hair,
-    padding: spacing[5],
-    gap: spacing[4],
+    borderRadius: 26,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 20,
+    gap: 16,
   },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardKicker: { fontSize: 10, letterSpacing: 2, color: colors.olive[600], fontFamily: fontFamilies.mono.semibold },
+  cardHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  cardTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
   verdict: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full,
-    borderWidth: 1, borderColor: `${colors.olive[500]}33`,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    height: 28, paddingHorizontal: 10, borderRadius: 14,
+    backgroundColor: C.accentSoft,
   },
-  verdictDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.olive[500] },
-  verdictText: { fontSize: 9, letterSpacing: 1.4, color: colors.olive[700], fontFamily: fontFamilies.mono.semibold },
+  verdictText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.accent },
+  chips: { flexDirection: "row", gap: 8 },
+  chip: {
+    flex: 1, height: 44, borderRadius: 22,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: C.card,
+    borderWidth: 1, borderColor: "rgba(22,23,15,0.1)",
+  },
+  chipOn: { backgroundColor: C.ink, borderColor: C.ink },
+  chipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  chipTextOn: { color: C.cream },
+  bodyText: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, lineHeight: 20, color: C.muted },
 
-  fitScale: {
-    flexDirection: "row",
-    padding: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.light.muted,
-  },
-  fitSeg: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: radii.full },
-  fitSegActive: { backgroundColor: colors.light.card, ...shadows.soft },
-  fitSegText: { fontSize: 14, color: colors.light.mutedForeground },
-  fitSegTextActive: { color: colors.olive[700] },
-  fitCopy: { lineHeight: 19 },
+  // Section header
+  sectionRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6, paddingHorizontal: 2 },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+  sectionSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 1 },
 
-  // Section header + toggle
-  sectionRow: {
-    flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between",
-    marginTop: spacing[2], paddingHorizontal: 2,
-  },
-  sectionLabel: { fontSize: 10, letterSpacing: 2, color: colors.olive[600], fontFamily: fontFamilies.mono.semibold },
-  sectionSub: { marginTop: 3 },
-  sectionUnit: {
-    fontSize: 10, letterSpacing: 1.4, color: colors.olive[700], fontFamily: fontFamilies.mono.semibold,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full,
-    borderWidth: 1, borderColor: hair, overflow: "hidden",
-  },
+  // Unit toggle
   toggle: {
     flexDirection: "row",
-    backgroundColor: colors.light.card,
-    borderRadius: radii.full, padding: 3,
-    borderWidth: 1, borderColor: hair,
+    padding: 3,
+    borderRadius: 20,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.1)",
   },
-  toggleDark: { backgroundColor: "rgba(250, 248, 241, 0.06)", borderColor: "rgba(250, 248, 241, 0.14)" },
-  toggleOpt: { paddingHorizontal: 13, paddingVertical: 5, borderRadius: radii.full },
-  toggleOptActive: { backgroundColor: colors.olive[700] },
-  toggleOptActiveDark: { backgroundColor: colors.light.primaryForeground },
-  toggleText: { fontSize: 10, letterSpacing: 1.2, color: colors.light.mutedForeground, fontFamily: fontFamilies.mono.medium },
-  toggleTextDark: { color: "rgba(250, 248, 241, 0.6)" },
-  toggleTextActive: { color: colors.light.primaryForeground, fontFamily: fontFamilies.mono.semibold },
-  toggleTextActiveDark: { color: colors.olive[900], fontFamily: fontFamilies.mono.semibold },
+  toggleDark: { backgroundColor: "rgba(250,248,241,0.07)", borderColor: "rgba(250,248,241,0.12)" },
+  toggleOpt: { minWidth: 40, height: 32, paddingHorizontal: 10, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  toggleOptOn: { backgroundColor: C.ink },
+  toggleOptOnDark: { backgroundColor: C.lime },
+  toggleText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.muted },
+  toggleTextDark: { color: "rgba(250,248,241,0.6)" },
+  toggleTextOn: { color: C.cream },
+  toggleTextOnDark: { color: C.ink },
 
   // Table
   table: {
-    borderRadius: 22, borderWidth: 1, borderColor: hair,
-    overflow: "hidden", backgroundColor: colors.light.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    overflow: "hidden",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    paddingVertical: 6,
   },
   tableHeader: {
     flexDirection: "row",
-    paddingTop: spacing[4], paddingBottom: spacing[3], paddingHorizontal: spacing[5],
-    borderBottomWidth: 1, borderBottomColor: hair,
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 16,
   },
   th: {
-    flex: 1, textAlign: "center", fontSize: 8.5, letterSpacing: 1.5,
-    color: colors.light.mutedForeground, fontFamily: fontFamilies.mono.semibold,
+    flex: 1,
+    textAlign: "center",
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    color: C.muted,
   },
-  colSize: { flex: 0.8 },
+  colSize: { width: 56, flex: 0, alignItems: "flex-start", textAlign: "left" },
   tableRow: {
-    flexDirection: "row", alignItems: "center",
-    paddingVertical: 15, paddingHorizontal: spacing[5],
+    flexDirection: "row",
+    alignItems: "center",
+    height: 56,
+    marginHorizontal: 6,
+    paddingHorizontal: 10,
+    borderRadius: 18,
   },
-  tableRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: `${colors.light.border}99` },
-  tableRowPressed: { backgroundColor: `${colors.olive[500]}0A` },
-  tableRowActive: { backgroundColor: `${colors.olive[500]}17` },
-  activeBar: {
-    position: "absolute", left: 0, top: 10, bottom: 10, width: 3,
-    borderTopRightRadius: 2, borderBottomRightRadius: 2, backgroundColor: gold,
+  tableRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(22,23,15,0.08)", borderRadius: 0 },
+  tableRowPressed: { backgroundColor: "rgba(22,23,15,0.03)" },
+  tableRowActive: { backgroundColor: C.accentSoft },
+  sizeBadge: {
+    minWidth: 40,
+    height: 34,
+    paddingHorizontal: 8,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f3f1e8",
   },
-  sizeCell: { justifyContent: "center" },
-  sizeText: { fontFamily: fontFamilies.display.regular, color: ink, fontSize: 18, letterSpacing: -0.2 },
-  sizeTextActive: { fontFamily: fontFamilies.display.italic, color: colors.olive[700], fontSize: 20 },
-  tdCell: { flex: 1, alignItems: "center", justifyContent: "center" },
-  cellText: {
-    fontFamily: fontFamilies.mono.regular, color: colors.ink.soft, fontSize: 12.5,
+  sizeBadgeOn: { backgroundColor: C.ink },
+  sizeText: { fontFamily: fontFamilies.sans.bold, fontSize: 13.5, color: C.text },
+  sizeTextOn: { color: C.lime },
+  td: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14.5,
+    color: C.text,
     fontVariant: ["tabular-nums"],
   },
-  cellTextActive: { color: colors.olive[800], fontFamily: fontFamilies.mono.semibold },
-  footnote: { textAlign: "center", marginTop: -spacing[1.5], fontSize: 11 },
+  tdOn: { fontFamily: fontFamilies.sans.bold, color: C.ink },
+  footnote: {
+    textAlign: "center",
+    marginTop: -6,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: C.muted,
+  },
 
   // How to measure
-  measureBody: { flexDirection: "row", gap: spacing[4], alignItems: "flex-start" },
-  tipList: { flex: 1, gap: spacing[3.5] },
-  tipItem: { flexDirection: "row", gap: spacing[2.5] },
+  measureBody: { flexDirection: "row", gap: 14, alignItems: "flex-start" },
+  figureWrap: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: C.paper,
+  },
+  tipList: { flex: 1, gap: 14 },
+  tipItem: { flexDirection: "row", gap: 10 },
   tipBadge: {
-    width: 20, height: 20, borderRadius: 10, marginTop: 1,
-    borderWidth: 1, borderColor: gold,
+    width: 22, height: 22, borderRadius: 11, marginTop: 1,
+    backgroundColor: C.ink,
     alignItems: "center", justifyContent: "center",
   },
-  tipNum: { fontSize: 9.5, color: colors.olive[800], fontFamily: fontFamilies.mono.semibold },
-  tipLead: { fontFamily: fontFamilies.sans.semibold, color: ink, fontSize: 13 },
-  tipBody: { lineHeight: 17, marginTop: 2 },
+  tipNum: { fontFamily: fontFamilies.sans.bold, fontSize: 11, color: C.lime },
+  tipLead: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  tipBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, lineHeight: 17, color: C.muted, marginTop: 2 },
   proTip: {
-    flexDirection: "row", alignItems: "center", gap: spacing[2],
-    paddingHorizontal: spacing[3.5], paddingVertical: spacing[3],
-    borderRadius: 14, backgroundColor: colors.light.muted,
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: C.accentSoft,
   },
-  proTipText: { flex: 1, color: colors.olive[800], lineHeight: 17 },
+  proTipIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: C.card,
+  },
+  proTipText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 13, lineHeight: 18, color: colors.olive[800] },
 });

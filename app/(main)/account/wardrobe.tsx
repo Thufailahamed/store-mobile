@@ -13,11 +13,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
+import { LUX } from "@/components/orders/luxe-order";
+import { C } from "@/components/orders/parcel-track";
 import { PaperBackground } from "@/components/layout";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast } from "@/components/ui";
 import {
@@ -308,122 +309,105 @@ export default function WardrobeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={GOLD}
+            tintColor={C.accent}
           />
         }
       >
-        {/* Page heading */}
-        <View style={styles.pageHead}>
-          <View style={styles.eyebrowRow}>
-            <View style={styles.eyebrowRule} />
-            <Text style={styles.eyebrow}>Capsule archive</Text>
-          </View>
-          <Text style={styles.pageTitle}>
-            Things you <Text style={styles.pageTitleAccent}>own.</Text>
-          </Text>
-          <Text style={styles.pageSub}>
-            Your closet, catalogued from delivered orders — ready for outfits
-            and cost-per-wear.
-          </Text>
-        </View>
-
         {/* Summary card */}
         <View style={styles.heroSection}>
-          <LinearGradient
-            colors={["#22241a", "#15160f"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroCard}
-          >
-            <View style={styles.heroGlow} pointerEvents="none" />
-
-            <View style={styles.heroValueRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.heroKicker}>Closet value</Text>
-                <Text
-                  style={styles.heroValue}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {formatPrice(totalSpent)}
-                </Text>
-              </View>
-              <View style={styles.cpwChip}>
-                <Text style={styles.cpwLabel}>Per wear</Text>
-                <Text style={styles.cpwValue}>
-                  {typeof avgCpw === "number"
-                    ? formatPrice(avgCpw)
-                    : "Log a wear"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.heroRule} />
-
-            <View style={styles.heroStats}>
-              {heroStats.map((s, i) => (
-                <View
-                  key={s.label}
-                  style={[styles.heroStatCell, i > 0 && styles.heroStatDivider]}
-                >
-                  <Text
-                    style={[
-                      styles.heroStatValue,
-                      s.value === 0 && styles.heroStatValueMuted,
-                    ]}
-                  >
-                    {String(s.value).padStart(2, "0")}
-                  </Text>
-                  <Text style={styles.heroStatLabel}>{s.label}</Text>
+          <View style={styles.sumShadow}>
+            <View style={styles.sumCard}>
+              <View style={styles.sumTop}>
+                <View style={styles.sumIcon}>
+                  <Ionicons name="shirt" size={22} color={C.accent} />
                 </View>
-              ))}
-            </View>
-
-            <View style={styles.heroFoot}>
-              <View style={styles.heroFootText}>
-                <View style={styles.liveDot} />
-                <Text style={styles.heroFootLabel}>
-                  Auto-synced from delivered orders
-                </Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.sumLabel}>Closet value</Text>
+                  <Text
+                    style={styles.sumValue}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    {formatPrice(totalSpent)}
+                  </Text>
+                </View>
+                <View style={styles.cpwPill}>
+                  <Text style={styles.cpwPillLabel}>Per wear</Text>
+                  <Text style={styles.cpwPillValue} numberOfLines={1}>
+                    {typeof avgCpw === "number" ? formatPrice(avgCpw) : "—"}
+                  </Text>
+                </View>
               </View>
-              <TouchableOpacity
-                style={styles.heroSyncBtn}
-                activeOpacity={0.85}
-                onPress={handleSync}
-                disabled={syncing}
-                accessibilityRole="button"
-                accessibilityLabel="Sync delivered orders"
-              >
-                {syncing ? (
-                  <ActivityIndicator size="small" color={colors.olive[900]} />
-                ) : (
-                  <>
-                    <Ionicons name="sync" size={12} color={colors.olive[900]} />
-                    <Text style={styles.heroSyncText}>Sync</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+
+              <View style={styles.sumStrip}>
+                {heroStats.map((s, i) => (
+                  <React.Fragment key={s.label}>
+                    {i > 0 ? <View style={styles.sumDivider} /> : null}
+                    <View
+                      style={styles.sumStat}
+                      accessible
+                      accessibilityLabel={`${s.value} ${s.label}`}
+                    >
+                      <Text style={styles.sumStatValue}>{s.value}</Text>
+                      <Text style={styles.sumStatLabel}>{s.label}</Text>
+                    </View>
+                  </React.Fragment>
+                ))}
+              </View>
+
+              <View style={styles.sumFoot}>
+                <View style={styles.liveDot} />
+                <Text style={styles.sumFootLabel} numberOfLines={2}>
+                  Auto-synced from your delivered orders
+                </Text>
+                <TouchableOpacity
+                  style={styles.sumSyncBtn}
+                  activeOpacity={0.85}
+                  onPress={handleSync}
+                  disabled={syncing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sync delivered orders"
+                >
+                  {syncing ? (
+                    <ActivityIndicator size="small" color={C.lime} />
+                  ) : (
+                    <>
+                      <Ionicons name="sync" size={14} color={C.lime} />
+                      <Text style={styles.sumSyncText}>Sync</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </LinearGradient>
+          </View>
         </View>
 
         {/* Insights Strip (when items exist) */}
         {items.length > 0 && (
-          <View style={{ marginTop: 32 }}>
+          <View style={{ marginTop: 26 }}>
             <View style={styles.sectionHead}>
-              <Text style={styles.sectionKicker}>01</Text>
-              <Text style={styles.sectionTitle}>
-                Closet <Text style={styles.pageTitleAccent}>insights</Text>
-              </Text>
+              <Text style={styles.sectionTitle}>Closet insights</Text>
             </View>
             <InsightsSection onLogWear={(it) => setWearItem(it)} />
           </View>
         )}
 
-        {/* 4. Segmented tabs */}
-        <View style={styles.tabsContainer}>
+        {/* Tabs */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsRow}
+        >
           {TABS.map((t) => {
             const active = tab === t.key;
+            const count =
+              t.key === "items"
+                ? stats?.totals.total_items ?? items.length
+                : t.key === "outfits"
+                  ? outfits.length
+                  : null;
             return (
               <TouchableOpacity
                 key={t.key}
@@ -435,8 +419,8 @@ export default function WardrobeScreen() {
               >
                 <Ionicons
                   name={t.icon}
-                  size={14}
-                  color={active ? "#E8CF8F" : colors.light.mutedForeground}
+                  size={16}
+                  color={active ? LUX.lime : C.muted}
                 />
                 <Text
                   style={[
@@ -447,10 +431,22 @@ export default function WardrobeScreen() {
                 >
                   {t.label}
                 </Text>
+                {count !== null ? (
+                  <View style={[styles.tabCount, active && styles.tabCountOn]}>
+                    <Text
+                      style={[
+                        styles.tabCountText,
+                        active && styles.tabCountTextOn,
+                      ]}
+                    >
+                      {count}
+                    </Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* 5. Tab Body */}
         {tab === "items" && (
@@ -550,7 +546,7 @@ export default function WardrobeScreen() {
                 onPress={() => setAutoSheetOpen(true)}
                 activeOpacity={0.85}
               >
-                <Ionicons name="sparkles" size={13} color="#E8CF8F" />
+                <Ionicons name="sparkles" size={13} color={LUX.lime} />
                 <Text style={styles.autoGenerateBtnText}>Suggest outfit</Text>
               </TouchableOpacity>
             </View>
@@ -948,8 +944,8 @@ const styles = withUserTheme(
     /* Page heading */
     pageHead: {
       paddingHorizontal: WARDROBE_H_PAD,
-      paddingTop: spacing[3],
-      marginBottom: spacing[5],
+      paddingTop: 0,
+      marginBottom: spacing[4],
     },
     eyebrowRow: {
       flexDirection: "row",
@@ -957,54 +953,113 @@ const styles = withUserTheme(
       gap: 8,
       marginBottom: 10,
     },
-    eyebrowRule: { width: 22, height: 1, backgroundColor: GOLD_DEEP },
+    eyebrowRule: { width: 22, height: 1, backgroundColor: "#535e2c" },
     eyebrow: {
       fontFamily: fontFamilies.mono.medium,
       fontSize: 10,
       letterSpacing: 2.2,
       textTransform: "uppercase",
-      color: GOLD_DEEP,
+      color: "#535e2c",
     },
     pageTitle: {
-      fontFamily: fontFamilies.sans.bold,
+      fontFamily: fontFamilies.display.semibold,
       fontSize: 38,
       lineHeight: 44,
       letterSpacing: -1,
-      color: colors.light.foreground,
+      color: LUX.ink,
     },
     pageTitleAccent: {
-      fontFamily: fontFamilies.sans.medium,
-      color: GOLD_DEEP,
+      fontFamily: fontFamilies.display.italic,
+      color: "#535e2c",
     },
     pageSub: {
       fontFamily: fontFamilies.sans.regular,
-      fontSize: 13.5,
+      fontSize: 14,
       lineHeight: 20,
-      color: colors.light.mutedForeground,
-      marginTop: 6,
+      color: C.muted,
       maxWidth: 320,
     },
 
     /* Summary card */
     heroSection: {
       paddingHorizontal: WARDROBE_H_PAD,
+      paddingTop: 4,
     },
-    heroCard: {
+    sumShadow: {
       borderRadius: 26,
+      backgroundColor: C.card,
+      shadowColor: "#16170f",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.06,
+      shadowRadius: 20,
+      elevation: 3,
+    },
+    sumCard: {
+      borderRadius: 26,
+      borderCurve: "continuous",
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.line,
+      padding: 18,
+      gap: 16,
+    },
+    sumTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+    sumIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: C.accentSoft,
+    },
+    sumLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.muted },
+    sumValue: {
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 26,
+      letterSpacing: -0.8,
+      color: C.text,
+      fontVariant: ["tabular-nums"],
+    },
+    cpwPill: {
+      alignItems: "flex-end",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 16,
+      backgroundColor: C.accentSoft,
+      maxWidth: 120,
+    },
+    cpwPillLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 11.5, color: C.muted },
+    cpwPillValue: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.accent, marginTop: 1 },
+    sumStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 14,
+      borderRadius: 20,
+      borderCurve: "continuous",
+      backgroundColor: C.ink,
+    },
+    sumStat: { flex: 1, alignItems: "center", gap: 2 },
+    sumStatValue: { fontFamily: fontFamilies.sans.bold, fontSize: 21, color: C.cream, fontVariant: ["tabular-nums"] },
+    sumStatLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+    sumDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
+    sumFoot: { flexDirection: "row", alignItems: "center", gap: 10 },
+    sumFootLabel: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 13, color: C.muted },
+    sumSyncBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      minWidth: 84,
+      height: 40,
+      paddingHorizontal: 16,
+      borderRadius: 20,
+      backgroundColor: C.ink,
+    },
+    sumSyncText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.cream },
+    heroCard: {
       paddingTop: spacing[5],
       paddingHorizontal: spacing[5],
       paddingBottom: spacing[3],
-      overflow: "hidden",
-      ...shadows.editorial,
-    },
-    heroGlow: {
-      position: "absolute",
-      top: -90,
-      right: -70,
-      width: 220,
-      height: 220,
-      borderRadius: 110,
-      backgroundColor: "rgba(232, 207, 143, 0.045)",
     },
     heroValueRow: {
       flexDirection: "row",
@@ -1016,15 +1071,15 @@ const styles = withUserTheme(
       fontSize: 9.5,
       letterSpacing: 1.8,
       textTransform: "uppercase",
-      color: "rgba(232, 207, 143, 0.85)",
+      color: LUX.goldSoft,
       marginBottom: 6,
     },
     heroValue: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 34,
-      lineHeight: 40,
+      fontFamily: fontFamilies.display.semibold,
+      fontSize: 36,
+      lineHeight: 42,
       letterSpacing: -0.8,
-      color: colors.paper.cream,
+      color: LUX.cream,
     },
     cpwChip: {
       alignItems: "flex-end",
@@ -1032,8 +1087,8 @@ const styles = withUserTheme(
       paddingVertical: 8,
       borderRadius: 14,
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(232, 207, 143, 0.35)",
-      backgroundColor: "rgba(232, 207, 143, 0.06)",
+      borderColor: "rgba(200, 224, 138, 0.3)",
+      backgroundColor: "rgba(200, 224, 138, 0.08)",
     },
     cpwLabel: {
       fontFamily: fontFamilies.mono.medium,
@@ -1045,7 +1100,7 @@ const styles = withUserTheme(
     cpwValue: {
       fontFamily: fontFamilies.sans.medium,
       fontSize: 15,
-      color: "#E8CF8F",
+      color: LUX.lime,
       marginTop: 2,
     },
     heroRule: {
@@ -1067,10 +1122,10 @@ const styles = withUserTheme(
       borderLeftColor: "rgba(250, 248, 241, 0.14)",
     },
     heroStatValue: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 26,
+      fontFamily: fontFamilies.display.semibold,
+      fontSize: 28,
       letterSpacing: -0.4,
-      color: colors.paper.cream,
+      color: LUX.cream,
     },
     heroStatValueMuted: {
       color: "rgba(250, 248, 241, 0.32)",
@@ -1100,10 +1155,10 @@ const styles = withUserTheme(
       flex: 1,
     },
     liveDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.olive[300],
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: C.accent,
     },
     heroFootLabel: {
       fontFamily: fontFamilies.sans.medium,
@@ -1119,12 +1174,12 @@ const styles = withUserTheme(
       height: 32,
       paddingHorizontal: 14,
       borderRadius: radii.full,
-      backgroundColor: "#E8CF8F",
+      backgroundColor: LUX.lime,
     },
     heroSyncText: {
       fontFamily: fontFamilies.sans.bold,
       fontSize: 12.5,
-      color: colors.olive[900],
+      color: LUX.ink,
     },
 
     /* Section Eyebrow */
@@ -1133,64 +1188,74 @@ const styles = withUserTheme(
       fontSize: 10,
       letterSpacing: 1.6,
       textTransform: "uppercase",
-      color: GOLD_DEEP,
+      color: "#535e2c",
       paddingHorizontal: WARDROBE_H_PAD,
       marginBottom: 8,
     },
 
     sectionHead: {
       flexDirection: "row",
-      alignItems: "baseline",
+      alignItems: "center",
       gap: 10,
       paddingHorizontal: WARDROBE_H_PAD,
-      marginBottom: 14,
+      marginBottom: 12,
     },
     sectionKicker: {
-      fontFamily: fontFamilies.mono.medium,
+      fontFamily: fontFamilies.mono.semibold,
       fontSize: 10,
-      letterSpacing: 1.2,
-      color: colors.accent2.rust,
+      letterSpacing: 1,
+      color: "#535e2c",
     },
     sectionTitle: {
       fontFamily: fontFamilies.sans.bold,
-      fontSize: 22,
+      fontSize: 19,
       letterSpacing: -0.4,
-      color: colors.light.foreground,
+      color: LUX.ink,
     },
 
-    /* Segmented tabs */
-    tabsContainer: {
-      flexDirection: "row",
-      marginHorizontal: WARDROBE_H_PAD,
-      marginTop: 32,
-      padding: 4,
-      borderRadius: radii.full,
-      backgroundColor: colors.paper.cream,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.light.border,
-      ...shadows.soft,
-    },
+    /* Tabs */
+    tabsScroll: { marginTop: 22 },
+    tabsRow: { paddingHorizontal: WARDROBE_H_PAD, gap: 10 },
     tabButton: {
-      flex: 1,
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      gap: 5,
-      height: 40,
-      borderRadius: radii.full,
+      gap: 8,
+      height: 42,
+      paddingLeft: 14,
+      paddingRight: 10,
+      borderRadius: 21,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: C.line,
     },
     tabButtonActive: {
-      backgroundColor: colors.ink.DEFAULT,
+      backgroundColor: LUX.ink,
+      borderColor: LUX.ink,
     },
     tabButtonText: {
-      fontSize: 12.5,
+      fontSize: 14,
       fontFamily: fontFamilies.sans.semibold,
-      color: colors.light.mutedForeground,
+      color: C.text,
     },
     tabButtonTextActive: {
-      color: colors.paper.cream,
-      fontFamily: fontFamilies.sans.bold,
+      color: C.cream,
     },
+    tabCount: {
+      minWidth: 22,
+      height: 22,
+      borderRadius: 11,
+      paddingHorizontal: 6,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: C.accentSoft,
+    },
+    tabCountOn: { backgroundColor: "rgba(200,224,138,0.18)" },
+    tabCountText: {
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 11.5,
+      color: C.muted,
+    },
+    tabCountTextOn: { color: LUX.lime },
 
     /* Loading */
     loadingBox: {
@@ -1213,9 +1278,9 @@ const styles = withUserTheme(
     },
     outfitsTitle: {
       fontFamily: fontFamilies.sans.bold,
-      fontSize: 24,
-      letterSpacing: -0.4,
-      color: colors.light.foreground,
+      fontSize: 22,
+      letterSpacing: -0.6,
+      color: LUX.ink,
     },
     autoGenerateBtn: {
       flexDirection: "row",
@@ -1224,10 +1289,10 @@ const styles = withUserTheme(
       height: 36,
       paddingHorizontal: 14,
       borderRadius: radii.full,
-      backgroundColor: "#15160f",
+      backgroundColor: LUX.olive,
     },
     autoGenerateBtnText: {
-      color: colors.paper.cream,
+      color: LUX.cream,
       fontSize: 12.5,
       fontFamily: fontFamilies.sans.bold,
     },
@@ -1253,8 +1318,9 @@ const styles = withUserTheme(
     },
     emptyOutfitsTitle: {
       fontFamily: fontFamilies.sans.bold,
-      fontSize: 21,
-      color: colors.light.foreground,
+      fontSize: 19,
+      letterSpacing: -0.4,
+      color: LUX.ink,
     },
     emptyOutfitsSub: {
       fontFamily: fontFamilies.sans.regular,
@@ -1272,13 +1338,13 @@ const styles = withUserTheme(
       paddingLeft: 20,
       paddingRight: 5,
       borderRadius: radii.full,
-      backgroundColor: "#15160f",
+      backgroundColor: LUX.olive,
       marginTop: 14,
     },
     createOutfitBtnText: {
       fontFamily: fontFamilies.sans.bold,
       fontSize: 14,
-      color: colors.paper.cream,
+      color: LUX.cream,
     },
     clearBtn: {
       marginTop: 12,
@@ -1299,10 +1365,16 @@ const styles = withUserTheme(
     spendStrip: {
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 24,
+      borderRadius: 26,
       paddingVertical: spacing[5],
-      backgroundColor: "#1f2418",
-      ...shadows.editorial,
+      backgroundColor: LUX.olive,
+      borderWidth: 1,
+      borderColor: "rgba(200,164,74,0.22)",
+      shadowColor: LUX.ink,
+      shadowOffset: { width: 0, height: 14 },
+      shadowOpacity: 0.22,
+      shadowRadius: 22,
+      elevation: 8,
     },
     spendCell: {
       flex: 1,
@@ -1315,24 +1387,29 @@ const styles = withUserTheme(
       backgroundColor: "rgba(250, 248, 241, 0.12)",
     },
     spendValue: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 22,
-      letterSpacing: -0.3,
-      color: colors.paper.cream,
+      fontFamily: fontFamilies.display.semibold,
+      fontSize: 26,
+      letterSpacing: -0.5,
+      color: LUX.cream,
     },
     spendLabel: {
       fontFamily: fontFamilies.mono.medium,
       fontSize: 9.5,
-      letterSpacing: 1.2,
+      letterSpacing: 1.4,
       textTransform: "uppercase",
-      color: "rgba(232, 207, 143, 0.85)",
+      color: LUX.goldSoft,
     },
     statPanel: {
       backgroundColor: "#FFFFFF",
-      borderRadius: 22,
+      borderRadius: 24,
       padding: spacing[5],
       borderWidth: 1,
       borderColor: HAIRLINE,
+      shadowColor: LUX.ink,
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.05,
+      shadowRadius: 16,
+      elevation: 2,
     },
     panelHead: {
       flexDirection: "row",
@@ -1342,8 +1419,9 @@ const styles = withUserTheme(
     },
     statPanelTitle: {
       fontFamily: fontFamilies.sans.bold,
-      fontSize: 19,
-      color: colors.light.foreground,
+      fontSize: 18,
+      letterSpacing: -0.4,
+      color: LUX.ink,
     },
     panelMeta: {
       fontFamily: fontFamilies.mono.medium,
@@ -1396,7 +1474,7 @@ const styles = withUserTheme(
     },
     statProgressFill: {
       height: "100%",
-      backgroundColor: GOLD,
+      backgroundColor: C.accent,
       borderRadius: 2,
     },
     topWornRow: {
@@ -1408,9 +1486,9 @@ const styles = withUserTheme(
       borderBottomColor: colors.light.border,
     },
     topWornRank: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 15,
-      color: GOLD_DEEP,
+      fontFamily: fontFamilies.display.italic,
+      fontSize: 16,
+      color: "#535e2c",
       width: 22,
     },
     topWornThumb: {
@@ -1467,7 +1545,7 @@ const styles = withUserTheme(
     sharePillText: {
       fontFamily: fontFamilies.sans.semibold,
       fontSize: 12,
-      color: GOLD_DEEP,
+      color: LUX.goldInk,
     },
 
     /* Revoke Button */

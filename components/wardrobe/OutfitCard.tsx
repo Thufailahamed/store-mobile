@@ -87,13 +87,13 @@ export function OutfitCard({ outfit, onPress, items }: Props) {
 const styles: Record<string, any> = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
-    borderRadius: radii.lg,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: BORDER,
     padding: 14,
     gap: 12,
-    marginHorizontal: 16,
-    marginVertical: 6,
+    marginHorizontal: 0,
+    marginVertical: 0,
   },
   head: {
     flexDirection: "row",

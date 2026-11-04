@@ -113,7 +113,7 @@ const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: spacing[2],
     gap: spacing[4],
   },

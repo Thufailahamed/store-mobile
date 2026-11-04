@@ -20,8 +20,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { AddressMapPicker } from "./AddressMapPicker";
 import { useDebounce } from "@/lib/hooks/useDebounce";
 import { reverseGeocode, type GeocodeResult } from "@/lib/maps";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
 import type { Address } from "@/lib/types";
 import {
   validateCheckoutAddress,
@@ -60,8 +61,7 @@ interface AddressFormSheetProps {
   hideDefault?: boolean;
 }
 
-const GOLD = "#E8CF8F";
-const INK = "#16170f";
+const INK = C.ink;
 
 const TYPE_META: Record<
   AddressType,
@@ -324,19 +324,24 @@ export function AddressFormSheet({
       >
         <Pressable style={styles.backdropTouch} onPress={onClose} />
         <SafeAreaView edges={["bottom"]} style={styles.sheet}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={[C.glow, C.glowSoft, C.paper]}
+            locations={[0, 0.55, 1]}
+            style={styles.sheetGlow}
+          />
           <View style={styles.handle} />
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <View style={styles.kickerRow}>
-                <View style={styles.kickerRule} />
-                <Text style={styles.kicker}>DELIVERY DETAILS</Text>
-              </View>
-              <HeaderTitle
-                text={title ?? (isEdit ? "Edit address" : "Add address")}
-              />
-              <Text style={styles.headerSub}>
-                {subtitle ?? "Where should we deliver?"}
+              <Text style={styles.title} accessibilityRole="header">
+                {title ?? (isEdit ? "Edit address" : "Add address")}
               </Text>
+              <View style={styles.headerSubRow}>
+                <Ionicons name="cube-outline" size={13} color={C.muted} />
+                <Text style={styles.headerSub}>
+                  {subtitle ?? "Where should we deliver?"}
+                </Text>
+              </View>
             </View>
             <Pressable
               onPress={onClose}
@@ -344,11 +349,7 @@ export function AddressFormSheet({
               style={styles.closeBtn}
               accessibilityLabel="Close"
             >
-              <Ionicons
-                name="close"
-                size={18}
-                color={colors.light.foreground}
-              />
+              <Ionicons name="close" size={19} color={C.text} />
             </Pressable>
           </View>
 
@@ -386,7 +387,7 @@ export function AddressFormSheet({
                       {fetchingLoc ? (
                         <ActivityIndicator size="small" color={INK} />
                       ) : (
-                        <Ionicons name="navigate" size={13} color={INK} />
+                        <Ionicons name="navigate" size={14} color={INK} />
                       )}
                     </View>
                     <Text style={styles.locatePillText}>
@@ -402,17 +403,17 @@ export function AddressFormSheet({
               <View style={styles.deliverRow}>
                 <View style={styles.deliverIcon}>
                   {geoBusy ? (
-                    <ActivityIndicator size="small" color={GOLD} />
+                    <ActivityIndicator size="small" color={C.accent} />
                   ) : (
                     <Ionicons
                       name={resolvedLine ? "location" : "location-outline"}
-                      size={16}
-                      color={GOLD}
+                      size={20}
+                      color={C.accent}
                     />
                   )}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.deliverEyebrow}>DELIVER TO</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.deliverEyebrow}>Deliver to</Text>
                   <Text style={styles.deliverText} numberOfLines={2}>
                     {geoBusy
                       ? "Looking up this spot…"
@@ -422,7 +423,7 @@ export function AddressFormSheet({
                 </View>
                 {form.latitude != null && !geoBusy ? (
                   <View style={styles.pinnedBadge}>
-                    <Ionicons name="checkmark" size={11} color={INK} />
+                    <Ionicons name="checkmark-circle" size={14} color={C.accent} />
                     <Text style={styles.pinnedBadgeText}>Pinned</Text>
                   </View>
                 ) : null}
@@ -546,8 +547,8 @@ export function AddressFormSheet({
                     >
                       <Ionicons
                         name={meta.icon}
-                        size={15}
-                        color={active ? GOLD : colors.olive[700]}
+                        size={16}
+                        color={active ? C.lime : C.text}
                       />
                       <Text
                         style={[
@@ -578,11 +579,8 @@ export function AddressFormSheet({
                   <Switch
                     value={form.is_default}
                     onValueChange={(v) => set("is_default", v)}
-                    trackColor={{
-                      false: colors.light.border,
-                      true: colors.light.primary,
-                    }}
-                    thumbColor={colors.paper.cream}
+                    trackColor={{ false: "#e2dfd3", true: C.accent }}
+                    thumbColor="#ffffff"
                   />
                 </Pressable>
               )}
@@ -609,12 +607,7 @@ export function AddressFormSheet({
                 pressed && styles.pressed,
               ]}
             >
-              <LinearGradient
-                colors={["#2a2c1f", INK]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.saveGradient}
-              >
+              <View style={styles.saveGradient}>
                 {saving ? (
                   <ActivityIndicator size="small" color={colors.paper.cream} />
                 ) : (
@@ -624,28 +617,16 @@ export function AddressFormSheet({
                         (isEdit ? "Save changes" : "Save address")}
                     </Text>
                     <View style={styles.saveArrow}>
-                      <Ionicons name="checkmark" size={16} color={INK} />
+                      <Ionicons name="checkmark" size={18} color={INK} />
                     </View>
                   </>
                 )}
-              </LinearGradient>
+              </View>
             </Pressable>
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
-  );
-}
-
-/** "Add address" → "Add *address*": last word set in olive italic. */
-function HeaderTitle({ text }: { text: string }) {
-  const words = text.split(" ");
-  const last = words.pop();
-  return (
-    <Text style={styles.title}>
-      {words.length ? `${words.join(" ")} ` : ""}
-      <Text style={styles.titleItalic}>{last}</Text>
-    </Text>
   );
 }
 
@@ -663,8 +644,9 @@ function Section({
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionIndex}>{index}</Text>
-        <View style={styles.sectionRule} />
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionIndex}>{Number(index)}</Text>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.sectionTitle}>{title}</Text>
           {caption ? (
@@ -707,10 +689,8 @@ function Field({
   return (
     <View style={styles.field}>
       <View style={styles.fieldLabelRow}>
-        <Text
-          style={[styles.fieldLabel, focused && { color: colors.olive[700] }]}
-        >
-          {label.toUpperCase()}
+        <Text style={[styles.fieldLabel, focused && { color: C.accent }]}>
+          {label}
         </Text>
         {optional ? <Text style={styles.fieldOptional}>Optional</Text> : null}
       </View>
@@ -727,10 +707,10 @@ function Field({
             size={17}
             color={
               error
-                ? colors.light.destructive
+                ? C.rust
                 : focused
-                  ? colors.olive[700]
-                  : colors.ink.mute
+                  ? C.accent
+                  : C.muted
             }
             style={{ marginRight: 10 }}
           />
@@ -741,18 +721,21 @@ function Field({
           onChangeText={onChangeText}
           keyboardType={keyboardType}
           placeholder={placeholder}
-          placeholderTextColor={colors.light.mutedForeground + "99"}
+          placeholderTextColor={C.faint}
           autoCapitalize={
-            autoCapitalize ?? (keyboardType === "default" ? "words" : "none")
+            autoCapitalize ??
+            (keyboardType == null || keyboardType === "default"
+              ? "words"
+              : "none")
           }
           textContentType={textContentType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          selectionColor={colors.olive[600]}
+          selectionColor={C.accent}
         />
         {!error && value.trim().length > 0 && !focused ? (
           <View style={styles.validDot}>
-            <Ionicons name="checkmark" size={10} color={colors.paper.cream} />
+            <Ionicons name="checkmark" size={11} color={C.lime} />
           </View>
         ) : null}
       </View>
@@ -765,97 +748,86 @@ function Field({
   );
 }
 
-const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
 
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 16, 11, 0.6)",
+    backgroundColor: "rgba(22, 23, 15, 0.55)",
     justifyContent: "flex-end",
   },
   backdropTouch: { ...StyleSheet.absoluteFillObject },
   pressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
   sheet: {
-    backgroundColor: colors.paper.cream,
+    backgroundColor: C.paper,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
+    borderCurve: "continuous",
     height: "93%",
     overflow: "hidden",
   },
+  sheetGlow: { position: "absolute", top: 0, left: 0, right: 0, height: 260 },
   handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
+    width: 40,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: "rgba(22,23,15,0.14)",
     alignSelf: "center",
-    marginTop: spacing[2.5],
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[4],
-    gap: spacing[3],
-  },
-  kickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-  kickerRule: { width: 18, height: 1, backgroundColor: colors.accent2.ochre },
-  kicker: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    letterSpacing: 2.4,
-    color: colors.olive[600],
-  },
-  title: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 32,
-    lineHeight: 36,
-    letterSpacing: -0.9,
-    color: INK,
-  },
-  titleItalic: {
-    fontFamily: fontFamilies.sans.medium,
-    color: colors.olive[700],
-  },
-  headerSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.ink.mute,
-    marginTop: 4,
-  },
-  closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: HAIRLINE,
-    ...shadows.soft,
-  },
-  body: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[1],
-    paddingBottom: spacing[8],
-    gap: spacing[4],
+    marginTop: 10,
   },
 
-  // Location
+  // Header — same language as My Orders
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  title: {
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
+    letterSpacing: -0.8,
+    color: C.text,
+  },
+  headerSubRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  headerSub: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: C.muted },
+  closeBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.card,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  body: {
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 32,
+    gap: 16,
+  },
+
+  // Location — white card holding the map + resolved address
   locationCard: {
     borderRadius: 26,
-    backgroundColor: INK,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
     padding: 6,
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    elevation: 10,
+    ...SHADOW,
   },
   locatePill: {
     alignSelf: "center",
@@ -864,114 +836,87 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingLeft: 5,
     paddingRight: 18,
-    height: 44,
-    borderRadius: radii.full,
-    backgroundColor: INK,
-    borderWidth: 1,
-    borderColor: "rgba(232,207,143,0.35)",
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.ink,
     ...shadows.editorial,
   },
   locatePillCompact: {
     alignSelf: "flex-end",
-    paddingRight: 12,
-    height: 38,
+    paddingRight: 14,
+    height: 40,
+    borderRadius: 20,
   },
   locateIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: GOLD,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },
-  locatePillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: colors.paper.cream,
-  },
+  locatePillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.cream },
   deliverRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[3],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[2.5],
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingTop: 14,
+    paddingBottom: 10,
   },
   deliverIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: "rgba(232,207,143,0.35)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: C.accentSoft,
   },
-  deliverEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 2,
-    color: GOLD,
-  },
+  deliverEyebrow: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.muted },
   deliverText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 16,
-    lineHeight: 21,
-    color: colors.paper.cream,
-    marginTop: 3,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15.5,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+    color: C.text,
+    marginTop: 1,
   },
   pinnedBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: GOLD,
+    gap: 4,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: C.accentSoft,
   },
-  pinnedBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    letterSpacing: 0.8,
-    color: INK,
-  },
+  pinnedBadgeText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.accent },
 
   // Sections
   section: {
-    gap: spacing[3.5],
-    padding: spacing[5],
+    gap: 14,
+    padding: 18,
     borderRadius: 26,
-    backgroundColor: "rgba(255,255,255,0.78)",
+    borderCurve: "continuous",
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: HAIRLINE,
-    ...shadows.soft,
+    borderColor: C.line,
+    ...SHADOW,
   },
-  sectionHeader: {
-    flexDirection: "row",
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 2 },
+  sectionBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
-    gap: spacing[2.5],
-    marginBottom: 4,
+    justifyContent: "center",
+    backgroundColor: C.ink,
   },
-  sectionIndex: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 11,
-    color: colors.accent2.ochre,
-    letterSpacing: 1,
-  },
-  sectionRule: { width: 14, height: 1, backgroundColor: "rgba(22,23,15,0.18)" },
-  sectionTitle: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 20,
-    letterSpacing: -0.4,
-    color: INK,
-  },
-  sectionCaption: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.ink.mute,
-    marginTop: 1,
-  },
+  sectionIndex: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: C.lime },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+  sectionCaption: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, marginTop: 1 },
 
-  // Type chips
+  // Type chips — Orders filter chips
   typeRow: { flexDirection: "row", gap: 8 },
   typeChip: {
     flex: 1,
@@ -979,171 +924,109 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    height: 46,
-    borderRadius: radii.full,
-    backgroundColor: colors.paper.DEFAULT,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: HAIRLINE,
+    borderColor: "rgba(22,23,15,0.1)",
   },
-  typeChipActive: {
-    backgroundColor: INK,
-    borderColor: INK,
-    ...shadows.editorial,
-  },
-  typeChipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    color: INK,
-  },
-  typeChipTextActive: {
-    color: colors.paper.cream,
-    fontFamily: fontFamilies.sans.semibold,
-  },
+  typeChipActive: { backgroundColor: C.ink, borderColor: C.ink },
+  typeChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  typeChipTextActive: { color: C.cream },
 
   // Fields
   field: { gap: 7 },
-  fieldRow: { flexDirection: "row", gap: spacing[3] },
+  fieldRow: { flexDirection: "row", gap: 10 },
   fieldLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 2,
   },
-  fieldLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1.6,
-    color: colors.ink.mute,
-  },
-  fieldOptional: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    color: "rgba(101,104,77,0.7)",
-  },
+  fieldLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.text },
+  fieldOptional: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted },
   input: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.paper.DEFAULT,
+    backgroundColor: "#f5f3ec",
     borderWidth: 1,
-    borderColor: "rgba(22,23,15,0.06)",
+    borderColor: "transparent",
     borderRadius: 16,
     paddingHorizontal: 15,
     height: 52,
   },
-  inputFocused: {
-    backgroundColor: "#ffffff",
-    borderColor: colors.olive[600],
-    shadowColor: colors.olive[600],
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  inputError: { borderColor: colors.light.destructive },
+  inputFocused: { backgroundColor: C.card, borderColor: C.accent },
+  inputError: { borderColor: C.rust, backgroundColor: "rgba(184,92,58,0.05)" },
   inputText: {
     flex: 1,
     fontFamily: fontFamilies.sans.medium,
     fontSize: 15,
-    color: INK,
+    color: C.text,
     height: "100%",
   },
   validDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.olive[600],
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 8,
   },
-  errorText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.light.destructive,
-    paddingHorizontal: 2,
-  },
-  hintText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.ink.mute,
-    paddingHorizontal: 2,
-  },
+  errorText: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.rust, paddingHorizontal: 2 },
+  hintText: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted, paddingHorizontal: 2 },
 
   // Default toggle
   defaultRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: "rgba(83,94,44,0.14)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: C.accentSoft,
     borderRadius: 18,
-    gap: spacing[3],
+    gap: 12,
   },
-  defaultTitle: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: INK,
-  },
-  defaultSubtitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.ink.mute,
-    marginTop: 2,
-  },
+  defaultTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  defaultSubtitle: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted, marginTop: 2 },
 
   // Footer
   footer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
-    paddingBottom: spacing[3],
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
     borderTopWidth: 1,
-    borderTopColor: HAIRLINE,
-    backgroundColor: colors.paper.cream,
+    borderTopColor: C.line,
+    backgroundColor: C.paper,
   },
   cancelBtn: {
     height: 56,
-    paddingHorizontal: spacing[5],
-    borderRadius: radii.full,
+    paddingHorizontal: 22,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: "rgba(22,23,15,0.14)",
     alignItems: "center",
     justifyContent: "center",
   },
-  cancelText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    color: INK,
-  },
-  saveBtn: {
-    flex: 1,
-    borderRadius: radii.full,
-    overflow: "hidden",
-    ...shadows.editorial,
-  },
+  cancelText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: C.text },
+  saveBtn: { flex: 1, borderRadius: 28, overflow: "hidden" },
   saveGradient: {
     height: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingLeft: 24,
+    paddingLeft: 22,
     paddingRight: 6,
+    backgroundColor: C.ink,
   },
-  saveText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    letterSpacing: 0.2,
-    color: colors.paper.cream,
-  },
+  saveText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, color: C.cream },
   saveArrow: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: GOLD,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },

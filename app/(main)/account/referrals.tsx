@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   RefreshControl,
   ScrollView,
   Share,
@@ -18,20 +17,15 @@ import {
 import * as Clipboard from "expo-clipboard";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { getReferralInfo, applyReferralCode } from "@/lib/api";
 import { isValidReferralCode } from "@/lib/api/backend";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { UserPageFrame, UP as C } from "@/components/user/user-page";
 
 const REWARD_POINTS = 100;
-const GOLD = colors.accent2.ochre;
-const GOLD_DEEP = "#85651b";
-const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 
 const STEPS: {
   icon: keyof typeof Ionicons.glyphMap;
@@ -164,7 +158,7 @@ export default function ReferralsScreen() {
             accessibilityLabel="Refresh"
           >
             {q.isFetching && !q.isLoading ? (
-              <ActivityIndicator size="small" color={GOLD} />
+              <ActivityIndicator size="small" color={C.accent} />
             ) : (
               <Ionicons
                 name="refresh-outline"
@@ -179,7 +173,7 @@ export default function ReferralsScreen() {
       <SafeAreaView style={styles.container} edges={[]}>
         {q.isLoading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color={GOLD} size="small" />
+            <ActivityIndicator color={C.accent} size="small" />
             <Text style={styles.loadingText}>Loading your invite…</Text>
           </View>
         ) : q.isError || !q.data ? (
@@ -215,198 +209,168 @@ export default function ReferralsScreen() {
               <RefreshControl
                 refreshing={q.isFetching && !q.isLoading}
                 onRefresh={() => q.refetch()}
-                tintColor={GOLD}
+                tintColor={C.accent}
               />
             }
           >
-            {/* Heading */}
-            <View style={styles.pageHead}>
-              <Text style={styles.eyebrow}>Patron circle</Text>
-              <Text style={styles.pageTitle}>
-                Invite a friend,{" "}
-                <Text style={styles.pageTitleAccent}>
-                  earn {REWARD_POINTS} points.
-                </Text>
-              </Text>
-              <Text style={styles.pageSub}>
-                When someone you invite places their first order,{" "}
-                {REWARD_POINTS} loyalty points are credited to you.
-              </Text>
-            </View>
-
-            {/* Invite code card */}
-            <LinearGradient
-              colors={["#22241a", "#15160f"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.hero}
-            >
-              <Text style={styles.heroEyebrow}>Your invitation code</Text>
-
-              <TouchableOpacity
-                style={styles.codeBox}
-                activeOpacity={0.8}
-                onPress={handleCopy}
-                disabled={!code}
-                accessibilityRole="button"
-                accessibilityLabel="Copy invitation code"
-              >
-                <Text style={styles.codeText}>{code || "—"}</Text>
-                <View style={styles.codeCopyIcon}>
-                  <Ionicons
-                    name={copied ? "checkmark" : "copy-outline"}
-                    size={15}
-                    color={colors.olive[900]}
-                  />
+            {/* Invite card */}
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <View style={styles.heroTop}>
+                  <View style={styles.heroIcon}>
+                    <Ionicons name="people" size={22} color={C.accent} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.heroTitle}>
+                      Invite friends, earn {REWARD_POINTS} pts
+                    </Text>
+                    <Text style={styles.heroSub}>
+                      Credited when they place their first order.
+                    </Text>
+                  </View>
                 </View>
-              </TouchableOpacity>
-
-              <Text style={styles.heroSub}>
-                Tap the code to copy your link, or send it straight from here.
-              </Text>
-
-              <View style={styles.heroActions}>
-                <TouchableOpacity
-                  style={styles.shareBtn}
-                  activeOpacity={0.88}
-                  onPress={handleShare}
-                  disabled={!code}
-                  accessibilityRole="button"
-                >
-                  <Ionicons
-                    name="paper-plane-outline"
-                    size={14}
-                    color={colors.olive[900]}
-                  />
-                  <Text style={styles.shareBtnText}>Share code</Text>
-                </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.copyBtn}
+                  style={styles.codeBox}
                   activeOpacity={0.8}
                   onPress={handleCopy}
                   disabled={!code}
                   accessibilityRole="button"
+                  accessibilityLabel="Copy invitation code"
                 >
-                  <Ionicons
-                    name={copied ? "checkmark" : "link-outline"}
-                    size={14}
-                    color="#E8CF8F"
-                  />
-                  <Text style={styles.copyBtnText}>
-                    {copied ? "Copied" : "Copy link"}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.codeLabel}>Your invitation code</Text>
+                    <Text style={styles.codeText} numberOfLines={1} adjustsFontSizeToFit>
+                      {code || "—"}
+                    </Text>
+                  </View>
+                  <View style={styles.codeCopyIcon}>
+                    <Ionicons
+                      name={copied ? "checkmark" : "copy-outline"}
+                      size={17}
+                      color={C.lime}
+                    />
+                  </View>
                 </TouchableOpacity>
-              </View>
-            </LinearGradient>
 
-            {/* Stats strip */}
-            <View style={styles.statsStrip}>
-              {stats.map((s, i) => (
-                <View
-                  key={s.label}
-                  style={[styles.statCell, i > 0 && styles.statDivider]}
-                >
-                  <Text
-                    style={[
-                      styles.statValue,
-                      s.value === 0 && styles.statValueMuted,
-                    ]}
+                <View style={styles.heroActions}>
+                  <TouchableOpacity
+                    style={styles.shareBtn}
+                    activeOpacity={0.88}
+                    onPress={handleShare}
+                    disabled={!code}
+                    accessibilityRole="button"
                   >
-                    {s.value}
-                  </Text>
-                  <Text style={styles.statLabel}>{s.label}</Text>
+                    <Ionicons name="paper-plane-outline" size={16} color={C.lime} />
+                    <Text style={styles.shareBtnText}>Share code</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.copyBtn}
+                    activeOpacity={0.8}
+                    onPress={handleCopy}
+                    disabled={!code}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={copied ? "checkmark" : "link-outline"}
+                      size={16}
+                      color={C.text}
+                    />
+                    <Text style={styles.copyBtnText}>
+                      {copied ? "Copied" : "Copy link"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              ))}
+
+                <View style={styles.statsStrip}>
+                  {stats.map((s, i) => (
+                    <React.Fragment key={s.label}>
+                      {i > 0 ? <View style={styles.statDivider} /> : null}
+                      <View
+                        style={styles.statCell}
+                        accessible
+                        accessibilityLabel={`${s.value} ${s.label}`}
+                      >
+                        <Text style={styles.statValue}>{s.value}</Text>
+                        <Text style={styles.statLabel}>{s.label}</Text>
+                      </View>
+                    </React.Fragment>
+                  ))}
+                </View>
+              </View>
             </View>
 
             {/* Apply a friend's code */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardEyebrow}>Have an invitation?</Text>
-                  <Text style={styles.cardTitle}>
-                    Link a friend&apos;s code
-                  </Text>
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>Have an invitation?</Text>
+                    <Text style={styles.cardSub}>
+                      Enter a friend&apos;s code once — they&apos;re credited
+                      when you place your first order.
+                    </Text>
+                  </View>
+                  <View style={styles.oneTimeTag}>
+                    <Text style={styles.oneTimeTagText}>One-time</Text>
+                  </View>
                 </View>
-                <View style={styles.oneTimeTag}>
-                  <Text style={styles.oneTimeTagText}>One-time</Text>
-                </View>
-              </View>
 
-              <Text style={styles.cardSub}>
-                Enter their code once — their account is credited when you place
-                your first order.
-              </Text>
-
-              <View style={styles.applyInputRow}>
-                <Ionicons
-                  name="ticket-outline"
-                  size={17}
-                  color={colors.light.mutedForeground}
-                />
-                <TextInput
-                  value={applyCode}
-                  onChangeText={(v) => setApplyCode(v.toUpperCase())}
-                  placeholder="e.g. 3D4E8770"
-                  placeholderTextColor={colors.light.mutedForeground}
-                  style={styles.applyInputText}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={12}
-                />
-                {applyCode.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setApplyCode("")}
-                    hitSlop={8}
-                  >
-                    <Ionicons
-                      name="close-circle"
-                      size={16}
-                      color={colors.light.mutedForeground}
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.applyBtn,
-                  (!applyCode.trim() || applying) && styles.applyBtnDisabled,
-                ]}
-                onPress={handleApply}
-                disabled={!applyCode.trim() || applying}
-                activeOpacity={0.88}
-                accessibilityRole="button"
-                accessibilityLabel="Apply invitation code"
-              >
-                <Text style={styles.applyBtnText}>
-                  {applying ? "Applying…" : "Apply code"}
-                </Text>
-                <View style={styles.applyBtnArrow}>
-                  {applying ? (
-                    <ActivityIndicator size="small" color={colors.olive[900]} />
-                  ) : (
-                    <Ionicons
-                      name="arrow-forward"
-                      size={14}
-                      color={colors.olive[900]}
-                    />
+                <View style={styles.applyInputRow}>
+                  <Ionicons name="ticket-outline" size={18} color={C.muted} />
+                  <TextInput
+                    value={applyCode}
+                    onChangeText={(v) => setApplyCode(v.toUpperCase())}
+                    placeholder="Enter code"
+                    placeholderTextColor={C.faint}
+                    style={styles.applyInputText}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={12}
+                  />
+                  {applyCode.length > 0 && (
+                    <TouchableOpacity onPress={() => setApplyCode("")} hitSlop={8}>
+                      <Ionicons name="close-circle" size={18} color={C.faint} />
+                    </TouchableOpacity>
                   )}
                 </View>
-              </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.applyBtn,
+                    (!applyCode.trim() || applying) && styles.applyBtnDisabled,
+                  ]}
+                  onPress={handleApply}
+                  disabled={!applyCode.trim() || applying}
+                  activeOpacity={0.88}
+                  accessibilityRole="button"
+                  accessibilityLabel="Apply invitation code"
+                >
+                  <Text style={styles.applyBtnText}>
+                    {applying ? "Applying…" : "Apply code"}
+                  </Text>
+                  <View style={styles.applyBtnArrow}>
+                    {applying ? (
+                      <ActivityIndicator size="small" color={C.ink} />
+                    ) : (
+                      <Ionicons name="arrow-forward" size={16} color={C.ink} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* How it works */}
+            <View style={styles.cardShadow}>
             <View style={styles.card}>
-              <Text style={styles.cardEyebrow}>How it works</Text>
+              <Text style={styles.cardTitle}>How it works</Text>
               {STEPS.map((s, i) => (
                 <View
                   key={s.title}
                   style={[styles.stepRow, i > 0 && styles.rowDivider]}
                 >
                   <View style={styles.stepIcon}>
-                    <Ionicons name={s.icon} size={16} color={GOLD_DEEP} />
+                    <Ionicons name={s.icon} size={18} color={C.accent} />
                     <View style={styles.stepNum}>
                       <Text style={styles.stepNumText}>{i + 1}</Text>
                     </View>
@@ -418,16 +382,13 @@ export default function ReferralsScreen() {
                 </View>
               ))}
             </View>
+            </View>
 
             {/* Activity */}
             {referrals.length > 0 && (
+              <View style={styles.cardShadow}>
               <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View>
-                    <Text style={styles.cardEyebrow}>Invitation log</Text>
-                    <Text style={styles.cardTitle}>Recent activity</Text>
-                  </View>
-                </View>
+                <Text style={styles.cardTitle}>Recent activity</Text>
 
                 {referrals.slice(0, 8).map((r, i) => (
                   <View
@@ -447,11 +408,7 @@ export default function ReferralsScreen() {
                             : "time-outline"
                         }
                         size={14}
-                        color={
-                          r.status === "completed"
-                            ? colors.paper.cream
-                            : GOLD_DEEP
-                        }
+                        color={r.status === "completed" ? C.lime : C.accent}
                       />
                     </View>
                     <View style={styles.activityBody}>
@@ -480,6 +437,7 @@ export default function ReferralsScreen() {
                   </View>
                 ))}
               </View>
+              </View>
             )}
           </ScrollView>
         )}
@@ -488,431 +446,246 @@ export default function ReferralsScreen() {
   );
 }
 
-const styles = withUserTheme(
-  StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    loadingWrap: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 12,
-    },
-    loadingText: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 14,
-      color: colors.light.mutedForeground,
-    },
-    centerError: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: spacing[8],
-      gap: 8,
-    },
-    errorIcon: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: colors.paper.warm,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 4,
-    },
-    errorTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 20,
-      color: colors.light.foreground,
-      textAlign: "center",
-    },
-    errorSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13,
-      color: colors.light.mutedForeground,
-      textAlign: "center",
-    },
-    secondaryBtn: {
-      marginTop: 8,
-      paddingHorizontal: 20,
-      height: 40,
-      justifyContent: "center",
-      borderRadius: radii.full,
-      borderWidth: 1,
-      borderColor: colors.light.border,
-    },
-    secondaryBtnText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 13,
-      color: colors.light.foreground,
-    },
+const SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
 
-    /* Nav */
-    navBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: spacing[5],
-      paddingVertical: spacing[2.5],
-    },
-    navBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: colors.paper.cream,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-    },
-    navTitle: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 15,
-      color: colors.light.foreground,
-    },
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "transparent" },
+  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  loadingText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: C.muted },
+  centerError: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing[8],
+    gap: 8,
+  },
+  errorIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  errorTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, color: C.text, textAlign: "center" },
+  errorSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: C.muted, textAlign: "center" },
+  secondaryBtn: {
+    marginTop: 10,
+    paddingHorizontal: 22,
+    height: 46,
+    justifyContent: "center",
+    borderRadius: 23,
+    backgroundColor: C.ink,
+  },
+  secondaryBtnText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.cream },
 
-    scrollContent: {
-      paddingHorizontal: spacing[5],
-      paddingTop: spacing[2],
-      gap: 14,
-    },
+  navBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 2, gap: 16 },
 
-    /* Heading */
-    pageHead: {
-      marginBottom: spacing[2],
-    },
-    eyebrow: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      letterSpacing: 1.6,
-      textTransform: "uppercase",
-      color: GOLD_DEEP,
-      marginBottom: 4,
-    },
-    pageTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 32,
-      letterSpacing: -0.6,
-      lineHeight: 38,
-      color: colors.light.foreground,
-    },
-    pageTitleAccent: {
-      fontFamily: fontFamilies.sans.medium,
-      color: GOLD_DEEP,
-    },
-    pageSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13.5,
-      lineHeight: 20,
-      color: colors.light.mutedForeground,
-      marginTop: 6,
-      maxWidth: 320,
-    },
+  cardShadow: { borderRadius: 26, backgroundColor: C.card, ...SHADOW },
+  card: {
+    backgroundColor: C.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.line,
+    gap: 14,
+  },
 
-    /* Invite code card */
-    hero: {
-      borderRadius: 24,
-      padding: spacing[5],
-      gap: spacing[3],
-      ...shadows.editorial,
-    },
-    heroEyebrow: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      letterSpacing: 1.6,
-      textTransform: "uppercase",
-      color: "rgba(232, 207, 143, 0.85)",
-    },
-    codeBox: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      backgroundColor: "rgba(250, 248, 241, 0.07)",
-      borderWidth: 1,
-      borderColor: "rgba(200, 164, 74, 0.4)",
-      borderRadius: 18,
-      paddingLeft: spacing[4],
-      paddingRight: 6,
-      paddingVertical: 6,
-    },
-    codeText: {
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 22,
-      letterSpacing: 3,
-      color: "#E8CF8F",
-    },
-    codeCopyIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 14,
-      backgroundColor: "#E8CF8F",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    heroSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 12,
-      lineHeight: 17,
-      color: "rgba(250, 248, 241, 0.6)",
-    },
-    heroActions: {
-      flexDirection: "row",
-      gap: 10,
-      marginTop: 2,
-    },
-    shareBtn: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 7,
-      height: 48,
-      borderRadius: radii.full,
-      backgroundColor: "#E8CF8F",
-    },
-    shareBtnText: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 14,
-      color: colors.olive[900],
-    },
-    copyBtn: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 7,
-      height: 48,
-      borderRadius: radii.full,
-      backgroundColor: "rgba(250, 248, 241, 0.08)",
-      borderWidth: 1,
-      borderColor: "rgba(250, 248, 241, 0.15)",
-    },
-    copyBtnText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 14,
-      color: "#E8CF8F",
-    },
+  /* Invite card */
+  heroTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+  heroIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  heroTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, letterSpacing: -0.4, color: C.text },
+  heroSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 2 },
+  codeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#f5f3ec",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "rgba(22,23,15,0.16)",
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 10,
+  },
+  codeLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted },
+  codeText: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 22,
+    letterSpacing: 3,
+    color: C.text,
+    marginTop: 2,
+  },
+  codeCopyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.ink,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroActions: { flexDirection: "row", gap: 10 },
+  shareBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: C.ink,
+  },
+  shareBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14.5, color: C.cream },
+  copyBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.14)",
+  },
+  copyBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14.5, color: C.text },
 
-    /* Stats strip */
-    statsStrip: {
-      flexDirection: "row",
-      backgroundColor: colors.paper.cream,
-      borderRadius: radii["2xl"],
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      paddingVertical: spacing[3.5],
-    },
-    statCell: {
-      flex: 1,
-      alignItems: "center",
-      gap: 2,
-    },
-    statDivider: {
-      borderLeftWidth: StyleSheet.hairlineWidth,
-      borderLeftColor: colors.light.border,
-    },
-    statValue: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 22,
-      color: colors.light.foreground,
-    },
-    statValueMuted: {
-      color: colors.olive[300],
-    },
-    statLabel: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 9.5,
-      letterSpacing: 0.8,
-      textTransform: "uppercase",
-      color: colors.light.mutedForeground,
-    },
+  /* Stats strip */
+  statsStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+  },
+  statCell: { flex: 1, alignItems: "center", gap: 2 },
+  statDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
+  statValue: { fontFamily: fontFamilies.sans.bold, fontSize: 20, color: C.cream, fontVariant: ["tabular-nums"] },
+  statLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "rgba(250,248,241,0.6)" },
 
-    /* Cards */
-    card: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 24,
-      padding: spacing[5],
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      gap: spacing[2],
-    },
-    cardHeader: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-    },
-    cardEyebrow: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      letterSpacing: 1.4,
-      textTransform: "uppercase",
-      color: GOLD_DEEP,
-      marginBottom: 3,
-    },
-    cardTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 20,
-      letterSpacing: -0.3,
-      color: colors.light.foreground,
-    },
-    cardSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 12.5,
-      lineHeight: 18,
-      color: colors.light.mutedForeground,
-    },
-    oneTimeTag: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: radii.full,
-      backgroundColor: "rgba(200, 164, 74, 0.14)",
-    },
-    oneTimeTagText: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 9,
-      letterSpacing: 0.8,
-      textTransform: "uppercase",
-      color: GOLD_DEEP,
-    },
+  /* Cards */
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  cardTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+  cardSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, lineHeight: 18, color: C.muted, marginTop: 3 },
+  oneTimeTag: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 13,
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  oneTimeTagText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.accent },
+  applyInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 52,
+    backgroundColor: "#f5f3ec",
+    borderRadius: 16,
+    paddingHorizontal: 15,
+  },
+  applyInputText: {
+    flex: 1,
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 16,
+    letterSpacing: 1.5,
+    color: C.text,
+    padding: 0,
+  },
+  applyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 56,
+    paddingLeft: 22,
+    paddingRight: 6,
+    borderRadius: 28,
+    backgroundColor: C.ink,
+  },
+  applyBtnDisabled: { opacity: 0.35 },
+  applyBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: C.cream },
+  applyBtnArrow: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.lime,
+  },
 
-    applyInputRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      backgroundColor: colors.paper.warm,
-      borderRadius: radii.xl,
-      paddingHorizontal: 14,
-      paddingVertical: Platform.OS === "ios" ? 13 : 9,
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      marginTop: 4,
-    },
-    applyInputText: {
-      flex: 1,
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 15,
-      letterSpacing: 1.5,
-      color: colors.light.foreground,
-      padding: 0,
-    },
-    applyBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      height: 52,
-      paddingLeft: 20,
-      paddingRight: 6,
-      borderRadius: radii.full,
-      backgroundColor: "#15160f",
-      marginTop: 6,
-    },
-    applyBtnDisabled: {
-      opacity: 0.55,
-    },
-    applyBtnText: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 14.5,
-      color: colors.paper.cream,
-    },
-    applyBtnArrow: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.paper.cream,
-    },
+  /* Steps */
+  stepRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: C.line },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNum: {
+    position: "absolute",
+    top: -3,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: C.ink,
+    borderWidth: 2,
+    borderColor: C.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepNumText: { fontFamily: fontFamilies.sans.bold, fontSize: 10, color: C.lime },
+  stepBody: { flex: 1, gap: 2 },
+  stepTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 14.5, color: C.text },
+  stepDesc: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, lineHeight: 17, color: C.muted },
 
-    /* Steps */
-    stepRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: spacing[3],
-      paddingVertical: spacing[3.5],
-    },
-    rowDivider: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.light.border,
-    },
-    stepIcon: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      backgroundColor: "rgba(200, 164, 74, 0.12)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    stepNum: {
-      position: "absolute",
-      top: -3,
-      right: -3,
-      width: 15,
-      height: 15,
-      borderRadius: 7.5,
-      backgroundColor: GOLD,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    stepNumText: {
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 8.5,
-      color: colors.olive[950],
-    },
-    stepBody: {
-      flex: 1,
-      gap: 2,
-    },
-    stepTitle: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 13.5,
-      color: colors.light.foreground,
-    },
-    stepDesc: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 12,
-      lineHeight: 17,
-      color: colors.light.mutedForeground,
-    },
-
-    /* Activity */
-    activityRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing[3],
-      paddingVertical: 10,
-    },
-    activityIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: "rgba(200, 164, 74, 0.12)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    activityIconDone: {
-      backgroundColor: colors.olive[700],
-    },
-    activityBody: {
-      flex: 1,
-      gap: 1,
-    },
-    activityStatus: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 13,
-      color: colors.light.foreground,
-    },
-    activityDate: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 11.5,
-      color: colors.light.mutedForeground,
-    },
-    activityPoints: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 13,
-      color: colors.olive[700],
-    },
-    activityPointsPending: {
-      color: colors.light.mutedForeground,
-    },
-  }),
-);
+  /* Activity */
+  activityRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  activityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityIconDone: { backgroundColor: C.ink },
+  activityBody: { flex: 1, gap: 1 },
+  activityStatus: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  activityDate: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
+  activityPoints: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.accent },
+  activityPointsPending: { color: C.muted },
+});

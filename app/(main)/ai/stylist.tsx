@@ -13,8 +13,9 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AiPageShell } from "@/components/ai/AiPageShell";
+import { UP as C } from "@/components/user/user-page";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import {
@@ -22,12 +23,9 @@ import {
   type StylistChatPiece,
 } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const GOLD = colors.accent2.ochre;
-const CREAM = colors.paper.cream;
-const INK = colors.ink.DEFAULT;
+const SOFT = "#f5f3ec";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -77,19 +75,15 @@ function PressableScale({
 
 function StylistAvatar() {
   return (
-    <LinearGradient
-      colors={["#e6c873", GOLD, "#9c7a2c"]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={s.avatar}
-    >
-      <Ionicons name="sparkles" size={12} color={colors.olive[950]} />
-    </LinearGradient>
+    <View style={s.avatar}>
+      <Ionicons name="sparkles" size={14} color={C.lime} />
+    </View>
   );
 }
 
 export default function AiStylistScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
@@ -166,7 +160,8 @@ export default function AiStylistScreen() {
       <KeyboardAvoidingView
         style={s.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        // Header (~70) + tool tabs (~58) sit above this view.
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 128 : 0}
       >
         <ScrollView
           ref={scrollRef}
@@ -174,113 +169,93 @@ export default function AiStylistScreen() {
           contentContainerStyle={empty ? s.introScroll : s.thread}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={scrollToEnd}
+          onContentSizeChange={() => {
+            if (!empty) scrollToEnd();
+          }}
         >
           {empty ? (
             <>
-              <View style={s.hero}>
-                <Text style={s.heroEyebrow}>LUXE AI · AI STYLIST</Text>
-                <Text style={s.heroTitle}>
-                  Tell me the vibe.{"\n"}
-                  <Text style={s.heroTitleItalic}>I'll build the look.</Text>
-                </Text>
-                <Text style={s.heroSub}>
-                  Occasion, mood or budget — chat your way to a shoppable outfit
-                  made from live pieces.
-                </Text>
-              </View>
-
-              <View style={s.section}>
-                <View style={s.sectionHeader}>
-                  <Text style={s.eyebrow}>Inspiration</Text>
-                  <Text style={s.sectionTitle}>Try asking</Text>
-                </View>
-                <View style={s.promptGrid}>
-                  {INTRO_PROMPTS.map((p) => (
-                    <PressableScale
-                      key={p.text}
-                      style={s.promptCard}
-                      onPress={() => send(p.text)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Ask: ${p.text}`}
-                    >
-                      <View style={s.promptTop}>
-                        <View style={s.promptIcon}>
-                          <Ionicons name={p.icon} size={16} color={colors.olive[700]} />
-                        </View>
-                        <Ionicons
-                          name="arrow-forward"
-                          size={14}
-                          color={colors.light.mutedForeground}
-                          style={s.promptArrow}
-                        />
-                      </View>
-                      <Text style={s.promptTag}>{p.tag}</Text>
-                      <Text style={s.promptText} numberOfLines={2}>
-                        “{p.text}”
-                      </Text>
-                    </PressableScale>
-                  ))}
+              <View style={s.cardShadow}>
+                <View style={[s.card, s.introCard]}>
+                  <View style={s.iconCircle}>
+                    <Ionicons name="chatbubble-ellipses" size={22} color={C.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.introTitle}>Tell me the vibe</Text>
+                    <Text style={s.introSub}>
+                      Occasion, mood or budget — I&apos;ll build a shoppable look from live
+                      pieces.
+                    </Text>
+                  </View>
                 </View>
               </View>
 
-              <View style={s.section}>
-                <View style={s.sectionHeader}>
-                  <Text style={s.eyebrow}>How it works</Text>
-                  <Text style={s.sectionTitle}>Your personal stylist</Text>
-                </View>
-                <View style={s.stepsCard}>
-                  {STEPS.map((step, i) => (
-                    <React.Fragment key={step.title}>
-                      {i > 0 ? <View style={s.stepDivider} /> : null}
-                      <View style={s.step}>
-                        <View style={s.stepIcon}>
-                          <Ionicons name={step.icon} size={17} color={GOLD} />
-                          <View style={s.stepNum}>
-                            <Text style={s.stepNumText}>{i + 1}</Text>
-                          </View>
-                        </View>
-                        <Text style={s.stepTitle}>{step.title}</Text>
-                        <Text style={s.stepBody}>{step.body}</Text>
+              <Text style={s.sectionTitle}>Try asking</Text>
+              <View style={s.promptGrid}>
+                {INTRO_PROMPTS.map((p) => (
+                  <PressableScale
+                    key={p.text}
+                    style={s.promptCard}
+                    onPress={() => send(p.text)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ask: ${p.text}`}
+                  >
+                    <View style={s.promptTop}>
+                      <View style={s.promptIcon}>
+                        <Ionicons name={p.icon} size={18} color={C.accent} />
                       </View>
-                    </React.Fragment>
-                  ))}
-                </View>
-                {!user && (
-                  <Text style={s.signInNote}>
-                    You'll be asked to sign in when you send your first message.
+                      <View style={s.promptArrow}>
+                        <Ionicons name="arrow-forward" size={14} color={C.text} />
+                      </View>
+                    </View>
+                    <Text style={s.promptTag}>{p.tag}</Text>
+                    <Text style={s.promptText} numberOfLines={3}>
+                      {p.text}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </View>
+
+              <Text style={s.sectionTitle}>How it works</Text>
+              <View style={s.stepsStrip}>
+                {STEPS.map((step, i) => (
+                  <React.Fragment key={step.title}>
+                    {i > 0 ? <View style={s.stepRule} /> : null}
+                    <View style={s.step}>
+                      <View style={s.stepNum}>
+                        <Text style={s.stepNumText}>{i + 1}</Text>
+                      </View>
+                      <Text style={s.stepTitle}>{step.title}</Text>
+                      <Text style={s.stepBody}>{step.body}</Text>
+                    </View>
+                  </React.Fragment>
+                ))}
+              </View>
+              {!user && (
+                <View style={s.signInNote}>
+                  <Ionicons name="lock-closed-outline" size={14} color={C.muted} />
+                  <Text style={s.signInText}>
+                    You&apos;ll be asked to sign in when you send your first message.
                   </Text>
-                )}
-              </View>
+                </View>
+              )}
             </>
           ) : (
             <>
               {turns.map((t) => {
                 if (t.kind === "user") {
                   return (
-                    <LinearGradient
-                      key={t.id}
-                      colors={["#39412c", colors.olive[950]]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={s.userBubble}
-                    >
+                    <View key={t.id} style={s.userBubble}>
                       <Text style={s.userBubbleText}>{t.text}</Text>
-                    </LinearGradient>
+                    </View>
                   );
                 }
                 if (t.kind === "error") {
                   return (
                     <View key={t.id} style={s.errorBubble}>
                       <View style={s.errorRow}>
-                        <Ionicons
-                          name="alert-circle-outline"
-                          size={15}
-                          color={colors.accent2.rust}
-                        />
-                        <Text style={s.errorText}>
-                          {t.text || "Something went wrong"}
-                        </Text>
+                        <Ionicons name="alert-circle-outline" size={16} color={C.rust} />
+                        <Text style={s.errorText}>{t.text || "Something went wrong"}</Text>
                       </View>
                       <PressableScale
                         style={s.retryChip}
@@ -291,7 +266,7 @@ export default function AiStylistScreen() {
                         accessibilityRole="button"
                         accessibilityLabel="Try again"
                       >
-                        <Ionicons name="refresh" size={11} color={CREAM} />
+                        <Ionicons name="refresh" size={13} color={C.lime} />
                         <Text style={s.retryChipText}>Try again</Text>
                       </PressableScale>
                     </View>
@@ -304,11 +279,11 @@ export default function AiStylistScreen() {
                       <Text style={s.assistantText}>{t.reply}</Text>
                       {t.pieces.length > 0 && (
                         <View style={s.pieceList}>
-                          {t.pieces.map((p) => (
+                          {t.pieces.map((p, i) => (
                             <PressableScale
                               key={p.id}
                               scale={0.98}
-                              style={s.pieceRow}
+                              style={[s.pieceRow, i === 0 && s.pieceRowFirst]}
                               onPress={() => openProduct(p.slug)}
                               accessibilityRole="button"
                               accessibilityLabel={`View ${p.name}`}
@@ -322,16 +297,14 @@ export default function AiStylistScreen() {
                                 />
                               ) : (
                                 <View style={[s.pieceImg, s.pieceImgEmpty]}>
-                                  <Ionicons
-                                    name="shirt-outline"
-                                    size={15}
-                                    color={colors.light.mutedForeground}
-                                  />
+                                  <Ionicons name="shirt-outline" size={16} color={C.muted} />
                                 </View>
                               )}
-                              <View style={{ flex: 1 }}>
+                              <View style={{ flex: 1, minWidth: 0 }}>
                                 {p.slot ? (
-                                  <Text style={s.pieceSlot}>{p.slot.toUpperCase()}</Text>
+                                  <Text style={s.pieceSlot}>
+                                    {p.slot.charAt(0).toUpperCase() + p.slot.slice(1)}
+                                  </Text>
                                 ) : null}
                                 <Text numberOfLines={1} style={s.pieceName}>
                                   {p.name}
@@ -340,16 +313,12 @@ export default function AiStylistScreen() {
                                   {formatPrice(p.price, p.currency ?? "LKR")}
                                 </Text>
                               </View>
-                              <Ionicons
-                                name="chevron-forward"
-                                size={14}
-                                color={colors.light.mutedForeground}
-                              />
+                              <Ionicons name="chevron-forward" size={15} color={C.muted} />
                             </PressableScale>
                           ))}
                           {typeof t.total === "number" && t.total > 0 && (
                             <View style={s.totalRow}>
-                              <Text style={s.totalLabel}>FULL LOOK</Text>
+                              <Text style={s.totalLabel}>Full look</Text>
                               <Text style={s.totalValue}>
                                 {formatPrice(t.total, t.pieces[0]?.currency ?? "LKR")}
                               </Text>
@@ -362,11 +331,9 @@ export default function AiStylistScreen() {
                           {t.suggestions.map((sg) => (
                             <Pressable
                               key={sg}
-                              style={({ pressed }) => [
-                                s.suggChip,
-                                pressed && { opacity: 0.85 },
-                              ]}
+                              style={({ pressed }) => [s.suggChip, pressed && { opacity: 0.7 }]}
                               onPress={() => send(sg)}
+                              disabled={sending}
                               accessibilityRole="button"
                               accessibilityLabel={sg}
                             >
@@ -383,7 +350,6 @@ export default function AiStylistScreen() {
                 <View style={s.assistantRow}>
                   <StylistAvatar />
                   <View style={s.statusPill}>
-                    <Ionicons name="sparkles" size={12} color={GOLD} />
                     <Text style={s.statusText}>Styling your look…</Text>
                   </View>
                 </View>
@@ -392,23 +358,18 @@ export default function AiStylistScreen() {
           )}
         </ScrollView>
 
-        <View style={s.composerShadow}>
-          <LinearGradient
-            colors={["#22271a", colors.olive[950], "#0b0c07"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={s.composerBar}
-          >
-            <View style={s.composerGlow} />
+        <View style={s.composerWrap}>
+          <View style={s.composerBar}>
             {!empty && (
               <Pressable
                 onPress={reset}
+                disabled={sending}
                 hitSlop={6}
                 accessibilityRole="button"
                 accessibilityLabel="Start a new chat"
-                style={({ pressed }) => [s.ghostBtn, pressed && { opacity: 0.6 }]}
+                style={({ pressed }) => [s.ghostBtn, (pressed || sending) && { opacity: 0.5 }]}
               >
-                <Ionicons name="add" size={18} color={CREAM} />
+                <Ionicons name="add" size={20} color={C.text} />
               </Pressable>
             )}
             <TextInput
@@ -416,11 +377,13 @@ export default function AiStylistScreen() {
               value={input}
               onChangeText={setInput}
               placeholder="Ask your stylist…"
-              placeholderTextColor={`${CREAM}59`}
-              selectionColor={GOLD}
+              placeholderTextColor="#a3a39a"
+              selectionColor={C.accent}
               multiline
               maxLength={1000}
               editable={!sending}
+              // Multiline inputs swallow Return as a newline unless told to submit.
+              submitBehavior="submit"
               onSubmitEditing={() => send()}
               returnKeyType="send"
             />
@@ -429,18 +392,11 @@ export default function AiStylistScreen() {
               disabled={!canSend}
               accessibilityRole="button"
               accessibilityLabel="Send message"
-              style={[s.sendWrap, !canSend && { opacity: 0.45 }]}
+              style={[s.sendBtn, !canSend && { opacity: 0.35 }]}
             >
-              <LinearGradient
-                colors={["#e6c873", GOLD, "#a8862f"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={s.sendBtn}
-              >
-                <Ionicons name="arrow-up" size={16} color={colors.olive[950]} />
-              </LinearGradient>
+              <Ionicons name="arrow-up" size={18} color={C.ink} />
             </PressableScale>
-          </LinearGradient>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </AiPageShell>
@@ -449,406 +405,271 @@ export default function AiStylistScreen() {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
+  introScroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24 },
+  thread: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 14 },
 
-  introScroll: { paddingBottom: spacing[8] },
-  hero: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[5],
-    gap: spacing[2],
-  },
-  heroEyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    letterSpacing: 2.2,
-    color: colors.olive[600],
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.8,
-    color: INK,
-  },
-  heroTitleItalic: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
-  heroSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.light.mutedForeground,
-    maxWidth: 320,
-  },
-
-  section: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[6],
-    gap: spacing[4],
-  },
-  sectionHeader: { gap: 3 },
-  eyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10.5,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    letterSpacing: -0.3,
-    color: INK,
-  },
-  promptGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing[3],
-  },
-  promptCard: {
-    flexBasis: "47%",
-    flexGrow: 1,
-    minHeight: 132,
-    padding: spacing[4],
-    borderRadius: radii["3xl"],
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: `${INK}0D`,
-    shadowColor: INK,
+  cardShadow: {
+    borderRadius: 26,
+    shadowColor: "#16170f",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.06,
     shadowRadius: 18,
     elevation: 3,
   },
-  promptTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: spacing[3],
+  card: {
+    backgroundColor: C.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 16,
+    overflow: "hidden",
   },
-  promptIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  introCard: { flexDirection: "row", alignItems: "center", gap: 14 },
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[50],
   },
-  promptArrow: {
-    transform: [{ rotate: "-45deg" }],
+  introTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: C.text, letterSpacing: -0.3 },
+  introSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 18,
+    color: C.muted,
+    marginTop: 2,
   },
-  promptTag: {
+
+  sectionTitle: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: colors.olive[600],
-    marginBottom: 4,
+    fontSize: 18,
+    color: C.text,
+    letterSpacing: -0.3,
+    marginTop: 26,
+    marginBottom: 12,
   },
-  promptText: {
-    fontFamily: fontFamilies.display.italic,
-    fontSize: 15,
-    lineHeight: 20,
-    color: INK,
-  },
-  stepsCard: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    paddingVertical: spacing[4],
-    paddingHorizontal: spacing[2],
-    borderRadius: radii["3xl"],
-    backgroundColor: "#ffffff",
+  promptGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  promptCard: {
+    width: "48.5%",
+    flexGrow: 1,
+    minHeight: 150,
+    padding: 14,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: `${INK}0D`,
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    elevation: 2,
+    borderColor: C.line,
   },
-  step: {
-    flex: 1,
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: spacing[1],
-  },
-  stepDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: `${INK}1A`,
-    marginVertical: spacing[2],
-  },
-  stepIcon: {
+  promptTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  promptIcon: {
     width: 42,
     height: 42,
     borderRadius: 21,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.olive[950],
-    marginBottom: spacing[1],
   },
+  promptArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promptTag: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted, marginTop: 14 },
+  promptText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14.5,
+    lineHeight: 19,
+    color: C.text,
+    marginTop: 2,
+  },
+  stepsStrip: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    paddingVertical: 16,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+  },
+  stepRule: { width: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.16)" },
+  step: { flex: 1, alignItems: "center", paddingHorizontal: 6, gap: 4 },
   stepNum: {
-    position: "absolute",
-    top: -3,
-    right: -3,
-    width: 17,
-    height: 17,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: GOLD,
-    borderWidth: 2,
-    borderColor: "#ffffff",
-  },
-  stepNumText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8.5,
-    color: colors.olive[950],
-  },
-  stepTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: INK,
-  },
-  stepBody: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    textAlign: "center",
-    color: colors.light.mutedForeground,
-  },
-  signInNote: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    textAlign: "center",
-    color: colors.light.mutedForeground,
-  },
-
-  thread: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[4],
-    gap: spacing[3],
-  },
-  userBubble: {
-    alignSelf: "flex-end",
-    maxWidth: "82%",
-    borderRadius: radii.xl,
-    borderBottomRightRadius: radii.sm,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 4,
-  },
-  userBubbleText: {
-    fontFamily: fontFamilies.sans.regular,
-    color: CREAM,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-
-  assistantRow: { flexDirection: "row", gap: spacing[2], alignItems: "flex-start" },
-  avatar: {
     width: 28,
     height: 28,
     borderRadius: 14,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  stepNumText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: C.ink },
+  stepTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: "#FFFFFF" },
+  stepBody: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.55)",
+    textAlign: "center",
+  },
+  signInNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 16,
+  },
+  signInText: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+
+  // Thread
+  userBubble: {
+    alignSelf: "flex-end",
+    maxWidth: "82%",
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 22,
+    borderBottomRightRadius: 8,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+  },
+  userBubbleText: { fontFamily: fontFamilies.sans.medium, fontSize: 15, lineHeight: 21, color: "#FFFFFF" },
+  assistantRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 2,
   },
   assistantBubble: {
     flex: 1,
-    borderRadius: radii["2xl"],
-    borderBottomLeftRadius: radii.sm,
+    padding: 14,
+    borderRadius: 22,
+    borderTopLeftRadius: 8,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: `${INK}0D`,
-    backgroundColor: "#ffffff",
-    padding: spacing[4],
-    gap: spacing[3],
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    elevation: 2,
+    borderColor: C.line,
   },
-  assistantText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    color: colors.light.foreground,
-    lineHeight: 20,
-  },
-
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
-  },
-  statusText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: CREAM,
-  },
-
-  pieceList: { gap: spacing[2] },
+  assistantText: { fontFamily: fontFamilies.sans.regular, fontSize: 15, lineHeight: 22, color: C.text },
+  pieceList: { marginTop: 12 },
   pieceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.background,
-    padding: spacing[2],
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
-  pieceImg: { width: 48, height: 48, borderRadius: radii.md },
-  pieceImgEmpty: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.light.muted,
-  },
-  pieceSlot: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: colors.olive[600],
-  },
-  pieceName: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: colors.light.foreground,
-  },
-  piecePrice: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
-    color: colors.olive[800],
-  },
+  pieceRowFirst: { borderTopWidth: 0, paddingTop: 0 },
+  pieceImg: { width: 52, height: 52, borderRadius: 14, backgroundColor: SOFT },
+  pieceImgEmpty: { alignItems: "center", justifyContent: "center" },
+  pieceSlot: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted },
+  pieceName: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text, marginTop: 1 },
+  piecePrice: { fontFamily: fontFamilies.sans.bold, fontSize: 13.5, color: C.text, marginTop: 2 },
   totalRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: spacing[2],
-    paddingTop: spacing[1],
+    justifyContent: "space-between",
+    marginTop: 8,
+    height: 46,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: C.ink,
   },
-  totalLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: colors.light.mutedForeground,
-  },
-  totalValue: {
-    fontSize: 14,
-    fontFamily: fontFamilies.sans.bold,
-    color: colors.light.foreground,
-  },
-
-  suggRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
+  totalLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: "rgba(255,255,255,0.6)" },
+  totalValue: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.lime },
+  suggRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
   suggChip: {
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: `${colors.olive[600]}1F`,
-    backgroundColor: colors.olive[50],
-    paddingHorizontal: spacing[3],
-    height: 30,
+    minHeight: 36,
     justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: SOFT,
   },
-  suggChipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.olive[800],
-  },
-
-  errorBubble: {
-    alignSelf: "flex-start",
-    maxWidth: "88%",
-    borderRadius: radii["2xl"],
+  suggChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.text },
+  statusPill: {
+    height: 40,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: "#ecc9bd",
-    backgroundColor: "#fdf3ee",
-    padding: spacing[3],
-    gap: spacing[2],
+    borderColor: C.line,
   },
-  errorRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  errorText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: colors.accent2.rust,
-    flex: 1,
+  statusText: { fontFamily: fontFamilies.sans.medium, fontSize: 13.5, color: C.muted },
+  errorBubble: {
+    padding: 14,
+    gap: 10,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: "rgba(184,92,58,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.18)",
   },
+  errorRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  errorText: { flex: 1, fontFamily: fontFamilies.sans.medium, fontSize: 14, lineHeight: 19, color: C.text },
   retryChip: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    alignSelf: "flex-start",
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
-    paddingHorizontal: spacing[3],
-    height: 30,
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: C.ink,
   },
-  retryChipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    color: CREAM,
-  },
+  retryChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: "#FFFFFF" },
 
-  composerShadow: {
-    marginHorizontal: spacing[5],
-    marginTop: spacing[2],
-    borderRadius: 26,
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.25,
-    shadowRadius: 26,
-    elevation: 10,
-  },
+  // Composer
+  composerWrap: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 },
   composerBar: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing[2],
-    borderRadius: 26,
-    padding: 6,
-    overflow: "hidden",
+    gap: 8,
+    minHeight: 60,
+    padding: 8,
+    borderRadius: 30,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: `${GOLD}26`,
-  },
-  composerGlow: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    top: -80,
-    right: -50,
-    backgroundColor: `${GOLD}1A`,
+    borderColor: C.line,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
   },
   ghostBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: SOFT,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${CREAM}14`,
   },
   input: {
     flex: 1,
-    minHeight: 42,
-    maxHeight: 110,
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    color: CREAM,
-    paddingHorizontal: spacing[3],
-    paddingTop: Platform.OS === "ios" ? 12 : 9,
-    paddingBottom: Platform.OS === "ios" ? 12 : 9,
+    minHeight: 44,
+    maxHeight: 120,
+    paddingHorizontal: 8,
+    paddingTop: 12,
+    paddingBottom: 12,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 15.5,
+    color: C.text,
   },
-  sendWrap: { borderRadius: 21 },
   sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },

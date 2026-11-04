@@ -23,7 +23,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuth } from "@/lib/supabase/auth";
 import { StorePageHeader, StoreReviewsSection } from "@/components/store";
 import { StoreShop, type StoreShopHandle } from "@/components/store/StoreShop";
-import { StoreMasthead, StoreMastheadSkeleton } from "@/components/store/StoreMasthead";
+import { StoreMasthead, StoreMastheadSkeleton, COVER_H } from "@/components/store/StoreMasthead";
+import { StatusBar } from "expo-status-bar";
 import {
   getStoreProducts,
   getStoreReviewsList,
@@ -92,6 +93,10 @@ export default function StoreScreen() {
   const scrollRef = React.useRef<ScrollView>(null);
   const shopRef = React.useRef<StoreShopHandle>(null);
   const shopY = React.useRef(0);
+  // Status + nav bar height; the masthead cover runs up underneath it.
+  const navInset = insets.top + 64;
+  // Light status bar while the dark cover is behind it.
+  const [overCover, setOverCover] = useState(true);
 
   const store = ctx.store;
 
@@ -208,14 +213,14 @@ export default function StoreScreen() {
 
   // Nav bar: transparent over the banner, solid paper once the banner scrolls away.
   const navSolid = scrollY.interpolate({
-    inputRange: [8, 48],
+    inputRange: [COVER_H - 20, COVER_H + 20],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
   // Store name joins the nav once the masthead title has scrolled under it.
   const navTitle = scrollY.interpolate({
-    inputRange: [150, 200],
+    inputRange: [COVER_H + 150, COVER_H + 200],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
@@ -254,6 +259,7 @@ export default function StoreScreen() {
   return (
     <PaperBackground>
       <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar style={overCover ? "light" : "dark"} animated />
       <StoreViewTracker id={store?.id ?? null} />
 
       <Animated.ScrollView
@@ -261,22 +267,29 @@ export default function StoreScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: false,
+          listener: (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+            const over = e.nativeEvent.contentOffset.y < COVER_H + 10;
+            setOverCover((prev) => (prev === over ? prev : over));
+          },
+        })}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.olive[600]}
+            tintColor={colors.paper.cream}
             progressViewOffset={insets.top + 40}
           />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + spacing[10] }}
       >
-        {/* 1 — Editorial masthead, directly under the floating nav */}
-        <View style={{ paddingTop: insets.top + 64 }}>
+        {/* 1 — Profile masthead; its cover runs under the floating nav */}
+        <View>
         {store ? (
           <StoreMasthead
+            topInset={navInset}
             store={store}
             description={description}
             followers={followers}
@@ -291,7 +304,7 @@ export default function StoreScreen() {
             onShare={handleShare}
           />
         ) : (
-          <StoreMastheadSkeleton />
+          <StoreMastheadSkeleton topInset={navInset} />
         )}
         </View>
 

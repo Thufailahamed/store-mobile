@@ -20,6 +20,7 @@ import { Ionicons } from "@/components/ui/Icon";
 import { getDevicePosition } from "@/lib/location";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
 
 interface AddressMapPickerProps {
   latitude?: number | null;
@@ -85,6 +86,8 @@ export function AddressMapPicker({
 }: AddressMapPickerProps) {
   const mapRef = useRef<MapView | null>(null);
   const lastPropKey = useRef<string | null>(null);
+  // Coordinates that arrived before the map was ready still need a camera move.
+  const pendingAnimate = useRef(false);
   const isProgrammaticMove = useRef(false);
   const isUserInteracting = useRef(false);
   const userInteractionTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -128,14 +131,21 @@ export function AddressMapPicker({
     if (animate) animateTo(lat, lng);
   };
 
-  // Sync when parent pushes new coordinates (e.g. auto-detect).
+  // Sync when parent pushes new coordinates (e.g. auto-detect). If they land
+  // before the map is ready, remember to move the camera once it is — otherwise
+  // the pin sits off-screen while the map still shows the fallback region.
   useEffect(() => {
     if (latitude == null || longitude == null) return;
     const key = coordKey(latitude, longitude);
-    if (key === lastPropKey.current) return;
-    lastPropKey.current = key;
-    setPin({ lat: latitude, lng: longitude });
-    animateTo(latitude, longitude);
+    if (key !== lastPropKey.current) {
+      lastPropKey.current = key;
+      setPin({ lat: latitude, lng: longitude });
+      pendingAnimate.current = true;
+    }
+    if (pendingAnimate.current && mapReady) {
+      pendingAnimate.current = false;
+      animateTo(latitude, longitude);
+    }
   }, [latitude, longitude, mapReady]);
 
   const handleTouchStart = () => {
@@ -260,7 +270,7 @@ export function AddressMapPicker({
           >
             <View style={styles.markerContainer}>
               <View style={styles.markerBadge}>
-                <Ionicons name="location" size={22} color="#E8CF8F" />
+                <Ionicons name="location" size={20} color={C.lime} />
               </View>
               <View style={styles.markerPoint} />
             </View>
@@ -287,7 +297,7 @@ export function AddressMapPicker({
         </View>
       ) : pin && (mapReady || tilesLoaded) ? (
         <View pointerEvents="none" style={styles.hintPinned}>
-          <Ionicons name="move-outline" size={12} color="#E8CF8F" />
+          <Ionicons name="move-outline" size={13} color={C.lime} />
           <Text style={styles.hintPinnedText}>Tap map or drag pin to adjust</Text>
         </View>
       ) : null}
@@ -434,12 +444,10 @@ const styles = StyleSheet.create({
   },
   container: {
     borderRadius: 20,
+    borderCurve: "continuous",
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.olive[50],
+    backgroundColor: "#f0ede2",
     position: "relative",
-    ...shadows.soft,
   },
   map: {
     ...StyleSheet.absoluteFillObject,
@@ -456,21 +464,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   markerBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#16170f",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#E8CF8F",
+    borderWidth: 3,
+    borderColor: C.card,
     ...shadows.editorial,
   },
   markerPoint: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#E8CF8F",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.ink,
+    borderWidth: 1.5,
+    borderColor: C.card,
     marginTop: 2,
   },
   hintPinned: {
@@ -480,17 +490,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    height: 30,
     paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(22, 23, 15, 0.85)",
-    borderWidth: 1,
-    borderColor: "rgba(232,207,143,0.35)",
+    borderRadius: 15,
+    backgroundColor: "rgba(22, 23, 15, 0.86)",
   },
   hintPinnedText: {
-    color: colors.paper.cream,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
+    color: C.cream,
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
   },
   hint: {
     position: "absolute",

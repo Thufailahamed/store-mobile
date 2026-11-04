@@ -33,7 +33,7 @@ const GARMENT_LABEL: Record<GarmentType, string> = {
 };
 
 export const WARDROBE_CARD_GAP = 12;
-export const WARDROBE_H_PAD = 16;
+export const WARDROBE_H_PAD = 20;
 
 export function getWardrobeCardWidth(screenWidth: number): number {
   return (screenWidth - WARDROBE_H_PAD * 2 - WARDROBE_CARD_GAP) / 2;
@@ -116,7 +116,7 @@ export function WardrobeItemCard({
             }}
             activeOpacity={0.85}
           >
-            <Ionicons name="add" size={13} color="#E8CF8F" />
+            <Ionicons name="add" size={13} color="#c8e08a" />
             <Text style={styles.logBtnText}>Log wear</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -211,21 +211,23 @@ export function WardrobeItemCard({
 
 const styles: Record<string, any> = StyleSheet.create({
   card: {
-    backgroundColor: PAPER,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    ...shadows.soft,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.07)",
+    shadowColor: INK,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 3,
   },
   imageWrap: {
     position: "relative",
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: "#f0ede2",
     overflow: "hidden",
-    margin: 5,
+    margin: 6,
     marginBottom: 0,
-    borderRadius: 16,
+    borderRadius: 18,
   },
   image: {
     width: "100%",
@@ -340,7 +342,7 @@ const styles: Record<string, any> = StyleSheet.create({
   brand: {
     fontSize: 8.5,
     letterSpacing: 1.4,
-    color: "#85651b",
+    color: colors.olive[600],
     fontFamily: fontFamilies.mono.semibold,
   },
   name: {
@@ -356,9 +358,9 @@ const styles: Record<string, any> = StyleSheet.create({
     gap: 4,
   },
   price: {
-    fontSize: 12,
+    fontSize: 13,
     color: INK,
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.sans.semibold,
   },
   size: {
     fontSize: 9.5,

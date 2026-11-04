@@ -20,7 +20,7 @@ import { useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api/backend";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { UserPageFrame, withUserTheme, UP as C } from "@/components/user/user-page";
 
 type Ticket = {
   id: string;
@@ -34,7 +34,6 @@ type FilterTab = "all" | "active" | "resolved";
 
 const GOLD = colors.accent2.ochre;
 const GOLD_DEEP = "#85651b";
-const GOLD_SOFT = "#E8CF8F";
 const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 const GREEN = "#15803d";
 
@@ -223,10 +222,6 @@ export default function TicketsScreen() {
         >
           {/* Heading */}
           <View style={styles.pageHead}>
-            <Text style={styles.eyebrow}>Help &amp; concierge</Text>
-            <Text style={styles.pageTitle}>
-              Support <Text style={styles.pageTitleAccent}>tickets.</Text>
-            </Text>
             <Text style={styles.pageSub}>
               Questions about orders, sizing or delivery — we usually reply
               within a couple of hours.
@@ -247,7 +242,7 @@ export default function TicketsScreen() {
               style={styles.ctaInner}
             >
               <View style={styles.ctaIcon}>
-                <Ionicons name="create-outline" size={17} color={GOLD_SOFT} />
+                <Ionicons name="create-outline" size={18} color={C.ink} />
               </View>
               <View style={styles.ctaText}>
                 <Text style={styles.ctaTitle}>Start a new inquiry</Text>
@@ -255,58 +250,14 @@ export default function TicketsScreen() {
                   Order changes, sizing, invoices &amp; more
                 </Text>
               </View>
-              <View style={styles.ctaArrow}>
-                <Ionicons
-                  name="arrow-forward"
-                  size={14}
-                  color={colors.olive[900]}
-                />
-              </View>
+              <Ionicons name="arrow-forward" size={18} color={C.lime} />
             </LinearGradient>
           </TouchableOpacity>
 
           {/* Stats + filters */}
           {tickets.length > 0 && (
             <>
-              <View style={styles.statsStrip}>
-                <View style={styles.statCell}>
-                  <Text
-                    style={[
-                      styles.statNum,
-                      metrics.total === 0 && styles.statNumMuted,
-                    ]}
-                  >
-                    {metrics.total}
-                  </Text>
-                  <Text style={styles.statLabel}>Total</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statCell}>
-                  <Text
-                    style={[
-                      styles.statNum,
-                      metrics.active === 0 && styles.statNumMuted,
-                    ]}
-                  >
-                    {metrics.active}
-                  </Text>
-                  <Text style={styles.statLabel}>Active</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statCell}>
-                  <Text
-                    style={[
-                      styles.statNum,
-                      metrics.resolved === 0 && styles.statNumMuted,
-                    ]}
-                  >
-                    {metrics.resolved}
-                  </Text>
-                  <Text style={styles.statLabel}>Resolved</Text>
-                </View>
-              </View>
-
-              <View style={styles.segmented}>
+              <View style={styles.chipRow}>
                 {TABS.map((t) => {
                   const count =
                     t.key === "all"
@@ -318,19 +269,20 @@ export default function TicketsScreen() {
                   return (
                     <TouchableOpacity
                       key={t.key}
-                      style={[styles.segment, isActive && styles.segmentActive]}
+                      style={[styles.chip, isActive && styles.chipOn]}
                       onPress={() => setFilterTab(t.key)}
                       activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isActive }}
                     >
-                      <Text
-                        style={[
-                          styles.segmentText,
-                          isActive && styles.segmentTextActive,
-                        ]}
-                      >
+                      <Text style={[styles.chipText, isActive && styles.chipTextOn]}>
                         {t.label}
-                        {count > 0 ? ` ${count}` : ""}
                       </Text>
+                      <View style={[styles.chipCount, isActive && styles.chipCountOn]}>
+                        <Text style={[styles.chipCountText, isActive && styles.chipCountTextOn]}>
+                          {count}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -548,21 +500,22 @@ const styles = withUserTheme(
 
     /* New inquiry CTA */
     ctaCard: {
-      borderRadius: 22,
+      borderRadius: 26,
       overflow: "hidden",
-      ...shadows.editorial,
     },
     ctaInner: {
       flexDirection: "row",
       alignItems: "center",
-      gap: spacing[3],
-      padding: spacing[4],
+      gap: 14,
+      paddingVertical: 14,
+      paddingLeft: 14,
+      paddingRight: 20,
     },
     ctaIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(200, 164, 74, 0.15)",
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: C.lime,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -589,73 +542,8 @@ const styles = withUserTheme(
       justifyContent: "center",
     },
 
-    /* Stat strip */
-    statsStrip: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: colors.paper.cream,
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      paddingVertical: 14,
-      ...shadows.soft,
-    },
-    statCell: {
-      flex: 1,
-      alignItems: "center",
-      gap: 2,
-    },
-    statNum: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 20,
-      letterSpacing: -0.3,
-      color: colors.light.foreground,
-    },
-    statNumMuted: {
-      color: "rgba(22, 23, 15, 0.35)",
-    },
-    statLabel: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 9.5,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      color: colors.light.mutedForeground,
-    },
-    statDivider: {
-      width: StyleSheet.hairlineWidth,
-      height: 28,
-      backgroundColor: colors.light.border,
-    },
 
     /* Segmented tabs */
-    segmented: {
-      flexDirection: "row",
-      gap: 4,
-      backgroundColor: colors.paper.warm,
-      borderRadius: radii.full,
-      padding: 4,
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-    },
-    segment: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 9,
-      borderRadius: radii.full,
-    },
-    segmentActive: {
-      backgroundColor: colors.paper.cream,
-      ...shadows.soft,
-    },
-    segmentText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 13,
-      color: colors.light.mutedForeground,
-    },
-    segmentTextActive: {
-      color: colors.light.foreground,
-    },
 
     /* Loading */
     loadingWrap: {
@@ -727,7 +615,7 @@ const styles = withUserTheme(
       width: 38,
       height: 38,
       borderRadius: 19,
-      backgroundColor: colors.paper.cream,
+      backgroundColor: C.lime,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -753,10 +641,16 @@ const styles = withUserTheme(
       borderTopColor: colors.light.border,
     },
     howNum: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 16,
-      color: GOLD_DEEP,
+      fontFamily: fontFamilies.sans.bold,
+      fontSize: 12,
+      color: C.lime,
       width: 24,
+      height: 24,
+      lineHeight: 24,
+      borderRadius: 12,
+      overflow: "hidden",
+      textAlign: "center",
+      backgroundColor: C.ink,
     },
     howBody: {
       flex: 1,
@@ -779,13 +673,18 @@ const styles = withUserTheme(
       gap: 12,
     },
     ticketCard: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 22,
+      backgroundColor: C.card,
+      borderRadius: 26,
+      borderCurve: "continuous",
       borderWidth: 1,
-      borderColor: HAIRLINE,
-      padding: spacing[4],
-      gap: spacing[2.5],
-      ...shadows.soft,
+      borderColor: C.line,
+      padding: 18,
+      gap: 10,
+      shadowColor: "#16170f",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.06,
+      shadowRadius: 20,
+      elevation: 3,
     },
     ticketTop: {
       flexDirection: "row",
@@ -794,23 +693,50 @@ const styles = withUserTheme(
       gap: 10,
     },
     ticketRef: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 11.5,
-      letterSpacing: 0.8,
-      color: GOLD_DEEP,
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 13,
+      color: C.muted,
     },
     statusPill: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 9,
-      paddingVertical: 4,
-      borderRadius: radii.full,
+      gap: 5,
+      height: 28,
+      paddingHorizontal: 10,
+      borderRadius: 14,
     },
     statusPillText: {
       fontFamily: fontFamilies.sans.semibold,
-      fontSize: 11,
+      fontSize: 12.5,
     },
+    chipRow: { flexDirection: "row", gap: 10 },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 7,
+      height: 42,
+      paddingLeft: 16,
+      paddingRight: 10,
+      borderRadius: 21,
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.line,
+    },
+    chipOn: { backgroundColor: C.ink, borderColor: C.ink },
+    chipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text },
+    chipTextOn: { color: C.cream },
+    chipCount: {
+      minWidth: 22,
+      height: 22,
+      borderRadius: 11,
+      paddingHorizontal: 6,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: C.accentSoft,
+    },
+    chipCountOn: { backgroundColor: "rgba(200,224,138,0.18)" },
+    chipCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: C.muted },
+    chipCountTextOn: { color: C.lime },
     ticketSubject: {
       fontFamily: fontFamilies.sans.bold,
       fontSize: 17,

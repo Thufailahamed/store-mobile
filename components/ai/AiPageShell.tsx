@@ -1,10 +1,9 @@
 import React from "react";
-import { View, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { useRouter, usePathname } from "expo-router";
-import { ScreenHeader } from "@/components/layout";
-import { Body, Label } from "@/components/ui/Typography";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
+import { UP as C, UserPageFrame } from "@/components/user/user-page";
 import { fontFamilies } from "@/lib/theme/fonts";
 
 const LINKS = [
@@ -30,6 +29,8 @@ const LINKS = [
   },
 ];
 
+/** Shared frame for the LUXE AI tools: Orders-style header + glow, a tab
+ *  strip of chips between the tools, and the AI disclaimer footer. */
 export function AiPageShell({
   title,
   description,
@@ -41,9 +42,9 @@ export function AiPageShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.screen}>
-      <ScreenHeader title={title} onBack={() => router.back()} />
+    <UserPageFrame title={title} onBack={() => router.back()}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -51,97 +52,77 @@ export function AiPageShell({
         contentContainerStyle={styles.nav}
       >
         {LINKS.map((l) => {
-          const active = pathname === l.route.replace(/^\(main\)/, "") ||
-            pathname.endsWith(l.route.split("/").pop() ?? "");
+          const slug = l.route.split("/").pop() ?? "";
+          const active = pathname.endsWith(`/ai/${slug}`);
           return (
             <TouchableOpacity
               key={l.route}
-              onPress={() => !active && router.push(l.route as never)}
+              // replace, not push: hopping between tools shouldn't stack
+              // history so Back always returns to where the user came from.
+              onPress={() => !active && router.replace(l.route as never)}
               style={[styles.navChip, active && styles.navChipActive]}
               activeOpacity={0.8}
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityState={{ selected: active }}
             >
-              <Ionicons
-                name={l.icon}
-                size={13}
-                color={active ? colors.accent2.ochre : colors.olive[700]}
-              />
-              <Label style={[styles.navLink, active && styles.navLinkActive]}>
-                {l.label}
-              </Label>
+              <Ionicons name={l.icon} size={16} color={active ? C.lime : C.accent} />
+              <Text style={[styles.navLink, active && styles.navLinkActive]}>{l.label}</Text>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
-      {description ? (
-        <Body muted size="sm" style={styles.desc}>{description}</Body>
-      ) : null}
-      {children}
-      <View style={styles.disclaimerRow}>
-        <Ionicons
-          name="information-circle-outline"
-          size={11}
-          color={colors.light.mutedForeground}
-        />
-        <Body muted size="xs" style={styles.disclaimer}>
-          AI suggestions, not endorsements.
-        </Body>
+      {description ? <Text style={styles.desc}>{description}</Text> : null}
+      <View style={{ flex: 1 }}>{children}</View>
+      <View style={[styles.disclaimerRow, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <Ionicons name="information-circle-outline" size={13} color={C.muted} />
+        <Text style={styles.disclaimer}>AI suggestions, not endorsements.</Text>
       </View>
-    </View>
+    </UserPageFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.light.background },
   navScroll: { flexGrow: 0 },
   nav: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: spacing[5],
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 12,
   },
   navChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: radii.full,
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 16,
+    borderRadius: 21,
     borderWidth: 1,
-    borderColor: `${colors.ink.DEFAULT}0F`,
-    backgroundColor: "#ffffff",
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
+    borderColor: C.line,
+    backgroundColor: C.card,
   },
-  navChipActive: {
-    backgroundColor: colors.olive[950],
-    borderColor: colors.olive[950],
-    shadowColor: colors.olive[950],
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+  navChipActive: { backgroundColor: C.ink, borderColor: C.ink },
+  navLink: { color: C.text, fontSize: 13.5, fontFamily: fontFamilies.sans.semibold },
+  navLinkActive: { color: "#FFFFFF" },
+  desc: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+    fontSize: 13.5,
+    lineHeight: 19,
+    fontFamily: fontFamilies.sans.regular,
+    color: C.muted,
   },
-  navLink: {
-    color: colors.olive[800],
-    fontSize: 11,
-    letterSpacing: 0.6,
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  navLinkActive: { color: colors.paper.cream },
-  desc: { paddingHorizontal: spacing[5], paddingTop: 10, paddingBottom: 4 },
   disclaimerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    paddingHorizontal: spacing[5],
-    paddingVertical: 14,
+    gap: 5,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+    backgroundColor: C.paper,
   },
-  disclaimer: { textAlign: "center" },
+  disclaimer: { fontSize: 12, fontFamily: fontFamilies.sans.medium, color: C.muted },
 });

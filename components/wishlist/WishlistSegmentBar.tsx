@@ -4,6 +4,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
+import { C } from "@/components/orders/parcel-track";
 
 const INK = colors.ink.DEFAULT;
 const MUTED = colors.ink.mute;
@@ -121,7 +122,6 @@ export function WishlistSegmentBar({
             <View />
           )}
           <View style={styles.metaSort}>
-            <Text style={styles.metaSortLabel}>Sorted by </Text>
             <Text style={styles.metaSortValue}>{activeSort.label}</Text>
             <Ionicons name="chevron-down" size={12} color={MUTED} />
           </View>
@@ -210,11 +210,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    padding: 4,
-    borderRadius: radii.full,
-    backgroundColor: "#FFFFFF",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${colors.olive[700]}1F`,
+    gap: 8,
     minWidth: 0,
   },
   chip: {
@@ -222,56 +218,61 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    paddingHorizontal: spacing[1.5],
-    height: 36,
-    borderRadius: radii.full,
+    gap: 6,
+    paddingHorizontal: 8,
+    height: 42,
+    borderRadius: 21,
     minWidth: 0,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
   },
-  chipActive: {
-    backgroundColor: "#15160f",
-    ...shadows.soft,
-  },
+  chipActive: { backgroundColor: C.ink, borderColor: C.ink },
   chipText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.ink.soft,
-    letterSpacing: 0.1,
+    fontSize: 13.5,
+    color: C.text,
     flexShrink: 1,
   },
-  chipTextActive: {
-    color: colors.paper.cream,
-  },
+  chipTextActive: { color: C.cream },
   chipCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    color: MUTED,
+    minWidth: 20,
+    height: 20,
+    lineHeight: 20,
+    borderRadius: 10,
+    overflow: "hidden",
+    paddingHorizontal: 5,
+    textAlign: "center",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 11,
+    color: C.muted,
+    backgroundColor: C.accentSoft,
   },
-  chipCountActive: {
-    color: colors.accent2.ochre,
-  },
+  chipCountActive: { color: C.lime, backgroundColor: "rgba(200,224,138,0.18)" },
   sortBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${colors.olive[700]}33`,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    ...shadows.soft,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 3,
   },
   sortDot: {
     position: "absolute",
-    top: 9,
-    right: 9,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.accent2.rust,
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: C.rust,
     borderWidth: 1.5,
-    borderColor: colors.paper.cream,
+    borderColor: "#FFFFFF",
   },
   metaRow: {
     flexDirection: "row",

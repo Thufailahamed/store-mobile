@@ -10,8 +10,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
-import { formatPrice } from "@/lib/utils";
+import { C } from "@/components/orders/parcel-track";
 import { useToast } from "@/components/ui";
 import {
   getWardrobeInsights,
@@ -20,7 +19,6 @@ import {
 } from "@/lib/api/wardrobe";
 import type { GarmentType, WardrobeInsights, WardrobeItem } from "@/lib/types";
 
-const INK = "#16170f";
 const MUTED = "#65684d";
 
 const GARMENT_LABEL: Record<string, string> = {
@@ -169,29 +167,23 @@ export function InsightsSection({
         <View key={c.title} style={styles.card}>
           <View style={styles.head}>
             <View
-              style={[styles.dot, { backgroundColor: ACCENT_DOT[c.accent] }]}
-            />
-            <Text style={[styles.cardTitle, { color: ACCENT_TXT[c.accent] }]}>
-              {c.title}
-            </Text>
-          </View>
-          <View style={styles.countRow}>
+              style={[styles.iconDisc, { backgroundColor: `${ACCENT_DOT[c.accent]}22` }]}
+            >
+              <Ionicons name={c.icon} size={16} color={ACCENT_TXT[c.accent]} />
+            </View>
+            <Text style={styles.cardTitle}>{c.title}</Text>
             <Text style={[styles.count, c.count === 0 && styles.countMuted]}>
               {c.count}
             </Text>
-            <Text style={styles.sub} numberOfLines={2}>
-              {c.subtitle}
-            </Text>
           </View>
+          <Text style={styles.sub} numberOfLines={1}>
+            {c.subtitle}
+          </Text>
           <View style={styles.rule} />
           <View style={{ gap: 10 }}>
             {c.items.length === 0 ? (
               <View style={styles.emptyRow}>
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={15}
-                  color={colors.olive[500]}
-                />
+                <Ionicons name="checkmark-circle" size={16} color={C.accent} />
                 <Text style={styles.empty}>All clear</Text>
               </View>
             ) : (
@@ -239,120 +231,71 @@ export function InsightsSection({
 }
 
 const styles: Record<string, any> = StyleSheet.create({
-  loading: {
-    paddingVertical: 24,
-    alignItems: "center",
-  },
-  row: {
-    paddingHorizontal: 16,
-    paddingBottom: 6,
-    gap: 12,
-  },
+  loading: { paddingVertical: 24, alignItems: "center" },
+  row: { paddingHorizontal: 20, paddingBottom: 14, gap: 12 },
   card: {
-    width: 232,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    backgroundColor: "#FFFFFF",
+    width: 256,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: C.card,
     padding: 16,
-    ...shadows.soft,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  head: {
-    flexDirection: "row",
+  head: { flexDirection: "row", alignItems: "center", gap: 10 },
+  iconDisc: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
-    gap: 7,
+    justifyContent: "center",
   },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  cardTitle: {
-    flex: 1,
-    fontSize: 9.5,
-    fontFamily: fontFamilies.mono.semibold,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-  },
-  index: {
-    fontSize: 9.5,
-    fontFamily: fontFamilies.mono.regular,
-    color: MUTED,
-    letterSpacing: 0.8,
-  },
-  countRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 10,
-  },
+  cardTitle: { flex: 1, fontFamily: fontFamilies.sans.bold, fontSize: 15.5, letterSpacing: -0.3, color: C.text },
   count: {
-    fontSize: 40,
-    lineHeight: 46,
-    fontFamily: fontFamilies.sans.medium,
-    letterSpacing: -1,
-    color: INK,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 26,
+    letterSpacing: -0.8,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
   },
-  countMuted: { color: "rgba(22,23,15,0.25)" },
-  sub: {
-    flex: 1,
-    fontSize: 11.5,
-    lineHeight: 15,
-    color: MUTED,
-    fontFamily: fontFamilies.sans.medium,
-  },
-  rule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.light.border,
-    marginVertical: 12,
-  },
+  countMuted: { color: C.faint },
+  sub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, marginTop: 8 },
+  rule: { height: 1, backgroundColor: C.line, marginVertical: 12 },
   emptyRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 4,
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    alignSelf: "flex-start",
+    backgroundColor: C.accentSoft,
   },
-  empty: {
-    fontSize: 12,
-    color: colors.olive[600],
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  empty: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.accent },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   thumb: {
-    width: 36,
-    height: 44,
-    borderRadius: 10,
+    width: 40,
+    height: 48,
+    borderRadius: 12,
     overflow: "hidden",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#f0ede2",
     alignItems: "center",
     justifyContent: "center",
   },
-  thumbImg: {
-    width: "100%",
-    height: "100%",
-  },
-  itemName: {
-    fontSize: 13,
-    fontFamily: fontFamilies.sans.bold,
-    color: INK,
-  },
-  itemMeta: {
-    fontSize: 9.5,
-    color: MUTED,
-    fontFamily: fontFamilies.mono.medium,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginTop: 2,
-  },
+  thumbImg: { width: "100%", height: "100%" },
+  itemName: { fontFamily: fontFamilies.sans.bold, fontSize: 14, letterSpacing: -0.2, color: C.text },
+  itemMeta: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted, marginTop: 1 },
   actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: INK,
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    justifyContent: "center",
+    backgroundColor: C.ink,
   },
-  actionTxt: {
-    fontSize: 11,
-    fontFamily: fontFamilies.sans.bold,
-    color: colors.paper.cream,
-  },
+  actionTxt: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.cream },
 });

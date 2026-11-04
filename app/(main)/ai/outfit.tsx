@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,18 +10,15 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { AiPageShell } from "@/components/ai/AiPageShell";
+import { UP as C } from "@/components/user/user-page";
 import { Ionicons } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui";
 import { aiOutfitBackend } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const GOLD = colors.accent2.ochre;
-const CREAM = colors.paper.cream;
-const INK = colors.ink.DEFAULT;
+const SOFT = "#f5f3ec";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -61,6 +58,9 @@ type Piece = {
 type OutfitResult = {
   pieces: Piece[];
   total_price?: number;
+  /** The selection this look was built for — the chips can change after. */
+  occasionLabel: string;
+  vibe: string;
 };
 
 function PressableScale({
@@ -90,35 +90,21 @@ function SelectChip({
   active: boolean;
   onPress: () => void;
 }) {
-  const inner = (
-    <>
-      <Ionicons
-        name={icon}
-        size={13}
-        color={active ? colors.olive[950] : `${CREAM}B3`}
-      />
-      <Text style={[styles.chipText, active && styles.chipTextOn]}>{label}</Text>
-    </>
-  );
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      style={styles.chipWrap}
+      style={[styles.chip, active && styles.chipOn]}
     >
       {active ? (
-        <LinearGradient
-          colors={["#e6c873", GOLD, "#a8862f"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.chipInner}
-        >
-          {inner}
-        </LinearGradient>
+        <View style={styles.chipCheck}>
+          <Ionicons name="checkmark" size={12} color={C.ink} />
+        </View>
       ) : (
-        <View style={[styles.chipInner, styles.chipOff]}>{inner}</View>
+        <Ionicons name={icon} size={15} color={C.accent} />
       )}
+      <Text style={[styles.chipText, active && styles.chipTextOn]}>{label}</Text>
     </PressableScale>
   );
 }
@@ -130,63 +116,52 @@ export default function AiOutfitScreen() {
   const [outfit, setOutfit] = useState<OutfitResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reqId = useRef(0);
+
+  const occasionLabel = OCCASIONS.find((o) => o.key === occasion)?.label ?? occasion;
 
   const generate = async () => {
+    const id = ++reqId.current;
+    const builtFor = { occasionLabel, vibe };
     setLoading(true);
     setError(null);
     setOutfit(null);
     const res = await aiOutfitBackend({ occasion, vibe });
+    if (id !== reqId.current) return;
     if (res.ok) {
       const o = res.data.outfit ?? res.data;
-      setOutfit({ pieces: (o as { pieces?: Piece[] }).pieces ?? [], total_price: (o as { total_price?: number }).total_price });
+      setOutfit({
+        pieces: (o as { pieces?: Piece[] }).pieces ?? [],
+        total_price: (o as { total_price?: number }).total_price,
+        ...builtFor,
+      });
     } else {
       setError(res.error);
     }
     setLoading(false);
   };
 
-  const occasionLabel = OCCASIONS.find((o) => o.key === occasion)?.label ?? occasion;
-  const lookName = `${occasionLabel} · ${vibe}`;
+  const lookName = outfit ? `${outfit.occasionLabel} · ${outfit.vibe}` : "";
+  const stale = !!outfit && (outfit.occasionLabel !== occasionLabel || outfit.vibe !== vibe);
 
   return (
     <AiPageShell title="Outfit Builder">
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>LUXE AI · OUTFIT BUILDER</Text>
-          <Text style={styles.heroTitle}>
-            Pick the mood.{"\n"}
-            <Text style={styles.heroTitleItalic}>We'll style it.</Text>
-          </Text>
-          <Text style={styles.heroSub}>
-            Choose an occasion and a vibe — get a complete look built from live
-            pieces.
-          </Text>
-        </View>
-
-        <View style={styles.builderShadow}>
-          <LinearGradient
-            colors={["#22271a", colors.olive[950], "#0b0c07"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.builder}
-          >
-            <View style={styles.builderGlow} />
-            <View style={styles.builderTop}>
-              <LinearGradient
-                colors={["#e6c873", GOLD, "#9c7a2c"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.builderBadge}
-              >
-                <Ionicons name="shirt-outline" size={13} color={colors.olive[950]} />
-              </LinearGradient>
-              <Text style={styles.builderLabel}>Design your look</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <View style={styles.cardShadow}>
+          <View style={styles.card}>
+            <View style={styles.introRow}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="shirt" size={22} color={C.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.introTitle}>Pick the mood, we&apos;ll style it</Text>
+                <Text style={styles.introSub}>
+                  A head-to-toe look built from live pieces.
+                </Text>
+              </View>
             </View>
 
-            <Text style={styles.groupLabel}>OCCASION</Text>
+            <Text style={styles.groupLabel}>Occasion</Text>
             <View style={styles.chips}>
               {OCCASIONS.map((o) => (
                 <SelectChip
@@ -199,7 +174,7 @@ export default function AiOutfitScreen() {
               ))}
             </View>
 
-            <Text style={styles.groupLabel}>VIBE</Text>
+            <Text style={styles.groupLabel}>Vibe</Text>
             <View style={styles.chips}>
               {VIBES.map((v) => (
                 <SelectChip
@@ -212,190 +187,137 @@ export default function AiOutfitScreen() {
               ))}
             </View>
 
-            <View style={styles.builderFooter}>
-              <View style={styles.hintRow}>
-                {(["Head-to-toe", "Live prices"] as const).map((h) => (
-                  <View key={h} style={styles.hint}>
-                    <Text style={styles.hintText}>{h}</Text>
-                  </View>
-                ))}
+            <PressableScale
+              onPress={() => void generate()}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Build outfit"
+              style={[styles.cta, loading && { opacity: 0.5 }]}
+            >
+              <View style={styles.ctaIcon}>
+                <Ionicons name="sparkles" size={18} color={C.ink} />
               </View>
-              <PressableScale
-                onPress={() => void generate()}
-                disabled={loading}
-                accessibilityRole="button"
-                accessibilityLabel="Build outfit"
-                style={[styles.buildWrap, loading && { opacity: 0.6 }]}
-              >
-                <LinearGradient
-                  colors={["#e6c873", GOLD, "#a8862f"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.buildBtn}
-                >
-                  <Text style={styles.buildText}>
-                    {loading ? "Styling…" : "Build outfit"}
-                  </Text>
-                  {!loading ? (
-                    <Ionicons name="sparkles" size={14} color={colors.olive[950]} />
-                  ) : null}
-                </LinearGradient>
-              </PressableScale>
-            </View>
-          </LinearGradient>
+              <Text style={styles.ctaText}>
+                {loading ? "Styling…" : stale ? "Rebuild for this mood" : outfit ? "Build another" : "Build outfit"}
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </PressableScale>
+          </View>
         </View>
 
         {loading ? (
           <>
-            <View style={styles.statusRow}>
-              <View style={styles.statusPill}>
-                <Ionicons name="sparkles" size={12} color={GOLD} />
-                <Text style={styles.statusText} numberOfLines={1}>
-                  Styling a {vibe.toLowerCase()} {occasionLabel.toLowerCase()} look…
-                </Text>
-              </View>
-            </View>
-            <View style={styles.pieceList}>
-              {[1, 2, 3].map((i) => (
-                <View key={i} style={styles.pieceRow}>
-                  <Skeleton width={56} height={56} borderRadius={12} />
-                  <View style={{ flex: 1, gap: 8 }}>
-                    <Skeleton width="40%" height={10} />
-                    <Skeleton width="85%" height={13} />
-                    <Skeleton width="30%" height={12} />
+            <Text style={styles.sectionTitle} numberOfLines={1}>
+              Styling a {vibe.toLowerCase()} {occasionLabel.toLowerCase()} look…
+            </Text>
+            <View style={styles.cardShadow}>
+              <View style={[styles.card, styles.listCard]}>
+                {[1, 2, 3].map((i) => (
+                  <View key={i} style={[styles.pieceRow, i === 1 && styles.pieceRowFirst]}>
+                    <Skeleton width={64} height={64} borderRadius={14} />
+                    <View style={{ flex: 1, gap: 8 }}>
+                      <Skeleton width="40%" height={10} />
+                      <Skeleton width="85%" height={13} />
+                      <Skeleton width="30%" height={12} />
+                    </View>
                   </View>
-                </View>
-              ))}
+                ))}
+              </View>
             </View>
           </>
         ) : error ? (
-          <View style={styles.stateCard}>
-            <View style={styles.medallionOuter}>
-              <LinearGradient
-                colors={["#242621", "#151613"]}
-                style={styles.medallionInner}
-              >
-                <Ionicons name="cloud-offline-outline" size={24} color={GOLD} />
-              </LinearGradient>
+          <View style={[styles.cardShadow, styles.gapTop]}>
+            <View style={[styles.card, styles.stateCard]}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="cloud-offline-outline" size={22} color={C.accent} />
+              </View>
+              <Text style={styles.stateTitle}>Couldn&apos;t build an outfit</Text>
+              <Text style={styles.stateSub}>{error}</Text>
+              <PressableScale style={styles.smallCta} onPress={() => void generate()}>
+                <Ionicons name="refresh" size={15} color={C.lime} />
+                <Text style={styles.smallCtaText}>Try again</Text>
+              </PressableScale>
             </View>
-            <Text style={styles.stateTitle}>Couldn't build an outfit</Text>
-            <Text style={styles.stateSub}>{error}</Text>
-            <PressableScale style={styles.retryBtn} onPress={() => void generate()}>
-              <Ionicons name="refresh" size={14} color={CREAM} />
-              <Text style={styles.retryText}>Try again</Text>
-            </PressableScale>
           </View>
         ) : outfit ? (
           outfit.pieces.length === 0 ? (
-            <View style={styles.stateCard}>
-              <View style={styles.medallionOuter}>
-                <LinearGradient
-                  colors={["#242621", "#151613"]}
-                  style={styles.medallionInner}
-                >
-                  <Ionicons name="shirt-outline" size={24} color={GOLD} />
-                </LinearGradient>
+            <View style={[styles.cardShadow, styles.gapTop]}>
+              <View style={[styles.card, styles.stateCard]}>
+                <View style={styles.iconCircle}>
+                  <Ionicons name="shirt-outline" size={22} color={C.accent} />
+                </View>
+                <Text style={styles.stateTitle}>No look found</Text>
+                <Text style={styles.stateSub}>
+                  Not enough pieces for {lookName.toLowerCase()} yet — try another vibe.
+                </Text>
               </View>
-              <Text style={styles.stateTitle}>No look found</Text>
-              <Text style={styles.stateSub}>
-                The catalogue doesn't have enough pieces for this combination
-                yet — try another vibe.
-              </Text>
             </View>
           ) : (
             <>
-              <View style={styles.resultHead}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.eyebrow}>Curated for you</Text>
-                  <Text style={styles.resultTitle}>
-                    {outfit.pieces.length}{" "}
-                    <Text style={styles.resultTitleItalic}>
-                      piece{outfit.pieces.length === 1 ? "" : "s"}
-                    </Text>
-                  </Text>
-                </View>
-                <View style={styles.queryChip}>
-                  <Ionicons name="sparkles" size={11} color={colors.olive[700]} />
-                  <Text style={styles.queryChipText} numberOfLines={1}>
-                    {lookName}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.lookShadow}>
-                <LinearGradient
-                  colors={["#22271a", colors.olive[950], "#0b0c07"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.lookCard}
-                >
-                  <View style={styles.builderGlow} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.lookEyebrow}>YOUR LOOK</Text>
-                    <Text style={styles.lookTitle}>{lookName}</Text>
-                    <Text style={styles.lookSub}>Picked to work together</Text>
+              <Text style={styles.sectionTitle}>Your look</Text>
+              <View style={styles.cardShadow}>
+                <View style={styles.card}>
+                  <View style={styles.lookHead}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.lookTitle} numberOfLines={1}>
+                        {lookName}
+                      </Text>
+                      <Text style={styles.lookSub}>Picked to work together</Text>
+                    </View>
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countText}>
+                        {outfit.pieces.length} piece{outfit.pieces.length === 1 ? "" : "s"}
+                      </Text>
+                    </View>
                   </View>
+
+                  {outfit.pieces.map((p, i) => (
+                    <PressableScale
+                      key={p.id}
+                      scale={0.98}
+                      style={[styles.pieceRow, i === 0 && styles.pieceRowFirst]}
+                      onPress={() => router.push(`/(main)/products/${p.slug}` as never)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View ${p.name}`}
+                    >
+                      {p.image_url ? (
+                        <Image
+                          source={{ uri: p.image_url }}
+                          style={styles.pieceImg}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      ) : (
+                        <View style={[styles.pieceImg, styles.pieceImgFallback]}>
+                          <Ionicons name="shirt-outline" size={20} color={C.faint} />
+                        </View>
+                      )}
+                      <View style={styles.pieceBody}>
+                        {p.slot ? (
+                          <Text style={styles.slotTag}>{SLOT_LABEL[p.slot] ?? p.slot}</Text>
+                        ) : null}
+                        <Text numberOfLines={2} style={styles.pieceName}>
+                          {p.name}
+                        </Text>
+                        <Text style={styles.piecePrice}>
+                          {formatPrice(p.price, p.currency ?? "LKR")}
+                        </Text>
+                      </View>
+                      <View style={styles.pieceChevron}>
+                        <Ionicons name="chevron-forward" size={14} color={C.text} />
+                      </View>
+                    </PressableScale>
+                  ))}
+
                   {typeof outfit.total_price === "number" && outfit.total_price > 0 ? (
-                    <View style={{ alignItems: "flex-end", gap: 2 }}>
-                      <Text style={styles.lookEyebrow}>FULL LOOK</Text>
-                      <Text style={styles.lookPrice}>
-                        {formatPrice(outfit.total_price)}
+                    <View style={styles.totalStrip}>
+                      <Text style={styles.totalLabel}>Full look</Text>
+                      <Text style={styles.totalValue}>
+                        {formatPrice(outfit.total_price, outfit.pieces[0]?.currency ?? "LKR")}
                       </Text>
                     </View>
                   ) : null}
-                </LinearGradient>
-              </View>
-
-              <View style={styles.pieceList}>
-                {outfit.pieces.map((p) => (
-                  <PressableScale
-                    key={p.id}
-                    scale={0.98}
-                    style={styles.pieceRow}
-                    onPress={() =>
-                      router.push(`/(main)/products/${p.slug}` as never)
-                    }
-                    accessibilityRole="button"
-                    accessibilityLabel={`View ${p.name}`}
-                  >
-                    {p.image_url ? (
-                      <Image
-                        source={{ uri: p.image_url }}
-                        style={styles.pieceImg}
-                        contentFit="cover"
-                        transition={200}
-                      />
-                    ) : (
-                      <View style={[styles.pieceImg, styles.pieceImgFallback]}>
-                        <Ionicons
-                          name="shirt-outline"
-                          size={20}
-                          color={colors.olive[300]}
-                        />
-                      </View>
-                    )}
-                    <View style={styles.pieceBody}>
-                      {p.slot ? (
-                        <Text style={styles.slotTag}>
-                          {(SLOT_LABEL[p.slot] ?? p.slot).toUpperCase()}
-                        </Text>
-                      ) : null}
-                      <Text numberOfLines={2} style={styles.pieceName}>
-                        {p.name}
-                      </Text>
-                      <Text style={styles.piecePrice}>
-                        {formatPrice(p.price, p.currency ?? "LKR")}
-                      </Text>
-                    </View>
-                    <View style={styles.pieceChevron}>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={14}
-                        color={colors.olive[700]}
-                      />
-                    </View>
-                  </PressableScale>
-                ))}
+                </View>
               </View>
             </>
           )
@@ -406,379 +328,177 @@ export default function AiOutfitScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: spacing[10] },
-  hero: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[5],
-    gap: spacing[2],
-  },
-  heroEyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    letterSpacing: 2.2,
-    color: colors.olive[600],
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.8,
-    color: INK,
-  },
-  heroTitleItalic: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
-  heroSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.light.mutedForeground,
-    maxWidth: 320,
-  },
+  scroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 32 },
+  gapTop: { marginTop: 20 },
 
-  builderShadow: {
-    marginHorizontal: spacing[5],
-    marginTop: spacing[2],
+  cardShadow: {
     borderRadius: 26,
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.25,
-    shadowRadius: 26,
-    elevation: 10,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 3,
   },
-  builder: {
+  card: {
+    backgroundColor: C.card,
     borderRadius: 26,
-    padding: spacing[4],
-    gap: spacing[3],
-    overflow: "hidden",
+    borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: `${GOLD}26`,
+    borderColor: C.line,
+    padding: 16,
+    overflow: "hidden",
   },
-  builderGlow: {
-    position: "absolute",
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    top: -120,
-    right: -80,
-    backgroundColor: `${GOLD}1A`,
-  },
-  builderTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  builderBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  listCard: { paddingVertical: 8 },
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  builderLabel: {
-    flex: 1,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    letterSpacing: 0.4,
-    color: `${CREAM}B3`,
+  introRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  introTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: C.text, letterSpacing: -0.3 },
+  introSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 18,
+    color: C.muted,
+    marginTop: 2,
   },
   groupLabel: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
-    letterSpacing: 1.8,
-    color: `${CREAM}59`,
-    marginTop: spacing[1],
+    fontSize: 13,
+    color: C.text,
+    marginTop: 20,
+    marginBottom: 10,
   },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chipWrap: { borderRadius: radii.full },
-  chipInner: {
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: radii.full,
-    paddingHorizontal: 13,
-    height: 36,
-  },
-  chipOff: {
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 15,
+    borderRadius: 21,
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: `${CREAM}1F`,
-    backgroundColor: `${CREAM}0F`,
+    borderColor: C.line,
   },
-  chipText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: `${CREAM}CC`,
+  chipOn: { backgroundColor: C.ink, borderColor: C.ink, paddingLeft: 8 },
+  chipCheck: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  chipTextOn: { color: colors.olive[950] },
-  builderFooter: {
+  chipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text },
+  chipTextOn: { color: "#FFFFFF" },
+  cta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    height: 60,
+    marginTop: 22,
+    paddingLeft: 8,
+    paddingRight: 20,
+    borderRadius: 30,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+  },
+  ctaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ctaText: { flex: 1, fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, color: "#FFFFFF" },
+
+  sectionTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 18,
+    color: C.text,
+    letterSpacing: -0.3,
+    marginTop: 26,
+    marginBottom: 12,
+  },
+  lookHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+  },
+  lookTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: C.text },
+  lookSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 2 },
+  countBadge: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 13,
+    backgroundColor: C.accentSoft,
+    justifyContent: "center",
+  },
+  countText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: C.accent },
+  pieceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+  },
+  pieceRowFirst: { borderTopWidth: 0 },
+  pieceImg: { width: 64, height: 64, borderRadius: 14, backgroundColor: SOFT },
+  pieceImgFallback: { alignItems: "center", justifyContent: "center" },
+  pieceBody: { flex: 1, minWidth: 0, gap: 2 },
+  slotTag: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted },
+  pieceName: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, lineHeight: 19, color: C.text },
+  piecePrice: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.text },
+  pieceChevron: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: SOFT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  totalStrip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing[2],
-    marginTop: spacing[1],
+    height: 52,
+    marginTop: 4,
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    backgroundColor: C.ink,
   },
-  hintRow: {
-    flexDirection: "row",
-    flexShrink: 1,
-    gap: 6,
+  totalLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 13.5, color: "rgba(255,255,255,0.6)" },
+  totalValue: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.lime },
+
+  stateCard: { alignItems: "center", paddingVertical: 28, gap: 6 },
+  stateTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: C.text, marginTop: 8 },
+  stateSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: C.muted,
+    textAlign: "center",
+    maxWidth: 280,
   },
-  hint: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: `${CREAM}1F`,
-  },
-  hintText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 10.5,
-    color: `${CREAM}8C`,
-  },
-  buildWrap: { borderRadius: radii.full },
-  buildBtn: {
+  smallCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     height: 42,
     paddingHorizontal: 18,
-    borderRadius: radii.full,
+    borderRadius: 21,
+    backgroundColor: C.ink,
+    marginTop: 10,
   },
-  buildText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    color: colors.olive[950],
-    letterSpacing: 0.2,
-  },
-
-  statusRow: {
-    alignItems: "flex-start",
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    maxWidth: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
-  },
-  statusText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: CREAM,
-    flexShrink: 1,
-  },
-
-  resultHead: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[6],
-    paddingBottom: spacing[1],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10.5,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  resultTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    letterSpacing: -0.4,
-    color: INK,
-  },
-  resultTitleItalic: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
-  queryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    maxWidth: "50%",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: `${colors.olive[600]}1F`,
-  },
-  queryChipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.olive[800],
-    flexShrink: 1,
-  },
-
-  lookShadow: {
-    marginHorizontal: spacing[5],
-    marginTop: spacing[3],
-    borderRadius: 26,
-    shadowColor: colors.olive[950],
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.25,
-    shadowRadius: 26,
-    elevation: 10,
-  },
-  lookCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    borderRadius: 26,
-    padding: spacing[5],
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: `${GOLD}26`,
-  },
-  lookEyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 9.5,
-    letterSpacing: 1.8,
-    color: `${CREAM}59`,
-  },
-  lookTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 22,
-    letterSpacing: -0.3,
-    color: CREAM,
-  },
-  lookSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: `${CREAM}8C`,
-  },
-  lookPrice: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-    color: GOLD,
-  },
-
-  pieceList: {
-    marginHorizontal: spacing[5],
-    marginTop: spacing[4],
-    gap: spacing[2.5],
-  },
-  pieceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[3],
-    borderRadius: radii["2xl"],
-    borderWidth: 1,
-    borderColor: `${INK}0D`,
-    backgroundColor: "#ffffff",
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    elevation: 2,
-  },
-  pieceImg: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.lg,
-    backgroundColor: colors.olive[50],
-  },
-  pieceImgFallback: { alignItems: "center", justifyContent: "center" },
-  pieceBody: { flex: 1, gap: 3 },
-  slotTag: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8.5,
-    letterSpacing: 1.2,
-    color: colors.olive[600],
-  },
-  pieceName: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: INK,
-  },
-  piecePrice: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: colors.olive[800],
-  },
-  pieceChevron: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.olive[50],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  stateCard: {
-    alignItems: "center",
-    marginHorizontal: spacing[5],
-    marginTop: spacing[6],
-    paddingHorizontal: spacing[6],
-    paddingVertical: spacing[8],
-    gap: spacing[2],
-    borderRadius: radii["3xl"],
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: `${INK}0D`,
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    elevation: 2,
-  },
-  medallionOuter: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: `${GOLD}4D`,
-    marginBottom: spacing[2],
-  },
-  medallionInner: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stateTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    color: INK,
-  },
-  stateSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: "center",
-    color: colors.light.mutedForeground,
-  },
-  retryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: spacing[3],
-    height: 42,
-    paddingHorizontal: spacing[5],
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
-  },
-  retryText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: CREAM,
-  },
+  smallCtaText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: "#FFFFFF" },
 });

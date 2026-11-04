@@ -11,18 +11,15 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { AiPageShell } from "@/components/ai/AiPageShell";
+import { UP as C } from "@/components/user/user-page";
 import { Ionicons } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui";
 import { aiTrendsBackend } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
-import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 
-const GOLD = colors.accent2.ochre;
-const CREAM = colors.paper.cream;
-const INK = colors.ink.DEFAULT;
+const SOFT = "#f5f3ec";
 
 type Trend = {
   id: string;
@@ -76,8 +73,12 @@ export default function AiTrendsScreen() {
     void load();
   }, [load]);
 
+  // A failed pull-to-refresh keeps the list on screen; the error state only
+  // replaces content when there is nothing to show.
+  const showError = !!error && trends.length === 0;
+
   return (
-    <AiPageShell title="What's moving">
+    <AiPageShell title="Trends">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
@@ -85,37 +86,32 @@ export default function AiTrendsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => void load(true)}
-            tintColor={colors.olive[600]}
+            tintColor={C.accent}
           />
         }
       >
-        <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>LUXE AI · TRENDING</Text>
-          <Text style={styles.heroTitle}>
-            What's moving,{"\n"}
-            <Text style={styles.heroTitleItalic}>this week.</Text>
-          </Text>
-          <Text style={styles.heroSub}>
-            Pieces gaining traction across the catalogue — ranked as shoppers
-            move.
-          </Text>
+        <View style={styles.cardShadow}>
+          <View style={[styles.card, styles.introRow]}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="trending-up" size={22} color={C.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.introTitle}>What&apos;s moving this week</Text>
+              <Text style={styles.introSub}>
+                Pieces gaining traction, ranked as shoppers move.
+              </Text>
+            </View>
+          </View>
         </View>
 
         {loading ? (
           <>
-            <View style={styles.statusRow}>
-              <View style={styles.statusPill}>
-                <Ionicons name="flame" size={12} color={GOLD} />
-                <Text style={styles.statusText}>Scanning this week's movers…</Text>
-              </View>
-            </View>
+            <Text style={styles.sectionTitle}>Scanning this week&apos;s movers…</Text>
             <View style={styles.grid}>
               {[1, 2, 3, 4].map((i) => (
-                <View key={i} style={styles.card}>
-                  <View style={styles.imgWrap}>
-                    <Skeleton style={styles.img} borderRadius={0} />
-                  </View>
-                  <View style={styles.cardBody}>
+                <View key={i} style={styles.product}>
+                  <Skeleton style={styles.img} borderRadius={14} />
+                  <View style={styles.productBody}>
                     <Skeleton width="90%" height={13} />
                     <Skeleton width="45%" height={12} />
                   </View>
@@ -123,64 +119,46 @@ export default function AiTrendsScreen() {
               ))}
             </View>
           </>
-        ) : error ? (
-          <View style={styles.stateCard}>
-            <View style={styles.medallionOuter}>
-              <LinearGradient
-                colors={["#242621", "#151613"]}
-                style={styles.medallionInner}
-              >
-                <Ionicons name="cloud-offline-outline" size={24} color={GOLD} />
-              </LinearGradient>
+        ) : showError ? (
+          <View style={[styles.cardShadow, styles.gapTop]}>
+            <View style={[styles.card, styles.stateCard]}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="cloud-offline-outline" size={22} color={C.accent} />
+              </View>
+              <Text style={styles.stateTitle}>Couldn&apos;t load trends</Text>
+              <Text style={styles.stateSub}>Check your connection and try again.</Text>
+              <PressableScale style={styles.smallCta} onPress={() => void load()}>
+                <Ionicons name="refresh" size={15} color={C.lime} />
+                <Text style={styles.smallCtaText}>Retry</Text>
+              </PressableScale>
             </View>
-            <Text style={styles.stateTitle}>Couldn't load trends</Text>
-            <Text style={styles.stateSub}>
-              Check your connection and try again.
-            </Text>
-            <PressableScale style={styles.retryBtn} onPress={() => void load()}>
-              <Ionicons name="refresh" size={14} color={CREAM} />
-              <Text style={styles.retryText}>Retry</Text>
-            </PressableScale>
           </View>
         ) : trends.length === 0 ? (
-          <View style={styles.stateCard}>
-            <View style={styles.medallionOuter}>
-              <LinearGradient
-                colors={["#242621", "#151613"]}
-                style={styles.medallionInner}
+          <View style={[styles.cardShadow, styles.gapTop]}>
+            <View style={[styles.card, styles.stateCard]}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="trending-up-outline" size={22} color={C.accent} />
+              </View>
+              <Text style={styles.stateTitle}>Nothing trending yet</Text>
+              <Text style={styles.stateSub}>
+                Trending pieces appear here once shoppers start moving on the catalogue.
+              </Text>
+              <PressableScale
+                style={styles.smallCta}
+                onPress={() => router.push("/(main)/products" as never)}
               >
-                <Ionicons name="trending-up-outline" size={24} color={GOLD} />
-              </LinearGradient>
+                <Ionicons name="compass-outline" size={15} color={C.lime} />
+                <Text style={styles.smallCtaText}>Explore the shop</Text>
+              </PressableScale>
             </View>
-            <Text style={styles.stateTitle}>Nothing trending yet</Text>
-            <Text style={styles.stateSub}>
-              Trending pieces appear here once shoppers start moving on the
-              catalogue.
-            </Text>
-            <PressableScale
-              style={styles.retryBtn}
-              onPress={() => router.push("/(main)/products" as never)}
-            >
-              <Ionicons name="compass-outline" size={14} color={CREAM} />
-              <Text style={styles.retryText}>Explore the shop</Text>
-            </PressableScale>
           </View>
         ) : (
           <>
             <View style={styles.resultHead}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.eyebrow}>Live ranking</Text>
-                <Text style={styles.resultTitle}>
-                  {trends.length}{" "}
-                  <Text style={styles.resultTitleItalic}>
-                    mover{trends.length === 1 ? "" : "s"}
-                  </Text>
-                </Text>
-              </View>
-              <View style={styles.queryChip}>
-                <Ionicons name="flame" size={11} color={colors.olive[700]} />
-                <Text style={styles.queryChipText} numberOfLines={1}>
-                  This week
+              <Text style={styles.resultTitle}>Live ranking</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>
+                  {trends.length} mover{trends.length === 1 ? "" : "s"}
                 </Text>
               </View>
             </View>
@@ -189,12 +167,12 @@ export default function AiTrendsScreen() {
                 <PressableScale
                   key={p.id}
                   scale={0.98}
-                  style={styles.card}
+                  style={styles.product}
                   onPress={() => router.push(`/(main)/products/${p.slug}` as never)}
                   accessibilityRole="button"
-                  accessibilityLabel={p.name}
+                  accessibilityLabel={`Number ${index + 1}, ${p.name}`}
                 >
-                  <View style={styles.imgWrap}>
+                  <View>
                     {p.image_url ? (
                       <Image
                         source={{ uri: p.image_url }}
@@ -204,53 +182,28 @@ export default function AiTrendsScreen() {
                       />
                     ) : (
                       <View style={[styles.img, styles.imgFallback]}>
-                        <Ionicons
-                          name="shirt-outline"
-                          size={28}
-                          color={colors.olive[300]}
-                        />
+                        <Ionicons name="shirt-outline" size={28} color={C.faint} />
                       </View>
                     )}
-                    <LinearGradient
-                      colors={["transparent", `${INK}26`]}
-                      style={styles.imgShade}
-                      pointerEvents="none"
-                    />
-                    {index === 0 ? (
-                      <LinearGradient
-                        colors={["#e6c873", GOLD, "#a8862f"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.rankBadge}
-                      >
-                        <Text style={styles.rankTextTop}>#1</Text>
-                      </LinearGradient>
-                    ) : (
-                      <View style={styles.rankBadge}>
-                        <Text style={styles.rankText}>#{index + 1}</Text>
-                      </View>
-                    )}
-                    {index < 3 ? (
-                      <View style={styles.hotBadge}>
-                        <Ionicons name="flame" size={9} color="#fff" />
-                        <Text style={styles.hotText}>HOT</Text>
-                      </View>
-                    ) : null}
+                    <View style={[styles.rankBadge, index === 0 && styles.rankBadgeTop]}>
+                      {index < 3 ? (
+                        <Ionicons name="flame" size={11} color={index === 0 ? C.ink : C.lime} />
+                      ) : null}
+                      <Text style={[styles.rankText, index === 0 && styles.rankTextTop]}>
+                        #{index + 1}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.cardBody}>
+                  <View style={styles.productBody}>
+                    {p.category ? (
+                      <Text style={styles.categoryTag} numberOfLines={1}>
+                        {p.category}
+                      </Text>
+                    ) : null}
                     <Text numberOfLines={2} style={styles.name}>
                       {p.name}
                     </Text>
-                    <View style={styles.priceRow}>
-                      <Text style={styles.price}>
-                        {formatPrice(p.price, p.currency ?? "LKR")}
-                      </Text>
-                      {p.category ? (
-                        <Text style={styles.categoryTag} numberOfLines={1}>
-                          {p.category.toUpperCase()}
-                        </Text>
-                      ) : null}
-                    </View>
+                    <Text style={styles.price}>{formatPrice(p.price, p.currency ?? "LKR")}</Text>
                   </View>
                 </PressableScale>
               ))}
@@ -263,270 +216,112 @@ export default function AiTrendsScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: spacing[10] },
-  hero: {
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[2],
-    gap: spacing[2],
-  },
-  heroEyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11,
-    letterSpacing: 2.2,
-    color: colors.olive[600],
-  },
-  heroTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.8,
-    color: INK,
-  },
-  heroTitleItalic: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
-  heroSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.light.mutedForeground,
-    maxWidth: 320,
-  },
-
-  statusRow: {
-    alignItems: "flex-start",
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    maxWidth: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
-  },
-  statusText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: CREAM,
-    flexShrink: 1,
-  },
-
-  resultHead: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[1],
-  },
-  eyebrow: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10.5,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: colors.light.mutedForeground,
-  },
-  resultTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 24,
-    letterSpacing: -0.4,
-    color: INK,
-  },
-  resultTitleItalic: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
-  queryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    maxWidth: "50%",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    borderWidth: 1,
-    borderColor: `${colors.olive[600]}1F`,
-  },
-  queryChipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.olive[800],
-    flexShrink: 1,
-  },
-
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    gap: 14,
-  },
-  card: {
-    width: "47%",
-    flexGrow: 1,
-    backgroundColor: "#ffffff",
-    borderRadius: radii["3xl"],
-    borderWidth: 1,
-    borderColor: `${INK}0D`,
-    overflow: "hidden",
-    shadowColor: INK,
+  scroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 32 },
+  gapTop: { marginTop: 20 },
+  cardShadow: {
+    borderRadius: 26,
+    shadowColor: "#16170f",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.07,
+    shadowOpacity: 0.06,
     shadowRadius: 18,
     elevation: 3,
   },
-  imgWrap: {
-    margin: 6,
-    borderRadius: radii["2xl"],
+  card: {
+    backgroundColor: C.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 16,
     overflow: "hidden",
   },
-  img: {
-    width: "100%",
-    aspectRatio: 0.82,
-    backgroundColor: colors.olive[50],
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  imgShade: {
-    ...StyleSheet.absoluteFillObject,
-    top: "55%",
+  introRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  introTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, color: C.text, letterSpacing: -0.3 },
+  introSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 18,
+    color: C.muted,
+    marginTop: 2,
   },
+  sectionTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 18,
+    color: C.text,
+    letterSpacing: -0.3,
+    marginTop: 26,
+    marginBottom: 12,
+  },
+  resultHead: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 24, marginBottom: 12 },
+  resultTitle: { flex: 1, fontFamily: fontFamilies.sans.bold, fontSize: 18, color: C.text, letterSpacing: -0.3 },
+  countBadge: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 13,
+    backgroundColor: C.accentSoft,
+    justifyContent: "center",
+  },
+  countText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: C.accent },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  product: {
+    width: "48.5%",
+    flexGrow: 1,
+    maxWidth: "50%",
+    padding: 8,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  img: { width: "100%", aspectRatio: 0.8, borderRadius: 14, backgroundColor: SOFT },
   imgFallback: { alignItems: "center", justifyContent: "center" },
   rankBadge: {
     position: "absolute",
     top: 8,
     left: 8,
-    minWidth: 28,
-    height: 22,
-    paddingHorizontal: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10.5,
-    color: CREAM,
-  },
-  rankTextTop: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10.5,
-    color: colors.olive[950],
-  },
-  hotBadge: {
-    position: "absolute",
-    top: 8,
-    right: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    height: 20,
-    paddingHorizontal: 7,
-    borderRadius: radii.full,
-    backgroundColor: colors.accent2.rust,
+    height: 24,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    backgroundColor: C.ink,
   },
-  hotText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-    color: "#fff",
-  },
-  cardBody: {
-    paddingHorizontal: spacing[3],
-    paddingTop: spacing[1],
-    paddingBottom: spacing[3],
-    gap: 6,
-  },
-  name: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: INK,
-  },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: 6,
-  },
-  price: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14.5,
-    color: INK,
-  },
-  categoryTag: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-    color: colors.light.mutedForeground,
-    flexShrink: 1,
-  },
-
-  stateCard: {
-    alignItems: "center",
-    marginHorizontal: spacing[5],
-    marginTop: spacing[6],
-    paddingHorizontal: spacing[6],
-    paddingVertical: spacing[8],
-    gap: spacing[2],
-    borderRadius: radii["3xl"],
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: `${INK}0D`,
-    shadowColor: INK,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    elevation: 2,
-  },
-  medallionOuter: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: `${GOLD}4D`,
-    marginBottom: spacing[2],
-  },
-  medallionInner: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stateTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    color: INK,
-  },
+  rankBadgeTop: { backgroundColor: C.lime },
+  rankText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: "#FFFFFF" },
+  rankTextTop: { color: C.ink },
+  productBody: { paddingHorizontal: 4, paddingTop: 10, paddingBottom: 4, gap: 3 },
+  categoryTag: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.muted },
+  name: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, lineHeight: 18, color: C.text },
+  price: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.text },
+  stateCard: { alignItems: "center", paddingVertical: 28, gap: 6 },
+  stateTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: C.text, marginTop: 8 },
   stateSub: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
+    fontSize: 13.5,
     lineHeight: 19,
+    color: C.muted,
     textAlign: "center",
-    color: colors.light.mutedForeground,
+    maxWidth: 280,
   },
-  retryBtn: {
+  smallCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: spacing[3],
     height: 42,
-    paddingHorizontal: spacing[5],
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[950],
+    paddingHorizontal: 18,
+    borderRadius: 21,
+    backgroundColor: C.ink,
+    marginTop: 10,
   },
-  retryText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: CREAM,
-  },
+  smallCtaText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: "#FFFFFF" },
 });

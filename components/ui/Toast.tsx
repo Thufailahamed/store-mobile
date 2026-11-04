@@ -107,6 +107,16 @@ const ISLAND_H = 37;
 const COMPACT_SIDE = 46;
 const COMPACT_W_PLAIN = 212;
 
+// Expanded card geometry. Corners are concentric with the emblem and the
+// status ring: inset + radius of each equals CARD_R, so every curve is parallel.
+const EMBLEM = 44;
+const PAD = 12;
+const CARD_R = PAD + EMBLEM / 2;
+const RING = 36;
+const RING_INSET = CARD_R - RING / 2;
+/** Gap between the hardware island and the content row. */
+const ISLAND_GAP = 6;
+
 const SPRING_GROW = { damping: 16, stiffness: 210, mass: 0.9 };
 const SPRING_FULL = { damping: 18, stiffness: 175, mass: 1 };
 const SPRING_BACK = { damping: 22, stiffness: 260, mass: 0.9 };
@@ -213,10 +223,8 @@ function Island({
   const fullW = Math.min(screenW - 18, 420);
   const compactW = hasIsland ? ISLAND_W + COMPACT_SIDE * 2 : COMPACT_W_PLAIN;
   // On island phones the expanded content sits below the island itself.
-  const insetTop = hasIsland ? ISLAND_H + 2 : 0;
-  const rowH = (t: ToastItemData) => (t.subtitle || t.action ? 70 : 60);
-  const fullHFor = (t: ToastItemData) =>
-    insetTop + rowH(t) + (hasIsland ? 4 : 0);
+  const insetTop = hasIsland ? ISLAND_H + ISLAND_GAP : PAD;
+  const fullH = insetTop + EMBLEM + PAD;
 
   const [stage, setStage] = useState<Stage>("grow");
   const [shown, setShown] = useState(toast);
@@ -262,10 +270,10 @@ function Island({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finish, hasIsland]);
 
-  const expandFull = (t: ToastItemData = toast) => {
+  const expandFull = () => {
     setPhase("full");
     w.value = withSpring(fullW, SPRING_FULL);
-    h.value = withSpring(fullHFor(t), SPRING_FULL);
+    h.value = withSpring(fullH, SPRING_FULL);
     shadow.value = withTiming(1, { duration: 400 });
   };
 
@@ -290,7 +298,7 @@ function Island({
       withTiming(1.035, { duration: 140, easing: EASE_OUT }),
       withSpring(1, { damping: 10, stiffness: 240 }),
     );
-    expandFull(toast);
+    expandFull();
     later(toast.duration, collapse);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast.id]);
@@ -315,7 +323,7 @@ function Island({
   const pillStyle = useAnimatedStyle(() => ({
     width: w.value,
     height: h.value,
-    borderRadius: Math.min(h.value / 2, 36),
+    borderRadius: Math.min(h.value / 2, CARD_R),
     opacity: op.value,
     shadowOpacity: 0.32 * shadow.value,
     transform: [
@@ -353,7 +361,7 @@ function Island({
               accent={accent}
               onAction={collapse}
               insetTop={insetTop}
-              rowH={rowH(shown)}
+              island={hasIsland}
             />
           )}
         </Pressable>
@@ -507,21 +515,21 @@ function FullContent({
   accent,
   onAction,
   insetTop,
-  rowH,
+  island,
 }: {
   toast: ToastItemData;
   accent: string;
   onAction: () => void;
   insetTop: number;
-  rowH: number;
+  island: boolean;
 }) {
   return (
     <>
       {/* Header either side of the hardware island, like a Live Activity. */}
-      {insetTop > 0 && (
+      {island && (
         <Animated.View
           entering={FadeIn.duration(300).delay(200)}
-          style={[styles.islandHeader, { height: insetTop }]}
+          style={[styles.islandHeader, { height: ISLAND_H }]}
         >
           <View style={styles.brand}>
             <View style={[styles.brandDot, { backgroundColor: accent }]} />
@@ -532,13 +540,9 @@ function FullContent({
           </Text>
         </Animated.View>
       )}
-      <View style={[styles.full, { marginTop: insetTop, height: rowH }]}>
+      <View style={[styles.full, { marginTop: insetTop }]}>
         <Animated.View entering={FadeIn.duration(260).delay(120)}>
-          <Emblem
-            toast={toast}
-            accent={accent}
-            size={toast.subtitle || toast.action ? 48 : 40}
-          />
+          <Emblem toast={toast} accent={accent} size={EMBLEM} />
         </Animated.View>
         <View style={styles.textCol}>
           <Animated.Text
@@ -603,6 +607,7 @@ const styles = StyleSheet.create({
   },
   pill: {
     backgroundColor: "#000",
+    borderCurve: "continuous",
     overflow: "hidden",
     shadowColor: "#000",
     shadowRadius: 24,
@@ -626,10 +631,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   full: {
+    height: EMBLEM,
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 13,
-    paddingRight: 16,
+    paddingLeft: PAD,
+    paddingRight: RING_INSET,
     gap: 12,
   },
   textCol: { flex: 1, gap: 2 },
@@ -641,7 +647,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 22,
+    // Header text lines up with the centres of the emblem and the ring.
+    paddingLeft: CARD_R - 6,
+    paddingRight: CARD_R - 8,
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 6 },
   brandDot: { width: 5, height: 5, borderRadius: 3 },
@@ -678,9 +686,9 @@ const styles = StyleSheet.create({
     borderColor: "#000",
   },
   statusRing: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: RING,
+    height: RING,
+    borderRadius: RING / 2,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",

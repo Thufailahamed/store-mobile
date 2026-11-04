@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,18 +13,13 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
-import { PaperBackground } from "@/components/layout";
 import { useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api/backend";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { UserPageFrame, UP as C } from "@/components/user/user-page";
 
-const GOLD = colors.accent2.ochre;
-const GOLD_DEEP = "#85651b";
-const HAIRLINE = "rgba(22, 23, 15, 0.08)";
 const MEASUREMENT_KEYS = [
   "height_cm",
   "weight_kg",
@@ -96,7 +90,7 @@ function Field({
           value={value}
           onChangeText={onChange}
           placeholder={placeholder}
-          placeholderTextColor={colors.light.mutedForeground}
+          placeholderTextColor={C.faint}
         />
         <Text style={styles.unitSuffix}>{unit}</Text>
       </View>
@@ -163,15 +157,16 @@ export default function FitProfileScreen() {
 
     if (!chest && !waist) return null;
 
+    // Largest threshold first — otherwise the XL / 36 bands are unreachable.
     let top = "Medium (EU 48)";
     if (chest < 92) top = "Small (EU 46)";
-    else if (chest > 104) top = "Large (EU 50–52)";
     else if (chest > 112) top = "XL (EU 54)";
+    else if (chest > 104) top = "Large (EU 50–52)";
 
     let bottom = "32 Regular";
     if (waist < 76) bottom = "30 Slim";
-    else if (waist > 86) bottom = "34 Classic";
     else if (waist > 94) bottom = "36 Relaxed";
+    else if (waist > 86) bottom = "34 Classic";
 
     return { top, bottom };
   }, [vals.chest_cm, vals.waist_cm]);
@@ -191,7 +186,7 @@ export default function FitProfileScreen() {
             accessibilityLabel="Save measurements"
           >
             {saving ? (
-              <ActivityIndicator size="small" color={GOLD} />
+              <ActivityIndicator size="small" color={C.accent} />
             ) : (
               <Ionicons
                 name="checkmark"
@@ -206,7 +201,7 @@ export default function FitProfileScreen() {
       <SafeAreaView style={styles.container} edges={[]}>
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color={GOLD} size="small" />
+            <ActivityIndicator color={C.accent} size="small" />
             <Text style={styles.loadingText}>Loading your fit profile…</Text>
           </View>
         ) : (
@@ -218,84 +213,73 @@ export default function FitProfileScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Heading */}
-            <View style={styles.pageHead}>
-              <Text style={styles.eyebrow}>Bespoke measurements</Text>
-              <Text style={styles.pageTitle}>
-                Your <Text style={styles.pageTitleAccent}>fit profile</Text>
-              </Text>
-              <Text style={styles.pageSub}>
-                Save your measurements once — we suggest your size on every
-                collection.
-              </Text>
-            </View>
-
             {/* Suggested size */}
-            <LinearGradient
-              colors={["#22241a", "#15160f"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.hero}
-            >
-              <Text style={styles.heroEyebrow}>Suggested size</Text>
-              {predictedSize ? (
-                <View style={styles.heroStats}>
-                  <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>
-                      {predictedSize.top}
-                    </Text>
-                    <Text style={styles.heroStatLabel}>Tops & jackets</Text>
+            <View style={styles.cardShadow}>
+              <View style={styles.card}>
+                <View style={styles.heroTop}>
+                  <View style={styles.heroIcon}>
+                    <Ionicons name="resize-outline" size={22} color={C.accent} />
                   </View>
-                  <View style={styles.heroDivider} />
-                  <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>
-                      {predictedSize.bottom}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.cardTitle}>Suggested size</Text>
+                    <Text style={styles.heroCopy}>
+                      {predictedSize
+                        ? "Based on your chest and waist."
+                        : "Add your chest and waist below to see it."}
                     </Text>
-                    <Text style={styles.heroStatLabel}>Trousers & pants</Text>
                   </View>
                 </View>
-              ) : (
-                <Text style={styles.heroEmpty}>
-                  Enter your chest and waist below to see your suggested size.
-                </Text>
-              )}
 
-              {/* Unit switcher */}
-              <View style={styles.unitSwitch}>
-                {(["metric", "imperial"] as UnitSystem[]).map((u) => {
-                  const active = unitSystem === u;
-                  return (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.unitPill, active && styles.unitPillActive]}
-                      onPress={() => setUnitSystem(u)}
-                      activeOpacity={0.8}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text
-                        style={[
-                          styles.unitPillText,
-                          active && styles.unitPillTextActive,
-                        ]}
-                      >
-                        {u === "metric" ? "cm · kg" : "in · lbs"}
+                {predictedSize ? (
+                  <View style={styles.sizeStrip}>
+                    <View style={styles.sizeCell}>
+                      <Text style={styles.sizeValue} numberOfLines={1} adjustsFontSizeToFit>
+                        {predictedSize.top}
                       </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                      <Text style={styles.sizeLabel}>Tops & jackets</Text>
+                    </View>
+                    <View style={styles.sizeDivider} />
+                    <View style={styles.sizeCell}>
+                      <Text style={styles.sizeValue} numberOfLines={1} adjustsFontSizeToFit>
+                        {predictedSize.bottom}
+                      </Text>
+                      <Text style={styles.sizeLabel}>Trousers & pants</Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Unit switcher */}
+                <View style={styles.unitSwitch}>
+                  {(["metric", "imperial"] as UnitSystem[]).map((u) => {
+                    const active = unitSystem === u;
+                    return (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.unitPill, active && styles.unitPillActive]}
+                        onPress={() => setUnitSystem(u)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.unitPillText, active && styles.unitPillTextActive]}>
+                          {u === "metric" ? "cm · kg" : "in · lbs"}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
-            </LinearGradient>
+            </View>
 
             {/* Silhouette */}
+            <View style={styles.cardShadow}>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardHeaderText}>
-                  <Text style={styles.cardEyebrow}>Drape preference</Text>
                   <Text style={styles.cardTitle}>Preferred silhouette</Text>
                 </View>
                 <View style={styles.cardIcon}>
-                  <Ionicons name="shirt-outline" size={16} color={GOLD_DEEP} />
+                  <Ionicons name="shirt-outline" size={16} color={C.accent} />
                 </View>
               </View>
 
@@ -324,17 +308,11 @@ export default function FitProfileScreen() {
                           <Ionicons
                             name={p.icon}
                             size={15}
-                            color={
-                              isSelected ? "#E8CF8F" : colors.light.foreground
-                            }
+                            color={isSelected ? C.ink : C.text}
                           />
                         </View>
                         {isSelected && (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={16}
-                            color={GOLD}
-                          />
+                          <Ionicons name="checkmark-circle" size={18} color={C.lime} />
                         )}
                       </View>
                       <Text
@@ -358,16 +336,17 @@ export default function FitProfileScreen() {
                 })}
               </View>
             </View>
+            </View>
 
             {/* Proportions */}
+            <View style={styles.cardShadow}>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardHeaderText}>
-                  <Text style={styles.cardEyebrow}>Stature</Text>
                   <Text style={styles.cardTitle}>General proportions</Text>
                 </View>
                 <View style={styles.cardIcon}>
-                  <Ionicons name="body-outline" size={16} color={GOLD_DEEP} />
+                  <Ionicons name="body-outline" size={16} color={C.accent} />
                 </View>
               </View>
 
@@ -388,16 +367,17 @@ export default function FitProfileScreen() {
                 />
               </View>
             </View>
+            </View>
 
             {/* Upper body */}
+            <View style={styles.cardShadow}>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardHeaderText}>
-                  <Text style={styles.cardEyebrow}>Upper body</Text>
                   <Text style={styles.cardTitle}>Tops, shirts & jackets</Text>
                 </View>
                 <View style={styles.cardIcon}>
-                  <Ionicons name="cut-outline" size={16} color={GOLD_DEEP} />
+                  <Ionicons name="cut-outline" size={16} color={C.accent} />
                 </View>
               </View>
 
@@ -420,16 +400,17 @@ export default function FitProfileScreen() {
                 />
               </View>
             </View>
+            </View>
 
             {/* Lower body */}
+            <View style={styles.cardShadow}>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardHeaderText}>
-                  <Text style={styles.cardEyebrow}>Lower body</Text>
                   <Text style={styles.cardTitle}>Trousers & skirts</Text>
                 </View>
                 <View style={styles.cardIcon}>
-                  <Ionicons name="layers-outline" size={16} color={GOLD_DEEP} />
+                  <Ionicons name="layers-outline" size={16} color={C.accent} />
                 </View>
               </View>
 
@@ -464,6 +445,7 @@ export default function FitProfileScreen() {
                 <View style={styles.fieldCol} />
               </View>
             </View>
+            </View>
 
             {/* Save */}
             <TouchableOpacity
@@ -479,13 +461,9 @@ export default function FitProfileScreen() {
               </Text>
               <View style={styles.saveBtnArrow}>
                 {saving ? (
-                  <ActivityIndicator size="small" color={colors.olive[900]} />
+                  <ActivityIndicator size="small" color={C.ink} />
                 ) : (
-                  <Ionicons
-                    name="checkmark"
-                    size={15}
-                    color={colors.olive[900]}
-                  />
+                  <Ionicons name="checkmark" size={18} color={C.ink} />
                 )}
               </View>
             </TouchableOpacity>
@@ -496,197 +474,85 @@ export default function FitProfileScreen() {
   );
 }
 
-const styles = withUserTheme(
-  StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    loadingWrap: {
-      flex: 1,
+const SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: "transparent" },
+    loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+    loadingText: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: C.muted },
+    navBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: C.card,
       alignItems: "center",
       justifyContent: "center",
-      gap: 12,
+      shadowColor: "#16170f",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      elevation: 3,
     },
-    loadingText: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 14,
-      color: colors.light.mutedForeground,
-    },
+    scrollContent: { paddingHorizontal: 20, paddingTop: 2, gap: 16 },
 
-    /* Nav */
-    navBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: spacing[5],
-      paddingVertical: spacing[2.5],
+    /* Cards */
+    cardShadow: { borderRadius: 26, backgroundColor: C.card, ...SHADOW },
+    card: {
+      backgroundColor: C.card,
+      borderRadius: 26,
+      borderCurve: "continuous",
+      padding: 18,
+      borderWidth: 1,
+      borderColor: C.line,
+      gap: 16,
     },
-    navBtn: {
+    cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+    cardHeaderText: { flex: 1 },
+    cardTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+    cardIcon: {
       width: 40,
       height: 40,
       borderRadius: 20,
-      backgroundColor: colors.paper.cream,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-    },
-    navTitle: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 15,
-      color: colors.light.foreground,
-    },
-
-    scrollContent: {
-      paddingHorizontal: spacing[5],
-      paddingTop: spacing[2],
-      gap: 14,
-    },
-
-    /* Heading */
-    pageHead: {
-      marginBottom: spacing[2],
-    },
-    eyebrow: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      letterSpacing: 1.6,
-      textTransform: "uppercase",
-      color: GOLD_DEEP,
-      marginBottom: 4,
-    },
-    pageTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 32,
-      letterSpacing: -0.6,
-      lineHeight: 38,
-      color: colors.light.foreground,
-    },
-    pageTitleAccent: {
-      fontFamily: fontFamilies.sans.medium,
-      color: GOLD_DEEP,
-    },
-    pageSub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13.5,
-      lineHeight: 20,
-      color: colors.light.mutedForeground,
-      marginTop: 6,
-      maxWidth: 300,
-    },
-
-    /* Suggested size hero */
-    hero: {
-      borderRadius: 24,
-      padding: spacing[5],
-      gap: spacing[4],
-      ...shadows.editorial,
-    },
-    heroEyebrow: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      letterSpacing: 1.6,
-      textTransform: "uppercase",
-      color: "rgba(232, 207, 143, 0.85)",
-    },
-    heroStats: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    heroStatCell: {
-      flex: 1,
-      gap: 3,
-    },
-    heroStatValue: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 19,
-      letterSpacing: -0.3,
-      color: colors.paper.cream,
-    },
-    heroStatLabel: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 9.5,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      color: "rgba(250, 248, 241, 0.55)",
-    },
-    heroDivider: {
-      width: 1,
-      height: 30,
-      backgroundColor: "rgba(250, 248, 241, 0.12)",
-      marginHorizontal: spacing[4],
-    },
-    heroEmpty: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13,
-      lineHeight: 18,
-      color: "rgba(250, 248, 241, 0.7)",
-    },
-    unitSwitch: {
-      flexDirection: "row",
-      backgroundColor: "rgba(250, 248, 241, 0.08)",
-      borderRadius: radii.full,
-      padding: 4,
-    },
-    unitPill: {
-      flex: 1,
-      height: 36,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radii.full,
-    },
-    unitPillActive: {
-      backgroundColor: "#E8CF8F",
-    },
-    unitPillText: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 11.5,
-      letterSpacing: 0.8,
-      color: "rgba(250, 248, 241, 0.65)",
-    },
-    unitPillTextActive: {
-      color: colors.olive[900],
-      fontFamily: fontFamilies.mono.semibold,
-    },
-
-    /* Cards */
-    card: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 24,
-      padding: spacing[5],
-      borderWidth: 1,
-      borderColor: HAIRLINE,
-      gap: spacing[4],
-    },
-    cardHeader: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-    },
-    cardHeaderText: {
-      gap: 3,
-    },
-    cardEyebrow: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      letterSpacing: 1.4,
-      textTransform: "uppercase",
-      color: GOLD_DEEP,
-    },
-    cardTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 20,
-      letterSpacing: -0.3,
-      color: colors.light.foreground,
-    },
-    cardIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: "rgba(200, 164, 74, 0.12)",
+      backgroundColor: C.accentSoft,
       alignItems: "center",
       justifyContent: "center",
     },
+
+    /* Suggested size */
+    heroTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+    heroIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: C.accentSoft,
+    },
+    heroCopy: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 2 },
+    sizeStrip: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 14,
+      paddingHorizontal: 8,
+      borderRadius: 20,
+      borderCurve: "continuous",
+      backgroundColor: C.ink,
+    },
+    sizeCell: { flex: 1, alignItems: "center", gap: 2, paddingHorizontal: 4 },
+    sizeValue: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: C.cream },
+    sizeLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+    sizeDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
+    unitSwitch: { flexDirection: "row", backgroundColor: "#f3f1e8", borderRadius: 22, padding: 4 },
+    unitPill: { flex: 1, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19 },
+    unitPillActive: { backgroundColor: C.ink },
+    unitPillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.muted },
+    unitPillTextActive: { color: C.cream },
 
     /* Silhouette grid */
     fitGrid: {
@@ -695,17 +561,17 @@ const styles = withUserTheme(
       gap: 10,
     },
     fitTile: {
-      width: "47.8%",
-      backgroundColor: "#FFFFFF",
-      borderRadius: 18,
+      width: "48%",
+      flexGrow: 1,
+      backgroundColor: "#f5f3ec",
+      borderRadius: 20,
+      borderCurve: "continuous",
       padding: 14,
       borderWidth: 1.5,
       borderColor: "transparent",
-      gap: 5,
+      gap: 4,
     },
-    fitTileActive: {
-      backgroundColor: "#15160f",
-    },
+    fitTileActive: { backgroundColor: C.ink, borderColor: C.ink },
     fitTileTop: {
       flexDirection: "row",
       alignItems: "center",
@@ -713,33 +579,18 @@ const styles = withUserTheme(
       marginBottom: 4,
     },
     fitIcon: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: colors.paper.cream,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: C.card,
       alignItems: "center",
       justifyContent: "center",
     },
-    fitIconActive: {
-      backgroundColor: "rgba(200, 164, 74, 0.18)",
-    },
-    fitLabel: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 13.5,
-      color: colors.light.foreground,
-    },
-    fitLabelActive: {
-      color: colors.paper.cream,
-    },
-    fitDesc: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 10.5,
-      lineHeight: 14,
-      color: colors.light.mutedForeground,
-    },
-    fitDescActive: {
-      color: "rgba(250, 248, 241, 0.65)",
-    },
+    fitIconActive: { backgroundColor: C.lime },
+    fitLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 14.5, color: C.text },
+    fitLabelActive: { color: C.cream },
+    fitDesc: { fontFamily: fontFamilies.sans.regular, fontSize: 12, lineHeight: 16, color: C.muted },
+    fitDescActive: { color: "rgba(250,248,241,0.6)" },
 
     /* Inputs */
     fieldsRow: {
@@ -750,41 +601,26 @@ const styles = withUserTheme(
       flex: 1,
       gap: 6,
     },
-    fieldLabel: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 9.5,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      color: colors.light.mutedForeground,
-    },
+    fieldLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.text },
     fieldInputWrap: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: colors.paper.warm,
-      borderRadius: radii.xl,
+      backgroundColor: "#f5f3ec",
+      borderRadius: 16,
       paddingHorizontal: 14,
-      paddingVertical: Platform.OS === "ios" ? 12 : 8,
-      borderWidth: 1,
-      borderColor: HAIRLINE,
+      height: 52,
       gap: 8,
     },
     fieldInput: {
       flex: 1,
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 15,
-      color: colors.light.foreground,
+      fontFamily: fontFamilies.sans.semibold,
+      fontSize: 16,
+      color: C.text,
       padding: 0,
+      fontVariant: ["tabular-nums"],
     },
-    unitSuffix: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 11,
-      color: colors.olive[600],
-    },
-    fieldHint: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 10.5,
-      color: colors.light.mutedForeground,
-    },
+    unitSuffix: { fontFamily: fontFamilies.sans.medium, fontSize: 13, color: C.muted },
+    fieldHint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
 
     /* Save */
     saveBtn: {
@@ -794,28 +630,17 @@ const styles = withUserTheme(
       height: 56,
       paddingLeft: 22,
       paddingRight: 6,
-      borderRadius: radii.full,
-      backgroundColor: "#15160f",
+      borderRadius: 28,
+      backgroundColor: C.ink,
       marginTop: 4,
-      shadowColor: colors.olive[950],
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.22,
-      shadowRadius: 12,
-      elevation: 5,
     },
-    saveBtnText: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 15,
-      color: colors.paper.cream,
-      letterSpacing: 0.2,
-    },
+    saveBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, color: C.cream },
     saveBtnArrow: {
       width: 44,
       height: 44,
       borderRadius: 22,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.paper.cream,
+      backgroundColor: C.lime,
     },
-  }),
-);
+});

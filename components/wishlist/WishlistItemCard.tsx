@@ -6,7 +6,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
+import { C } from "@/components/orders/parcel-track";
 import { discountPct, formatPrice } from "@/lib/utils";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useToast } from "@/components/ui/Toast";
@@ -22,9 +23,17 @@ interface WishlistItemCardProps {
   product: Product;
 }
 
-function getStock(product: Product) {
+/** Total stock across every variant (no variants = untracked, always available). */
+export function getStock(product: Product) {
   if (!product.variants?.length) return Infinity;
-  return product.variants[0]?.stock ?? 0;
+  return product.variants.reduce((sum, v) => sum + Math.max(0, v.stock ?? 0), 0);
+}
+
+/** Names often end in " - Brand"; the brand already sits above, so drop the echo. */
+function displayName(name: string, brand: string) {
+  const suffix = new RegExp(`\\s*[-–—|·]\\s*${brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i");
+  const trimmed = name.replace(suffix, "").trim();
+  return trimmed || name;
 }
 
 export function WishlistItemCard({ product }: WishlistItemCardProps) {
@@ -38,12 +47,15 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 
   const primary =
     product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-  const variant = product.variants?.[0];
+  // Move the first variant that can actually ship, not blindly the first one.
+  const variant =
+    product.variants?.find((v) => (v.stock ?? 0) > 0) ?? product.variants?.[0];
   const stock = getStock(product);
   const isOutOfStock = stock <= 0;
   const isLowStock = !isOutOfStock && Number.isFinite(stock) && stock <= 3;
   const discount = discountPct(product.mrp, product.price);
   const brandLabel = product.store?.name || product.brand?.name || "LUXE";
+  const name = displayName(product.name, brandLabel);
 
   const open = () =>
     router.push({
@@ -65,7 +77,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
           : undefined,
         price: product.price,
         image: primary,
-        stock: product.variants?.length ? stock : null,
+        stock: product.variants?.length ? (variant?.stock ?? 0) : null,
         quantity: 1,
       });
       toggle(product.id);
@@ -126,12 +138,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
             pressed && { transform: [{ scale: 0.9 }] },
           ]}
         >
-          <BlurView
-            intensity={40}
-            tint="light"
-            style={StyleSheet.absoluteFill}
-          />
-          <Ionicons name="heart" size={15} color={colors.accent2.rust} />
+          <Ionicons name="heart" size={16} color={C.rust} />
         </Pressable>
 
         {discount > 0 && !isOutOfStock ? (
@@ -154,10 +161,10 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 
       <View style={styles.info}>
         <Text style={styles.brandName} numberOfLines={1}>
-          {brandLabel.toUpperCase()}
+          {brandLabel}
         </Text>
         <Text style={styles.productName} numberOfLines={2}>
-          {product.name}
+          {name}
         </Text>
 
         <View style={styles.priceRow}>
@@ -207,8 +214,8 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
         >
           <Ionicons
             name={isOutOfStock ? "notifications-outline" : "bag-add-outline"}
-            size={14}
-            color={isOutOfStock ? colors.olive[800] : colors.paper.cream}
+            size={15}
+            color={isOutOfStock ? C.text : C.lime}
           />
           <Text
             style={[styles.actionText, isOutOfStock && styles.actionTextGhost]}
@@ -224,189 +231,102 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: radii["3xl"],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${colors.olive[700]}26`,
+    backgroundColor: C.card,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: C.line,
     overflow: "hidden",
-    ...shadows.soft,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  cardPressed: {
-    transform: [{ scale: 0.985 }],
-  },
-  imageWrap: {
-    width: "100%",
-    position: "relative",
-    backgroundColor: "#FFFFFF",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  imageMuted: {
-    opacity: 0.55,
-  },
-  imagePlaceholder: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  topScrim: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 64,
-  },
+  cardPressed: { transform: [{ scale: 0.985 }] },
+  imageWrap: { width: "100%", position: "relative", backgroundColor: "#f0ede2" },
+  image: { width: "100%", height: "100%" },
+  imageMuted: { opacity: 0.55 },
+  imagePlaceholder: { flex: 1, alignItems: "center", justifyContent: "center" },
+  topScrim: { position: "absolute", left: 0, right: 0, top: 0, height: 64 },
   heartBtn: {
     position: "absolute",
     top: 10,
     right: 10,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    overflow: "hidden",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${colors.paper.cream}B3`,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${colors.paper.cream}`,
+    backgroundColor: C.card,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
   },
   discountBadge: {
     position: "absolute",
     left: 10,
     top: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "#15160f",
+    height: 26,
+    paddingHorizontal: 9,
+    borderRadius: 13,
+    justifyContent: "center",
+    backgroundColor: C.lime,
   },
-  discountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 0.4,
-    color: colors.accent2.ochre,
-  },
+  discountText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, color: C.ink, fontVariant: ["tabular-nums"] },
   soldOutPill: {
     position: "absolute",
     alignSelf: "center",
     bottom: 12,
+    height: 28,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radii.full,
+    borderRadius: 14,
+    justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: "rgba(22,23,15,0.45)",
+    backgroundColor: "rgba(22,23,15,0.55)",
   },
-  soldOutText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: colors.paper.cream,
-  },
-  info: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  brandName: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    color: MUTED,
-    letterSpacing: 1.4,
-  },
+  soldOutText: { fontFamily: fontFamilies.sans.bold, fontSize: 11.5, letterSpacing: 0.3, color: C.cream },
+  info: { flex: 1, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14 },
+  brandName: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.muted },
   productName: {
-    marginTop: 5,
-    fontFamily: fontFamilies.sans.medium,
+    marginTop: 3,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 15,
     lineHeight: 19,
     // Reserve two lines so cards in the same row line up.
     minHeight: 38,
-    color: INK,
-    letterSpacing: -0.2,
+    color: C.text,
+    letterSpacing: -0.3,
   },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    flexWrap: "wrap",
-    columnGap: 6,
-    marginTop: 8,
-  },
-  price: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: INK,
-    letterSpacing: -0.1,
-  },
-  priceSale: {
-    color: colors.accent2.rust,
-  },
-  mrp: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: MUTED,
-    textDecorationLine: "line-through",
-  },
-  stockRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-  },
-  stockDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.olive[400],
-  },
-  stockDotLow: {
-    backgroundColor: colors.accent2.ochre,
-  },
-  stockDotOut: {
-    backgroundColor: colors.accent2.rust,
-  },
-  stockText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.olive[600],
-  },
-  stockTextLow: {
-    color: "#9a7a26",
-  },
-  stockTextOut: {
-    color: colors.accent2.rust,
-  },
+  priceRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 6, marginTop: 8 },
+  price: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.text, letterSpacing: -0.3, fontVariant: ["tabular-nums"] },
+  priceSale: { color: C.rust },
+  mrp: { fontFamily: fontFamilies.sans.regular, fontSize: 11, color: C.muted, textDecorationLine: "line-through" },
+  stockRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  stockDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: C.accent },
+  stockDotLow: { backgroundColor: colors.accent2.ochre },
+  stockDotOut: { backgroundColor: C.rust },
+  stockText: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: C.accent },
+  stockTextLow: { color: "#9a7a26" },
+  stockTextOut: { color: C.rust },
   ctaSpacer: {
     // Pushes the CTA to the card's bottom edge so buttons align across a row.
     flexGrow: 1,
     minHeight: 12,
   },
   actionBtn: {
-    minHeight: 40,
+    height: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    borderRadius: radii.full,
-    backgroundColor: "#15160f",
+    gap: 8,
+    borderRadius: 22,
+    backgroundColor: C.ink,
   },
-  actionBtnGhost: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: `${colors.olive[800]}40`,
-  },
-  actionBtnPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.97 }],
-  },
-  actionText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: colors.paper.cream,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  actionTextGhost: {
-    color: colors.olive[800],
-  },
+  actionBtnGhost: { backgroundColor: C.card, borderWidth: 1, borderColor: "rgba(22,23,15,0.14)" },
+  actionBtnPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+  actionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.cream },
+  actionTextGhost: { color: C.text },
 });

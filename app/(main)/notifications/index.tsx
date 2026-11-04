@@ -13,7 +13,6 @@ import { navigateHome } from "@/lib/navigation";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
@@ -26,15 +25,13 @@ import {
 } from "@/lib/api";
 import type { Notification } from "@/lib/types";
 import { Skeleton, useToast } from "@/components/ui";
-import { useTheme } from "@/lib/hooks/useTheme";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { colors, spacing, radii, typography } from "@/lib/theme/tokens";
-import { PaperBackground } from "@/components/layout";
+import { spacing } from "@/lib/theme/tokens";
 import { useNotificationsRealtime } from "@/lib/hooks/useNotificationsRealtime";
 import {
   HeaderButton,
   UserPageFrame,
-  withUserTheme,
+  UP as C,
 } from "@/components/user/user-page";
 
 type NotifFilter = "all" | "messages" | "alerts" | "social" | "saved";
@@ -89,12 +86,12 @@ const DEFAULT_TYPE_META = {
 
 function formatRelativeShort(dateStr: string): string {
   const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins} mn`;
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} h`;
+  if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days} d`;
+  if (days < 7) return `${days}d ago`;
   return new Date(dateStr).toLocaleDateString("en-LK", {
     month: "short",
     day: "numeric",
@@ -114,7 +111,11 @@ function dayLabel(dateStr: string): string {
   if (diffDays < 7) {
     return date.toLocaleDateString("en-LK", { weekday: "long" });
   }
-  return "Earlier";
+  // Older items group by month instead of one catch-all "Earlier" bucket.
+  return date.toLocaleDateString("en-LK", {
+    month: "long",
+    ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
 }
 
 /** In-app relative path only — no scheme/host, no "..", reasonable length. */
@@ -171,7 +172,6 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
-  const theme = useTheme();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<NotifFilter>("all");
@@ -314,8 +314,13 @@ export default function NotificationsScreen() {
     showLocalPush: true,
   });
 
+  // Newest first, so day/month groups are contiguous and labels never repeat.
   const notifications = useMemo(
-    () => notificationsQuery.data ?? [],
+    () =>
+      [...(notificationsQuery.data ?? [])].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ),
     [notificationsQuery.data],
   );
 
@@ -439,60 +444,46 @@ export default function NotificationsScreen() {
       }
     >
       <View style={styles.summaryWrap}>
-        {/* Summary card */}
-        <LinearGradient
-          colors={["#22241a", "#15160f"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.summary}
-        >
-          <View style={styles.summaryGlow} pointerEvents="none" />
-          <View style={styles.summaryHairline} pointerEvents="none" />
-          <View style={styles.summaryLeft}>
+        <View style={styles.summaryShadow}>
+          <View style={styles.summary}>
             <View style={styles.summaryBell}>
               <Ionicons
                 name={unreadAll > 0 ? "notifications" : "checkmark-done"}
-                size={18}
-                color={GOLD_LIGHT}
+                size={22}
+                color={C.accent}
               />
-              {unreadAll > 0 ? <View style={styles.summaryBellDot} /> : null}
+              {unreadAll > 0 ? (
+                <View style={styles.summaryBadge}>
+                  <Text style={styles.summaryBadgeText}>
+                    {unreadAll > 99 ? "99+" : unreadAll}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.summaryValue}>
-                {unreadAll > 0 ? unreadAll : "All clear"}
-                {unreadAll > 0 ? (
-                  <Text style={styles.summaryValueUnit}> unread</Text>
-                ) : null}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.summaryValue} numberOfLines={1}>
+                {unreadAll > 0 ? `${unreadAll} unread` : "All caught up"}
               </Text>
               <Text style={styles.summarySub} numberOfLines={1}>
                 {notifications.length} total · {todayCount} today
               </Text>
             </View>
-          </View>
-          <Pressable
-            onPress={() => unreadAll > 0 && markAllMutation.mutate()}
-            disabled={unreadAll === 0}
-            style={({ pressed }) => [
-              pressed && styles.pressed,
-              unreadAll === 0 && { opacity: 0.5 },
-            ]}
-            accessibilityLabel="Mark all as read"
-          >
-            <LinearGradient
-              colors={[GOLD_LIGHT, theme.accent2.ochre]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.summaryBtn}
+            <Pressable
+              onPress={() => unreadAll > 0 && markAllMutation.mutate()}
+              disabled={unreadAll === 0}
+              style={({ pressed }) => [
+                styles.summaryBtn,
+                pressed && styles.pressed,
+                unreadAll === 0 && { opacity: 0.4 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all as read"
             >
-              <Ionicons
-                name="checkmark-done"
-                size={14}
-                color={theme.olive[900]}
-              />
+              <Ionicons name="checkmark-done" size={16} color={C.lime} />
               <Text style={styles.summaryBtnText}>Read all</Text>
-            </LinearGradient>
-          </Pressable>
-        </LinearGradient>
+            </Pressable>
+          </View>
+        </View>
       </View>
 
       {/* ── Filters ─────────────────────────────────────────── */}
@@ -516,37 +507,19 @@ export default function NotificationsScreen() {
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected }}
+              accessibilityLabel={`${item.label}${unread > 0 ? `, ${unread} unread` : ""}`}
             >
               <Ionicons
                 name={item.icon}
-                size={14}
-                color={selected ? GOLD_LIGHT : theme.ink.mute}
+                size={15}
+                color={selected ? C.lime : C.text}
               />
-              <Text
-                style={[
-                  styles.filterChipText,
-                  selected && { color: theme.paper.cream },
-                ]}
-              >
+              <Text style={[styles.filterChipText, selected && styles.filterChipTextActive]}>
                 {item.label}
               </Text>
               {unread > 0 && (
-                <View
-                  style={[
-                    styles.filterCount,
-                    {
-                      backgroundColor: selected
-                        ? GOLD_LIGHT
-                        : theme.accent2.rust,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterCountText,
-                      { color: selected ? theme.olive[900] : "#fff" },
-                    ]}
-                  >
+                <View style={[styles.filterCount, selected && styles.filterCountActive]}>
+                  <Text style={[styles.filterCountText, selected && styles.filterCountTextActive]}>
                     {unread}
                   </Text>
                 </View>
@@ -561,7 +534,7 @@ export default function NotificationsScreen() {
           <View style={styles.groupCard}>
             {[1, 2, 3, 4].map((i) => (
               <View key={i} style={[styles.row, i > 1 && styles.rowDivider]}>
-                <Skeleton width={46} height={46} borderRadius={15} />
+                <Skeleton width={46} height={46} borderRadius={23} />
                 <View style={{ flex: 1, gap: 8 }}>
                   <Skeleton width="85%" height={14} />
                   <Skeleton width="40%" height={11} />
@@ -584,7 +557,7 @@ export default function NotificationsScreen() {
               ]}
               accessibilityRole="button"
             >
-              <Ionicons name="refresh" size={15} color={theme.paper.cream} />
+              <Ionicons name="refresh" size={15} color={C.lime} />
               <Text style={styles.retryText}>Retry</Text>
             </Pressable>
           }
@@ -604,10 +577,10 @@ export default function NotificationsScreen() {
       ) : (
         <FlatList
           data={sections}
-          keyExtractor={(s) => s.label}
+          keyExtractor={(s, i) => `${i}-${s.label}`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
-            paddingHorizontal: spacing[4],
+            paddingHorizontal: 20,
             paddingBottom: insets.bottom + spacing[8],
           }}
           refreshControl={
@@ -616,16 +589,18 @@ export default function NotificationsScreen() {
                 notificationsQuery.isFetching && !notificationsQuery.isLoading
               }
               onRefresh={() => notificationsQuery.refetch()}
-              tintColor={theme.colors.primary}
+              tintColor={C.accent}
             />
           }
           renderItem={({ item: section }) => (
             <View>
               <View style={styles.dayHeader}>
                 <Text style={styles.dayLabel}>{section.label}</Text>
-                <View style={styles.dayLine} />
-                <Text style={styles.dayCount}>{section.items.length}</Text>
+                <View style={styles.dayCount}>
+                  <Text style={styles.dayCountText}>{section.items.length}</Text>
+                </View>
               </View>
+              <View style={styles.groupShadow}>
               <View style={styles.groupCard}>
                 {section.items.map((n, i) => (
                   <NotificationRow
@@ -637,6 +612,7 @@ export default function NotificationsScreen() {
                   />
                 ))}
               </View>
+              </View>
             </View>
           )}
         />
@@ -644,8 +620,6 @@ export default function NotificationsScreen() {
     </UserPageFrame>
   );
 }
-
-const GOLD_LIGHT = "#e8d496";
 
 function EmptyState({
   icon,
@@ -658,24 +632,16 @@ function EmptyState({
   sub: string;
   action?: React.ReactNode;
 }) {
-  const theme = useTheme();
   return (
     <View style={styles.emptyWrap}>
-      <View style={styles.emptyRingOuter}>
-        <View style={styles.emptyRingInner}>
-          <LinearGradient
-            colors={["#22241a", "#15160f"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.emptyIcon}
-          >
-            <Ionicons name={icon} size={26} color={GOLD_LIGHT} />
-          </LinearGradient>
+      <View style={styles.emptyCard}>
+        <View style={styles.emptyIcon}>
+          <Ionicons name={icon} size={30} color={C.accent} />
         </View>
+        <Text style={styles.emptyTitle}>{title}</Text>
+        <Text style={styles.emptySub}>{sub}</Text>
+        {action}
       </View>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      <Text style={styles.emptySub}>{sub}</Text>
-      {action}
     </View>
   );
 }
@@ -691,65 +657,61 @@ function NotificationRow({
   onPress: () => void;
   onDelete: () => void;
 }) {
-  const theme = useTheme();
   const isUnread = !item.read_at;
   const imageUrl = getNotificationImage(item);
   const meta = TYPE_META[normalizeType(item.type ?? "")] ?? DEFAULT_TYPE_META;
   const tint =
     meta.tone === "olive"
-      ? theme.olive[600]
+      ? C.accent
       : meta.tone === "rust"
-        ? theme.accent2.rust
+        ? C.rust
         : meta.tone === "ochre"
-          ? theme.accent2.ochre
-          : theme.ink.soft;
+          ? "#9a7a26"
+          : C.text;
+  const tileBg =
+    meta.tone === "olive"
+      ? C.accentSoft
+      : meta.tone === "rust"
+        ? "rgba(184,92,58,0.1)"
+        : meta.tone === "ochre"
+          ? "rgba(200,164,74,0.14)"
+          : "#f3f1e8";
   const hasBody = !!item.body?.trim();
   const title = item.title?.trim();
   const message = hasBody ? item.body : item.title;
   const showTitle = hasBody && !!title && title !== item.body?.trim();
-  const data = item.data;
-  const actionable =
-    (typeof data?.screen === "string" && data.screen.length > 0) ||
-    typeof data?.order_id === "string" ||
-    typeof data?.product_slug === "string";
 
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onDelete}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.row,
         !first && styles.rowDivider,
-        isUnread && styles.rowUnread,
-        pressed && { backgroundColor: theme.olive[50] },
+        pressed && { backgroundColor: "rgba(22,23,15,0.03)" },
       ]}
       accessibilityRole="button"
+      accessibilityLabel={`${isUnread ? "Unread. " : ""}${showTitle ? `${title}. ` : ""}${message ?? ""}`}
+      accessibilityHint="Long-press to delete"
     >
-      {isUnread ? <View style={styles.unreadBar} /> : null}
-
-      <View
-        style={[
-          styles.iconTile,
-          { backgroundColor: `${tint}14`, borderColor: `${tint}30` },
-        ]}
-      >
-        <Ionicons name={meta.icon} size={19} color={tint} />
-        {isUnread && <View style={styles.unreadDot} />}
+      <View style={[styles.iconTile, { backgroundColor: tileBg }]}>
+        <Ionicons name={meta.icon} size={20} color={tint} />
       </View>
 
       <View style={styles.rowBody}>
         <View style={styles.metaRow}>
-          <View style={[styles.typeChip, { backgroundColor: `${tint}14` }]}>
-            <Text style={[styles.typeLabel, { color: tint }]}>
-              {meta.label.toUpperCase()}
-            </Text>
-          </View>
-          <Text style={styles.time}>
-            {formatRelativeShort(item.created_at)}
-          </Text>
-          {isUnread ? <Text style={styles.newTag}>NEW</Text> : null}
+          <Text style={[styles.typeLabel, { color: tint }]}>{meta.label}</Text>
+          <Text style={styles.metaDot}>·</Text>
+          <Text style={styles.time}>{formatRelativeShort(item.created_at)}</Text>
+          <View style={{ flex: 1 }} />
+          {isUnread ? <View style={styles.unreadDot} /> : null}
         </View>
         {showTitle ? (
-          <Text style={styles.title} numberOfLines={1}>
+          <Text
+            style={[styles.title, !isUnread && styles.titleRead]}
+            numberOfLines={1}
+          >
             {title}
           </Text>
         ) : null}
@@ -757,7 +719,7 @@ function NotificationRow({
           style={[
             styles.message,
             showTitle && styles.messageSecondary,
-            !showTitle && isUnread && { fontFamily: fontFamilies.sans.bold },
+            !showTitle && !isUnread && styles.titleRead,
           ]}
           numberOfLines={showTitle ? 2 : 3}
         >
@@ -774,430 +736,218 @@ function NotificationRow({
         />
       ) : null}
 
-      <View style={styles.rowSide}>
-        <Pressable
-          onPress={onDelete}
-          hitSlop={10}
-          accessibilityLabel="Delete notification"
-          style={({ pressed }) => [
-            styles.deleteBtn,
-            pressed && { backgroundColor: theme.colors.muted },
-          ]}
-        >
-          <Ionicons name="close" size={14} color={theme.ink.mute} />
-        </Pressable>
-        {actionable ? (
-          <Ionicons
-            name="chevron-forward"
-            size={15}
-            color={theme.colors.border}
-          />
-        ) : null}
-      </View>
+      <Pressable
+        onPress={onDelete}
+        hitSlop={10}
+        accessibilityLabel="Delete notification"
+        style={({ pressed }) => [styles.deleteBtn, pressed && { backgroundColor: "#f3f1e8" }]}
+      >
+        <Ionicons name="close" size={15} color={C.faint} />
+      </Pressable>
     </Pressable>
   );
 }
 
-const cardShadow = {
-  shadowColor: "#2c3119",
+const SHADOW = {
+  shadowColor: "#16170f",
   shadowOffset: { width: 0, height: 10 },
-  shadowOpacity: 0.07,
-  shadowRadius: 22,
-  elevation: 4,
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  elevation: 3,
 } as const;
 
-const styles = withUserTheme(
-  StyleSheet.create({
-    screen: { flex: 1 },
-    summaryWrap: { paddingHorizontal: 20, paddingBottom: 4 },
-    pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+const styles = StyleSheet.create({
+  summaryWrap: { paddingHorizontal: 20, paddingBottom: 4 },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
 
-    /* Header */
-    header: {
-      paddingHorizontal: spacing[4],
-      paddingBottom: spacing[2],
-    },
-    headerTop: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    headerBtn: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      backgroundColor: colors.paper.cream,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.light.border,
-      alignItems: "center",
-      justifyContent: "center",
-      ...cardShadow,
-      shadowOpacity: 0.06,
-      shadowRadius: 10,
-    },
-    titleBlock: { marginTop: spacing[4], paddingHorizontal: 4 },
-    eyebrowRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    eyebrowBar: {
-      width: 18,
-      height: 2,
-      borderRadius: 1,
-      backgroundColor: colors.accent2.ochre,
-    },
-    headerEyebrow: {
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 9.5,
-      letterSpacing: 1.8,
-      color: colors.accent2.rust,
-    },
-    headerTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 40,
-      lineHeight: 46,
-      letterSpacing: -1.2,
-      color: colors.ink.DEFAULT,
-      marginTop: 4,
-    },
-    headerTitleAccent: {
-      fontFamily: fontFamilies.sans.medium,
-      color: colors.olive[600],
-    },
+  /* Summary */
+  summaryShadow: { borderRadius: 26, backgroundColor: C.card, ...SHADOW },
+  summary: {
+    borderRadius: 26,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  summaryBell: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  summaryBadge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.ink,
+    borderWidth: 2,
+    borderColor: C.card,
+  },
+  summaryBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 10, color: C.lime },
+  summaryValue: { fontFamily: fontFamilies.sans.bold, fontSize: 18, letterSpacing: -0.4, color: C.text },
+  summarySub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 1 },
+  summaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 42,
+    paddingHorizontal: 16,
+    borderRadius: 21,
+    backgroundColor: C.ink,
+  },
+  summaryBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.cream },
 
-    /* Summary */
-    summary: {
-      marginTop: spacing[4],
-      borderRadius: 22,
-      padding: 14,
-      paddingLeft: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: "rgba(232,212,150,0.16)",
-      shadowColor: "#161a0a",
-      shadowOffset: { width: 0, height: 14 },
-      shadowOpacity: 0.25,
-      shadowRadius: 22,
-      elevation: 10,
-    },
-    summaryGlow: {
-      position: "absolute",
-      top: -60,
-      right: -40,
-      width: 160,
-      height: 160,
-      borderRadius: 80,
-      backgroundColor: "rgba(200,164,74,0.16)",
-    },
-    summaryHairline: {
-      position: "absolute",
-      top: 0,
-      left: 30,
-      right: 30,
-      height: 1,
-      backgroundColor: "rgba(232,212,150,0.45)",
-    },
-    summaryLeft: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    summaryBell: {
-      width: 42,
-      height: 42,
-      borderRadius: 14,
-      backgroundColor: "rgba(232,212,150,0.1)",
-      borderWidth: 1,
-      borderColor: "rgba(232,212,150,0.22)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    summaryBellDot: {
-      position: "absolute",
-      top: 9,
-      right: 10,
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.accent2.rust,
-      borderWidth: 1.5,
-      borderColor: colors.olive[900],
-    },
-    summaryValue: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 22,
-      color: colors.paper.cream,
-      letterSpacing: -0.4,
-    },
-    summaryValueUnit: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 13,
-      color: "rgba(244,242,234,0.65)",
-      letterSpacing: 0,
-    },
-    summarySub: {
-      fontFamily: fontFamilies.mono.regular,
-      fontSize: 10,
-      color: "rgba(244,242,234,0.5)",
-      letterSpacing: 0.4,
-      marginTop: 2,
-    },
-    summaryBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 13,
-      height: 36,
-      borderRadius: 18,
-    },
-    summaryBtnText: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 12,
-      color: colors.olive[900],
-    },
+  /* Filters */
+  filterScroll: { flexGrow: 0 },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    height: 42,
+    paddingLeft: 14,
+    paddingRight: 16,
+    borderRadius: 21,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  filterChipActive: { backgroundColor: C.ink, borderColor: C.ink },
+  filterChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text },
+  filterChipTextActive: { color: C.cream },
+  filterCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+    marginRight: -6,
+  },
+  filterCountActive: { backgroundColor: "rgba(200,224,138,0.18)" },
+  filterCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: C.muted },
+  filterCountTextActive: { color: C.lime },
 
-    /* Filters */
-    filterScroll: { flexGrow: 0 },
-    filterRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing[2],
-      paddingHorizontal: spacing[4],
-      paddingTop: spacing[2],
-      paddingBottom: spacing[2],
-    },
-    filterChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      height: 38,
-      paddingHorizontal: 15,
-      borderRadius: radii.full,
-      backgroundColor: colors.paper.cream,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.light.border,
-    },
-    filterChipActive: {
-      backgroundColor: "#15160f",
-      borderColor: colors.olive[900],
-      ...cardShadow,
-      shadowOpacity: 0.2,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 5 },
-    },
-    filterChipText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 12.5,
-      color: colors.ink.soft,
-    },
-    filterCount: {
-      minWidth: 18,
-      height: 18,
-      borderRadius: 9,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 5,
-    },
-    filterCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 10 },
+  /* Day groups */
+  dayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 18,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  dayLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+  dayCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+  },
+  dayCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11, color: C.muted },
+  groupShadow: { borderRadius: 26, backgroundColor: C.card, ...SHADOW },
+  groupCard: {
+    backgroundColor: C.card,
+    borderRadius: 26,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: C.line,
+    overflow: "hidden",
+  },
+  loadingList: { paddingHorizontal: 20, paddingTop: 20 },
 
-    /* Day groups */
-    dayHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      marginTop: spacing[5],
-      marginBottom: spacing[2.5],
-      paddingHorizontal: 4,
-    },
-    dayLabel: {
-      fontFamily: fontFamilies.sans.medium,
-      fontSize: 17,
-      color: colors.ink.DEFAULT,
-    },
-    dayLine: {
-      flex: 1,
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.light.border,
-    },
-    dayCount: {
-      fontFamily: fontFamilies.mono.medium,
-      fontSize: 10,
-      color: colors.ink.mute,
-      letterSpacing: 0.6,
-    },
-    groupCard: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 24,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.light.border,
-      overflow: "hidden",
-      ...cardShadow,
-    },
-    loadingList: { paddingHorizontal: spacing[4], paddingTop: spacing[4] },
+  /* Row */
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 16,
+    paddingLeft: 16,
+    paddingRight: 10,
+    gap: 12,
+  },
+  rowDivider: { borderTopWidth: 1, borderTopColor: C.line },
+  iconTile: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowBody: { flex: 1, minWidth: 0, gap: 3 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 18 },
+  typeLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12 },
+  metaDot: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.faint },
+  time: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
+  unreadDot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.rust },
+  title: { fontFamily: fontFamilies.sans.bold, fontSize: 15, letterSpacing: -0.2, color: C.text },
+  titleRead: { fontFamily: fontFamilies.sans.semibold, color: "#3d3d36" },
+  message: { fontFamily: fontFamilies.sans.bold, fontSize: 15, lineHeight: 20, color: C.text },
+  messageSecondary: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, lineHeight: 19, color: C.muted },
+  thumb: { width: 52, height: 52, borderRadius: 16, backgroundColor: "#f0ede2" },
+  deleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginTop: -4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-    /* Row */
-    row: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      paddingVertical: 15,
-      paddingLeft: 16,
-      paddingRight: 12,
-      gap: 12,
-    },
-    rowDivider: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.light.border,
-    },
-    rowUnread: { backgroundColor: "#fbf8ec" },
-    unreadBar: {
-      position: "absolute",
-      left: 0,
-      top: 14,
-      bottom: 14,
-      width: 3,
-      borderTopRightRadius: 3,
-      borderBottomRightRadius: 3,
-      backgroundColor: colors.accent2.ochre,
-    },
-    iconTile: {
-      width: 46,
-      height: 46,
-      borderRadius: 15,
-      borderWidth: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    unreadDot: {
-      position: "absolute",
-      top: -3,
-      right: -3,
-      width: 11,
-      height: 11,
-      borderRadius: 6,
-      borderWidth: 2,
-      borderColor: "#fbf8ec",
-      backgroundColor: colors.accent2.rust,
-    },
-    rowBody: { flex: 1, minWidth: 0, gap: 5 },
-    metaRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-    typeChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
-    typeLabel: {
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 8.5,
-      letterSpacing: 0.9,
-    },
-    time: {
-      fontFamily: fontFamilies.mono.regular,
-      fontSize: 10,
-      color: colors.ink.mute,
-    },
-    newTag: {
-      fontFamily: fontFamilies.mono.semibold,
-      fontSize: 8.5,
-      letterSpacing: 0.9,
-      color: colors.accent2.rust,
-    },
-    title: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 14,
-      color: colors.ink.DEFAULT,
-    },
-    message: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: 14,
-      lineHeight: 20,
-      color: colors.ink.DEFAULT,
-    },
-    messageSecondary: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.ink.mute,
-    },
-    thumb: {
-      width: 52,
-      height: 52,
-      borderRadius: 14,
-      backgroundColor: colors.light.muted,
-    },
-    rowSide: {
-      alignSelf: "stretch",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    deleteBtn: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-
-    /* Empty */
-    emptyWrap: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: spacing[8],
-      paddingBottom: spacing[16],
-      gap: spacing[2],
-    },
-    emptyRingOuter: {
-      width: 132,
-      height: 132,
-      borderRadius: 66,
-      borderWidth: 1,
-      borderColor: "rgba(200,164,74,0.25)",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: spacing[3],
-    },
-    emptyRingInner: {
-      width: 100,
-      height: 100,
-      borderRadius: 50,
-      backgroundColor: colors.paper.cream,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.light.border,
-      alignItems: "center",
-      justifyContent: "center",
-      ...cardShadow,
-    },
-    emptyIcon: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    emptyTitle: {
-      fontFamily: fontFamilies.sans.bold,
-      fontSize: 24,
-      letterSpacing: -0.5,
-      color: colors.ink.DEFAULT,
-    },
-    emptySub: {
-      fontFamily: fontFamilies.sans.regular,
-      fontSize: 14,
-      lineHeight: 20,
-      color: colors.ink.mute,
-      textAlign: "center",
-    },
-    retryBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: spacing[3],
-      paddingHorizontal: spacing[5],
-      height: 42,
-      borderRadius: radii.full,
-      backgroundColor: "#15160f",
-    },
-    retryText: {
-      fontFamily: fontFamilies.sans.semibold,
-      fontSize: typography.fontSizes.sm,
-      color: colors.paper.cream,
-    },
-  }),
-);
+  /* Empty */
+  emptyWrap: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
+  emptyCard: {
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 28,
+    borderRadius: 26,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    gap: 8,
+  },
+  emptyIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.accentSoft,
+    marginBottom: 6,
+  },
+  emptyTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+  emptySub: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, lineHeight: 19, color: C.muted, textAlign: "center" },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    height: 46,
+    paddingHorizontal: 22,
+    borderRadius: 23,
+    backgroundColor: C.ink,
+  },
+  retryText: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.cream },
+});

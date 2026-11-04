@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { View, StyleSheet, TouchableOpacity, Pressable, ScrollView, Modal } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, Modal } from "react-native";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui";
 import { Display, Label, Body } from "@/components/ui/Typography";
@@ -9,14 +8,12 @@ import { spacing, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Product, Review } from "@/lib/types";
 import { HelpfulButton } from "@/components/reviews/HelpfulButton";
+import { C } from "@/components/orders/parcel-track";
 
 const INK = "#141414";
 const MUTED = "#6b6b6b";
 const HAIRLINE = "rgba(0,0,0,0.08)";
 const GOLD = "#c8a44a";
-const GOLD_LIGHT = "#ecd593";
-const OLIVE_DARK = "#17180f";
-const CREAM = "#faf8f1";
 
 type Tab = "description" | "specs" | "reviews";
 
@@ -221,25 +218,18 @@ function ReviewsTab({
     if (photosOnly && (r.photos?.length ?? 0) === 0) return false;
     return true;
   });
+  const clearFilters = () => { setRatingFilter(null); setPhotosOnly(false); };
 
   if (reviewCount === 0) {
     return (
-      <View style={styles.cardShadow}>
-        <View style={[styles.card, styles.emptyReviews]}>
+      <View style={styles.rvShadow}>
+        <View style={[styles.rvCard, styles.emptyReviews]}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="chatbubble-ellipses-outline" size={22} color={GOLD} />
+            <Ionicons name="chatbubble-ellipses-outline" size={30} color={C.accent} />
           </View>
-          <Display size="lg" style={styles.emptyTitle}>No reviews yet</Display>
-          <Body size="sm" style={styles.emptySub}>
-            Own this piece? Tell others how it fits, feels and wears.
-          </Body>
-          <Pressable
-            onPress={onWriteReview}
-            style={({ pressed }) => [styles.solidBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Ionicons name="create-outline" size={15} color={GOLD} />
-            <Body size="sm" style={styles.solidBtnText}>Write the first review</Body>
-          </Pressable>
+          <Text style={styles.emptyTitle}>No reviews yet</Text>
+          <Text style={styles.emptySub}>Own this piece? Tell others how it fits, feels and wears.</Text>
+          <WriteButton label="Write the first review" onPress={onWriteReview} compact />
         </View>
       </View>
     );
@@ -247,100 +237,69 @@ function ReviewsTab({
 
   return (
     <View style={styles.reviewsContainer}>
-      {/* Client verdict */}
-      <View style={styles.verdictShadow}>
-        <LinearGradient
-          colors={["#2c3119", "#20240f", OLIVE_DARK]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.verdictCard}
-        >
-          <View style={styles.verdictRing} pointerEvents="none" />
-          <View style={styles.verdictRingInner} pointerEvents="none" />
+      {/* Summary */}
+      <View style={styles.rvShadow}>
+        <View style={styles.rvCard}>
+          <View style={styles.summaryRow}>
+            <View style={styles.scoreCol}>
+              <Text style={styles.score}>{avgRating.toFixed(1)}</Text>
+              <PartialStars value={avgRating} size={14} />
+              <Text style={styles.scoreCount}>
+                {reviewCount} review{reviewCount === 1 ? "" : "s"}
+              </Text>
+            </View>
+            <View style={styles.bars}>
+              {[5, 4, 3, 2, 1].map((star) => {
+                const count = breakdown[star] || 0;
+                const pct = (count / barBase) * 100;
+                const active = ratingFilter === star;
+                const dimmed = ratingFilter !== null && !active;
+                return (
+                  <Pressable
+                    key={star}
+                    disabled={count === 0}
+                    onPress={() => setRatingFilter(active ? null : star)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show ${star}-star reviews, ${count}`}
+                    style={[styles.barRow, dimmed && { opacity: 0.35 }]}
+                  >
+                    <Text style={styles.barStar}>{star}</Text>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${pct}%` }, active && styles.barFillActive]} />
+                    </View>
+                    <Text style={[styles.barCount, count > 0 && styles.barCountOn]}>{count}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
-          <View style={styles.verdictTop}>
-            <Label style={styles.verdictKicker}>CLIENT VERDICT</Label>
+          <View style={styles.verdictLine}>
             <View style={styles.verdictPill}>
-              <Body size="xs" style={styles.verdictPillText}>{verdict}</Body>
+              <Ionicons name="ribbon-outline" size={13} color={C.accent} />
+              <Text style={styles.verdictPillText}>{verdict}</Text>
             </View>
+            <Text style={styles.verdictHint}>Tap a bar to filter</Text>
           </View>
 
-          <View style={styles.verdictScoreRow}>
-            <Display size="4xl" style={styles.verdictScore}>{avgRating.toFixed(1)}</Display>
-            <View style={styles.verdictScoreMeta}>
-              <PartialStars value={avgRating} size={15} />
-              <Body size="xs" style={styles.verdictCount}>
-                Based on {reviewCount} review{reviewCount === 1 ? "" : "s"}
-              </Body>
-            </View>
+          <View style={styles.statsStrip}>
+            <SummaryStat value={recommendPct === null ? "—" : `${recommendPct}%`} label="Recommend" />
+            <View style={styles.statDivider} />
+            <SummaryStat value={String(verifiedCount)} label="Verified" />
+            <View style={styles.statDivider} />
+            <SummaryStat value={String(withPhotosCount)} label="With photos" />
           </View>
 
-          <View style={styles.verdictBars}>
-            {[5, 4, 3, 2, 1].map((star) => {
-              const count = breakdown[star] || 0;
-              const pct = (count / barBase) * 100;
-              const active = ratingFilter === star;
-              const dimmed = ratingFilter !== null && !active;
-              return (
-                <Pressable
-                  key={star}
-                  disabled={count === 0}
-                  onPress={() => setRatingFilter(active ? null : star)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Show ${star}-star reviews`}
-                  style={[styles.vBarRow, active && styles.vBarRowActive, dimmed && { opacity: 0.4 }]}
-                >
-                  <View style={styles.vBarLabel}>
-                    <Body size="xs" style={styles.vBarLabelText}>{star}</Body>
-                    <Ionicons name="star" size={9} color={GOLD} />
-                  </View>
-                  <View style={styles.vBarTrack}>
-                    <LinearGradient
-                      colors={["#a8852f", GOLD, GOLD_LIGHT]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.vBarFill, { width: `${pct}%` }]}
-                    />
-                  </View>
-                  <Body size="xs" style={styles.vBarPct}>{distTotal > 0 ? `${Math.round(pct)}%` : "0"}</Body>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.verdictStats}>
-            <VerdictStat icon="thumbs-up-outline" value={recommendPct === null ? "—" : `${recommendPct}%`} label="RECOMMEND" />
-            <View style={styles.verdictStatDivider} />
-            <VerdictStat icon="shield-checkmark-outline" value={String(verifiedCount)} label="VERIFIED" />
-            <View style={styles.verdictStatDivider} />
-            <VerdictStat icon="image-outline" value={String(withPhotosCount)} label="PHOTOS" />
-          </View>
-
-          <Pressable
-            onPress={onWriteReview}
-            style={({ pressed }) => [styles.goldBtn, pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] }]}
-          >
-            <LinearGradient
-              colors={[GOLD, "#e0c574"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <Ionicons name="create-outline" size={16} color={OLIVE_DARK} />
-            <Body size="sm" style={styles.goldBtnText}>Write a review</Body>
-          </Pressable>
-        </LinearGradient>
+          <WriteButton label="Write a review" onPress={onWriteReview} />
+        </View>
       </View>
 
       {/* Worn by clients */}
       {photos.length > 0 && (
         <View style={styles.photoSection}>
           <View style={styles.photoHeader}>
-            <View style={styles.photoHeaderLeft}>
-              <Ionicons name="camera-outline" size={12} color={GOLD} />
-              <Label style={styles.photoKicker}>WORN BY CLIENTS</Label>
-            </View>
-            <Body size="xs" style={styles.photoCount}>{photos.length} photo{photos.length === 1 ? "" : "s"}</Body>
+            <Text style={styles.sectionTitle}>Worn by clients</Text>
+            <Text style={styles.photoCount}>{photos.length} photo{photos.length === 1 ? "" : "s"}</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoStrip}>
             {photos.map((uri, i) => (
@@ -353,13 +312,8 @@ function ReviewsTab({
       )}
 
       {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-        <Chip
-          active={ratingFilter === null && !photosOnly}
-          onPress={() => { setRatingFilter(null); setPhotosOnly(false); }}
-          label="All"
-          count={reviews.length}
-        />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
+        <Chip active={ratingFilter === null && !photosOnly} onPress={clearFilters} label="All" count={reviews.length} />
         {[5, 4, 3, 2, 1].map((s) => {
           const c = breakdown[s] || 0;
           if (c === 0) return null;
@@ -368,7 +322,8 @@ function ReviewsTab({
               key={s}
               active={ratingFilter === s}
               onPress={() => setRatingFilter(ratingFilter === s ? null : s)}
-              label={`${s}★`}
+              icon="star"
+              label={String(s)}
               count={c}
             />
           );
@@ -378,7 +333,7 @@ function ReviewsTab({
             active={photosOnly}
             onPress={() => setPhotosOnly((v) => !v)}
             icon="image-outline"
-            label="With photos"
+            label="Photos"
             count={withPhotosCount}
           />
         )}
@@ -388,9 +343,9 @@ function ReviewsTab({
       <View style={styles.reviewList}>
         {visible.length === 0 ? (
           <View style={styles.noMatch}>
-            <Body size="sm" style={styles.emptySub}>No reviews match those filters.</Body>
-            <Pressable onPress={() => { setRatingFilter(null); setPhotosOnly(false); }} hitSlop={8}>
-              <Body size="xs" style={styles.clearLink}>Clear filters</Body>
+            <Text style={styles.emptySub}>No reviews match those filters.</Text>
+            <Pressable onPress={clearFilters} hitSlop={8}>
+              <Text style={styles.clearLink}>Clear filters</Text>
             </Pressable>
           </View>
         ) : (
@@ -418,35 +373,31 @@ function ReviewCard({ review: r, onPhoto }: { review: Review; onPhoto: (uri: str
   const date = r.created_at
     ? new Date(r.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
     : null;
+  const stars = Math.round(r.rating);
 
   return (
-    <View style={styles.reviewShadow}>
-      <View style={styles.reviewCard}>
-        <Display size="4xl" style={styles.quoteMark}>{"\u201C"}</Display>
-
-        <View style={styles.reviewTopRow}>
-          <View style={styles.reviewStars}>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Ionicons
-                key={i}
-                name={i < Math.round(r.rating) ? "star" : "star-outline"}
-                size={14}
-                color={i < Math.round(r.rating) ? GOLD : "#d8d4c6"}
-              />
-            ))}
+    <View style={styles.rvShadow}>
+      <View style={styles.rvCard}>
+        <View style={styles.reviewHead}>
+          <Avatar name={name} uri={r.user?.avatar_url} size={44} />
+          <View style={styles.reviewMeta}>
+            <Text style={styles.reviewAuthor} numberOfLines={1}>{name}</Text>
+            <Text style={styles.reviewSub} numberOfLines={1}>
+              {r.is_verified_purchase ? "Verified buyer" : "Client"}
+              {date ? `  ·  ${date}` : ""}
+            </Text>
           </View>
-          {date && <Body size="xs" style={styles.reviewDate}>{date}</Body>}
+          <View style={styles.ratingBadge} accessibilityLabel={`${stars} out of 5`}>
+            <Ionicons name="star" size={12} color={C.lime} />
+            <Text style={styles.ratingBadgeText}>{stars}.0</Text>
+          </View>
         </View>
 
-        {r.title ? (
-          <Display size="md" style={styles.reviewTitle}>{r.title}</Display>
-        ) : null}
-        {content ? (
-          <Body size="sm" style={styles.reviewContent}>{content}</Body>
-        ) : null}
+        {r.title ? <Text style={styles.reviewTitle}>{r.title}</Text> : null}
+        {content ? <Text style={styles.reviewContent}>{content}</Text> : null}
         {isLong && (
           <Pressable onPress={() => setExpanded((v) => !v)} hitSlop={8}>
-            <Body size="xs" style={styles.readMore}>{expanded ? "Show less" : "Read more"}</Body>
+            <Text style={styles.readMore}>{expanded ? "Show less" : "Read more"}</Text>
           </Pressable>
         )}
 
@@ -461,22 +412,14 @@ function ReviewCard({ review: r, onPhoto }: { review: Review; onPhoto: (uri: str
         )}
 
         <View style={styles.reviewFooter}>
-          <View style={styles.reviewAuthorRow}>
-            <View style={styles.avatarRing}>
-              <Avatar name={name} uri={r.user?.avatar_url} size={34} />
+          {r.is_verified_purchase ? (
+            <View style={styles.verifiedTag}>
+              <Ionicons name="shield-checkmark" size={12} color={C.accent} />
+              <Text style={styles.verifiedTagText}>Verified purchase</Text>
             </View>
-            <View style={styles.reviewMeta}>
-              <Body size="sm" style={styles.reviewAuthor} numberOfLines={1}>{name}</Body>
-              {r.is_verified_purchase ? (
-                <View style={styles.verifiedTag}>
-                  <Ionicons name="shield-checkmark" size={10} color="#5b6a2a" />
-                  <Body size="xs" style={styles.verifiedTagText}>Verified buyer</Body>
-                </View>
-              ) : (
-                <Body size="xs" style={styles.reviewDate}>Client</Body>
-              )}
-            </View>
-          </View>
+          ) : (
+            <View />
+          )}
           <HelpfulButton
             reviewId={r.id}
             initialVoted={Boolean((r as any).user_voted_helpful)}
@@ -495,7 +438,7 @@ function PartialStars({ value, size }: { value: number; size: number }) {
         const fill = Math.max(0, Math.min(1, value - (s - 1)));
         return (
           <View key={s} style={{ width: size, height: size }}>
-            <Ionicons name="star" size={size} color="rgba(250,248,241,0.2)" style={StyleSheet.absoluteFill} />
+            <Ionicons name="star" size={size} color={C.faint} style={StyleSheet.absoluteFill} />
             <View style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: size * fill, overflow: "hidden" }}>
               <Ionicons name="star" size={size} color={GOLD} />
             </View>
@@ -506,15 +449,28 @@ function PartialStars({ value, size }: { value: number; size: number }) {
   );
 }
 
-function VerdictStat({ icon, value, label }: { icon: React.ComponentProps<typeof Ionicons>["name"]; value: string; label: string }) {
+function SummaryStat({ value, label }: { value: string; label: string }) {
   return (
-    <View style={styles.verdictStat}>
-      <Display size="xl" style={styles.verdictStatValue}>{value}</Display>
-      <View style={styles.verdictStatLabelRow}>
-        <Ionicons name={icon} size={10} color="rgba(250,248,241,0.5)" />
-        <Label style={styles.verdictStatLabel}>{label}</Label>
-      </View>
+    <View style={styles.stat} accessible accessibilityLabel={`${value} ${label}`}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
+  );
+}
+
+/** Ink pill with a lime icon disc — same CTA language as the order screens. */
+function WriteButton({ label, onPress, compact = false }: { label: string; onPress?: () => void; compact?: boolean }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.writeBtn, compact && styles.writeBtnCompact, pressed && { opacity: 0.88, transform: [{ scale: 0.99 }] }]}
+    >
+      <Text style={styles.writeBtnText}>{label}</Text>
+      <View style={styles.writeBtnIcon}>
+        <Ionicons name="create-outline" size={17} color={C.ink} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -532,11 +488,18 @@ function Chip({
   icon?: React.ComponentProps<typeof Ionicons>["name"];
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.8 }]}>
-      {icon && <Ionicons name={icon} size={12} color={active ? CREAM : INK} />}
-      <Body size="xs" style={[styles.chipText, active && styles.chipTextActive]}>{label}</Body>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.8 }]}
+    >
+      {icon && <Ionicons name={icon} size={13} color={active ? C.lime : icon === "star" ? GOLD : C.text} />}
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
       {count !== undefined && (
-        <Body size="xs" style={[styles.chipCount, active && styles.chipCountActive]}>{count}</Body>
+        <View style={[styles.chipCount, active && styles.chipCountActive]}>
+          <Text style={[styles.chipCountText, active && styles.chipCountTextActive]}>{count}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -729,414 +692,226 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.sans.semibold,
   },
 
-  /* Reviews */
-  reviewsContainer: {
-    gap: spacing[4],
+  /* Reviews — My Orders language: white cards, ink + lime accents */
+  reviewsContainer: { gap: 16 },
+  rvShadow: {
+    borderRadius: 26,
+    backgroundColor: C.card,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  summaryStars: {
+  rvCard: {
+    borderRadius: 26,
+    borderCurve: "continuous",
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 20,
+    gap: 16,
+  },
+  summaryRow: { flexDirection: "row", alignItems: "center", gap: 20 },
+  scoreCol: { alignItems: "center", gap: 6, minWidth: 92 },
+  score: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 46,
+    lineHeight: 50,
+    letterSpacing: -1.6,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
+  },
+  summaryStars: { flexDirection: "row", gap: 2 },
+  scoreCount: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+  bars: { flex: 1, gap: 7 },
+  barRow: { flexDirection: "row", alignItems: "center", gap: 10, height: 16 },
+  barStar: { width: 10, fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.text, textAlign: "center" },
+  barTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: "#f1efe6", overflow: "hidden" },
+  barFill: { height: 8, borderRadius: 4, backgroundColor: C.ink },
+  barFillActive: { backgroundColor: C.accent },
+  barCount: {
+    width: 20,
+    textAlign: "right",
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: C.faint,
+    fontVariant: ["tabular-nums"],
+  },
+  barCountOn: { color: C.text },
+  verdictLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  verdictPill: {
     flexDirection: "row",
-    gap: 2,
+    alignItems: "center",
+    gap: 6,
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    backgroundColor: C.accentSoft,
   },
-  verdictShadow: {
+  verdictPillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.accent },
+  verdictHint: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
+  statsStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderCurve: "continuous",
+    backgroundColor: C.ink,
+  },
+  stat: { flex: 1, alignItems: "center", gap: 2 },
+  statValue: { fontFamily: fontFamilies.sans.bold, fontSize: 20, color: C.cream, fontVariant: ["tabular-nums"] },
+  statLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+  statDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
+  writeBtn: {
+    height: 56,
     borderRadius: 28,
-    shadowColor: OLIVE_DARK,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.28,
-    shadowRadius: 28,
-    elevation: 8,
-  },
-  verdictCard: {
-    borderRadius: 28,
-    overflow: "hidden",
-    padding: spacing[5],
-    gap: spacing[5],
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.22)",
-  },
-  verdictRing: {
-    position: "absolute",
-    right: -70,
-    top: -80,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.18)",
-  },
-  verdictRingInner: {
-    position: "absolute",
-    right: -24,
-    top: -40,
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 1,
-    borderColor: "rgba(200,164,74,0.1)",
-  },
-  verdictTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingLeft: 22,
+    paddingRight: 6,
+    backgroundColor: C.ink,
   },
-  verdictKicker: {
-    color: GOLD,
-    fontSize: 10,
-    letterSpacing: 2.4,
-  },
-  verdictPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    backgroundColor: "rgba(250,248,241,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(250,248,241,0.12)",
-  },
-  verdictPillText: {
-    color: "rgba(250,248,241,0.75)",
-    fontSize: 10.5,
-  },
-  verdictScoreRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing[4],
-  },
-  verdictScore: {
-    color: CREAM,
-    fontSize: 72,
-    lineHeight: 72,
-    letterSpacing: -2,
-  },
-  verdictScoreMeta: {
-    gap: 6,
-    paddingBottom: 10,
-  },
-  verdictCount: {
-    color: "rgba(250,248,241,0.55)",
-  },
-  verdictBars: {
-    gap: 2,
-  },
-  vBarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    marginHorizontal: -8,
-    borderRadius: 12,
-  },
-  vBarRowActive: {
-    backgroundColor: "rgba(250,248,241,0.08)",
-  },
-  vBarLabel: {
-    width: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  vBarLabelText: {
-    color: "rgba(250,248,241,0.8)",
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  vBarTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(250,248,241,0.09)",
-    overflow: "hidden",
-  },
-  vBarFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  vBarPct: {
-    width: 38,
-    textAlign: "right",
-    color: "rgba(250,248,241,0.5)",
-  },
-  verdictStats: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    borderRadius: 18,
-    backgroundColor: "rgba(250,248,241,0.045)",
-    borderWidth: 1,
-    borderColor: "rgba(250,248,241,0.1)",
-  },
-  verdictStat: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: spacing[3],
-    gap: 5,
-  },
-  verdictStatDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(250,248,241,0.14)",
-  },
-  verdictStatValue: {
-    color: CREAM,
-  },
-  verdictStatLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  verdictStatLabel: {
-    color: "rgba(250,248,241,0.5)",
-    fontSize: 8.5,
-    letterSpacing: 1.4,
-  },
-  goldBtn: {
-    flexDirection: "row",
+  writeBtnCompact: { alignSelf: "stretch", marginTop: 8 },
+  writeBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, color: C.cream },
+  writeBtnIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    height: 50,
-    borderRadius: radii.full,
-    overflow: "hidden",
+    backgroundColor: C.lime,
   },
-  goldBtnText: {
-    color: OLIVE_DARK,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-  },
-  photoSection: {
-    gap: spacing[2.5],
-  },
-  photoHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  photoHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  photoKicker: {
-    color: MUTED,
-    fontSize: 10,
-    letterSpacing: 2,
-  },
-  photoCount: {
-    color: MUTED,
-  },
-  photoStrip: {
-    gap: 10,
-  },
+
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 17, letterSpacing: -0.3, color: C.text },
+  photoSection: { gap: 10 },
+  photoHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 },
+  photoCount: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+  photoStrip: { gap: 10 },
   photoThumb: {
-    width: 88,
-    height: 110,
-    borderRadius: 16,
+    width: 84,
+    height: 104,
+    borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: "#ededeb",
+    backgroundColor: "#f0ede2",
   },
-  chipRow: {
-    gap: 8,
-    paddingVertical: 2,
-  },
+
+  chipScroll: { marginHorizontal: -spacing[4] },
+  chipRow: { paddingHorizontal: spacing[4], gap: 10 },
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: radii.full,
+    gap: 7,
+    height: 42,
+    paddingLeft: 16,
+    paddingRight: 10,
+    borderRadius: 21,
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-    backgroundColor: "#ffffff",
+    borderColor: C.line,
   },
-  chipActive: {
-    backgroundColor: OLIVE_DARK,
-    borderColor: OLIVE_DARK,
-  },
-  chipText: {
-    color: INK,
-    fontFamily: fontFamilies.sans.semibold,
-  },
-  chipTextActive: {
-    color: CREAM,
-  },
+  chipActive: { backgroundColor: C.ink, borderColor: C.ink },
+  chipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.text },
+  chipTextActive: { color: C.cream },
   chipCount: {
-    color: MUTED,
-  },
-  chipCountActive: {
-    color: GOLD_LIGHT,
-  },
-  solidBtn: {
-    flexDirection: "row",
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    height: 46,
-    paddingHorizontal: spacing[5],
-    marginTop: spacing[2],
-    borderRadius: radii.full,
-    backgroundColor: OLIVE_DARK,
+    backgroundColor: C.accentSoft,
   },
-  solidBtnText: {
-    color: CREAM,
-    fontFamily: fontFamilies.sans.bold,
-  },
-  reviewList: {
-    gap: spacing[3],
-  },
+  chipCountActive: { backgroundColor: "rgba(200,224,138,0.18)" },
+  chipCountText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: C.muted },
+  chipCountTextActive: { color: C.lime },
+
+  reviewList: { gap: 14 },
   noMatch: {
     alignItems: "center",
     gap: 8,
-    paddingVertical: spacing[8],
-    borderRadius: 22,
+    paddingVertical: 28,
+    borderRadius: 26,
+    backgroundColor: C.card,
     borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "rgba(0,0,0,0.14)",
+    borderColor: C.line,
   },
-  clearLink: {
-    color: INK,
-    fontFamily: fontFamilies.sans.bold,
-    textDecorationLine: "underline",
-  },
-  reviewShadow: {
-    borderRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
-    elevation: 2,
-  },
-  reviewCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
-    padding: spacing[5],
-    gap: spacing[3],
-    overflow: "hidden",
-  },
-  quoteMark: {
-    position: "absolute",
-    right: 18,
-    top: 4,
-    fontSize: 84,
-    lineHeight: 96,
-    color: "rgba(200,164,74,0.16)",
-  },
-  reviewTopRow: {
+  clearLink: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.accent },
+
+  reviewHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  reviewMeta: { flex: 1, minWidth: 0, gap: 2 },
+  reviewAuthor: { fontFamily: fontFamilies.sans.semibold, fontSize: 15.5, letterSpacing: -0.2, color: C.text },
+  reviewSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted },
+  ratingBadge: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingRight: 54,
+    gap: 4,
+    height: 30,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    backgroundColor: C.ink,
   },
-  reviewStars: {
-    flexDirection: "row",
-    gap: 2,
-  },
-  reviewDate: {
-    color: MUTED,
-  },
-  reviewTitle: {
-    color: INK,
-    paddingRight: 24,
-  },
-  reviewContent: {
-    fontSize: 15,
-    lineHeight: 23,
-    color: "#3a3a3a",
-  },
-  readMore: {
-    color: INK,
-    fontFamily: fontFamilies.sans.bold,
-    textDecorationLine: "underline",
-  },
-  reviewPhotos: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  reviewPhoto: {
-    width: 72,
-    height: 72,
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "#ededeb",
-  },
+  ratingBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: C.cream, fontVariant: ["tabular-nums"] },
+  reviewTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, letterSpacing: -0.3, color: C.text, marginBottom: -8 },
+  reviewContent: { fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 21, color: "#3d3d36" },
+  readMore: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.accent, marginTop: -8 },
+  reviewPhotos: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  reviewPhoto: { width: 72, height: 72, borderRadius: 16, overflow: "hidden", backgroundColor: "#f0ede2" },
   reviewFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing[3],
-    marginTop: spacing[1],
-    paddingTop: spacing[3],
+    paddingTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: HAIRLINE,
-  },
-  reviewAuthorRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2.5],
-  },
-  avatarRing: {
-    padding: 2,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: "rgba(200,164,74,0.45)",
-  },
-  reviewMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  reviewAuthor: {
-    fontFamily: fontFamilies.sans.bold,
-    color: INK,
+    borderTopColor: "rgba(22,23,15,0.1)",
   },
   verifiedTag: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: C.accentSoft,
   },
-  verifiedTagText: {
-    color: "#5b6a2a",
-    fontFamily: fontFamilies.sans.semibold,
-  },
+  verifiedTagText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: C.accent },
+
   viewerBackdrop: {
     flex: 1,
     backgroundColor: "rgba(10,10,8,0.94)",
     alignItems: "center",
     justifyContent: "center",
   },
-  viewerImage: {
-    width: "100%",
-    height: "80%",
-  },
+  viewerImage: { width: "100%", height: "80%" },
   viewerClose: {
     position: "absolute",
     top: 60,
     right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.14)",
   },
-  emptyReviews: {
-    alignItems: "center",
-    gap: spacing[2],
-    paddingVertical: spacing[8],
-  },
+
+  emptyReviews: { alignItems: "center", paddingVertical: 32, gap: 8 },
   emptyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(200,164,74,0.12)",
-    marginBottom: spacing[1],
+    backgroundColor: C.accentSoft,
+    marginBottom: 6,
   },
-  emptyTitle: {
-    color: INK,
-  },
+  emptyTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
   emptySub: {
-    color: MUTED,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: C.muted,
     textAlign: "center",
   },
 });

@@ -246,7 +246,7 @@ export function OutfitCalendar({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: HAIRLINE,

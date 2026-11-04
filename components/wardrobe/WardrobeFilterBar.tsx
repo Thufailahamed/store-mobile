@@ -15,7 +15,8 @@ import type { GarmentType } from "@/lib/types";
 
 const INK = colors.light.foreground;
 const MUTED = colors.light.mutedForeground;
-const HAIRLINE = "rgba(22, 23, 15, 0.08)";
+const HAIRLINE = "rgba(22, 23, 15, 0.07)";
+const PAD = 20;
 
 const GARMENT_LABEL: Record<GarmentType, string> = {
   top: "Tops",
@@ -89,18 +90,18 @@ export function WardrobeFilterBar({
       {/* Search */}
       <View style={styles.searchRow}>
         <View style={styles.searchInput}>
-          <Ionicons name="search" size={16} color={MUTED} />
+          <Ionicons name="search-outline" size={20} color={MUTED} />
           <TextInput
             value={q}
             onChangeText={onQ}
             placeholder="Search pieces or designers"
-            placeholderTextColor={MUTED}
+            placeholderTextColor="#A1A1A6"
             style={styles.searchText}
             returnKeyType="search"
           />
           {q.length > 0 && (
             <Pressable onPress={() => onQ("")} hitSlop={8}>
-              <Ionicons name="close-circle" size={16} color={MUTED} />
+              <Ionicons name="close-circle" size={18} color="#cfccbc" />
             </Pressable>
           )}
         </View>
@@ -205,64 +206,67 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   searchRow: {
-    paddingHorizontal: 16,
+    paddingHorizontal: PAD,
   },
   searchInput: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 16,
-    height: 46,
+    paddingHorizontal: 20,
+    height: 56,
     paddingVertical: Platform.OS === "ios" ? 0 : 4,
     backgroundColor: "#FFFFFF",
-    borderRadius: radii.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
+    borderRadius: 28,
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    elevation: 3,
   },
   searchText: {
     flex: 1,
-    fontSize: 13.5,
+    fontSize: 15,
     color: INK,
     fontFamily: fontFamilies.sans.regular,
     padding: 0,
   },
   scroll: {
-    paddingHorizontal: 16,
-    gap: 6,
+    paddingHorizontal: PAD,
+    gap: 10,
   },
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    height: 32,
-    paddingHorizontal: 14,
+    gap: 8,
+    height: 40,
+    paddingHorizontal: 16,
     borderRadius: radii.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+    backgroundColor: "#FFFFFF",
   },
   pillActive: {
-    backgroundColor: colors.ink.DEFAULT,
-    borderColor: colors.ink.DEFAULT,
+    backgroundColor: "#15160f",
+    borderColor: "#15160f",
   },
   pillText: {
-    fontSize: 12.5,
-    color: colors.ink.mute,
+    fontSize: 13.5,
+    color: INK,
     fontFamily: fontFamilies.sans.semibold,
   },
   pillTextActive: {
     color: colors.paper.cream,
   },
   pillCount: {
-    fontSize: 10.5,
+    fontSize: 11.5,
     color: MUTED,
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.semibold,
   },
   pillCountActive: {
-    color: "#E8CF8F",
+    color: "#c8e08a",
   },
   statusScroll: {
-    paddingHorizontal: 16,
+    paddingHorizontal: PAD,
     gap: 20,
   },
   statusTab: {
@@ -270,24 +274,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statusText: {
-    fontSize: 10.5,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+    fontSize: 14,
     color: MUTED,
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.sans.semibold,
   },
   statusTextActive: {
     color: INK,
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.bold,
   },
   statusUnderline: {
-    height: 2,
+    height: 3,
     alignSelf: "stretch",
-    borderRadius: 1,
+    borderRadius: 2,
     marginTop: 6,
     backgroundColor: "transparent",
   },
   statusUnderlineActive: {
-    backgroundColor: colors.accent2.ochre,
+    backgroundColor: INK,
   },
 });

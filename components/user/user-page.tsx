@@ -135,8 +135,11 @@ export function SectionHead({
   return (
     <View style={[s.sectionHead, style]}>
       <View style={{ flex: 1 }}>
-        {kicker ? <Text style={s.sectionKicker}>{kicker.toUpperCase()}</Text> : null}
-        <Text style={s.sectionTitle}>{title}</Text>
+        {/* The title carries the section; the kicker reads as noise in the
+            Orders language, so it's kept only as an accessibility hint. */}
+        <Text style={s.sectionTitle} accessibilityHint={kicker}>
+          {title}
+        </Text>
       </View>
       {action && onAction ? (
         <TouchableOpacity onPress={onAction} hitSlop={8} style={s.sectionAction} activeOpacity={0.75}>
@@ -394,7 +397,7 @@ const s = StyleSheet.create({
 
   sectionHead: { flexDirection: "row", alignItems: "flex-end", marginTop: 24, marginBottom: 12, paddingHorizontal: 2 },
   sectionKicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
-  sectionTitle: { marginTop: 3, fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
   sectionAction: { flexDirection: "row", alignItems: "center", gap: 2, paddingBottom: 2 },
   sectionActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.accent },
 
@@ -529,7 +532,13 @@ const OVERRIDES: Record<string, Style> = {
   screen: { backgroundColor: "transparent" },
   // In-body page titles duplicate the header title, so they're hidden.
   pageTitle: { display: "none" },
-  eyebrow: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
+  eyebrow: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    letterSpacing: 0,
+    textTransform: "none",
+    color: C.muted,
+  },
   pageSub: { fontFamily: fontFamilies.sans.regular, fontSize: 14, lineHeight: 20, color: C.muted },
   pageHead: { paddingTop: 0, marginTop: 0 },
 
@@ -547,7 +556,8 @@ const OVERRIDES: Record<string, Style> = {
   statsStrip: { borderRadius: 22, backgroundColor: C.ink, borderWidth: 0 },
   statNum: { fontFamily: fontFamilies.sans.bold, color: C.cream },
   statNumMuted: { color: "rgba(250,248,241,0.45)" },
-  statDivider: { backgroundColor: "rgba(250,248,241,0.12)" },
+  // statDivider is resolved in withUserTheme: pages use it either as a 1px
+  // View (needs a fill) or as a border on the stat cell (must stay unfilled).
 
   segmented: { borderRadius: 16, backgroundColor: "#efede4", borderWidth: 0 },
   segment: { borderRadius: 12 },
@@ -555,14 +565,27 @@ const OVERRIDES: Record<string, Style> = {
   segmentText: { fontFamily: fontFamilies.sans.semibold, color: C.muted },
   segmentTextActive: { color: C.cream },
 
-  fieldLabel: { fontFamily: fontFamilies.mono.semibold, letterSpacing: 1.4, color: C.muted },
+  fieldLabel: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    letterSpacing: 0,
+    textTransform: "none",
+    color: C.text,
+  },
   input: { borderRadius: 16, backgroundColor: "#efede4", borderColor: "transparent", fontFamily: fontFamilies.sans.medium, color: C.text },
   textLinkText: { fontFamily: fontFamilies.sans.semibold, color: C.accent },
   loadingText: { fontFamily: fontFamilies.sans.medium, color: C.muted },
 };
 
 /** Statistic labels only go light when the page uses the dark stats strip. */
-const STRIP_LABEL: Style = { color: "rgba(250,248,241,0.6)" };
+const STRIP_LABEL: Style = {
+  color: "rgba(250,248,241,0.6)",
+  fontFamily: fontFamilies.sans.medium,
+  fontSize: 12,
+  letterSpacing: 0,
+  textTransform: "none",
+};
+const STRIP_RULE = "rgba(250,248,241,0.12)";
 
 export function withUserTheme<T extends Record<string, unknown>>(base: T): T {
   const out: Record<string, unknown> = { ...base };
@@ -572,6 +595,15 @@ export function withUserTheme<T extends Record<string, unknown>>(base: T): T {
   }
   if ("statsStrip" in base && "statLabel" in base) {
     out.statLabel = { ...(StyleSheet.flatten(base.statLabel as never) as Style), ...STRIP_LABEL };
+  }
+  if ("statDivider" in base) {
+    const d = StyleSheet.flatten(base.statDivider as never) as Style;
+    // A border-style divider sits on the stat cell itself — filling it would
+    // paint that whole cell a different shade from the strip.
+    out.statDivider =
+      "borderLeftWidth" in d || "borderTopWidth" in d
+        ? { ...d, borderLeftColor: STRIP_RULE, borderColor: STRIP_RULE, backgroundColor: "transparent" }
+        : { ...d, backgroundColor: STRIP_RULE };
   }
   return out as T;
 }

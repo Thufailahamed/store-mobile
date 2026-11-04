@@ -9,7 +9,6 @@ import {
   ScrollView,
   Share,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -63,7 +62,7 @@ import {
   getSettingsBackend,
   updateSettingsBackend,
 } from "@/lib/api/backend";
-import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { UP as C, UserPageFrame, withUserTheme } from "@/components/user/user-page";
 
 type PrivacyKey =
   | "public_profile"
@@ -667,7 +666,7 @@ export default function SettingsScreen() {
   const buildNumber =
     (Platform.OS === "ios"
       ? Constants.expoConfig?.ios?.buildNumber
-      : Constants.expoConfig?.android?.versionCode?.toString()) ?? "—";
+      : Constants.expoConfig?.android?.versionCode?.toString()) ?? "";
 
   const linkedProviders = useMemo(() => {
     const providers = (user?.app_metadata?.providers ?? []) as string[];
@@ -792,7 +791,7 @@ export default function SettingsScreen() {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityLabel="Sign out"
           >
-            <Ionicons name="log-out-outline" size={18} color="#85651B" />
+            <Ionicons name="log-out-outline" size={19} color={C.ink} />
           </TouchableOpacity>
         </>
       }
@@ -806,27 +805,9 @@ export default function SettingsScreen() {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {/* 2. Profile hero — quiet obsidian card */}
+          {/* 2. Profile hero */}
           <View style={styles.heroShell}>
-            <LinearGradient
-              colors={["#23211C", "#181713", "#0F0E0C"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
-            >
-              <View pointerEvents="none" style={styles.heroGlow} />
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(232,207,143,0)",
-                  "rgba(232,207,143,0.6)",
-                  "rgba(232,207,143,0)",
-                ]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.heroTopHairline}
-              />
-
+            <View style={styles.heroCard}>
               <View style={styles.heroProfileRow}>
                 <View style={styles.avatarBezel}>
                   {avatarUri && !avatarFailed ? (
@@ -841,13 +822,12 @@ export default function SettingsScreen() {
                     </View>
                   ) : (
                     <View style={styles.monogramFallback}>
-                      <Ionicons name="person" size={22} color="#E8CF8F" />
+                      <Ionicons name="person" size={22} color={C.accent} />
                     </View>
                   )}
                 </View>
 
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.heroKicker}>LUXE · PRIVATE CLIENT</Text>
                   <Text style={styles.heroNameText} numberOfLines={1}>
                     {name}
                   </Text>
@@ -857,101 +837,104 @@ export default function SettingsScreen() {
                 </View>
               </View>
 
-              <LinearGradient
-                pointerEvents="none"
-                colors={["rgba(232,207,143,0.22)", "rgba(232,207,143,0.06)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.heroDivider}
-              />
-
-              <View style={styles.heroFooter}>
-                <View style={styles.rolePill}>
-                  <Ionicons name="shield-checkmark" size={11} color="#181714" />
-                  <Text style={styles.rolePillText}>
-                    {role ? role.toUpperCase() : "PATRON"}
-                  </Text>
+              <View style={styles.heroStrip}>
+                <View style={styles.heroCell}>
+                  <View style={styles.heroCellValueRow}>
+                    <Ionicons name="shield-checkmark" size={13} color={C.lime} />
+                    <Text style={styles.heroCellValue} numberOfLines={1}>
+                      {role
+                        ? role.charAt(0).toUpperCase() + role.slice(1)
+                        : "Patron"}
+                    </Text>
+                  </View>
+                  <Text style={styles.heroCellLabel}>Role</Text>
                 </View>
-                <View style={styles.heroSync}>
-                  <View
-                    style={[
-                      styles.heroSyncDot,
-                      dirty && styles.heroSyncDotDirty,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.heroSyncText,
-                      dirty && styles.heroSyncTextDirty,
-                    ]}
-                  >
-                    {dirty ? "Unsaved changes" : "All synced"}
-                  </Text>
+                <View style={styles.heroRule} />
+                <View style={styles.heroCell}>
+                  <View style={styles.heroCellValueRow}>
+                    <View
+                      style={[
+                        styles.heroSyncDot,
+                        dirty && styles.heroSyncDotDirty,
+                      ]}
+                    />
+                    <Text style={styles.heroCellValue} numberOfLines={1}>
+                      {dirty ? "Unsaved" : "Synced"}
+                    </Text>
+                  </View>
+                  <Text style={styles.heroCellLabel}>Preferences</Text>
                 </View>
-                <Text style={styles.heroVersion}>v{appVersion}</Text>
+                <View style={styles.heroRule} />
+                <View style={styles.heroCell}>
+                  <Text style={styles.heroCellValue} numberOfLines={1}>
+                    {appVersion}
+                  </Text>
+                  <Text style={styles.heroCellLabel}>App version</Text>
+                </View>
               </View>
-            </LinearGradient>
+            </View>
           </View>
 
           {/* 3. Account protection */}
-          <View style={styles.protectCard}>
-            <View style={styles.protectHead}>
-              <ProtectionRing done={safeguardsDone} total={safeguards.length} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.protectKicker}>ACCOUNT PROTECTION</Text>
-                <Text style={styles.protectTitle}>
-                  {safeguardsDone === safeguards.length
-                    ? "Fully protected"
-                    : safeguardsDone >= safeguards.length / 2
-                      ? "Well protected"
-                      : "Needs attention"}
-                </Text>
-                <Text style={styles.protectSub}>
-                  {safeguardsDone} of {safeguards.length} safeguards active
-                </Text>
+          <View style={styles.protectShell}>
+            <View style={styles.protectCard}>
+              <View style={styles.protectHead}>
+                <ProtectionRing
+                  done={safeguardsDone}
+                  total={safeguards.length}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.protectTitle}>
+                    {safeguardsDone === safeguards.length
+                      ? "Fully protected"
+                      : safeguardsDone >= safeguards.length / 2
+                        ? "Well protected"
+                        : "Needs attention"}
+                  </Text>
+                  <Text style={styles.protectSub}>
+                    {safeguardsDone} of {safeguards.length} safeguards active
+                  </Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.protectGrid}>
-              {safeguards.map((g) => {
-                const actionable = !g.done && !!g.onFix;
-                return (
-                  <TouchableOpacity
-                    key={g.key}
-                    disabled={!actionable}
-                    onPress={g.onFix}
-                    activeOpacity={0.75}
-                    style={[
-                      styles.protectItem,
-                      g.done && styles.protectItemDone,
-                    ]}
-                  >
-                    <View
+              <View style={styles.protectList}>
+                {safeguards.map((g, i) => {
+                  const actionable = !g.done && !!g.onFix;
+                  return (
+                    <TouchableOpacity
+                      key={g.key}
+                      disabled={!actionable}
+                      onPress={g.onFix}
+                      activeOpacity={0.75}
+                      accessibilityRole={actionable ? "button" : undefined}
+                      accessibilityLabel={
+                        g.done ? `${g.label}, active` : `${g.label}, not set up`
+                      }
                       style={[
-                        styles.protectItemIcon,
-                        g.done && styles.protectItemIconDone,
+                        styles.protectItem,
+                        i === safeguards.length - 1 && styles.protectItemLast,
                       ]}
                     >
-                      <Ionicons
-                        name={g.done ? "checkmark" : g.icon}
-                        size={g.done ? 12 : 13}
-                        color={g.done ? "#181714" : "#85651B"}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.protectItemText,
-                        g.done && styles.protectItemTextDone,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {g.label}
-                    </Text>
-                    {actionable ? (
-                      <Ionicons name="add" size={14} color="#85651B" />
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
+                      <View style={styles.protectItemIcon}>
+                        <Ionicons name={g.icon} size={17} color={C.accent} />
+                      </View>
+                      <Text style={styles.protectItemText} numberOfLines={1}>
+                        {g.label}
+                      </Text>
+                      {g.done ? (
+                        <View style={styles.protectDone}>
+                          <Ionicons name="checkmark" size={13} color={C.ink} />
+                        </View>
+                      ) : actionable ? (
+                        <View style={styles.protectAction}>
+                          <Text style={styles.protectActionText}>Set up</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.protectPending}>Pending</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </View>
 
@@ -969,7 +952,7 @@ export default function SettingsScreen() {
                 activeOpacity={0.75}
                 style={styles.jumpChip}
               >
-                <Ionicons name={j.icon} size={13} color="#85651B" />
+                <Ionicons name={j.icon} size={15} color={C.accent} />
                 <Text style={styles.jumpChipText}>{j.label}</Text>
               </TouchableOpacity>
             ))}
@@ -983,7 +966,7 @@ export default function SettingsScreen() {
             title="Language & region"
             subtitle="How LUXE adapts prices, dates, and copy."
           >
-            <Text style={styles.subLabel}>LOCALE</Text>
+            <Text style={styles.subLabel}>Locale</Text>
             <ChipRow>
               {LOCALES.map((item) => (
                 <SettingChip
@@ -996,7 +979,7 @@ export default function SettingsScreen() {
               ))}
             </ChipRow>
 
-            <Text style={[styles.subLabel, styles.subLabelTop]}>TIMEZONE</Text>
+            <Text style={[styles.subLabel, styles.subLabelTop]}>Time zone</Text>
             <ChipRow>
               {TIMEZONES.map((item) => (
                 <SettingChip
@@ -1009,7 +992,7 @@ export default function SettingsScreen() {
               ))}
             </ChipRow>
 
-            <Text style={[styles.subLabel, styles.subLabelTop]}>CURRENCY</Text>
+            <Text style={[styles.subLabel, styles.subLabelTop]}>Currency</Text>
             <View style={styles.optionList}>
               {CURRENCIES.map((item) => {
                 const [code, ...rest] = item.label.split(" · ");
@@ -1280,7 +1263,7 @@ export default function SettingsScreen() {
             <View style={styles.versionRow}>
               <Label style={styles.versionLabel}>App version</Label>
               <Body size="sm" style={styles.versionValue}>
-                {appVersion} ({buildNumber})
+                {buildNumber ? `${appVersion} (${buildNumber})` : appVersion}
               </Body>
             </View>
           </Section>
@@ -1296,7 +1279,7 @@ export default function SettingsScreen() {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.deactivateKicker}>TAKE A BREAK</Text>
+                <Text style={styles.deactivateKicker}>Take a break</Text>
                 <Text style={styles.deactivateTitle}>Deactivate account</Text>
               </View>
             </View>
@@ -1329,7 +1312,7 @@ export default function SettingsScreen() {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.dangerKicker}>DANGER ZONE</Text>
+                <Text style={styles.dangerKicker}>Danger zone</Text>
                 <Text style={styles.dangerTitle}>Delete account</Text>
               </View>
             </View>
@@ -1677,7 +1660,6 @@ export default function SettingsScreen() {
 /* ----------------------------- subcomponents ----------------------------- */
 
 function Section({
-  kicker,
   icon,
   title,
   subtitle,
@@ -1692,20 +1674,15 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <View style={styles.section} onLayout={onLayout}>
-      {kicker ? <Text style={styles.sectionKickerText}>{kicker}</Text> : null}
+    <View style={styles.sectionShell} onLayout={onLayout}>
+      <View style={styles.section}>
       <View style={styles.sectionHeader}>
         {icon ? (
-          <LinearGradient
-            colors={["#FBF3DC", "#EFDDA8"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.sectionIconTile}
-          >
-            <Ionicons name={icon} size={18} color="#85651B" />
-          </LinearGradient>
+          <View style={styles.sectionIconTile}>
+            <Ionicons name={icon} size={20} color={C.accent} />
+          </View>
         ) : null}
-        <View style={{ flex: 1, paddingRight: 28 }}>
+        <View style={{ flex: 1 }}>
           <Text style={styles.sectionTitleText}>{title}</Text>
           {subtitle ? (
             <Text style={styles.sectionSubtitleText}>{subtitle}</Text>
@@ -1713,6 +1690,7 @@ function Section({
         </View>
       </View>
       <View style={styles.sectionBody}>{children}</View>
+      </View>
     </View>
   );
 }
@@ -1749,7 +1727,7 @@ function ProtectionRing({ done, total }: { done: number; total: number }) {
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke="#EFE9DA"
+          stroke="#efeee6"
           strokeWidth={stroke}
           fill="none"
         />
@@ -1757,7 +1735,7 @@ function ProtectionRing({ done, total }: { done: number; total: number }) {
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke="#C8A44A"
+          stroke={C.accent}
           strokeWidth={stroke}
           fill="none"
           strokeLinecap="round"
@@ -1803,7 +1781,7 @@ function SettingChip({
     >
       {selected ? (
         <View style={styles.settingChipCheck}>
-          <Ionicons name="checkmark" size={9} color="#181714" />
+          <Ionicons name="checkmark" size={11} color={C.ink} />
         </View>
       ) : null}
       <Text
@@ -1878,7 +1856,7 @@ function CommsRow({
   const body = (
     <>
       <View style={styles.commsIcon}>
-        <Ionicons name={icon} size={16} color="#85651B" />
+        <Ionicons name={icon} size={17} color={C.accent} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.commsLabel}>{label}</Text>
@@ -1905,7 +1883,7 @@ function CommsRow({
     >
       {body}
       <View style={styles.commsChevron}>
-        <Ionicons name="chevron-forward" size={13} color="#85651B" />
+        <Ionicons name="chevron-forward" size={14} color={C.ink} />
       </View>
     </TouchableOpacity>
   );
@@ -1973,12 +1951,17 @@ function ToggleRow({
         <Text style={styles.toggleLabel}>{label}</Text>
         <Text style={styles.toggleDetail}>{detail}</Text>
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: "#E6E2D8", true: "#181714" }}
-        thumbColor={value ? "#C8A44A" : "#FAF8F5"}
-      />
+      <TouchableOpacity
+        onPress={onValueChange}
+        activeOpacity={0.8}
+        hitSlop={8}
+        accessibilityRole="switch"
+        accessibilityLabel={label}
+        accessibilityState={{ checked: value }}
+        style={[styles.toggle, value && styles.toggleOn]}
+      >
+        <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -2027,13 +2010,14 @@ function NotificationRow({
               accessibilityLabel={`${label} ${channel} notifications`}
               style={styles.notificationSwitchWrap}
             >
-              {/* Switch is display-only — the row handles the toggle so a
-                  tap can never fire both handlers and cancel itself out. */}
-              <View pointerEvents="none">
-                <Switch
-                  value={isChecked}
-                  trackColor={{ false: "#E6E2D8", true: "#181714" }}
-                  thumbColor={isChecked ? "#C8A44A" : "#FAF8F5"}
+<View
+                style={[styles.miniToggle, isChecked && styles.miniToggleOn]}
+              >
+                <View
+                  style={[
+                    styles.miniKnob,
+                    isChecked && styles.miniKnobOn,
+                  ]}
                 />
               </View>
             </TouchableOpacity>
@@ -2058,7 +2042,7 @@ function ProviderRow({
   return (
     <View style={[styles.providerRow, isLast && styles.providerRowLast]}>
       <View style={styles.commsIcon}>
-        <Ionicons name={icon} size={16} color="#85651B" />
+        <Ionicons name={icon} size={17} color={C.accent} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.commsLabel}>{label}</Text>
@@ -2068,7 +2052,7 @@ function ProviderRow({
       </View>
       {linked ? (
         <View style={styles.linkedBadge}>
-          <Ionicons name="checkmark-circle" size={13} color="#7D8B6F" />
+          <Ionicons name="checkmark-circle" size={14} color={C.lime} />
           <Text style={styles.linkedBadgeText}>Linked</Text>
         </View>
       ) : (
@@ -2206,304 +2190,267 @@ const styles = withUserTheme(
       letterSpacing: -0.4,
     },
     logoutButton: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      backgroundColor: "#FFFFFF",
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: C.card,
       alignItems: "center",
       justifyContent: "center",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "#E3DFD3",
-      ...CARD_SHADOW,
-      shadowOpacity: 0.06,
-      shadowRadius: 10,
+      borderWidth: 1,
+      borderColor: C.line,
     },
 
     /* Hero */
     heroShell: {
       marginTop: spacing[2],
-      marginBottom: spacing[3],
+      marginBottom: 14,
       borderRadius: 26,
-      shadowColor: "#0F0E0C",
-      shadowOffset: { width: 0, height: 16 },
-      shadowOpacity: 0.22,
-      shadowRadius: 26,
-      elevation: 12,
+      ...CARD_SHADOW,
     },
     heroCard: {
       borderRadius: 26,
-      paddingHorizontal: 20,
-      paddingTop: 22,
-      paddingBottom: 18,
-      overflow: "hidden",
+      borderCurve: "continuous",
+      backgroundColor: C.card,
       borderWidth: 1,
-      borderColor: "rgba(232,207,143,0.16)",
+      borderColor: C.line,
+      padding: 14,
+      paddingTop: 18,
+      overflow: "hidden",
     },
-    heroGlow: {
-      position: "absolute",
-      top: -90,
-      right: -70,
-      width: 220,
-      height: 220,
-      borderRadius: 110,
-      backgroundColor: "rgba(200,164,74,0.09)",
+    heroProfileRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingHorizontal: 4,
     },
-    heroTopHairline: {
-      position: "absolute",
-      top: 0,
-      left: 32,
-      right: 32,
-      height: 1,
-    },
-    heroProfileRow: { flexDirection: "row", alignItems: "center", gap: 16 },
     avatarBezel: {
-      width: 68,
-      height: 68,
-      borderRadius: 34,
+      width: 60,
+      height: 60,
+      borderRadius: 30,
       padding: 3,
-      borderWidth: 1.5,
-      borderColor: "rgba(232,207,143,0.7)",
+      backgroundColor: C.accentSoft,
     },
-    avatarImage: { width: "100%", height: "100%", borderRadius: 32 },
+    avatarImage: { width: "100%", height: "100%", borderRadius: 27 },
     monogramFallback: {
       flex: 1,
-      borderRadius: 32,
-      backgroundColor: "#2C2A23",
+      borderRadius: 27,
+      backgroundColor: C.ink,
       alignItems: "center",
       justifyContent: "center",
     },
     monogramText: {
-      fontSize: 22,
+      fontSize: 21,
       fontFamily: fontFamilies.sans.bold,
-      color: "#E8CF8F",
-      letterSpacing: 0.5,
-    },
-    heroKicker: {
-      fontSize: 9,
-      fontFamily: fontFamilies.mono.semibold,
-      color: "rgba(232,207,143,0.7)",
-      letterSpacing: 1.8,
+      color: C.lime,
     },
     heroNameText: {
-      fontSize: 24,
+      fontSize: 21,
       fontFamily: fontFamilies.sans.bold,
-      color: "#FAF8F5",
-      letterSpacing: -0.5,
-      marginTop: 4,
+      color: C.text,
+      letterSpacing: -0.4,
     },
     heroEmailText: {
-      fontSize: 13,
+      fontSize: 13.5,
       fontFamily: fontFamilies.sans.regular,
-      color: "rgba(250,248,245,0.55)",
-      marginTop: 1,
+      color: C.muted,
+      marginTop: 2,
     },
-    heroDivider: { height: 1, marginTop: 18, marginBottom: 14 },
-    heroFooter: { flexDirection: "row", alignItems: "center", gap: 12 },
-    rolePill: {
+    heroStrip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 999,
-      backgroundColor: "#E8CF8F",
+      marginTop: 16,
+      paddingVertical: 14,
+      borderRadius: 20,
+      borderCurve: "continuous",
+      backgroundColor: C.ink,
     },
-    rolePillText: {
-      fontSize: 9.5,
-      fontFamily: fontFamilies.mono.semibold,
-      color: "#181714",
-      letterSpacing: 1.2,
+    heroCell: { flex: 1, alignItems: "center", gap: 4, paddingHorizontal: 6 },
+    heroCellValueRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    heroCellValue: {
+      fontSize: 15,
+      fontFamily: fontFamilies.sans.bold,
+      color: "#FFFFFF",
     },
-    heroSync: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6 },
-    heroSyncDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: "#9DB08A",
-    },
-    heroSyncDotDirty: { backgroundColor: "#E8CF8F" },
-    heroSyncText: {
+    heroCellLabel: {
       fontSize: 12,
       fontFamily: fontFamilies.sans.medium,
-      color: "rgba(250,248,245,0.6)",
+      color: "rgba(255,255,255,0.55)",
     },
-    heroSyncTextDirty: { color: "#E8CF8F" },
-    heroVersion: {
-      fontSize: 10.5,
-      fontFamily: fontFamilies.mono.regular,
-      color: "rgba(250,248,245,0.38)",
-      letterSpacing: 0.4,
+    heroRule: {
+      width: StyleSheet.hairlineWidth,
+      alignSelf: "stretch",
+      backgroundColor: "rgba(255,255,255,0.16)",
     },
+    heroSyncDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: C.lime,
+    },
+    heroSyncDotDirty: { backgroundColor: C.gold },
 
     /* Protection card */
+    protectShell: { borderRadius: 26, marginBottom: 14, ...CARD_SHADOW },
     protectCard: {
-      backgroundColor: "#FFFDF8",
-      borderRadius: 24,
-      padding: 18,
-      marginBottom: spacing[3],
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "#E3DFD3",
-      ...CARD_SHADOW,
+      backgroundColor: C.card,
+      borderRadius: 26,
+      borderCurve: "continuous",
+      borderWidth: 1,
+      borderColor: C.line,
+      paddingHorizontal: 18,
+      paddingTop: 18,
+      paddingBottom: 4,
+      overflow: "hidden",
     },
     protectHead: { flexDirection: "row", alignItems: "center", gap: 16 },
     protectRingValue: {
-      fontSize: 20,
+      fontSize: 19,
       fontFamily: fontFamilies.sans.bold,
-      color: "#141311",
+      color: C.text,
     },
     protectRingTotal: {
       fontSize: 12,
       fontFamily: fontFamilies.sans.medium,
-      color: "#A39D90",
-    },
-    protectKicker: {
-      fontSize: 9.5,
-      fontFamily: fontFamilies.mono.semibold,
-      color: "#85651B",
-      letterSpacing: 1.6,
+      color: C.muted,
     },
     protectTitle: {
-      fontSize: 20,
+      fontSize: 19,
       fontFamily: fontFamilies.sans.bold,
-      color: "#141311",
-      letterSpacing: -0.4,
-      marginTop: 3,
+      color: C.text,
+      letterSpacing: -0.3,
     },
     protectSub: {
-      fontSize: 12.5,
+      fontSize: 13.5,
       fontFamily: fontFamilies.sans.regular,
-      color: "#7A766C",
-      marginTop: 1,
+      color: C.muted,
+      marginTop: 2,
     },
-    protectGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
+    protectList: {
       marginTop: 16,
-      paddingTop: 16,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: "#ECE8DD",
+      borderTopWidth: 1,
+      borderTopColor: C.line,
     },
     protectItem: {
-      width: "48%",
-      flexGrow: 1,
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      height: 42,
-      paddingHorizontal: 10,
-      borderRadius: 14,
-      backgroundColor: "#FBF6E7",
-      borderWidth: 1,
-      borderColor: "rgba(200,164,74,0.35)",
-      borderStyle: "dashed",
+      gap: 12,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: C.line,
     },
-    protectItemDone: {
-      backgroundColor: "#F7F4EC",
-      borderColor: "transparent",
-      borderStyle: "solid",
-    },
+    protectItemLast: { borderBottomWidth: 0 },
     protectItemIcon: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: "#FFFFFF",
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: C.accentSoft,
       alignItems: "center",
       justifyContent: "center",
     },
-    protectItemIconDone: { backgroundColor: "#E8CF8F" },
     protectItemText: {
       flex: 1,
+      fontSize: 14.5,
+      fontFamily: fontFamilies.sans.semibold,
+      color: C.text,
+    },
+    protectDone: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: C.lime,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    protectAction: {
+      height: 32,
+      paddingHorizontal: 14,
+      borderRadius: 16,
+      backgroundColor: C.ink,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    protectActionText: {
       fontSize: 12.5,
       fontFamily: fontFamilies.sans.semibold,
-      color: "#85651B",
+      color: "#FFFFFF",
     },
-    protectItemTextDone: {
-      color: "#3D3A33",
+    protectPending: {
+      fontSize: 12.5,
       fontFamily: fontFamilies.sans.medium,
+      color: C.muted,
     },
 
     /* Quick jump */
-    jumpScroll: { marginHorizontal: -spacing[5], marginBottom: spacing[4] },
+    jumpScroll: { marginHorizontal: -spacing[5], marginBottom: 14 },
     jumpRow: { gap: 8, paddingHorizontal: spacing[5], paddingVertical: 4 },
     jumpChip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      height: 36,
-      paddingHorizontal: 14,
-      borderRadius: 999,
-      backgroundColor: "#FFFFFF",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "#E3DFD3",
+      gap: 7,
+      height: 42,
+      paddingHorizontal: 16,
+      borderRadius: 21,
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.line,
     },
     jumpChipText: {
-      fontSize: 12.5,
+      fontSize: 13.5,
       fontFamily: fontFamilies.sans.semibold,
-      color: "#3D3A33",
+      color: C.text,
     },
 
     /* Section card */
+    sectionShell: { borderRadius: 26, marginBottom: 14, ...CARD_SHADOW },
     section: {
-      backgroundColor: "#FFFDF8",
-      borderRadius: 24,
+      backgroundColor: C.card,
+      borderRadius: 26,
+      borderCurve: "continuous",
       paddingHorizontal: 18,
       paddingTop: 18,
       paddingBottom: 6,
-      marginBottom: spacing[4],
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "#E3DFD3",
+      borderWidth: 1,
+      borderColor: C.line,
       overflow: "hidden",
-      ...CARD_SHADOW,
     },
     sectionHeader: {
       flexDirection: "row",
       alignItems: "center",
       gap: 14,
-      paddingBottom: 14,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: "#ECE8DD",
+      paddingBottom: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: C.line,
     },
     sectionIconTile: {
-      width: 42,
-      height: 42,
-      borderRadius: 14,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: C.accentSoft,
       alignItems: "center",
       justifyContent: "center",
-      borderWidth: 1,
-      borderColor: "rgba(200,164,74,0.3)",
-    },
-    sectionKickerText: {
-      position: "absolute",
-      top: 8,
-      right: 16,
-      fontSize: 34,
-      fontFamily: fontFamilies.sans.medium,
-      color: "rgba(200,164,74,0.2)",
     },
     sectionTitleText: {
-      fontSize: 19,
+      fontSize: 18,
       fontFamily: fontFamilies.sans.bold,
-      color: "#141311",
-      letterSpacing: -0.4,
+      color: C.text,
+      letterSpacing: -0.3,
     },
     sectionSubtitleText: {
-      fontSize: 12.5,
-      lineHeight: 17,
+      fontSize: 13.5,
+      lineHeight: 18,
       fontFamily: fontFamilies.sans.regular,
-      color: "#7A766C",
+      color: C.muted,
       marginTop: 2,
     },
-    sectionBody: { paddingTop: 6, paddingBottom: 8 },
+    sectionBody: { paddingTop: 6, paddingBottom: 10 },
     subLabel: {
-      fontSize: 9.5,
-      fontFamily: fontFamilies.mono.semibold,
-      color: "#85651B",
-      letterSpacing: 1.6,
-      marginTop: 10,
+      fontSize: 13,
+      fontFamily: fontFamilies.sans.semibold,
+      color: C.text,
+      marginTop: 12,
       marginBottom: 10,
     },
-    subLabelTop: { marginTop: 18 },
+    subLabelTop: { marginTop: 20 },
     chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
 
     /* Currency options */
@@ -2512,63 +2459,57 @@ const styles = withUserTheme(
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      paddingVertical: 10,
-      paddingHorizontal: 10,
-      paddingRight: 14,
-      borderRadius: 16,
-      backgroundColor: "#FFFFFF",
+      height: 58,
+      paddingLeft: 9,
+      paddingRight: 16,
+      borderRadius: 18,
+      borderCurve: "continuous",
+      backgroundColor: "#f5f3ec",
       borderWidth: 1,
       borderColor: "transparent",
     },
     optionCardSelected: {
-      backgroundColor: "#FFFFFF",
-      borderColor: "rgba(200,164,74,0.55)",
-      ...CARD_SHADOW,
-      shadowOpacity: 0.06,
-      shadowRadius: 12,
+      backgroundColor: C.card,
+      borderColor: C.ink,
     },
     optionCode: {
-      minWidth: 48,
-      height: 34,
+      minWidth: 50,
+      height: 40,
       paddingHorizontal: 8,
-      borderRadius: 10,
-      backgroundColor: "#ECE8DD",
+      borderRadius: 12,
+      backgroundColor: C.card,
       alignItems: "center",
       justifyContent: "center",
     },
-    optionCodeSelected: { backgroundColor: "#181714" },
+    optionCodeSelected: { backgroundColor: C.ink },
     optionCodeText: {
-      fontSize: 11,
-      fontFamily: fontFamilies.mono.semibold,
-      color: "#5E5A51",
-      letterSpacing: 0.8,
+      fontSize: 12.5,
+      fontFamily: fontFamilies.sans.bold,
+      color: C.text,
     },
-    optionCodeTextSelected: { color: "#E8CF8F" },
+    optionCodeTextSelected: { color: C.lime },
     optionName: {
       flex: 1,
-      fontSize: 14,
+      fontSize: 14.5,
       fontFamily: fontFamilies.sans.medium,
-      color: "#3D3A33",
+      color: C.text,
     },
-    optionNameSelected: {
-      fontFamily: fontFamilies.sans.semibold,
-      color: "#141311",
-    },
+    optionNameSelected: { fontFamily: fontFamilies.sans.semibold },
     optionRadio: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
       borderWidth: 1.5,
-      borderColor: "#CFCABD",
+      borderColor: "#cfccbc",
       alignItems: "center",
       justifyContent: "center",
     },
-    optionRadioSelected: { borderColor: "#C8A44A" },
+    optionRadioSelected: { borderColor: C.ink, backgroundColor: C.ink },
     optionRadioDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-      backgroundColor: "#C8A44A",
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: C.lime,
     },
 
     /* Load error */
@@ -2624,41 +2565,33 @@ const styles = withUserTheme(
     settingChip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 7,
-      height: 38,
-      paddingHorizontal: 15,
-      borderRadius: 999,
-      backgroundColor: "#F7F4EC",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "#E3DFD3",
+      gap: 8,
+      height: 42,
+      paddingHorizontal: 16,
+      borderRadius: 21,
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.line,
     },
     settingChipSelected: {
-      backgroundColor: "#181714",
-      borderColor: "#181714",
-      paddingLeft: 9,
-      shadowColor: "#141311",
-      shadowOffset: { width: 0, height: 5 },
-      shadowOpacity: 0.18,
-      shadowRadius: 9,
-      elevation: 4,
+      backgroundColor: C.ink,
+      borderColor: C.ink,
+      paddingLeft: 8,
     },
     settingChipCheck: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      backgroundColor: "#E8CF8F",
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: C.lime,
       alignItems: "center",
       justifyContent: "center",
     },
     settingChipText: {
-      fontSize: 13,
-      fontFamily: fontFamilies.sans.medium,
-      color: "#3D3A33",
-    },
-    settingChipTextSelected: {
-      color: "#FAF8F5",
+      fontSize: 13.5,
       fontFamily: fontFamilies.sans.semibold,
+      color: C.text,
     },
+    settingChipTextSelected: { color: "#FFFFFF" },
 
     /* Rows */
     commsRow: {
@@ -2671,19 +2604,17 @@ const styles = withUserTheme(
     },
     commsRowLast: { borderBottomWidth: 0 },
     commsIcon: {
-      width: 38,
-      height: 38,
-      borderRadius: 12,
-      backgroundColor: "#F7F1DF",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(200,164,74,0.35)",
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: C.accentSoft,
       alignItems: "center",
       justifyContent: "center",
     },
     commsLabel: {
-      fontSize: 14,
+      fontSize: 14.5,
       fontFamily: fontFamilies.sans.semibold,
-      color: "#181714",
+      color: C.text,
     },
     commsSub: {
       fontSize: 12,
@@ -2692,10 +2623,10 @@ const styles = withUserTheme(
       marginTop: 2,
     },
     commsChevron: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: "#F7F4EC",
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: "#f5f3ec",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2729,6 +2660,22 @@ const styles = withUserTheme(
       borderBottomColor: "#ECE8DD",
     },
     toggleRowLast: { borderBottomWidth: 0 },
+    toggle: {
+      width: 50,
+      height: 30,
+      borderRadius: 15,
+      padding: 3,
+      backgroundColor: "#e6e4da",
+      justifyContent: "center",
+    },
+    toggleOn: { backgroundColor: C.ink },
+    toggleKnob: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: "#FFFFFF",
+    },
+    toggleKnobOn: { alignSelf: "flex-end", backgroundColor: C.lime },
     toggleInfo: { flex: 1, paddingRight: spacing[2] },
     toggleLabel: {
       fontSize: 13.5,
@@ -2753,10 +2700,11 @@ const styles = withUserTheme(
     notifChannel: {
       width: 50,
       textAlign: "center",
-      color: "#85651B",
-      fontSize: 10,
-      fontFamily: fontFamilies.mono.semibold,
-      letterSpacing: 1,
+      textTransform: "none",
+      letterSpacing: 0,
+      color: C.muted,
+      fontSize: 12,
+      fontFamily: fontFamilies.sans.semibold,
     },
     notificationRow: {
       flexDirection: "row",
@@ -2770,7 +2718,28 @@ const styles = withUserTheme(
     notificationRowLast: { borderBottomWidth: 0 },
     notificationInfo: { flex: 1, paddingRight: spacing[2] },
     notificationSwitches: { flexDirection: "row", alignItems: "center" },
-    notificationSwitchWrap: { width: 50, alignItems: "center" },
+    notificationSwitchWrap: {
+      width: 50,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    miniToggle: {
+      width: 38,
+      height: 24,
+      borderRadius: 12,
+      padding: 3,
+      backgroundColor: "#e6e4da",
+      justifyContent: "center",
+    },
+    miniToggleOn: { backgroundColor: C.ink },
+    miniKnob: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: "#FFFFFF",
+    },
+    miniKnobOn: { alignSelf: "flex-end", backgroundColor: C.lime },
 
     providerRow: {
       flexDirection: "row",
@@ -2784,23 +2753,21 @@ const styles = withUserTheme(
     linkedBadge: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-      backgroundColor: "rgba(125, 139, 111, 0.12)",
-      borderWidth: 1,
-      borderColor: "rgba(125, 139, 111, 0.3)",
+      gap: 5,
+      height: 30,
+      paddingHorizontal: 12,
+      borderRadius: 15,
+      backgroundColor: C.ink,
     },
     linkedBadgeText: {
-      fontSize: 11,
-      fontFamily: fontFamilies.mono.semibold,
-      color: "#5C6A4F",
+      fontSize: 12.5,
+      fontFamily: fontFamilies.sans.semibold,
+      color: "#FFFFFF",
     },
     notLinkedText: {
-      color: "#A49E93",
-      fontSize: 11,
-      fontFamily: fontFamilies.mono.medium,
+      color: C.muted,
+      fontSize: 12.5,
+      fontFamily: fontFamilies.sans.medium,
     },
 
     versionRow: {
@@ -2809,10 +2776,16 @@ const styles = withUserTheme(
       alignItems: "center",
       paddingTop: spacing[3],
     },
-    versionLabel: { color: colors.light.mutedForeground },
+    versionLabel: {
+      color: C.muted,
+      fontSize: 13,
+      fontFamily: fontFamilies.sans.medium,
+      textTransform: "none",
+      letterSpacing: 0,
+    },
     versionValue: {
-      fontFamily: fontFamilies.mono.regular,
-      color: colors.light.foreground,
+      fontFamily: fontFamilies.sans.semibold,
+      color: C.text,
     },
 
     /* Deactivate card */
@@ -2838,10 +2811,9 @@ const styles = withUserTheme(
       borderColor: "rgba(200, 164, 74, 0.25)",
     },
     deactivateKicker: {
-      color: "#85651B",
-      fontSize: 10,
-      fontFamily: fontFamilies.mono.semibold,
-      letterSpacing: 1.2,
+      color: C.muted,
+      fontSize: 13,
+      fontFamily: fontFamilies.sans.semibold,
     },
     deactivateTitle: {
       marginTop: 2,
@@ -2892,9 +2864,8 @@ const styles = withUserTheme(
     },
     dangerKicker: {
       color: colors.light.destructive,
-      fontSize: 10,
-      fontFamily: fontFamilies.mono.semibold,
-      letterSpacing: 1.2,
+      fontSize: 13,
+      fontFamily: fontFamilies.sans.semibold,
     },
     dangerTitle: {
       marginTop: 2,

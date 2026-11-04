@@ -226,8 +226,9 @@ function SectionHead({
   return (
     <View style={styles.sectionHead}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.sectionKicker}>{kicker}</Text>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionTitle} accessibilityHint={kicker.toLowerCase()}>
+          {title}
+        </Text>
       </View>
       {action && onAction ? (
         <TouchableOpacity onPress={onAction} hitSlop={8} style={styles.sectionAction} activeOpacity={0.75}>
