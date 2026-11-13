@@ -1,7 +1,7 @@
 /**
  * Mobile anon session token management (0260).
  *
- * Mirrors the web's `luxe_anon_sid` cookie via AsyncStorage. The HMAC-
+ * Mirrors the web's `vestara_anon_sid` cookie via AsyncStorage. The HMAC-
  * signed token is opaque client-side; backend verifies with ANON_SID_SECRET.
  *
  * RN has no automatic cookie jar — the cookie is forwarded as a literal

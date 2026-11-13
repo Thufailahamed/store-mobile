@@ -1,17 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback } from "react";
 import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
 } from "react-native";
-import * as Location from "expo-location";
-import { Ionicons } from "@/components/ui/Icon";
 import { AddressMapPicker } from "@/components/address/AddressMapPicker";
-import { useDebounce } from "@/lib/hooks/useDebounce";
-import { reverseGeocode } from "@/lib/maps";
 import { isWarehouseGeocoded } from "@/lib/warehouse-routing";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 
@@ -85,65 +79,6 @@ export function warehousePayloadFromForm(form: WarehouseFormValues) {
 }
 
 export function WarehouseFormFields({ values, onChange, showCapacity = true }: WarehouseFormFieldsProps) {
-  const [geoBusy, setGeoBusy] = useState(false);
-  const [fetchingLoc, setFetchingLoc] = useState(false);
-  const debouncedLatLng = useDebounce({ lat: values.latitude, lng: values.longitude }, 500);
-  const lastReverseKey = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (debouncedLatLng.lat == null || debouncedLatLng.lng == null) return;
-    const key = `${debouncedLatLng.lat.toFixed(5)}|${debouncedLatLng.lng.toFixed(5)}`;
-    if (key === lastReverseKey.current) return;
-    lastReverseKey.current = key;
-    let cancelled = false;
-    setGeoBusy(true);
-    reverseGeocode(debouncedLatLng.lat, debouncedLatLng.lng).then((res) => {
-      if (cancelled) return;
-      setGeoBusy(false);
-      if (!res) return;
-      onChange({
-        line1: res.components.line1 || res.formatted.split(",")[0]?.trim() || values.line1,
-        city: res.components.city || values.city,
-        state: res.components.state || values.state,
-        postal_code: res.components.postal_code || values.postal_code,
-        country: res.components.country || values.country,
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedLatLng.lat, debouncedLatLng.lng]);
-
-  const handleAutoFetch = async () => {
-    if (fetchingLoc) return;
-    setFetchingLoc(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      lastReverseKey.current = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
-      onChange({ latitude: lat, longitude: lng });
-      setGeoBusy(true);
-      const res = await reverseGeocode(lat, lng);
-      setGeoBusy(false);
-      if (res) {
-        onChange({
-          line1: res.components.line1 || res.formatted.split(",")[0]?.trim() || values.line1,
-          city: res.components.city || values.city,
-          state: res.components.state || values.state,
-          postal_code: res.components.postal_code || values.postal_code,
-          country: res.components.country || values.country,
-          latitude: lat,
-          longitude: lng,
-        });
-      }
-    } finally {
-      setFetchingLoc(false);
-    }
-  };
-
   const handleMapChange = useCallback(
     (lat: number, lng: number) => onChange({ latitude: lat, longitude: lng }),
     [onChange],
@@ -154,17 +89,6 @@ export function WarehouseFormFields({ values, onChange, showCapacity = true }: W
   return (
     <View>
       <Field label="Name" value={values.name} onChange={(v) => onChange({ name: v })} />
-      <TouchableOpacity style={styles.detectBtn} onPress={handleAutoFetch} disabled={fetchingLoc}>
-        {fetchingLoc ? (
-          <ActivityIndicator size="small" color={colors.light.primary} />
-        ) : (
-          <Ionicons name="location-outline" size={16} color={colors.light.primary} />
-        )}
-        <Text style={styles.detectText}>
-          {fetchingLoc ? "Detecting location…" : "Auto-detect current location"}
-        </Text>
-      </TouchableOpacity>
-
       <Text style={styles.mapLabel}>Pin hub location (required for nearest-warehouse routing)</Text>
       <AddressMapPicker
         latitude={values.latitude}
@@ -172,12 +96,7 @@ export function WarehouseFormFields({ values, onChange, showCapacity = true }: W
         onLocationChange={handleMapChange}
         height={180}
       />
-      {geoBusy ? (
-        <View style={styles.geoRow}>
-          <ActivityIndicator size="small" color={colors.light.primary} />
-          <Text style={styles.geoText}>Resolving address…</Text>
-        </View>
-      ) : geocoded ? (
+      {geocoded ? (
         <Text style={styles.coordsOk}>
           Coordinates set · {values.latitude!.toFixed(5)}, {values.longitude!.toFixed(5)}
         </Text>

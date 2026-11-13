@@ -9,7 +9,14 @@
  */
 import React, { useState } from "react";
 import {
-  ScrollView, View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, RefreshControl,
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +29,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import {
   getMyKyc, submitKyc, KYC_DOC_TYPES, KYC_MAX_BYTES, type KycDocType, type KycPhoto,
 } from "@/lib/api/kyc";
+import { themedAlert } from "@/lib/themed-alert";
 
 const INK = colors.olive[950];
 const CREAM = colors.paper.cream;
@@ -39,7 +47,7 @@ async function capture(source: "camera" | "library", front: boolean): Promise<Ky
     ? await ImagePicker.requestCameraPermissionsAsync()
     : await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (perm.status !== "granted") {
-    Alert.alert("Permission needed", `Allow ${source === "camera" ? "camera" : "photo library"} access in Settings to continue.`);
+    themedAlert("Permission needed", `Allow ${source === "camera" ? "camera" : "photo library"} access in Settings to continue.`);
     return null;
   }
   const opts: ImagePicker.ImagePickerOptions = {
@@ -52,7 +60,7 @@ async function capture(source: "camera" | "library", front: boolean): Promise<Ky
   if (res.canceled || !res.assets?.[0]) return null;
   const a = res.assets[0];
   if (a.fileSize && a.fileSize > KYC_MAX_BYTES) {
-    Alert.alert("Photo too large", "Please use a photo under 5 MB.");
+    themedAlert("Photo too large", "Please use a photo under 5 MB.");
     return null;
   }
   const mime = a.mimeType && /^image\/(jpeg|png|webp)$/.test(a.mimeType) ? a.mimeType : "image/jpeg";
@@ -96,7 +104,7 @@ export function KycVerifyScreen({ fallbackHref }: { fallbackHref: string }) {
   });
 
   const pick = (which: "id" | "selfie") => {
-    Alert.alert(which === "id" ? "ID photo" : "Selfie with ID", undefined, [
+    themedAlert(which === "id" ? "ID photo" : "Selfie with ID", undefined, [
       { text: "Take photo", onPress: async () => { const p = await capture("camera", which === "selfie"); if (p) (which === "id" ? setIdDoc : setSelfie)(p); } },
       { text: "Choose from library", onPress: async () => { const p = await capture("library", false); if (p) (which === "id" ? setIdDoc : setSelfie)(p); } },
       { text: "Cancel", style: "cancel" },
@@ -181,7 +189,7 @@ export function KycVerifyScreen({ fallbackHref }: { fallbackHref: string }) {
               <Text style={styles.submitText}>{state === "rejected" ? "Resubmit for review" : "Submit for review"}</Text>
             )}
           </TouchableOpacity>
-          <Text style={styles.privacy}>Your documents are stored privately and only seen by the LUXE review team.</Text>
+          <Text style={styles.privacy}>Your documents are stored privately and only seen by the VESTARA review team.</Text>
         </>
       ) : null}
     </ScrollView>

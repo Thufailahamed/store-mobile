@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -18,6 +17,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { hasStoreApi, onboardDeliveryCompany } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 function slugify(s: string) {
   return s
@@ -47,11 +47,11 @@ export default function CompanyOnboardingScreen() {
 
   const submit = async () => {
     if (!name.trim() || !slug.trim()) {
-      Alert.alert("Missing fields", "Company name and URL slug are required.");
+      themedAlert("Missing fields", "Company name and URL slug are required.");
       return;
     }
     if (!hasStoreApi()) {
-      Alert.alert("Not configured", "Set EXPO_PUBLIC_STORE_API_URL first.");
+      themedAlert("Not configured", "Set EXPO_PUBLIC_STORE_API_URL first.");
       return;
     }
     setSubmitting(true);
@@ -67,11 +67,11 @@ export default function CompanyOnboardingScreen() {
     });
     setSubmitting(false);
     if (!res.ok) {
-      Alert.alert("Failed", res.error);
+      themedAlert("Failed", res.error);
       return;
     }
     await supabase.auth.refreshSession().catch(() => undefined);
-    Alert.alert("Submitted", "Your application is pending admin approval.", [
+    themedAlert("Submitted", "Your application is pending admin approval.", [
       { text: "OK", onPress: () => router.replace("/(delivery-company)") },
     ]);
   };

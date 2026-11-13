@@ -7,9 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -24,6 +22,7 @@ import {
 } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { isValidEmail } from "@/lib/contact-validation";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function CompanyTeamScreen() {
   const [members, setMembers] = useState<DcDriverMember[]>([]);
@@ -57,15 +56,15 @@ export default function CompanyTeamScreen() {
   const handleInvite = async () => {
     const email = inviteEmail.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      Alert.alert("Invalid email", "Enter a valid email.");
+      themedAlert("Invalid email", "Enter a valid email.");
       return;
     }
     setInviting(true);
     const res = await inviteDriver({ email, company_role: "manager" });
     setInviting(false);
-    if (!res.ok) Alert.alert("Invite failed", res.error);
+    if (!res.ok) themedAlert("Invite failed", res.error);
     else {
-      Alert.alert("Sent", `Manager invite sent to ${email}`);
+      themedAlert("Sent", `Manager invite sent to ${email}`);
       setInviteOpen(false);
       setInviteEmail("");
       load();

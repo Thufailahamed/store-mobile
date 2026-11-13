@@ -88,7 +88,12 @@ const ROLE_DETAILS: Record<
 export default function RegisterScreen() {
   const router = useRouter();
   // Details the OTP sheet is verifying (null = sheet closed).
-  const [otp, setOtp] = useState<{ phone: string; referral?: string; invite?: string } | null>(null);
+  const [otp, setOtp] = useState<{
+    phone: string;
+    referral?: string;
+    invite?: string;
+    signup?: { full_name?: string; role?: string; email?: string; store_name?: string };
+  } | null>(null);
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ role?: string; code?: string; ref?: string; referral?: string }>();
@@ -97,6 +102,7 @@ export default function RegisterScreen() {
   const [role, setRole] = useState<UserRole>(resolveRoleParam(params.role));
   // Sellers also give a contact email; the phone stays the login.
   const [email, setEmail] = useState("");
+  const [shopName, setShopName] = useState("");
   const isSeller = role === "store_owner";
   const [inviteCode, setInviteCode] = useState(params.code ?? "");
   const initialReferral = (params.ref ?? params.referral ?? (resolveRoleParam(params.role) === "delivery" ? "" : (params.code ?? ""))).toUpperCase();
@@ -113,7 +119,10 @@ export default function RegisterScreen() {
   ];
 
   const handleRegister = async () => {
-    if (!fullName.trim() || !phone.trim()) {
+    // Sellers give a shop name instead of a personal name; it doubles as the
+    // profile display name.
+    const displayName = isSeller ? shopName.trim() : fullName.trim();
+    if (!displayName || !phone.trim()) {
       toast("Please fill in all fields", "error");
       return;
     }
@@ -125,6 +134,12 @@ export default function RegisterScreen() {
 
     if (!isValidPhone(phone)) {
       toast("Phone number looks invalid", "error");
+      return;
+    }
+
+    const trimmedShopName = shopName.trim();
+    if (isSeller && trimmedShopName.length < 2) {
+      toast("Enter your shop name", "error");
       return;
     }
 
@@ -173,12 +188,12 @@ export default function RegisterScreen() {
       phone: formattedPhone,
       options: {
         data: {
-          full_name: fullName.trim(),
+          full_name: displayName,
           role: role,
           phone: formattedPhone,
           // Contact email only (saved to the profile by handle_new_user) —
           // not an auth identity, so sellers still sign in by phone.
-          ...(isSeller ? { email: contactEmail } : {}),
+          ...(isSeller ? { email: contactEmail, store_name: trimmedShopName } : {}),
         },
       },
     });
@@ -194,13 +209,19 @@ export default function RegisterScreen() {
       phone: formattedPhone,
       ...(role === "delivery" && inviteCode.trim() ? { invite: inviteCode.trim() } : {}),
       ...(role !== "delivery" && trimmedReferral ? { referral: trimmedReferral } : {}),
+      signup: {
+        full_name: displayName,
+        role,
+        ...(isSeller ? { email: contactEmail, store_name: trimmedShopName } : {}),
+      },
     });
   };
 
   const phoneOk = isValidPhone(phone);
   const emailOk = isValidEmail(email);
+  const shopNameOk = shopName.trim().length > 1;
   const checklist = isSeller
-    ? [fullName.trim().length > 1, phoneOk, emailOk, terms]
+    ? [shopNameOk, phoneOk, emailOk, terms]
     : [fullName.trim().length > 1, phoneOk, terms];
   const completed = checklist.filter(Boolean).length;
   const ready = completed === checklist.length && (role !== "delivery" || inviteCode.trim().length > 0);
@@ -263,16 +284,30 @@ export default function RegisterScreen() {
             </View>
           )}
 
-          <AuthField
-            placeholder="Full name"
-            value={fullName}
-            onChangeText={setFullName}
-            autoCapitalize="words"
-            autoComplete="name"
-            textContentType="name"
-            accessibilityLabel="Full name"
-            valid={fullName.trim().length > 1}
-          />
+          {isSeller ? (
+            <AuthField
+              placeholder="Shop name"
+              value={shopName}
+              onChangeText={setShopName}
+              autoCapitalize="words"
+              autoComplete="organization"
+              textContentType="organizationName"
+              accessibilityLabel="Shop name"
+              maxLength={80}
+              valid={shopNameOk}
+            />
+          ) : (
+            <AuthField
+              placeholder="Full name"
+              value={fullName}
+              onChangeText={setFullName}
+              autoCapitalize="words"
+              autoComplete="name"
+              textContentType="name"
+              accessibilityLabel="Full name"
+              valid={fullName.trim().length > 1}
+            />
+          )}
           <AuthField
             placeholder="Mobile number (077 123 4567)"
             value={phone}
@@ -349,8 +384,15 @@ export default function RegisterScreen() {
               {terms ? <Ionicons name="checkmark" size={14} color={C.lime} /> : null}
             </View>
             <Text style={styles.termsText}>
-              I agree to LUXE’s <Text style={styles.termsLink}>Terms of Service</Text> and{" "}
-              <Text style={styles.termsLink}>Privacy Policy</Text>.
+              I agree to VESTARA’s{" "}
+              <Text style={styles.termsLink} onPress={() => router.push("/legal/terms")} suppressHighlighting>
+                Terms of Service
+              </Text>{" "}
+              and{" "}
+              <Text style={styles.termsLink} onPress={() => router.push("/legal/privacy")} suppressHighlighting>
+                Privacy Policy
+              </Text>
+              .
             </Text>
           </Pressable>
 
@@ -380,6 +422,7 @@ export default function RegisterScreen() {
         phone={otp?.phone ?? ""}
         referral={otp?.referral}
         invite={otp?.invite}
+        signup={otp?.signup}
         onClose={() => setOtp(null)}
       />
     </KeyboardAvoidingView>

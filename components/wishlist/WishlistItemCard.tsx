@@ -54,7 +54,7 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
   const isOutOfStock = stock <= 0;
   const isLowStock = !isOutOfStock && Number.isFinite(stock) && stock <= 3;
   const discount = discountPct(product.mrp, product.price);
-  const brandLabel = product.store?.name || product.brand?.name || "LUXE";
+  const brandLabel = product.store?.name || product.brand?.name || "VESTARA";
   const name = displayName(product.name, brandLabel);
 
   const open = () =>

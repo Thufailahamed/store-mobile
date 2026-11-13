@@ -7,9 +7,7 @@ import {
   TextInput,
   StyleSheet,
   RefreshControl,
-  Alert,
   Switch,
-
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -37,6 +35,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui";
 import * as Clipboard from "expo-clipboard";
 import type { AdminCoupon } from "@/lib/api";
+import { themedAlert } from "@/lib/themed-alert";
 
 const CREAM = colors.paper.cream;
 const GOLD = colors.accent2.ochre;
@@ -164,7 +163,7 @@ export default function SellerCoupons() {
         prev.map((c) => (c.id === coupon.id ? { ...c, is_active: !c.is_active } : c))
       );
     } else {
-      Alert.alert("Update failed", res.error);
+      themedAlert("Update failed", res.error);
     }
   };
 
@@ -174,7 +173,7 @@ export default function SellerCoupons() {
   };
 
   const handleDelete = (coupon: AdminCoupon) => {
-    Alert.alert(
+    themedAlert(
       "Delete coupon?",
       `Permanently remove "${coupon.code}". Customers with the code will no longer be able to redeem it.`,
       [
@@ -189,7 +188,7 @@ export default function SellerCoupons() {
             if (res.ok) {
               setCoupons((prev) => prev.filter((c) => c.id !== coupon.id));
             } else {
-              Alert.alert("Delete failed", res.error);
+              themedAlert("Delete failed", res.error);
             }
           },
         },
@@ -226,36 +225,36 @@ export default function SellerCoupons() {
 
   const validateForm = (): boolean => {
     if (!code.trim()) {
-      Alert.alert("Error", "Coupon code is required");
+      themedAlert("Error", "Coupon code is required");
       return false;
     }
     // Free shipping and BXGY carry no flat discount value — free shipping is
     // the discount, and BXGY is priced by `bxgy_get_discount_pct`.
     if (needsValue) {
       if (!value || Number(value) <= 0) {
-        Alert.alert("Error", "Enter a valid discount value");
+        themedAlert("Error", "Enter a valid discount value");
         return false;
       }
       if (type === "percentage" && Number(value) > 100) {
-        Alert.alert("Error", "Percentage coupons cannot exceed 100%");
+        themedAlert("Error", "Percentage coupons cannot exceed 100%");
         return false;
       }
     }
     if (minOrder.trim() && (!Number.isFinite(Number(minOrder)) || Number(minOrder) < 0)) {
-      Alert.alert("Error", "Minimum order total must be a valid, non-negative number");
+      themedAlert("Error", "Minimum order total must be a valid, non-negative number");
       return false;
     }
     if (maxUses.trim() && (!Number.isInteger(Number(maxUses)) || Number(maxUses) <= 0)) {
-      Alert.alert("Error", "Maximum uses must be a whole number greater than 0");
+      themedAlert("Error", "Maximum uses must be a whole number greater than 0");
       return false;
     }
     if (type === "bxgy") {
       if (bxgyBuyProductIds.length === 0 || bxgyGetProductIds.length === 0) {
-        Alert.alert("Error", "Pick at least one buy and one get product for BXGY");
+        themedAlert("Error", "Pick at least one buy and one get product for BXGY");
         return false;
       }
       if (Number(bxgyGetDiscountPct) <= 0 || Number(bxgyGetDiscountPct) > 100) {
-        Alert.alert("Error", "Get discount must be between 1 and 100");
+        themedAlert("Error", "Get discount must be between 1 and 100");
         return false;
       }
     }
@@ -292,7 +291,7 @@ export default function SellerCoupons() {
         setCoupons((prev) => prev.map((c) => (c.id === editing.id ? res.data : c)));
         closeForm();
       } else {
-        Alert.alert("Update failed", res.error);
+        themedAlert("Update failed", res.error);
       }
       return;
     }
@@ -314,7 +313,7 @@ export default function SellerCoupons() {
       setCoupons((prev) => [res.data, ...prev]);
       closeForm();
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 

@@ -7,12 +7,14 @@ import {
   StyleSheet,
   RefreshControl,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerReturns, type SellerReturnRequest } from "@/lib/api";
+import { getSellerStore, getSellerReturns, updateSellerStore, type SellerReturnRequest } from "@/lib/api";
+import { themedAlert } from "@/lib/themed-alert";
 import { colors, typography, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, pluralize } from "@/lib/utils";
@@ -177,6 +179,8 @@ export default function SellerReturns() {
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState("all");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [acceptsReturns, setAcceptsReturns] = useState(true);
+  const [enablingReturns, setEnablingReturns] = useState(false);
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -186,18 +190,16 @@ export default function SellerReturns() {
 
   const fetchReturns = useCallback(async () => {
     if (!user) return;
-    let sid = storeId;
-    if (!sid) {
-      const storeRes = await getSellerStore(user.id);
-      if (!storeRes.ok || !storeRes.data) {
-        setLoadError(storeRes.ok ? "No store found for this account." : storeRes.error);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-      sid = storeRes.data.id;
-      setStoreId(sid);
+    const storeRes = await getSellerStore(user.id);
+    if (!storeRes.ok || !storeRes.data) {
+      setLoadError(storeRes.ok ? "No store found for this account." : storeRes.error);
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
+    const sid = storeRes.data.id;
+    setStoreId(sid);
+    setAcceptsReturns(storeRes.data.accepts_returns !== false);
     const res = await getSellerReturns(sid);
     if (res.ok) {
       setReturns(res.data);
@@ -207,7 +209,20 @@ export default function SellerReturns() {
     }
     setLoading(false);
     setRefreshing(false);
-  }, [user, storeId]);
+  }, [user]);
+
+  const turnOnReturns = async () => {
+    if (!storeId || enablingReturns) return;
+    setEnablingReturns(true);
+    const res = await updateSellerStore(storeId, { accepts_returns: true });
+    setEnablingReturns(false);
+    if (!res.ok) {
+      themedAlert("Couldn’t turn on returns", res.error);
+      return;
+    }
+    setAcceptsReturns(true);
+    void fetchReturns();
+  };
 
   useEffect(() => {
     void fetchReturns();
@@ -253,6 +268,8 @@ export default function SellerReturns() {
   const isFiltered = Boolean(search) || statusTab !== "all";
   const headerSubtitle = loadError && returns.length === 0
     ? "Return data unavailable"
+    : !acceptsReturns
+      ? "Returns are off"
     : returns.length === 0
       ? "No buyer returns yet"
       : counts.requested > 0
@@ -373,6 +390,35 @@ export default function SellerReturns() {
         </View>
         <Text style={styles.subtitle}>{headerSubtitle}</Text>
       </View>
+
+      {!acceptsReturns && !loading && !loadError ? (
+        <View style={styles.offCard}>
+          <View style={styles.offHead}>
+            <View style={styles.offIcon}>
+              <Ionicons name="ban-outline" size={18} color={colors.accent2.rust} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.offTitle}>Returns are off</Text>
+              <Text style={styles.offText}>
+                Buyers see “No returns” on your products. Turn on returns to accept return requests.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[styles.offBtn, enablingReturns && { opacity: 0.6 }]}
+            onPress={turnOnReturns}
+            disabled={enablingReturns}
+            accessibilityRole="button"
+            accessibilityLabel="Turn on returns"
+          >
+            {enablingReturns ? (
+              <ActivityIndicator size="small" color={colors.paper.cream} />
+            ) : (
+              <Text style={styles.offBtnText}>Turn on returns</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {!loadError && !isFiltered && !loading ? (
         <View style={styles.overview}>
@@ -521,6 +567,43 @@ export default function SellerReturns() {
 }
 
 const styles = StyleSheet.create({
+  offCard: {
+    marginHorizontal: 16,
+    marginBottom: 14,
+    padding: 16,
+    gap: 14,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.2)",
+  },
+  offHead: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  offIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(184,92,58,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(184,92,58,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offTitle: { fontFamily: fontFamilies.sans.semibold, fontSize: 15, color: colors.olive[950] },
+  offText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.ink.mute,
+    marginTop: 3,
+  },
+  offBtn: {
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.olive[950],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offBtnText: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: colors.paper.cream },
   container: { flex: 1, backgroundColor: "#f8f7f2" },
   statusScrim: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: "#ebe5cc" },
   listContent: { paddingBottom: 48 },

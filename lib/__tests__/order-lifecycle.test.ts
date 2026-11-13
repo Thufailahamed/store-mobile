@@ -3,6 +3,7 @@ import {
   CUSTOMER_STATUS_STEPS,
   SELLER_NEXT_STATUS,
   canSellerCancelOrder,
+  getSellerAdvanceStatus,
   getCustomerStepIndex,
   getSellerNextStatus,
   isValidOrderStatusTransition,
@@ -14,7 +15,8 @@ describe("order-lifecycle", () => {
   it("defines seller next status for early pipeline only", () => {
     expect(getSellerNextStatus("pending")).toBe("confirmed");
     expect(getSellerNextStatus("confirmed")).toBe("processing");
-    expect(getSellerNextStatus("processing")).toBe("shipped");
+    expect(getSellerNextStatus("processing")).toBe("picked_up");
+    expect(getSellerNextStatus("picked_up")).toBe("shipped");
   });
 
   it("rejects skipped-state jumps", () => {
@@ -29,8 +31,9 @@ describe("order-lifecycle", () => {
   });
 
   it("maps customer timeline", () => {
-    expect(getCustomerStepIndex("shipped")).toBe(3);
-    expect(CUSTOMER_STATUS_STEPS).toHaveLength(6);
+    expect(getCustomerStepIndex("picked_up")).toBe(3);
+    expect(getCustomerStepIndex("shipped")).toBe(4);
+    expect(CUSTOMER_STATUS_STEPS).toHaveLength(7);
   });
 
   it("limits buyer cancel statuses", () => {
@@ -40,7 +43,7 @@ describe("order-lifecycle", () => {
 
   it("covers seller map keys", () => {
     const statuses: OrderStatus[] = [
-      "pending", "confirmed", "processing", "shipped", "out_for_delivery",
+      "pending", "confirmed", "processing", "picked_up", "shipped", "out_for_delivery",
       "delivered", "cancelled", "returned", "refunded", "failed_attempt",
     ];
     for (const s of statuses) {
@@ -82,18 +85,11 @@ describe("order-lifecycle — reschedule edge", () => {
   });
 });
 
-describe("canSellerCancelOrder", () => {
-  it("allows cancel from actionable pipeline states", () => {
-    expect(canSellerCancelOrder("pending")).toBe(true);
-    expect(canSellerCancelOrder("confirmed")).toBe(true);
-    expect(canSellerCancelOrder("processing")).toBe(true);
-  });
-
-  it("blocks cancel from terminal/shipped states like web", () => {
-    expect(canSellerCancelOrder("shipped")).toBe(false);
-    expect(canSellerCancelOrder("delivered")).toBe(false);
-    expect(canSellerCancelOrder("cancelled")).toBe(false);
-    expect(canSellerCancelOrder("returned")).toBe(false);
-    expect(canSellerCancelOrder("refunded")).toBe(false);
+describe("seller order actions", () => {
+  it("sellers cannot cancel or advance any order state", () => {
+    for (const st of ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "returned", "refunded"] as OrderStatus[]) {
+      expect(canSellerCancelOrder(st)).toBe(false);
+      expect(getSellerAdvanceStatus(st)).toBeNull();
+    }
   });
 });

@@ -24,8 +24,10 @@ import {
   C,
   CLOSED,
   PROCESS,
+  PICKED_UP,
   RIBBON,
   TRANSIT,
+  OUT_FOR_DELIVERY,
   ParcelArt,
   TrackRail,
   etaFor,
@@ -36,23 +38,27 @@ import { formatPrice } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
 
 
-type Tab = "all" | "transit" | "process" | "delivered" | "closed";
+type Tab = "all" | "process" | "picked_up" | "transit" | "out_for_delivery" | "delivered" | "closed";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "transit", label: "Transit" },
   { key: "process", label: "On Process" },
+  { key: "picked_up", label: "Picked Up" },
+  { key: "transit", label: "Transit" },
+  { key: "out_for_delivery", label: "Out for Delivery" },
   { key: "delivered", label: "Delivered" },
   { key: "closed", label: "Cancelled" },
 ];
 
 
-function inTab(status: OrderStatus, tab: Tab) {
+function inTab(status: OrderStatus | string, tab: Tab) {
   if (tab === "all") return true;
-  if (tab === "transit") return TRANSIT.includes(status);
-  if (tab === "process") return PROCESS.includes(status);
+  if (tab === "process") return PROCESS.includes(status as OrderStatus);
+  if (tab === "picked_up") return PICKED_UP.includes(status);
+  if (tab === "transit") return status === "shipped";
+  if (tab === "out_for_delivery") return OUT_FOR_DELIVERY.includes(status as OrderStatus);
   if (tab === "delivered") return status === "delivered";
-  return CLOSED.includes(status);
+  return CLOSED.includes(status as OrderStatus);
 }
 
 
@@ -81,7 +87,7 @@ export default function OrdersScreen() {
   }, [loadOrders]);
 
   const counts = useMemo(() => {
-    const c = { all: 0, transit: 0, process: 0, delivered: 0, closed: 0 } as Record<Tab, number>;
+    const c = { all: 0, process: 0, picked_up: 0, transit: 0, out_for_delivery: 0, delivered: 0, closed: 0 } as Record<Tab, number>;
     for (const o of orders) {
       for (const t of TABS) if (inTab(o.status, t.key)) c[t.key] += 1;
     }
@@ -227,7 +233,7 @@ function ParcelCard({ order: o, onPress }: { order: Order; onPress: () => void }
   const ribbon = RIBBON[o.status] ?? RIBBON.pending;
 
   const stores = Array.from(new Set(items.map((i) => i.store?.name).filter((n): n is string => !!n)));
-  const from = stores.length === 0 ? "LUXE" : stores.length === 1 ? stores[0] : `${stores[0]} +${stores.length - 1}`;
+  const from = stores.length === 0 ? "VESTARA" : stores.length === 1 ? stores[0] : `${stores[0]} +${stores.length - 1}`;
   const ship = o.shipping_address ?? o.address;
   const to = ship ? [ship.city, ship.state].filter(Boolean).join(", ") || ship.line1 : "Your address";
 
@@ -446,8 +452,8 @@ const styles = StyleSheet.create({
   },
   ribbonText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    letterSpacing: 1.6,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
   },
 
   cardHead: { flexDirection: "row", alignItems: "center", gap: 14, paddingRight: 64 },

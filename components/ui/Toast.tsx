@@ -94,7 +94,7 @@ const ToastContext = createContext<ToastContextValue>({
 });
 
 const ACCENT: Record<ToastType, string> = {
-  success: "#c8e08a", // LUXE lime
+  success: "#c8e08a", // VESTARA lime
   error: "#ff9d8c",
   info: "#ebe5cc",
 };
@@ -107,15 +107,41 @@ const ISLAND_H = 37;
 const COMPACT_SIDE = 46;
 const COMPACT_W_PLAIN = 212;
 
-// Expanded card geometry. Corners are concentric with the emblem and the
-// status ring: inset + radius of each equals CARD_R, so every curve is parallel.
-const EMBLEM = 44;
-const PAD = 12;
-const CARD_R = PAD + EMBLEM / 2;
-const RING = 36;
-const RING_INSET = CARD_R - RING / 2;
-/** Gap between the hardware island and the content row. */
-const ISLAND_GAP = 6;
+// Expanded card geometry.
+const EMBLEM = 52;
+const PAD = 14;
+const RING = 34;
+/** Expanded-card radius cap so a short card never reads as a stadium. */
+const MAX_CARD_RADIUS = 38;
+/** Gap between the hardware island row and the content row. */
+const ISLAND_GAP = 10;
+/** Breathing room under the content row, above the bottom corners. */
+const BOTTOM_PAD = 16;
+/** Side gap on phones without an island. */
+const PLAIN_SIDE_GAP = 10;
+
+/**
+ * Physical screen corner radius of the device (in points).
+ * Matches the native curvature of the phone display:
+ * - iPhone 16 Pro / Pro Max: 62pt (insets.top >= 60)
+ * - iPhone 14 Pro, 15, 15 Pro, 16 (Dynamic Island): 55pt (insets.top >= 51)
+ * - iPhone 12, 13, 14 (notched): 47pt (insets.top >= 44)
+ * - iPhone X / XS / 11 Pro: 40pt (insets.top >= 40)
+ * - Android modern curved displays: 48pt
+ */
+export function getPhoneCornerRadius(topInset: number): number {
+  if (Platform.OS === "ios") {
+    if (topInset >= 60) return 62;
+    if (topInset >= 51) return 55;
+    if (topInset >= 44) return 47;
+    if (topInset >= 40) return 40;
+    return 34;
+  }
+  if (Platform.OS === "android") {
+    return topInset > 24 ? 48 : 36;
+  }
+  return 44;
+}
 
 const SPRING_GROW = { damping: 16, stiffness: 210, mass: 0.9 };
 const SPRING_FULL = { damping: 18, stiffness: 175, mass: 1 };
@@ -143,10 +169,10 @@ function describe(
     };
   }
   if (type === "error")
-    return { icon: "alert", label: "LUXE", status: "close" };
+    return { icon: "alert", label: "VESTARA", status: "close" };
   if (type === "info")
-    return { icon: "sparkles", label: "LUXE", status: "information" };
-  return { icon: "checkmark", label: "LUXE", status: "checkmark" };
+    return { icon: "sparkles", label: "VESTARA", status: "information" };
+  return { icon: "checkmark", label: "VESTARA", status: "checkmark" };
 }
 
 export function useToast() {
@@ -218,13 +244,30 @@ function Island({
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
   const hasIsland = Platform.OS === "ios" && insets.top >= 51;
+  const screenRadius = getPhoneCornerRadius(insets.top);
   // The island sits ~48pt above the safe-area top on every island iPhone.
   const top = hasIsland ? insets.top - 48 : Math.max(insets.top, 8) + 6;
-  const fullW = Math.min(screenW - 18, 420);
+  // Expanded card is inset from the top and sides by the same gap, with a
+  // corner radius concentric to the display's (screen radius − gap) — the
+  // way iOS draws an expanded Live Activity. Off-island phones float the
+  // card below the status bar, so they just use a matching soft radius.
+  const sideGap = hasIsland ? top : PLAIN_SIDE_GAP;
+  const cardRadius = hasIsland
+    ? Math.min(MAX_CARD_RADIUS, Math.max(24, screenRadius - sideGap))
+    : Math.min(28, screenRadius - sideGap);
+  const fullW = Math.min(screenW - sideGap * 2, 440);
   const compactW = hasIsland ? ISLAND_W + COMPACT_SIDE * 2 : COMPACT_W_PLAIN;
   // On island phones the expanded content sits below the island itself.
   const insetTop = hasIsland ? ISLAND_H + ISLAND_GAP : PAD;
-  const fullH = insetTop + EMBLEM + PAD;
+  const bottomPad = hasIsland ? BOTTOM_PAD : PAD;
+  // Content height is measured (subtitle may wrap to two lines) so the card
+  // hugs its content instead of guessing.
+  const [contentH, setContentH] = useState(EMBLEM);
+  const fullH = Math.max(insetTop + contentH + bottomPad, cardRadius * 2 + 8);
+  const fullHRef = useRef(fullH);
+  fullHRef.current = fullH;
+  // One inset for header and content so both share the same edges.
+  const sidePad = hasIsland ? Math.max(18, Math.round(cardRadius * 0.55)) : 14;
 
   const [stage, setStage] = useState<Stage>("grow");
   const [shown, setShown] = useState(toast);
@@ -273,7 +316,7 @@ function Island({
   const expandFull = () => {
     setPhase("full");
     w.value = withSpring(fullW, SPRING_FULL);
-    h.value = withSpring(fullH, SPRING_FULL);
+    h.value = withSpring(fullHRef.current, SPRING_FULL);
     shadow.value = withTiming(1, { duration: 400 });
   };
 
@@ -303,6 +346,12 @@ function Island({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast.id]);
 
+  // Content measured after expanding: settle the card to its real height.
+  useEffect(() => {
+    if (stageRef.current === "full") h.value = withSpring(fullH, SPRING_FULL);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullH]);
+
   const swipe = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
@@ -323,7 +372,7 @@ function Island({
   const pillStyle = useAnimatedStyle(() => ({
     width: w.value,
     height: h.value,
-    borderRadius: Math.min(h.value / 2, CARD_R),
+    borderRadius: Math.min(h.value / 2, cardRadius),
     opacity: op.value,
     shadowOpacity: 0.32 * shadow.value,
     transform: [
@@ -362,6 +411,8 @@ function Island({
               onAction={collapse}
               insetTop={insetTop}
               island={hasIsland}
+              sidePad={sidePad}
+              onMeasure={setContentH}
             />
           )}
         </Pressable>
@@ -392,6 +443,8 @@ function Emblem({
   const style = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const r = size / 2;
   if (toast.image) {
+    const large = size > 30;
+    const badge = large ? 20 : 14;
     return (
       <Animated.View style={[{ width: size, height: size }, style]}>
         <Image
@@ -399,21 +452,30 @@ function Emblem({
           style={{
             width: size,
             height: size,
-            borderRadius: r,
+            // Product shots read better as a soft square than a circle.
+            borderRadius: large ? 14 : r,
             backgroundColor: "#2a2c1f",
           }}
           contentFit="cover"
+          contentPosition="top"
           transition={150}
         />
         <View
           style={[
             styles.badge,
-            { backgroundColor: accent, right: -2, bottom: -2 },
+            {
+              width: badge + 4,
+              height: badge + 4,
+              borderRadius: (badge + 4) / 2,
+              backgroundColor: accent,
+              right: large ? -6 : -3,
+              bottom: large ? -6 : -3,
+            },
           ]}
         >
           <Ionicons
             name={toast.icon}
-            size={size > 30 ? 10 : 8}
+            size={large ? 10 : 7}
             color="#14150e"
           />
         </View>
@@ -516,12 +578,16 @@ function FullContent({
   onAction,
   insetTop,
   island,
+  sidePad,
+  onMeasure,
 }: {
   toast: ToastItemData;
   accent: string;
   onAction: () => void;
   insetTop: number;
   island: boolean;
+  sidePad: number;
+  onMeasure: (h: number) => void;
 }) {
   return (
     <>
@@ -529,18 +595,21 @@ function FullContent({
       {island && (
         <Animated.View
           entering={FadeIn.duration(300).delay(200)}
-          style={[styles.islandHeader, { height: ISLAND_H }]}
+          style={[styles.islandHeader, { height: ISLAND_H, paddingHorizontal: sidePad }]}
         >
           <View style={styles.brand}>
             <View style={[styles.brandDot, { backgroundColor: accent }]} />
-            <Text style={styles.brandText}>LUXE</Text>
+            <Text style={styles.brandText}>VESTARA</Text>
           </View>
           <Text style={[styles.kindText, { color: accent }]}>
-            {toast.label === "LUXE" ? "NOW" : toast.label.toUpperCase()}
+            {toast.label === "VESTARA" ? "NOW" : toast.label.toUpperCase()}
           </Text>
         </Animated.View>
       )}
-      <View style={[styles.full, { marginTop: insetTop }]}>
+      <View
+        onLayout={(e) => onMeasure(Math.ceil(e.nativeEvent.layout.height))}
+        style={[styles.full, { marginTop: insetTop, paddingHorizontal: sidePad }]}
+      >
         <Animated.View entering={FadeIn.duration(260).delay(120)}>
           <Emblem toast={toast} accent={accent} size={EMBLEM} />
         </Animated.View>
@@ -556,7 +625,7 @@ function FullContent({
             <Animated.Text
               entering={FadeInDown.duration(380).delay(230)}
               style={styles.subtitle}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {toast.subtitle}
             </Animated.Text>
@@ -581,7 +650,7 @@ function FullContent({
               <Text style={styles.actionText}>{toast.action.label}</Text>
             </Pressable>
           ) : (
-            <View style={[styles.statusRing, { borderColor: `${accent}55` }]}>
+            <View style={[styles.statusRing, { backgroundColor: `${accent}24` }]}>
               <StatusGlyph
                 name={toast.status}
                 accent={accent}
@@ -631,14 +700,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   full: {
-    height: EMBLEM,
+    minHeight: EMBLEM,
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: PAD,
-    paddingRight: RING_INSET,
-    gap: 12,
+    gap: 14,
   },
-  textCol: { flex: 1, gap: 2 },
+  textCol: { flex: 1, gap: 3 },
   islandHeader: {
     position: "absolute",
     top: 0,
@@ -647,9 +714,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    // Header text lines up with the centres of the emblem and the ring.
-    paddingLeft: CARD_R - 6,
-    paddingRight: CARD_R - 8,
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 6 },
   brandDot: { width: 5, height: 5, borderRadius: 3 },
@@ -661,25 +725,24 @@ const styles = StyleSheet.create({
   },
   kindText: {
     fontFamily: fontFamilies.mono.medium,
-    fontSize: 9.5,
-    letterSpacing: 1.8,
+    fontSize: 10,
+    letterSpacing: 1.6,
   },
   title: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
+    fontSize: 15.5,
+    lineHeight: 20,
     color: CREAM,
     letterSpacing: 0.1,
   },
   subtitle: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "rgba(250,248,241,0.58)",
+    fontSize: 13,
+    lineHeight: 17,
+    color: "rgba(250,248,241,0.62)",
   },
   badge: {
     position: "absolute",
-    width: 17,
-    height: 17,
-    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -689,7 +752,6 @@ const styles = StyleSheet.create({
     width: RING,
     height: RING,
     borderRadius: RING / 2,
-    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },

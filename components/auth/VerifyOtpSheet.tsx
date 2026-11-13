@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
+import { Ionicons } from "@/components/ui/Icon";
 import Animated, {
   Easing,
   FadeIn,
@@ -14,15 +23,15 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui";
 import { supabase } from "@/lib/supabase/client";
-import { FIXED_LOGIN_CODE, FIXED_LOGIN_CODE_ENABLED } from "@/lib/supabase/fixed-login-code";
 import { mergeAnonSessionOnLogin } from "@/lib/recommender";
-import { applyReferralCodeBackend, verifyPhoneOtpBackend } from "@/lib/api/backend";
+import { applyReferralCodeBackend } from "@/lib/api/backend";
+import { createSellerStore, updateSellerStore } from "@/lib/api";
+import { seedStoreContactFromAccount } from "@/lib/seller-onboarding";
 import { acceptDriverInvite, hasStoreApi } from "@/lib/api/delivery-company-api";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { colors } from "@/lib/theme/tokens";
@@ -31,8 +40,9 @@ import { OtpCodeInput, type OtpCodeInputHandle, type OtpStatus } from "@/compone
 import { holdAuthRedirect, releaseAuthRedirect } from "@/lib/auth-redirect-hold";
 
 /**
- * "Let's verify your number" as a bottom sheet over the sign-in / sign-up
- * screen. Owns the whole OTP step: verify (auto, on the last digit), resend,
+ * "Let's verify your number" as a full-screen page that slides in over the
+ * sign-in / sign-up screen (it used to be a bottom sheet, which left too
+ * little room to type). Owns the whole OTP step: verify (auto, on the last digit), resend,
  * and the post-signup referral / rider-invite extras. On success it holds
  * the root auth redirect until the "Verified" animation has played.
  */
@@ -42,10 +52,29 @@ const CODE_LENGTH = 6;
 const MIN_VERIFYING_MS = 900;
 /** How long "Verified successfully" holds before the app moves on. */
 const SUCCESS_HOLD_MS = 1900;
-const OFFSCREEN = 900;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
 type Notice = { kind: "error" | "info"; text: string } | null;
+
+/**
+ * Supabase's minimum gap between OTP sends is 60s by default; a shorter
+ * countdown lets users tap Resend only to be refused.
+ */
+const RESEND_SECONDS = 60;
+
+/**
+ * Supabase returns "Token has expired or is invalid" both for a late code and
+ * for one replaced by Resend; say which code to use instead.
+ */
+function friendlyOtpError(message?: string): string {
+  const m = (message ?? "").toLowerCase();
+  if (m.includes("expired") || m.includes("invalid")) {
+    return "That code has expired or was replaced. Use the latest code, or tap Resend.";
+  }
+  const wait = m.match(/after (\d+) seconds?/);
+  if (wait) return `Please wait ${wait[1]} seconds before asking for a new code.`;
+  return message || "That code didn’t match — try again";
+}
 
 export function VerifyOtpSheet({
   visible,
@@ -54,6 +83,7 @@ export function VerifyOtpSheet({
   email = "",
   referral,
   invite,
+  signup,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -61,29 +91,31 @@ export function VerifyOtpSheet({
   email?: string;
   referral?: string;
   invite?: string;
+  /** Sign-up details (already sent as signInWithOtp metadata; kept for callers). */
+  signup?: { full_name?: string; role?: string; email?: string; store_name?: string };
 }) {
   const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
+  const OFFSCREEN = screenW + 40;
   const { toast } = useToast();
   const [mounted, setMounted] = useState(visible);
 
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<OtpStatus>("idle");
   const [notice, setNotice] = useState<Notice>(null);
-  const [timer, setTimer] = useState(30);
+  const [timer, setTimer] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
   const inputRef = useRef<OtpCodeInputHandle>(null);
   const verifyingRef = useRef(false);
 
-  const y = useSharedValue(OFFSCREEN);
-  const dim = useSharedValue(0);
+  const x = useSharedValue(OFFSCREEN);
 
   // Mount + slide up when opened; reset the step for each new open.
   useEffect(() => {
     if (!visible) {
       // Closed from outside: slide away, then unmount.
       if (!mounted) return;
-      dim.value = withTiming(0, { duration: 260 });
-      y.value = withTiming(OFFSCREEN, { duration: 300, easing: Easing.in(Easing.cubic) }, (done) => {
+      x.value = withTiming(OFFSCREEN, { duration: 280, easing: Easing.in(Easing.cubic) }, (done) => {
         if (done) runOnJS(setMounted)(false);
       });
       return;
@@ -92,11 +124,13 @@ export function VerifyOtpSheet({
     setCode("");
     setStatus("idle");
     setNotice(null);
-    setTimer(30);
+    setTimer(RESEND_SECONDS);
     verifyingRef.current = false;
-    y.value = OFFSCREEN;
-    y.value = withSpring(0, { damping: 22, stiffness: 190, mass: 0.9 });
-    dim.value = withTiming(1, { duration: 320 });
+    x.value = OFFSCREEN;
+    x.value = withTiming(0, {
+      duration: 340,
+      easing: Easing.out(Easing.cubic),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -118,29 +152,14 @@ export function VerifyOtpSheet({
   const requestClose = () => {
     if (locked) return;
     inputRef.current?.blur();
-    dim.value = withTiming(0, { duration: 260 });
-    y.value = withTiming(OFFSCREEN, { duration: 300, easing: Easing.in(Easing.cubic) }, (done) => {
+    x.value = withTiming(OFFSCREEN, { duration: 280, easing: Easing.in(Easing.cubic) }, (done) => {
       if (done) runOnJS(finishClose)();
     });
   };
 
-  // Drag the sheet down to dismiss it.
-  const drag = Gesture.Pan()
-    .enabled(!locked)
-    .activeOffsetY(8)
-    .onUpdate((e) => {
-      y.value = Math.max(0, e.translationY);
-    })
-    .onEnd((e) => {
-      if (e.translationY > 130 || e.velocityY > 900) {
-        runOnJS(requestClose)();
-      } else {
-        y.value = withSpring(0, { damping: 20, stiffness: 220 });
-      }
-    });
-
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
-  const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value * Math.max(0, 1 - y.value / 600) }));
+  const pageStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.value }],
+  }));
 
   // The code auto-verifies the moment the last digit lands.
   const handleChange = (next: string) => {
@@ -162,14 +181,14 @@ export function VerifyOtpSheet({
 
     let error;
     if (phone) {
-      // Fixed login code (backend flag): exchange a magic-link token instead.
-      const fixed = await verifyPhoneOtpBackend(phone, token);
-      const { error: err } = fixed.ok
-        ? await supabase.auth.verifyOtp({ token_hash: fixed.data.token_hash, type: "magiclink" })
-        : await supabase.auth.verifyOtp({ phone, token, type: "sms" });
+      const { error: err } = await supabase.auth.verifyOtp({ phone, token, type: "sms" });
       error = err;
     } else {
-      const { error: err } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+      const { error: err } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: "email",
+      });
       error = err;
     }
 
@@ -177,7 +196,10 @@ export function VerifyOtpSheet({
       releaseAuthRedirect();
       await sleep(MIN_VERIFYING_MS - (Date.now() - startedAt));
       setStatus("error");
-      setNotice({ kind: "error", text: error.message || "That code didn’t match — try again" });
+      setNotice({
+        kind: "error",
+        text: friendlyOtpError(error.message),
+      });
       await sleep(900);
       setCode("");
       setStatus("idle");
@@ -203,6 +225,20 @@ export function VerifyOtpSheet({
         if (accept.ok) await supabase.auth.refreshSession();
         else toast(`Invite could not be redeemed: ${accept.error}`, "error");
       }
+      // New sellers: open the shop they named on the register screen. If this
+      // fails, the seller dashboard's setup form is prefilled with the name.
+      if (signup?.role === "store_owner" && signup.store_name?.trim()) {
+        const { data } = await supabase.auth.getUser();
+        if (data.user) {
+          const created = await createSellerStore(data.user.id, { name: signup.store_name });
+          if (created.ok) {
+            // App sign-ups sell online (couriers collect from the pickup
+            // address); stores default to physical (is_online=false).
+            await updateSellerStore(created.data.id, { is_online: true });
+            await seedStoreContactFromAccount(created.data, data.user);
+          }
+        }
+      }
     } catch {
       // non-blocking
     }
@@ -212,27 +248,22 @@ export function VerifyOtpSheet({
   };
 
   const handleResend = async () => {
-    if (FIXED_LOGIN_CODE_ENABLED && phone) {
-      setTimer(30);
-      setCode("");
-      inputRef.current?.focus();
-      setNotice({ kind: "info", text: `Use the test code ${FIXED_LOGIN_CODE}` });
-      return;
-    }
-
     setResending(true);
     const { error } = phone
       ? await supabase.auth.signInWithOtp({ phone })
-      : await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: "luxe://auth/callback" } });
+      : await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: "vestara://auth/callback" },
+        });
     setResending(false);
 
     if (error) {
-      setNotice({ kind: "error", text: error.message });
+      setNotice({ kind: "error", text: friendlyOtpError(error.message) });
     } else {
-      setTimer(30);
+      setTimer(RESEND_SECONDS);
       setCode("");
       inputRef.current?.focus();
-      setNotice({ kind: "info", text: "New code sent" });
+      setNotice({ kind: "info", text: "New code sent. Earlier codes no longer work." });
     }
   };
 
@@ -243,101 +274,110 @@ export function VerifyOtpSheet({
 
   return (
     <Modal visible transparent statusBarTranslucent animationType="none" onRequestClose={requestClose}>
-      <GestureHandlerRootView style={styles.fill}>
-        <Animated.View style={[StyleSheet.absoluteFill, styles.dim, dimStyle]}>
-          <Pressable style={styles.fill} onPress={requestClose} accessibilityLabel="Close verification" />
-        </Animated.View>
+      <Animated.View style={[styles.page, { paddingTop: insets.top }, pageStyle]}>
+        <View style={styles.topBar}>
+          <Pressable
+            onPress={requestClose}
+            disabled={locked}
+            hitSlop={10}
+            style={[styles.backBtn, locked && styles.hidden]}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={22} color={C.text} />
+          </Pressable>
+        </View>
 
-        <KeyboardAvoidingView
-          style={styles.dock}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          pointerEvents="box-none"
-        >
-          <GestureDetector gesture={drag}>
-            <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 14) + 10 }, sheetStyle]}>
-              <View style={styles.grabber} />
-
-              <View style={styles.header}>
-                {verified ? (
-                  <Animated.View key="done" exiting={FadeOut.duration(200)} style={styles.headerInner}>
-                    <Animated.View entering={FadeIn.duration(400).delay(900)} style={[styles.kicker, styles.kickerDone]}>
-                      <View style={[styles.kickerDot, styles.kickerDotDone]} />
-                      <Text style={[styles.kickerText, styles.kickerTextDone]}>ACCOUNT VERIFIED</Text>
-                    </Animated.View>
-                    <StaggerTitle words={["Verified"]} accent="successfully" baseDelay={1000} />
-                    <Animated.View entering={FadeInDown.duration(600).delay(1250)} style={styles.signingRow}>
-                      <Text style={styles.subtitle}>Signing you in to LUXE</Text>
-                      <Dots />
-                    </Animated.View>
+        <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <ScrollView
+            contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            <View style={styles.header}>
+              {verified ? (
+                <Animated.View key="done" exiting={FadeOut.duration(200)} style={styles.headerInner}>
+                  <Animated.View entering={FadeIn.duration(400).delay(900)} style={[styles.kicker, styles.kickerDone]}>
+                    <View style={[styles.kickerDot, styles.kickerDotDone]} />
+                    <Text style={[styles.kickerText, styles.kickerTextDone]}>ACCOUNT VERIFIED</Text>
                   </Animated.View>
-                ) : (
-                  <Animated.View
-                    key="ask"
-                    entering={FadeIn.duration(300)}
-                    exiting={FadeOutUp.duration(260)}
-                    style={styles.headerInner}
-                  >
-                    <View style={styles.kicker}>
-                      <View style={styles.kickerDot} />
-                      <Text style={styles.kickerText}>{phone ? "PHONE VERIFICATION" : "EMAIL VERIFICATION"}</Text>
-                    </View>
-                    <StaggerTitle words={["Let’s", "verify", "your"]} accent={phone ? "number" : "email"} baseDelay={120} />
-                    <Animated.Text entering={FadeInDown.duration(600).delay(380)} style={styles.subtitle}>
-                      We’ve sent a {CODE_LENGTH}-digit code to <Text style={styles.strong}>{target}</Text>
-                      {"\n"}It’ll verify on its own once entered.
-                    </Animated.Text>
+                  <StaggerTitle words={["Verified"]} accent="successfully" baseDelay={1000} />
+                  <Animated.View entering={FadeInDown.duration(600).delay(1250)} style={styles.signingRow}>
+                    <Text style={styles.subtitle}>Signing you in to VESTARA</Text>
+                    <Dots />
                   </Animated.View>
-                )}
-              </View>
-
-              <View style={styles.codeWrap}>
-                <OtpCodeInput
-                  ref={inputRef}
-                  value={code}
-                  onChange={handleChange}
-                  length={CODE_LENGTH}
-                  status={status}
-                  autoFocus
-                />
-              </View>
-
-              <View style={styles.statusSlot}>
-                {status === "verifying" ? (
-                  <Animated.Text key="v" entering={FadeIn.duration(250)} exiting={FadeOut.duration(200)} style={styles.statusText}>
-                    VERIFYING…
+                </Animated.View>
+              ) : (
+                <Animated.View
+                  key="ask"
+                  entering={FadeIn.duration(300)}
+                  exiting={FadeOutUp.duration(260)}
+                  style={styles.headerInner}
+                >
+                  <View style={styles.kicker}>
+                    <View style={styles.kickerDot} />
+                    <Text style={styles.kickerText}>{phone ? "PHONE VERIFICATION" : "EMAIL VERIFICATION"}</Text>
+                  </View>
+                  <StaggerTitle
+                    words={["Let’s", "verify", "your"]}
+                    accent={phone ? "number" : "email"}
+                    baseDelay={120}
+                  />
+                  <Animated.Text entering={FadeInDown.duration(600).delay(380)} style={styles.subtitle}>
+                    We’ve sent a {CODE_LENGTH}-digit code to <Text style={styles.strong}>{target}</Text>
+                    {"\n"}It’ll verify on its own once entered.
                   </Animated.Text>
-                ) : notice && !verified ? (
-                  <Animated.Text
-                    key={notice.text}
-                    entering={FadeIn.duration(220)}
-                    exiting={FadeOut.duration(180)}
-                    style={notice.kind === "error" ? styles.statusError : styles.statusInfo}
-                    numberOfLines={2}
-                  >
-                    {notice.text}
-                  </Animated.Text>
-                ) : null}
-              </View>
+                </Animated.View>
+              )}
+            </View>
 
-              <View style={[styles.resend, verified && styles.hidden]}>
-                <Text style={styles.resendPrompt}>Didn’t receive the code? </Text>
-                {timer > 0 ? (
-                  <Text style={styles.resendTimer}>Resend in 0:{String(timer).padStart(2, "0")}</Text>
-                ) : (
-                  <Pressable
-                    onPress={handleResend}
-                    disabled={resending || locked}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.resendAction}>{resending ? "Sending…" : "Resend"}</Text>
-                  </Pressable>
-                )}
-              </View>
-            </Animated.View>
-          </GestureDetector>
+            <View style={styles.codeWrap}>
+              <OtpCodeInput
+                ref={inputRef}
+                value={code}
+                onChange={handleChange}
+                length={CODE_LENGTH}
+                status={status}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.statusSlot}>
+              {status === "verifying" ? (
+                <Animated.Text
+                  key="v"
+                  entering={FadeIn.duration(250)}
+                  exiting={FadeOut.duration(200)}
+                  style={styles.statusText}
+                >
+                  VERIFYING…
+                </Animated.Text>
+              ) : notice && !verified ? (
+                <Animated.Text
+                  key={notice.text}
+                  entering={FadeIn.duration(220)}
+                  exiting={FadeOut.duration(180)}
+                  style={notice.kind === "error" ? styles.statusError : styles.statusInfo}
+                  numberOfLines={2}
+                >
+                  {notice.text}
+                </Animated.Text>
+              ) : null}
+            </View>
+
+            <View style={[styles.resend, verified && styles.hidden]}>
+              <Text style={styles.resendPrompt}>Didn’t receive the code? </Text>
+              {timer > 0 ? (
+                <Text style={styles.resendTimer}>Resend in {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, "0")}</Text>
+              ) : (
+                <Pressable onPress={handleResend} disabled={resending || locked} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.resendAction}>{resending ? "Sending…" : "Resend"}</Text>
+                </Pressable>
+              )}
+            </View>
+          </ScrollView>
         </KeyboardAvoidingView>
-      </GestureHandlerRootView>
+      </Animated.View>
     </Modal>
   );
 }
@@ -380,38 +420,43 @@ function Dots() {
 function Dot({ delay }: { delay: number }) {
   const o = useSharedValue(0.25);
   useEffect(() => {
-    o.value = withDelay(delay, withRepeat(withSequence(withTiming(1, { duration: 360 }), withTiming(0.25, { duration: 460 })), -1, false));
+    o.value = withDelay(
+      delay,
+      withRepeat(withSequence(withTiming(1, { duration: 360 }), withTiming(0.25, { duration: 460 })), -1, false),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const style = useAnimatedStyle(() => ({ opacity: o.value, transform: [{ translateY: -2 * (o.value - 0.25) }] }));
+  const style = useAnimatedStyle(() => ({
+    opacity: o.value,
+    transform: [{ translateY: -2 * (o.value - 0.25) }],
+  }));
   return <Animated.View style={[styles.dot, style]} />;
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  dim: { backgroundColor: "rgba(22,23,15,0.42)" },
-  dock: { flex: 1, justifyContent: "flex-end" },
-  sheet: {
+  page: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: C.paper,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 22,
-    paddingTop: 10,
     shadowColor: "#16170f",
     shadowOpacity: 0.18,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: -8 },
+    shadowRadius: 24,
+    shadowOffset: { width: -6, height: 0 },
     elevation: 24,
-    overflow: "visible",
   },
-  grabber: {
-    alignSelf: "center",
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "rgba(22,23,15,0.14)",
+  topBar: { height: 52, paddingHorizontal: 14, justifyContent: "center" },
+  backBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.line,
   },
-  header: { minHeight: 148, justifyContent: "flex-end", marginTop: 14 },
+  content: { flexGrow: 1, paddingHorizontal: 22 },
+  header: { minHeight: 172, justifyContent: "flex-start", marginTop: 24 },
   headerInner: { alignItems: "center" },
   kicker: {
     flexDirection: "row",
@@ -425,8 +470,18 @@ const styles = StyleSheet.create({
     borderColor: "rgba(83,94,44,0.25)",
     marginBottom: 14,
   },
-  kickerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[600] },
-  kickerText: { fontFamily: fontFamilies.mono.medium, fontSize: 10, letterSpacing: 1.8, color: colors.olive[700] },
+  kickerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.olive[600],
+  },
+  kickerText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    color: colors.olive[700],
+  },
   titleRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -446,8 +501,16 @@ const styles = StyleSheet.create({
   },
   signingRow: { flexDirection: "row", alignItems: "flex-end" },
   dots: { flexDirection: "row", gap: 3, marginLeft: 4, marginBottom: 6 },
-  dot: { width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: colors.olive[600] },
-  kickerDone: { backgroundColor: colors.olive[600], borderColor: colors.olive[700] },
+  dot: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: colors.olive[600],
+  },
+  kickerDone: {
+    backgroundColor: colors.olive[600],
+    borderColor: colors.olive[700],
+  },
   kickerDotDone: { backgroundColor: colors.paper.cream },
   kickerTextDone: { color: colors.paper.cream },
   subtitle: {
@@ -458,15 +521,57 @@ const styles = StyleSheet.create({
     color: C.muted,
     textAlign: "center",
   },
-  strong: { fontFamily: fontFamilies.sans.semibold, color: C.text, letterSpacing: 0.2 },
+  strong: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: C.text,
+    letterSpacing: 0.2,
+  },
   codeWrap: { marginTop: 30 },
-  statusSlot: { height: 44, alignItems: "center", justifyContent: "center", marginTop: 10, paddingHorizontal: 12 },
-  statusText: { fontFamily: fontFamilies.mono.regular, fontSize: 11, letterSpacing: 2, color: C.muted },
-  statusError: { fontFamily: fontFamilies.sans.medium, fontSize: 13.5, color: colors.accent2.rust, textAlign: "center" },
-  statusInfo: { fontFamily: fontFamilies.sans.medium, fontSize: 13.5, color: colors.olive[700], textAlign: "center" },
-  resend: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 8 },
+  statusSlot: {
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+    paddingHorizontal: 12,
+  },
+  statusText: {
+    fontFamily: fontFamilies.mono.regular,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: C.muted,
+  },
+  statusError: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13.5,
+    color: colors.accent2.rust,
+    textAlign: "center",
+  },
+  statusInfo: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13.5,
+    color: colors.olive[700],
+    textAlign: "center",
+  },
+  resend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
   hidden: { opacity: 0 },
-  resendPrompt: { fontFamily: fontFamilies.sans.regular, fontSize: 14, color: C.text },
-  resendTimer: { fontFamily: fontFamilies.sans.semibold, fontSize: 14, color: C.muted },
-  resendAction: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: colors.olive[600] },
+  resendPrompt: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 14,
+    color: C.text,
+  },
+  resendTimer: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: C.muted,
+  },
+  resendAction: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 14,
+    color: colors.olive[600],
+  },
 });

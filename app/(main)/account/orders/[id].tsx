@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   Share,
@@ -45,6 +44,8 @@ import {
   shortDate,
 } from "@/components/orders/parcel-track";
 import { DetailTopBar, MenuSheet, type MenuItem } from "@/components/orders/detail-chrome";
+import { CancelOrderSheet } from "@/components/orders/CancelOrderSheet";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -83,28 +84,20 @@ export default function OrderDetailScreen() {
     return cleanup;
   }, [loadOrder]);
 
-  const handleCancelOrder = async () => {
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const handleCancelOrder = () => {
     if (!order) return;
-    Alert.alert("Cancel Acquisition", "Why are you cancelling this order?", [
-      { text: "Keep order", style: "cancel" },
-      { text: "Changed my mind", onPress: () => submitCancel("changed_mind") },
-      { text: "Ordered by mistake", onPress: () => submitCancel("ordered_by_mistake") },
-      { text: "Found alternative", onPress: () => submitCancel("found_cheaper") },
-      { text: "Other reason", onPress: () => submitCancel("other") },
-    ]);
+    setMenuOpen(false);
+    setCancelOpen(true);
   };
 
+  // The sheet owns the choreography; this only performs the request.
   const submitCancel = async (reason: string) => {
-    if (!order) return;
+    if (!order) return { ok: false as const, error: "Order not loaded" };
     setCancelling(true);
     const res = await cancelOrderRpc(order.id, reason);
     setCancelling(false);
-    if (!res.ok) {
-      toast(res.error, "error");
-      return;
-    }
-    setOrder({ ...order, status: "cancelled" });
-    toast("Order cancelled successfully", "success");
+    return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
   };
 
   const handleReorder = () => {
@@ -132,7 +125,7 @@ export default function OrderDetailScreen() {
 
   const handleCancelItem = async (itemId: string, itemName: string) => {
     if (!order) return;
-    Alert.alert(
+    themedAlert(
       "Cancel Piece",
       `Cancel "${itemName}"? The remainder of your parcel will be fulfilled.`,
       [
@@ -165,8 +158,8 @@ export default function OrderDetailScreen() {
     if (!order) return;
     try {
       await Share.share({
-        title: `LUXE Order #${order.order_number}`,
-        message: `LUXE Acquisition #${order.order_number} · ${formatPrice(order.total, order.currency)} · ${order.items?.length ?? 0} pieces`,
+        title: `VESTARA Order #${order.order_number}`,
+        message: `VESTARA Acquisition #${order.order_number} · ${formatPrice(order.total, order.currency)} · ${order.items?.length ?? 0} pieces`,
       });
     } catch {}
   };
@@ -281,7 +274,7 @@ export default function OrderDetailScreen() {
   const closed = CLOSED.includes(order.status);
 
   const stores = Array.from(new Set(items.map((i) => i.store?.name).filter((n): n is string => !!n)));
-  const seller = stores.length === 0 ? "LUXE" : stores.length === 1 ? stores[0] : `${stores[0]} +${stores.length - 1}`;
+  const seller = stores.length === 0 ? "VESTARA" : stores.length === 1 ? stores[0] : `${stores[0]} +${stores.length - 1}`;
   const ship = order.shipping_address ?? order.address;
   const to = ship ? [ship.city, ship.state].filter(Boolean).join(", ") || ship.line1 : "Your address";
   const eta = etaFor(order).eta;
@@ -368,7 +361,7 @@ export default function OrderDetailScreen() {
                   </Pressable>
                   <View style={styles.itemBody}>
                     <Text style={styles.itemBrand} numberOfLines={1}>
-                      {(item.store?.name || item.product?.brand?.name || "LUXE curated").toUpperCase()}
+                      {(item.store?.name || item.product?.brand?.name || "VESTARA curated").toUpperCase()}
                     </Text>
                     <Text style={[styles.itemName, isItemCancelled && styles.strike]} numberOfLines={1}>
                       {item.product_name}
@@ -587,7 +580,7 @@ export default function OrderDetailScreen() {
                 {order.discount > 0 ? (
                   <LedgerLine label="Discount" value={`-${formatPrice(order.discount, order.currency)}`} accent />
                 ) : null}
-                <LedgerLine label="Platform fee" value={formatPrice(order.tax, order.currency)} />
+                <LedgerLine label="Tax and fees" value={formatPrice(order.tax, order.currency)} />
                 <View style={styles.ledgerTotal}>
                   <Text style={styles.ledgerTotalLabel}>Total</Text>
                   <Text style={styles.ledgerTotalValue}>{formatPrice(order.total, order.currency)}</Text>
@@ -658,6 +651,15 @@ export default function OrderDetailScreen() {
       </SafeAreaView>
 
       <MenuSheet open={menuOpen} items={menu} onClose={() => setMenuOpen(false)} bottom={insets.bottom} />
+      <CancelOrderSheet
+        open={cancelOpen}
+        order={order}
+        submit={submitCancel}
+        onCancelled={() => setOrder((o) => (o ? { ...o, status: "cancelled" } : o))}
+        onError={(msg) => toast(msg, "error")}
+        onClose={() => setCancelOpen(false)}
+        bottomInset={insets.bottom}
+      />
     </View>
   );
 }

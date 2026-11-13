@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Switch, Alert } from "react-native";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Switch } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -10,6 +10,7 @@ import { Button, Skeleton } from "@/components/ui";
 import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { AdminMasthead, StatBand, Segmented, premiumCard, GOLD, CREAM, RUST } from "@/components/admin/premium-kit";
+import { themedAlert } from "@/lib/themed-alert";
 
 type Phase = "live" | "upcoming" | "ended" | "paused";
 type Filter = "all" | "live" | "upcoming" | "ended";
@@ -70,7 +71,7 @@ export default function AdminCampaigns() {
       if (!r.ok) throw new Error(r.error);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-campaigns"] }),
-    onError: (e: Error) => Alert.alert("Couldn't update campaign", e.message),
+    onError: (e: Error) => themedAlert("Couldn't update campaign", e.message),
   });
 
   const all = q.data ?? [];

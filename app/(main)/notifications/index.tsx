@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react";
 import {
-  Alert,
   View,
   Text,
   StyleSheet,
@@ -10,6 +9,9 @@ import {
   RefreshControl,
 } from "react-native";
 import { navigateHome } from "@/lib/navigation";
+import { Linking } from "react-native";
+import { firstPartyPath } from "@/lib/notifications";
+import { mapWebPathToMobileRoute, safeRoutePush } from "@/lib/utils/safe-route";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -33,6 +35,7 @@ import {
   UserPageFrame,
   UP as C,
 } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 type NotifFilter = "all" | "messages" | "alerts" | "social" | "saved";
 
@@ -383,6 +386,22 @@ export default function NotificationsScreen() {
       }
       if (data?.product_slug && typeof data.product_slug === "string") {
         router.push(`/(main)/products/${data.product_slug}` as never);
+        return;
+      }
+      // Broadcasts / rich pushes carry a deep link ("/products/x" or a
+      // synapstore.shop URL). Same rules as tapping the push itself.
+      const rawLink = data?.link ?? data?.url;
+      if (typeof rawLink === "string" && rawLink) {
+        const path = rawLink.startsWith("/") ? rawLink : firstPartyPath(rawLink);
+        if (path) {
+          const mapped = mapWebPathToMobileRoute(path);
+          if (mapped) safeRoutePush(router, mapped);
+          else toast("This notification's link is no longer valid.", "error");
+          return;
+        }
+        if (/^https?:\/\//i.test(rawLink)) {
+          Linking.openURL(rawLink).catch(() => toast("Couldn't open this link.", "error"));
+        }
       }
     },
     [markReadMutation, router, toast],
@@ -406,7 +425,7 @@ export default function NotificationsScreen() {
   );
 
   const confirmDelete = (id: string) =>
-    Alert.alert("Delete notification?", undefined, [
+    themedAlert("Delete notification?", undefined, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -427,7 +446,7 @@ export default function NotificationsScreen() {
           label="Clear all notifications"
           disabled={notifications.length === 0}
           onPress={() =>
-            Alert.alert(
+            themedAlert(
               "Clear all notifications?",
               "This removes every notification from your inbox.",
               [

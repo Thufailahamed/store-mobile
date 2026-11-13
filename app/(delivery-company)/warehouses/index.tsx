@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -36,6 +35,7 @@ import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { getDeliveryCompanyAccessState } from "@/lib/delivery-company-access";
 import { isWarehouseGeocoded } from "@/lib/warehouse-routing";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function CompanyWarehousesScreen() {
   const router = useRouter();
@@ -86,15 +86,15 @@ export default function CompanyWarehousesScreen() {
 
   const handleCreate = async () => {
     if (!form.name.trim() || !form.line1.trim() || !form.city.trim()) {
-      Alert.alert("Missing fields", "Name, address line, and city are required.");
+      themedAlert("Missing fields", "Name, address line, and city are required.");
       return;
     }
     if (!form.postal_code.trim()) {
-      Alert.alert("Missing postal code", "Enter a valid postal code for the hub address.");
+      themedAlert("Missing postal code", "Enter a valid postal code for the hub address.");
       return;
     }
     if (!isWarehouseGeocoded(form)) {
-      Alert.alert(
+      themedAlert(
         "Coordinates recommended",
         "Without map coordinates, pickup orders cannot route to the nearest hub. Save anyway?",
         [
@@ -121,7 +121,7 @@ export default function CompanyWarehousesScreen() {
         longitude: payload.longitude ?? undefined,
       });
       if (!res.ok) {
-        Alert.alert("Could not create hub", res.error);
+        themedAlert("Could not create hub", res.error);
         return;
       }
       setCreateOpen(false);

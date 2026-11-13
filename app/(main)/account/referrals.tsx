@@ -95,7 +95,7 @@ export default function ReferralsScreen() {
     if (!code) return;
     try {
       await Share.share({
-        message: `Join the LUXE Atelier with my personal invitation code ${code} — ${shareUrl}\nDiscover luxury designer collections and earn loyalty rewards on your first acquisition!`,
+        message: `Join the VESTARA Atelier with my personal invitation code ${code} — ${shareUrl}\nDiscover luxury designer collections and earn loyalty rewards on your first acquisition!`,
         url: shareUrl,
       });
     } catch {

@@ -173,7 +173,7 @@ export default function NotificationPreferencesScreen() {
             <View>
               <Label style={styles.heroLabel}>Inbox rules</Label>
               <Display size="2xl" style={styles.heroTitle}>
-                How LUXE reaches you
+                How VESTARA reaches you
               </Display>
               <Body muted>
                 Pick a channel for every kind of update. Toggle off anything

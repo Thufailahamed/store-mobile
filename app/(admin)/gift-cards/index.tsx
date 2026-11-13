@@ -1,6 +1,12 @@
 import React, { useState } from "react";
 import {
-  View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert, ScrollView,
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  ScrollView,
 } from "react-native";
 import { Modal } from "@/components/ui/Modal";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { AdminMasthead, StatBand, Segmented, GOLD, CREAM, RUST } from "@/components/admin/premium-kit";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
 
 function rel(s: string) {
   const d = new Date(s).getTime();
@@ -89,7 +96,7 @@ export default function AdminGiftCards() {
               eyebrow="Gifting"
               title="Gift"
               italic="Vault"
-              subtitle="Stored value issued across LUXE. Tap a card to view its ledger, adjust or void."
+              subtitle="Stored value issued across VESTARA. Tap a card to view its ledger, adjust or void."
               onAdd={() => setShowCreate(true)}
             />
             {cards.length ? (
@@ -186,7 +193,7 @@ function GiftCardVisual({ item }: { item: any }) {
 
       <View style={styles.gcTop}>
         <View>
-          <Text style={[styles.gcBrand, { color: f.ink }]}>LUXE</Text>
+          <Text style={[styles.gcBrand, { color: f.ink }]}>VESTARA</Text>
           <Text style={[styles.gcKind, { color: f.sub }]}>GIFT CARD</Text>
         </View>
         {status ? (
@@ -234,7 +241,7 @@ function CreateModal({ visible, onClose, onCreated }: { visible: boolean; onClos
   const [loading, setLoading] = useState(false);
   const create = async () => {
     const n = Number(amount);
-    if (!n || n <= 0) return Alert.alert("Invalid amount", "Enter a positive number");
+    if (!n || n <= 0) return themedAlert("Invalid amount", "Enter a positive number");
     setLoading(true);
     const r = await createGiftCard({
       initial_balance: n,
@@ -246,7 +253,7 @@ function CreateModal({ visible, onClose, onCreated }: { visible: boolean; onClos
     } as any);
     setLoading(false);
     if (r.ok) { setAmount(""); setEmail(""); setName(""); onCreated(); }
-    else Alert.alert("Error", r.error);
+    else themedAlert("Error", r.error);
   };
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -356,8 +363,8 @@ function AdjustForm({ card, onDone }: { card: any; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     const n = Number(delta);
-    if (!Number.isFinite(n) || n === 0) return Alert.alert("Enter non-zero delta");
-    Alert.alert(
+    if (!Number.isFinite(n) || n === 0) return themedAlert("Enter non-zero delta");
+    themedAlert(
       "Adjust balance?",
       `${n > 0 ? "Add" : "Remove"} ${Math.abs(n)} ${card.currency ?? "LKR"} ${n > 0 ? "to" : "from"} this card.`,
       [
@@ -368,8 +375,8 @@ function AdjustForm({ card, onDone }: { card: any; onDone: () => void }) {
             setBusy(true);
             const r = await adjustAdminGiftCard(card.id, { delta: n, note: note || undefined });
             setBusy(false);
-            if (r.ok) { Alert.alert("Adjusted"); onDone(); }
-            else Alert.alert("Failed", r.error);
+            if (r.ok) { themedAlert("Adjusted"); onDone(); }
+            else themedAlert("Failed", r.error);
           },
         },
       ],
@@ -389,7 +396,7 @@ function VoidForm({ card, onDone }: { card: any; onDone: () => void }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async () => {
-    Alert.alert(
+    themedAlert(
       "Void this card?",
       "Voiding is permanent — remaining balance becomes unusable.",
       [
@@ -401,8 +408,8 @@ function VoidForm({ card, onDone }: { card: any; onDone: () => void }) {
             setBusy(true);
             const r = await voidAdminGiftCard(card.id, { reason: reason || undefined });
             setBusy(false);
-            if (r.ok) { Alert.alert("Voided"); onDone(); }
-            else Alert.alert("Failed", r.error);
+            if (r.ok) { themedAlert("Voided"); onDone(); }
+            else themedAlert("Failed", r.error);
           },
         },
       ],

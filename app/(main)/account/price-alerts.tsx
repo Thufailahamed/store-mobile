@@ -31,6 +31,7 @@ import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 export type PriceAlert = {
   id: string;
@@ -173,7 +174,7 @@ export default function PriceAlertsScreen() {
   };
 
   const onCancelAlert = (id: string, productName?: string) => {
-    Alert.alert(
+    themedAlert(
       "Remove price watch",
       `Stop monitoring price changes for "${productName ?? "this piece"}"?`,
       [

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, ScrollView, Alert } from "react-native";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -21,6 +21,7 @@ import {
   StatusPill,
   kit,
 } from "@/components/admin/catalog-kit";
+import { themedAlert } from "@/lib/themed-alert";
 
 const STATUS_TABS = [
   { id: "all", label: "All" },
@@ -126,12 +127,12 @@ export default function AdminBrands() {
   };
 
   const onApprove = (item: any) =>
-    Alert.alert("Approve brand", item.name, [
+    themedAlert("Approve brand", item.name, [
       { text: "Cancel", style: "cancel" },
       { text: "Approve", onPress: () => approveM.mutate(item.id) },
     ]);
   const onReject = (item: any) =>
-    Alert.alert("Reject brand", item.name, [
+    themedAlert("Reject brand", item.name, [
       { text: "Cancel", style: "cancel" },
       { text: "Reject", style: "destructive", onPress: () => rejectM.mutate(item.id) },
     ]);

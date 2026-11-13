@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Platform,
   RefreshControl,
@@ -38,6 +37,7 @@ import {
   UserPageFrame,
   withUserTheme,
 } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 type FilterTab = "all" | "verified" | "top_rated" | "pieces";
 
@@ -131,7 +131,7 @@ export default function FollowingScreen() {
 
   // Unfollow action with confirmation
   const handleUnfollow = (store: Store) => {
-    Alert.alert(
+    themedAlert(
       "Unfollow Boutique",
       `Are you sure you want to unfollow ${store.name}? You will no longer receive private drops and updates from this atelier.`,
       [

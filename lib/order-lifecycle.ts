@@ -1,11 +1,11 @@
 import type { OrderStatus } from "@/lib/types";
-import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
 
 /** Legal single-step seller transitions (fulfillment uses scan / fulfill RPCs). */
 export const SELLER_NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   pending: "confirmed",
   confirmed: "processing",
-  processing: "shipped",
+  processing: "picked_up",
+  picked_up: "shipped",
   shipped: null,
   out_for_delivery: null,
   delivered: null,
@@ -22,6 +22,7 @@ export const CUSTOMER_STATUS_STEPS: OrderStatus[] = [
   "pending",
   "confirmed",
   "processing",
+  "picked_up",
   "shipped",
   "out_for_delivery",
   "delivered",
@@ -35,9 +36,13 @@ export const ORDER_STATUS_EDGES: ReadonlyArray<readonly [OrderStatus, OrderStatu
   ["confirmed", "shipped"],
   ["confirmed", "cancelled"],
   ["confirmed", "out_for_delivery"],
+  ["processing", "picked_up"],
   ["processing", "shipped"],
   ["processing", "cancelled"],
   ["processing", "out_for_delivery"],
+  ["picked_up", "shipped"],
+  ["picked_up", "out_for_delivery"],
+  ["picked_up", "cancelled"],
   ["shipped", "out_for_delivery"],
   ["shipped", "delivered"],
   ["shipped", "cancelled"],
@@ -89,19 +94,17 @@ export function getSellerNextStatus(status: OrderStatus): OrderStatus | null {
 }
 
 /**
- * The status a seller can advance an order to from the seller screens. With
- * the external courier on, orders are booked with the courier at placement
- * and its updates drive every status, so sellers advance nothing (web parity:
- * the seller orders page hides "Mark packed").
+ * Sellers never change order state: the delivery company's updates (and
+ * admins) drive every status, and the backend rejects seller transitions with
+ * 403. Kept as helpers so the seller screens hide every state-changing action.
  */
-export function getSellerAdvanceStatus(status: OrderStatus): OrderStatus | null {
-  if (isExternalCourierEnabledMobile()) return null;
-  return getSellerNextStatus(status);
+export function getSellerAdvanceStatus(_status: OrderStatus): OrderStatus | null {
+  return null;
 }
 
-/** Web parity: seller orders page allows Cancel except from shipped/delivered/cancelled/returned/refunded. */
-export function canSellerCancelOrder(status: OrderStatus): boolean {
-  return !["shipped", "delivered", "cancelled", "returned", "refunded"].includes(status);
+/** Sellers cannot cancel or otherwise mark orders. */
+export function canSellerCancelOrder(_status: OrderStatus): boolean {
+  return false;
 }
 
 export function getCustomerStepIndex(status: OrderStatus): number {
@@ -178,6 +181,7 @@ export function canBuyerCancelInWindow(
 
 /** Statuses that have a live delivery timeline worth showing to the buyer. */
 export const TRACKABLE_STATUSES: ReadonlyArray<OrderStatus> = [
+  "picked_up",
   "shipped",
   "out_for_delivery",
 ];

@@ -163,7 +163,7 @@ export function InvoiceScreen({ scope = "buyer" }: { scope?: "buyer" | "seller" 
     if (!inv) return;
     const due = isSettled(inv) ? `Paid ${money(inv.currency, inv.totals.amount_paid)}` : `Due ${money(inv.currency, inv.totals.amount_due)}`;
     await Share.share({
-      message: `LUXE invoice ${inv.invoice_number} · Order ${inv.order_number} · ${due}${inv.invoice_url ? `\n${inv.invoice_url}` : ""}`,
+      message: `VESTARA invoice ${inv.invoice_number} · Order ${inv.order_number} · ${due}${inv.invoice_url ? `\n${inv.invoice_url}` : ""}`,
     }).catch(() => undefined);
   };
 
@@ -227,7 +227,7 @@ export function InvoiceScreen({ scope = "buyer" }: { scope?: "buyer" | "seller" 
           {/* Header */}
           <View style={s.headRow}>
             <View>
-              <Text style={s.brand}>LUXE</Text>
+              <Text style={s.brand}>VESTARA</Text>
               <Lab style={{ marginTop: 2 }}>Curated fashion</Lab>
             </View>
             <View style={{ alignItems: "flex-end" }}>
@@ -262,7 +262,11 @@ export function InvoiceScreen({ scope = "buyer" }: { scope?: "buyer" | "seller" 
           <View style={[s.party, { borderLeftColor: P.gold }]}>
             <Lab>Billed & shipped to</Lab>
             <Text style={s.partyName}>{inv.buyer.name}</Text>
-            {[...inv.buyer.address_lines, inv.buyer.phone, inv.buyer.email].filter(Boolean).map((l) => (
+            {[
+              ...inv.buyer.address_lines,
+              scope === "seller" ? null : inv.buyer.phone,
+              scope === "seller" ? null : inv.buyer.email,
+            ].filter(Boolean).map((l) => (
               <Text key={String(l)} style={s.partyLine}>{l}</Text>
             ))}
           </View>
@@ -272,7 +276,7 @@ export function InvoiceScreen({ scope = "buyer" }: { scope?: "buyer" | "seller" 
             {[inv.seller.origin, inv.seller.email, inv.seller.phone].filter(Boolean).map((l) => (
               <Text key={String(l)} style={s.partyLine}>{l}</Text>
             ))}
-            <Text style={[s.partyLine, { color: P.muted }]}>via LUXE Marketplace · Colombo</Text>
+            <Text style={[s.partyLine, { color: P.muted }]}>via VESTARA Marketplace · Colombo</Text>
           </View>
 
           {/* Lines */}
@@ -305,7 +309,7 @@ export function InvoiceScreen({ scope = "buyer" }: { scope?: "buyer" | "seller" 
             {t.coupon_discount > 0 && <SumRow k={t.coupon_code ? `Coupon ${t.coupon_code}` : "Coupon"} v={`– ${money(c, t.coupon_discount)}`} accent />}
             {t.points_discount > 0 && <SumRow k={`Points (${t.points_redeemed.toLocaleString()} pts)`} v={`– ${money(c, t.points_discount)}`} accent />}
             <SumRow k="Shipping" v={t.shipping > 0 ? money(c, t.shipping) : "Complimentary"} />
-            {t.tax > 0 && <SumRow k="Platform fee" v={money(c, t.tax)} />}
+            {t.tax > 0 && <SumRow k="Tax and fees" v={money(c, t.tax)} />}
             <SumRow k="Invoice total" v={money(c, t.total)} strong />
             {t.gift_card_credit > 0 && (
               <SumRow k={`Paid · gift card${t.gift_card_code ? ` ${t.gift_card_code}` : ""}`} v={money(c, t.gift_card_credit)} accent />

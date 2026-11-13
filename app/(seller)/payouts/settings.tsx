@@ -4,7 +4,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Alert,
   TouchableOpacity,
   StatusBar,
 } from "react-native";
@@ -32,6 +31,7 @@ import {
   withPayoutDefaults,
 } from "@/lib/payouts/settings";
 import type { PayoutSettings } from "@/lib/api/backend";
+import { themedAlert } from "@/lib/themed-alert";
 
 const CREAM = colors.paper.cream;
 const INK = colors.olive[950];
@@ -119,7 +119,7 @@ export default function SettingsScreen() {
       toast.success("Payout details saved");
     },
     onError: (e: unknown) => {
-      Alert.alert("Save failed", e instanceof Error ? e.message : "Try again.");
+      themedAlert("Save failed", e instanceof Error ? e.message : "Try again.");
     },
   });
 

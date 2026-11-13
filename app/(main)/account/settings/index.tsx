@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   type LayoutChangeEvent,
   Image,
@@ -52,6 +51,7 @@ import {
 } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { safeOpenUrl } from "@/lib/utils/safe-open-url";
+import { SITE_ORIGIN } from "@/lib/legal/documents";
 import { normalizePhoneE164 } from "@/lib/contact-validation";
 import {
   changePasswordBackend,
@@ -63,6 +63,7 @@ import {
   updateSettingsBackend,
 } from "@/lib/api/backend";
 import { UP as C, UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 type PrivacyKey =
   | "public_profile"
@@ -78,31 +79,6 @@ const DEFAULT_PRIVACY: Record<PrivacyKey, boolean> = {
   block_tracking: false,
   search_indexing: false,
 };
-
-const LOCALES = [
-  { value: "en-LK", label: "English (LK)" },
-  { value: "si-LK", label: "Sinhala" },
-  { value: "ta-LK", label: "Tamil" },
-  { value: "en-US", label: "English (US)" },
-  { value: "en-GB", label: "English (UK)" },
-];
-
-const TIMEZONES = [
-  { value: "Asia/Colombo", label: "Colombo" },
-  { value: "Asia/Singapore", label: "Singapore" },
-  { value: "Asia/Dubai", label: "Dubai" },
-  { value: "Europe/London", label: "London" },
-  { value: "America/New_York", label: "New York" },
-  { value: "America/Los_Angeles", label: "Los Angeles" },
-];
-
-const CURRENCIES = [
-  { value: "LKR", label: "LKR · Sri Lankan Rupee" },
-  { value: "USD", label: "USD · US Dollar" },
-  { value: "EUR", label: "EUR · Euro" },
-  { value: "GBP", label: "GBP · British Pound" },
-  { value: "SGD", label: "SGD · Singapore Dollar" },
-];
 
 /** Where guest (signed-out) preferences are kept so they survive relaunch. */
 const GUEST_SETTINGS_KEY = "luxe:local:guest-settings";
@@ -619,12 +595,12 @@ export default function SettingsScreen() {
       if (!res.ok) {
         throw new Error(res.error ?? "Export failed");
       }
-      const message = `LUXE data export\n\n${JSON.stringify(res.data, null, 2)}`;
+      const message = `VESTARA data export\n\n${JSON.stringify(res.data, null, 2)}`;
       if (Platform.OS === "ios" || Platform.OS === "android") {
-        await Share.share({ message, title: "LUXE data export" });
+        await Share.share({ message, title: "VESTARA data export" });
       } else {
         await safeOpenUrl(
-          `mailto:support@luxe.com?subject=LUXE%20Data%20Export&body=${encodeURIComponent(message)}`,
+          `mailto:munxhd@gmail.com?subject=VESTARA%20Data%20Export&body=${encodeURIComponent(message)}`,
         );
       }
     } catch (error: any) {
@@ -633,7 +609,7 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert("Sign out?", "You can sign back in any time.", [
+    themedAlert("Sign out?", "You can sign back in any time.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Sign out",
@@ -668,16 +644,6 @@ export default function SettingsScreen() {
       ? Constants.expoConfig?.ios?.buildNumber
       : Constants.expoConfig?.android?.versionCode?.toString()) ?? "";
 
-  const linkedProviders = useMemo(() => {
-    const providers = (user?.app_metadata?.providers ?? []) as string[];
-    return {
-      email: providers.includes("email") || !!user?.email,
-      google: providers.includes("google"),
-      apple: providers.includes("apple"),
-      facebook: providers.includes("facebook"),
-    };
-  }, [user]);
-
   const scrollRef = useRef<ScrollView>(null);
   const sectionY = useRef<Record<string, number>>({});
   const registerSection = (key: string) => (e: LayoutChangeEvent) => {
@@ -709,23 +675,6 @@ export default function SettingsScreen() {
         setPhoneStep(1);
         setChangePhoneOpen(true);
       },
-    },
-    {
-      key: "bio",
-      label: "Biometric lock",
-      done: !!local.biometricLock,
-      icon: "finger-print-outline" as const,
-      onFix: () => updateLocal({ biometricLock: true }),
-    },
-    {
-      key: "sso",
-      label: "Backup sign-in",
-      done:
-        linkedProviders.google ||
-        linkedProviders.apple ||
-        linkedProviders.facebook,
-      icon: "link-outline" as const,
-      onFix: () => jumpTo("06"),
     },
   ];
   const safeguardsDone = safeguards.filter((g) => g.done).length;
@@ -958,61 +907,10 @@ export default function SettingsScreen() {
             ))}
           </ScrollView>
 
-          {/* LANGUAGE & REGION */}
-          <Section
-            onLayout={registerSection("01")}
-            kicker="01"
-            icon="globe-outline"
-            title="Language & region"
-            subtitle="How LUXE adapts prices, dates, and copy."
-          >
-            <Text style={styles.subLabel}>Locale</Text>
-            <ChipRow>
-              {LOCALES.map((item) => (
-                <SettingChip
-                  key={item.value}
-                  selected={locale === item.value}
-                  onPress={() => setLocale(item.value)}
-                >
-                  {item.label}
-                </SettingChip>
-              ))}
-            </ChipRow>
-
-            <Text style={[styles.subLabel, styles.subLabelTop]}>Time zone</Text>
-            <ChipRow>
-              {TIMEZONES.map((item) => (
-                <SettingChip
-                  key={item.value}
-                  selected={timezone === item.value}
-                  onPress={() => setTimezone(item.value)}
-                >
-                  {item.label}
-                </SettingChip>
-              ))}
-            </ChipRow>
-
-            <Text style={[styles.subLabel, styles.subLabelTop]}>Currency</Text>
-            <View style={styles.optionList}>
-              {CURRENCIES.map((item) => {
-                const [code, ...rest] = item.label.split(" · ");
-                return (
-                  <OptionCard
-                    key={item.value}
-                    selected={currency === item.value}
-                    code={code}
-                    name={rest.join(" · ")}
-                    onPress={() => setCurrency(item.value)}
-                  />
-                );
-              })}
-            </View>
-          </Section>
-
           {/* EMAIL & PHONE */}
           <Section
             onLayout={registerSection("02")}
-            kicker="02"
+            kicker="01"
             icon="mail-outline"
             title="Email & phone"
             subtitle="How we verify it's you."
@@ -1045,7 +943,7 @@ export default function SettingsScreen() {
           {/* PRIVACY */}
           <Section
             onLayout={registerSection("03")}
-            kicker="03"
+            kicker="02"
             icon="eye-off-outline"
             title="Privacy"
             subtitle="Control what others — and our systems — can see."
@@ -1067,19 +965,11 @@ export default function SettingsScreen() {
           {/* SECURITY */}
           <Section
             onLayout={registerSection("04")}
-            kicker="04"
+            kicker="03"
             icon="shield-checkmark-outline"
             title="Security"
-            subtitle="Lock the app and keep an eye on sign-ins."
+            subtitle="Manage your credentials and sign-in methods."
           >
-            <ToggleRow
-              label="Require biometrics on launch"
-              detail="Use Face ID / fingerprint to open LUXE."
-              value={local.biometricLock}
-              onValueChange={() =>
-                updateLocal({ biometricLock: !local.biometricLock })
-              }
-            />
             <CommsRow
               icon="key-outline"
               label="Change password"
@@ -1088,12 +978,6 @@ export default function SettingsScreen() {
                 if (!requireAuth()) return;
                 setPasswordOpen(true);
               }}
-            />
-            <CommsRow
-              icon="shield-checkmark-outline"
-              label="Two-factor authentication"
-              value="Not configured"
-              onPress={() => router.push("/(main)/account/security")}
               isLast
             />
           </Section>
@@ -1101,7 +985,7 @@ export default function SettingsScreen() {
           {/* NOTIFICATIONS */}
           <Section
             onLayout={registerSection("05")}
-            kicker="05"
+            kicker="04"
             icon="notifications-outline"
             title="Notifications"
             subtitle="Pick how each topic reaches you."
@@ -1144,36 +1028,10 @@ export default function SettingsScreen() {
             />
           </Section>
 
-          {/* CONNECTED ACCOUNTS */}
-          <Section
-            onLayout={registerSection("06")}
-            kicker="06"
-            icon="link-outline"
-            title="Connected accounts"
-            subtitle="Single sign-on providers."
-          >
-            <ProviderRow
-              icon="logo-google"
-              label="Google"
-              linked={linkedProviders.google}
-            />
-            <ProviderRow
-              icon="logo-apple"
-              label="Apple"
-              linked={linkedProviders.apple}
-            />
-            <ProviderRow
-              icon="logo-facebook"
-              label="Facebook"
-              linked={linkedProviders.facebook}
-              isLast
-            />
-          </Section>
-
           {/* DATA & STORAGE */}
           <Section
             onLayout={registerSection("07")}
-            kicker="07"
+            kicker="05"
             icon="server-outline"
             title="Data & storage"
             subtitle="Your data lives in Supabase. Download or wipe local cache here."
@@ -1197,7 +1055,7 @@ export default function SettingsScreen() {
               onPress={
                 recEventCount > 0
                   ? () =>
-                      Alert.alert(
+                      themedAlert(
                         "Clear recommendation data?",
                         "This resets the personalized picks on home, product, and search. Recently viewed stays.",
                         [
@@ -1217,7 +1075,7 @@ export default function SettingsScreen() {
               label="Clear local cache"
               value="Keeps payments & recent"
               onPress={() =>
-                Alert.alert(
+                themedAlert(
                   "Clear cache?",
                   "This wipes cached sessions on this device.",
                   [
@@ -1237,28 +1095,22 @@ export default function SettingsScreen() {
           {/* LEGAL & ABOUT */}
           <Section
             onLayout={registerSection("08")}
-            kicker="08"
+            kicker="06"
             icon="document-text-outline"
             title="Legal & about"
-            subtitle="Policies, licences, and build info."
+            subtitle="Policies and build info."
           >
             <CommsRow
               icon="document-text-outline"
               label="Terms of service"
               value=""
-              onPress={() => safeOpenUrl("https://luxe.com/terms")}
+              onPress={() => router.push("/legal/terms")}
             />
             <CommsRow
               icon="lock-closed-outline"
               label="Privacy policy"
               value=""
-              onPress={() => safeOpenUrl("https://luxe.com/privacy")}
-            />
-            <CommsRow
-              icon="information-circle-outline"
-              label="Open-source licences"
-              value=""
-              onPress={() => safeOpenUrl("https://luxe.com/licences")}
+              onPress={() => router.push("/legal/privacy")}
             />
             <View style={styles.versionRow}>
               <Label style={styles.versionLabel}>App version</Label>
@@ -1332,10 +1184,20 @@ export default function SettingsScreen() {
                 Request account deletion
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => void safeOpenUrl(`${SITE_ORIGIN}/legal/delete-account`)}
+              accessibilityRole="link"
+              activeOpacity={0.75}
+              style={{ marginTop: 12, alignSelf: "center" }}
+            >
+              <Text style={{ fontSize: 13, textDecorationLine: "underline", color: colors.light.mutedForeground }}>
+                Can&apos;t sign in? Request deletion online
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <Body muted size="xs" style={styles.footerHint}>
-            LUXE · Crafted for collectors
+            VESTARA · Crafted for collectors
           </Body>
         </ScrollView>
 
@@ -1625,13 +1487,13 @@ export default function SettingsScreen() {
                     deactivateReason.trim() || undefined,
                   );
                   if (!res.ok) {
-                    Alert.alert(
+                    themedAlert(
                       "Couldn't deactivate",
                       res.error || "Try again later.",
                     );
                     return;
                   }
-                  Alert.alert(
+                  themedAlert(
                     "Account deactivated",
                     "Sign back in any time to reactivate.",
                   );
@@ -1639,7 +1501,7 @@ export default function SettingsScreen() {
                   setDeactivateReason("");
                   await signOut();
                 } catch (err) {
-                  Alert.alert(
+                  themedAlert(
                     "Couldn't deactivate",
                     err instanceof Error ? err.message : "Unknown error",
                   );
@@ -1700,12 +1562,10 @@ const JUMP_LINKS: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  { key: "01", label: "Region", icon: "globe-outline" },
   { key: "02", label: "Contact", icon: "mail-outline" },
   { key: "03", label: "Privacy", icon: "eye-off-outline" },
   { key: "04", label: "Security", icon: "shield-checkmark-outline" },
   { key: "05", label: "Alerts", icon: "notifications-outline" },
-  { key: "06", label: "Accounts", icon: "link-outline" },
   { key: "07", label: "Data", icon: "server-outline" },
   { key: "08", label: "Legal", icon: "document-text-outline" },
 ];
@@ -1755,88 +1615,6 @@ function ProtectionRing({ done, total }: { done: number; total: number }) {
         </Text>
       </View>
     </View>
-  );
-}
-
-function ChipRow({ children }: { children: React.ReactNode }) {
-  return <View style={styles.chipRow}>{children}</View>;
-}
-
-function SettingChip({
-  selected,
-  onPress,
-  children,
-}: {
-  selected?: boolean;
-  onPress: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.75}
-      accessibilityRole="button"
-      accessibilityState={{ selected: !!selected }}
-      style={[styles.settingChip, selected && styles.settingChipSelected]}
-    >
-      {selected ? (
-        <View style={styles.settingChipCheck}>
-          <Ionicons name="checkmark" size={11} color={C.ink} />
-        </View>
-      ) : null}
-      <Text
-        style={[
-          styles.settingChipText,
-          selected && styles.settingChipTextSelected,
-        ]}
-      >
-        {children}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-function OptionCard({
-  selected,
-  code,
-  name,
-  onPress,
-}: {
-  selected?: boolean;
-  code: string;
-  name: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: !!selected }}
-      style={[styles.optionCard, selected && styles.optionCardSelected]}
-    >
-      <View style={[styles.optionCode, selected && styles.optionCodeSelected]}>
-        <Text
-          style={[
-            styles.optionCodeText,
-            selected && styles.optionCodeTextSelected,
-          ]}
-        >
-          {code}
-        </Text>
-      </View>
-      <Text
-        style={[styles.optionName, selected && styles.optionNameSelected]}
-        numberOfLines={1}
-      >
-        {name}
-      </Text>
-      <View
-        style={[styles.optionRadio, selected && styles.optionRadioSelected]}
-      >
-        {selected ? <View style={styles.optionRadioDot} /> : null}
-      </View>
-    </TouchableOpacity>
   );
 }
 
@@ -2024,40 +1802,6 @@ function NotificationRow({
           );
         })}
       </View>
-    </View>
-  );
-}
-
-function ProviderRow({
-  icon,
-  label,
-  linked,
-  isLast = false,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  linked: boolean;
-  isLast?: boolean;
-}) {
-  return (
-    <View style={[styles.providerRow, isLast && styles.providerRowLast]}>
-      <View style={styles.commsIcon}>
-        <Ionicons name={icon} size={17} color={C.accent} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.commsLabel}>{label}</Text>
-        <Text style={styles.commsSub}>
-          {linked ? "Connected to LUXE Atelier" : "Not connected"}
-        </Text>
-      </View>
-      {linked ? (
-        <View style={styles.linkedBadge}>
-          <Ionicons name="checkmark-circle" size={14} color={C.lime} />
-          <Text style={styles.linkedBadgeText}>Linked</Text>
-        </View>
-      ) : (
-        <Text style={styles.notLinkedText}>Not linked</Text>
-      )}
     </View>
   );
 }

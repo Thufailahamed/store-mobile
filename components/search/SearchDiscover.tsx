@@ -266,7 +266,7 @@ export function SearchDiscover({
       contentContainerStyle={styles.content}
     >
       <View style={styles.hero}>
-        <Text style={styles.heroEyebrow}>THE LUXE EDIT</Text>
+        <Text style={styles.heroEyebrow}>THE VESTARA EDIT</Text>
         <Text style={styles.heroTitle}>
           What are you <Text style={styles.heroTitleItalic}>looking for</Text> today?
         </Text>
@@ -382,7 +382,7 @@ export function SearchDiscover({
               <View style={styles.aiBadge}>
                 <Ionicons name="sparkles" size={14} color={C.ink} />
               </View>
-              <Text style={styles.aiBrand}>LUXE AI</Text>
+              <Text style={styles.aiBrand}>VESTARA AI</Text>
               <View style={styles.aiNewPill}>
                 <Text style={styles.aiNewText}>NEW</Text>
               </View>

@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TextInput,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -35,6 +34,7 @@ import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { isValidEmail } from "@/lib/contact-validation";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function CompanyDriversScreen() {
   const router = useRouter();
@@ -106,11 +106,11 @@ export default function CompanyDriversScreen() {
   const handleInvite = async () => {
     const email = inviteEmail.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      Alert.alert("Invalid email", "Enter a valid email address.");
+      themedAlert("Invalid email", "Enter a valid email address.");
       return;
     }
     if ((inviteType === "pickup" || inviteType === "both") && !inviteWarehouseId) {
-      Alert.alert("Home hub required", "Pickup drivers must be based at a warehouse.");
+      themedAlert("Home hub required", "Pickup drivers must be based at a warehouse.");
       return;
     }
     if (inviting) return;
@@ -122,10 +122,10 @@ export default function CompanyDriversScreen() {
         home_warehouse_id: inviteWarehouseId ?? undefined,
       });
       if (!res.ok) {
-        Alert.alert("Invite failed", res.error);
+        themedAlert("Invite failed", res.error);
         return;
       }
-      Alert.alert("Invite sent", `Invitation emailed to ${email}`);
+      themedAlert("Invite sent", `Invitation emailed to ${email}`);
       setInviteEmail("");
       setInviteOpen(false);
       load();
@@ -143,11 +143,11 @@ export default function CompanyDriversScreen() {
   const handleBulkInvite = async () => {
     const list = parseBulkEmails(bulkEmails);
     if (list.length === 0) {
-      Alert.alert("No valid emails", "Paste one or more email addresses.");
+      themedAlert("No valid emails", "Paste one or more email addresses.");
       return;
     }
     if ((inviteType === "pickup" || inviteType === "both") && !inviteWarehouseId) {
-      Alert.alert("Home hub required", "Pickup drivers must be based at a warehouse.");
+      themedAlert("Home hub required", "Pickup drivers must be based at a warehouse.");
       return;
     }
     if (bulkInviting) return;
@@ -178,7 +178,7 @@ export default function CompanyDriversScreen() {
     }
     setBulkInviting(false);
     setBulkProgress(null);
-    Alert.alert(
+    themedAlert(
       "Bulk invite complete",
       `${ok} sent${fail > 0 ? `, ${fail} failed` : ""}${failed.length ? `\n\nFailed:\n${failed.slice(0, 5).join("\n")}${failed.length > 5 ? `\n… and ${failed.length - 5} more` : ""}` : ""}`,
     );
@@ -194,7 +194,7 @@ export default function CompanyDriversScreen() {
     if (togglingId) return;
     const next = !member.is_active;
     const displayName = member.user?.full_name ?? "this driver";
-    Alert.alert(
+    themedAlert(
       next ? "Activate driver" : "Deactivate driver",
       next ? `Re-enable ${displayName}?` : `Deactivate ${displayName}?`,
       [
@@ -206,7 +206,7 @@ export default function CompanyDriversScreen() {
             setTogglingId(member.id);
             try {
               const res = await updateDriverMember(member.id, { is_active: next });
-              if (!res.ok) Alert.alert("Failed", res.error);
+              if (!res.ok) themedAlert("Failed", res.error);
               else load();
             } finally {
               setTogglingId(null);
@@ -272,7 +272,7 @@ export default function CompanyDriversScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Revoke invite for ${inv.email}`}
                 onPress={() =>
-                  Alert.alert(
+                  themedAlert(
                     "Revoke invite",
                     `Revoke ${inv.email}? They will no longer be able to accept.`,
                     [
@@ -282,7 +282,7 @@ export default function CompanyDriversScreen() {
                         style: "destructive",
                         onPress: async () => {
                           const res = await revokeInvite(inv.id);
-                          if (!res.ok) Alert.alert("Failed", res.error);
+                          if (!res.ok) themedAlert("Failed", res.error);
                           else load();
                         },
                       },

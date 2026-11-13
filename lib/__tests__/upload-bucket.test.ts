@@ -12,7 +12,7 @@ vi.mock("react-native", () => ({
   Alert: { alert: () => undefined },
 }));
 
-vi.mock("expo-file-system", () => ({
+vi.mock("expo-file-system/legacy", () => ({
   readAsStringAsync: async () => "AA==",
   copyAsync: async () => undefined,
   EncodingType: { Base64: "base64" },
@@ -53,7 +53,7 @@ vi.mock("@/lib/api/backend", () => ({
 vi.mock("@/lib/seller-access", () => ({}));
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { uploadReviewPhoto, uploadSellerProductPhoto } from "../upload";
+import { uploadReviewPhoto, uploadSellerProductPhoto, uploadSizeChartImage } from "../upload";
 
 // atob polyfill (node < 16 may lack it)
 if (typeof globalThis.atob !== "function") {
@@ -122,5 +122,35 @@ describe("uploadSellerProductPhoto (quick upload)", () => {
     const res = await uploadSellerProductPhoto("file:///tmp/photo.jpg");
     expect(res.url).toBe("");
     expect(res.error).toBe("Invalid request");
+  });
+});
+
+describe("uploadSizeChartImage", () => {
+  beforeEach(() => fetchMock.mockReset());
+
+  it("targets the public bucket with size-charts prefix", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          data: {
+            url: "https://r2/upload",
+            uploadUrl: "https://r2/upload",
+            key: "size-charts/chart-1.png",
+            publicUrl: "https://cdn/size-charts/chart-1.png",
+          },
+          version: 2,
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true });
+
+    const res = await uploadSizeChartImage("file:///tmp/size-chart.png", { mimeType: "image/png" });
+    expect(res).toEqual({ url: "https://cdn/size-charts/chart-1.png" });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.bucket).toBe("public");
+    expect(body.prefix).toBe("size-charts");
+    expect(fetchMock.mock.calls[1][0]).toBe("https://r2/upload");
   });
 });

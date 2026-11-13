@@ -36,6 +36,7 @@ const ORDER_STATUSES = new Set<OrderStatus>([
   "pending",
   "confirmed",
   "processing",
+  "picked_up",
   "shipped",
   "out_for_delivery",
   "delivered",
@@ -49,6 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   confirmed: "Confirmed",
   processing: "Packing",
+  picked_up: "Picked Up",
   packed: "Packed",
   shipped: "Shipped",
   out_for_delivery: "Out for delivery",
@@ -106,6 +108,65 @@ export function formatPaymentStatus(status?: string | null): string {
   if (key === "refunded") return "Refunded";
   if (key === "partially_refunded") return "Partial refund";
   return key.replace(/_/g, " ");
+}
+
+/** Freshly placed order statuses before delivery company updates or processing begins. */
+const INITIAL_NEW_STATUSES = new Set(["pending", "confirmed"]);
+
+/**
+ * Courier statuses indicating the package has been picked up or dispatched past the seller's initial handling.
+ * Pre-pickup states like "pickup_scheduled", "created", "pending", "unassigned" mean the parcel is still
+ * with the seller waiting to be acknowledged and packed.
+ */
+const POST_PICKUP_COURIER_STATUSES = new Set([
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "failed_delivery",
+  "returned_to_origin",
+  "cancelled",
+]);
+
+/**
+ * Check if the seller has marked the order as received (for seller reference).
+ */
+export function isOrderReceivedBySeller(order: {
+  seller_processed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): boolean {
+  return Boolean(
+    order.seller_processed_at ||
+    (order.metadata && typeof order.metadata === "object" && order.metadata.seller_processed_at),
+  );
+}
+
+/**
+ * A "new order":
+ * 1. Has NOT been marked as order received by the seller.
+ * 2. Has NOT had its status updated past initial placement (processing, packed, shipped, out_for_delivery, delivered).
+ * 3. Has NOT already been picked up by the courier (pickup_scheduled is pre-pickup so it remains new to the seller).
+ */
+export function isNewOrder(order: {
+  status?: string | null;
+  seller_processed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  courier_status?: string | null;
+  delivery_person_id?: string | null;
+  courier_shipment_id?: string | null;
+}): boolean {
+  // If marked as order received by the seller -> not a new order
+  if (isOrderReceivedBySeller(order)) return false;
+
+  // If status is updated past initial placement (e.g. processing, packed, shipped, delivered, cancelled)
+  const status = String(order.status ?? "").toLowerCase().trim();
+  if (!INITIAL_NEW_STATUSES.has(status)) return false;
+
+  // If courier has already picked up or moved the parcel
+  const cs = String(order.courier_status ?? "").toLowerCase().trim();
+  if (cs && POST_PICKUP_COURIER_STATUSES.has(cs)) return false;
+
+  return true;
 }
 
 export function formatOrderStatusLabel(status?: string | null): string {
@@ -284,6 +345,11 @@ export function mapSellerOrderRow(row: unknown): Order {
     notes: pickStr(rec.notes) ?? undefined,
     delivered_at: pickStr(rec.delivered_at) ?? null,
     placed_at: pickStr(rec.placed_at, rec.created_at) ?? new Date().toISOString(),
+    seller_processed_at: pickStr(asRecord(rec.metadata)?.seller_processed_at, rec.seller_processed_at) ?? null,
+    courier_status: pickStr(rec.courier_status) ?? null,
+    courier_shipment_id: pickStr(rec.courier_shipment_id) ?? null,
+    delivery_person_id: pickStr(rec.delivery_person_id) ?? null,
+    metadata: asRecord(rec.metadata) ?? null,
     items: itemsRaw.map(mapLineItem),
     shipping_address: shipping,
   };

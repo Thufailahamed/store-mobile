@@ -19,7 +19,6 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 WebBrowser.maybeCompleteAuthSession();
 import { supabase } from "@/lib/supabase/client";
 import { completeAuthCallback } from "@/lib/supabase/oauth";
-import { FIXED_LOGIN_CODE_ENABLED } from "@/lib/supabase/fixed-login-code";
 import { mergeAnonSessionOnLogin } from "@/lib/recommender";
 import { EMAIL_REGEX, normalizePhoneE164 } from "@/lib/contact-validation";
 import { useToast } from "@/components/ui";
@@ -116,18 +115,17 @@ export default function LoginScreen() {
 
     const e164 = normalizePhoneE164(phone);
     Keyboard.dismiss();
-    if (FIXED_LOGIN_CODE_ENABLED) {
-      setOtpPhone(e164);
-      return;
-    }
     setLoading(true);
+    // Login never creates an account; new numbers must go through Sign up.
     const { error } = await supabase.auth.signInWithOtp({
       phone: e164,
+      options: { shouldCreateUser: false },
     });
     setLoading(false);
 
     if (error) {
-      toast(error.message, "error");
+      const noAccount = /signups not allowed|user not found/i.test(error.message);
+      toast(noAccount ? "No account with this number. Please sign up first." : error.message, "error");
     } else {
       setOtpPhone(e164);
     }
@@ -142,7 +140,7 @@ export default function LoginScreen() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: "luxe://auth/callback",
+          redirectTo: "vestara://auth/callback",
           skipBrowserRedirect: true,
         },
       });
@@ -159,7 +157,7 @@ export default function LoginScreen() {
 
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
-        "luxe://auth/callback",
+        "vestara://auth/callback",
       );
 
       if (result.type === "success" && result.url) {

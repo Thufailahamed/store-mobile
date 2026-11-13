@@ -1,5 +1,5 @@
 vi.mock("react-native", () => ({ Platform:{OS:"ios",select:(o:any)=>o.ios??o.default}, Alert:{alert:()=>undefined} }));
-vi.mock("expo-file-system", () => ({ readAsStringAsync: async ()=>"AA==", copyAsync: async ()=>undefined, EncodingType:{Base64:"base64"}, cacheDirectory:"/tmp/" }));
+vi.mock("expo-file-system/legacy", () => ({ readAsStringAsync: async ()=>"AA==", copyAsync: async ()=>undefined, EncodingType:{Base64:"base64"}, cacheDirectory:"/tmp/" }));
 vi.mock("expo-image-picker", () => ({ requestMediaLibraryPermissionsAsync: async ()=>({status:"granted"}), requestCameraPermissionsAsync: async ()=>({status:"granted"}), launchImageLibraryAsync: async ()=>({canceled:true}), launchCameraAsync: async ()=>({canceled:true}) }));
 vi.mock("expo-document-picker", () => ({ getDocumentAsync: async ()=>({canceled:true}) }));
 vi.mock("expo-constants", () => ({ default:{expoConfig:{extra:{storeApiUrl:"https://api.test"}}} }));

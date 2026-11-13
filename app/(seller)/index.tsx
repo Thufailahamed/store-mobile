@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Image } from "expo-image";
+import * as WebBrowser from "expo-web-browser";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,11 +33,15 @@ import {
   getSellerNotifications,
   getSellerPayoutSettings,
   getSellerStore,
+  peekSellerSnapshot,
+  SELLER_CACHE_KEYS,
+  invalidateSellerCache,
 } from "@/lib/api";
 import { formatNotificationBody, isNotificationUnread } from "@/lib/notifications/seller-inbox";
-import { formatOrderStatusLabel } from "@/lib/orders/seller-list";
+import { formatOrderStatusLabel, isNewOrder } from "@/lib/orders/seller-list";
 import { getSellerAccessState } from "@/lib/seller-access";
 import { useAuth } from "@/lib/supabase/auth";
+import { SITE_ORIGIN } from "@/lib/legal/documents";
 import { SELLER_DASHBOARD_ACTIONS } from "@/lib/seller/dashboard-actions";
 import { orderStatusTone } from "@/lib/seller/status-tones";
 import { fontFamilies } from "@/lib/theme/fonts";
@@ -45,6 +49,7 @@ import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { formatPrice, pluralize } from "@/lib/utils";
 import type { Notification, Order, Store } from "@/lib/types";
 import { hasPickupAddress, PICKUP_ADDRESS_ROUTE } from "@/lib/seller-pickup-address";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface KPIData {
   totalRevenue: number;
@@ -105,61 +110,136 @@ export default function SellerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creatingStore, setCreatingStore] = useState(false);
-  const [newStoreName, setNewStoreName] = useState("");
+  // Prefill with the shop name given at sign-up (saved in auth metadata).
+  const [newStoreName, setNewStoreName] = useState(() => {
+    const meta = user?.user_metadata as { store_name?: unknown } | undefined;
+    return typeof meta?.store_name === "string" ? meta.store_name : "";
+  });
   const [newStoreSlug, setNewStoreSlug] = useState("");
   const [newStoreDescription, setNewStoreDescription] = useState("");
 
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    const storeRes = await getSellerStore(user.id);
-    if (!storeRes.ok) {
-      setLoadError(storeRes.error);
+  const loadedOnce = useRef(false);
+
+  const fetchData = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!user) return;
+      // First load: paint the last-known dashboard from disk instantly, then
+      // revalidate below without a skeleton.
+      if (!loadedOnce.current) {
+        const snapStore = store ?? (await peekSellerSnapshot<Store | null>(SELLER_CACHE_KEYS.store));
+        if (snapStore) {
+          const [snapKpis, snapNotifs] = await Promise.all([
+            peekSellerSnapshot<KPIData>(SELLER_CACHE_KEYS.kpis(snapStore.id)),
+            peekSellerSnapshot<Notification[]>(SELLER_CACHE_KEYS.notifications(20)),
+          ]);
+          if (snapKpis) {
+            if (!store) setStore(snapStore);
+            setKpis(snapKpis);
+            if (snapNotifs) setNotifications(snapNotifs);
+            loadedOnce.current = true;
+            setLoading(false);
+          }
+        }
+      }
+      if (!opts?.silent && !loadedOnce.current) {
+        setLoading(true);
+      }
+
+      // If store is already in state, fetch all data in parallel
+      const knownStoreId = store?.id;
+      if (knownStoreId) {
+        const [storeRes, kpiRes, notificationRes, payoutRes, docsRes] = await Promise.all([
+          getSellerStore(user.id),
+          getSellerKPIs(knownStoreId),
+          getSellerNotifications(20),
+          getSellerPayoutSettings(knownStoreId),
+          getSellerComplianceDocuments(knownStoreId),
+        ]);
+
+        if (storeRes.ok && storeRes.data) {
+          setStore(storeRes.data);
+        }
+        setLoadError(null);
+
+        const currentStore = storeRes.ok && storeRes.data ? storeRes.data : store;
+        const access = getSellerAccessState(
+          currentStore as Store & Record<string, unknown>,
+          payoutRes.ok ? payoutRes.data : null,
+          docsRes.ok ? docsRes.data : null,
+        );
+
+        if (!access.canAccessSellerTools) {
+          setAccessBlocked(access.lockReason);
+          setKpis(null);
+          setNotifications([]);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+
+        setAccessBlocked(null);
+        if (kpiRes.ok && kpiRes.data) setKpis(kpiRes.data);
+        if (notificationRes.ok && notificationRes.data) setNotifications(notificationRes.data);
+        if (!kpiRes.ok && !notificationRes.ok) setLoadError(kpiRes.error);
+        loadedOnce.current = true;
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // Cold load: fetch store first, then all dashboard metrics in parallel
+      const storeRes = await getSellerStore(user.id);
+      if (!storeRes.ok) {
+        setLoadError(storeRes.error);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      setLoadError(null);
+      if (!storeRes.data) {
+        setStore(null);
+        setKpis(null);
+        setNotifications([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      setStore(storeRes.data);
+      const storeId = storeRes.data.id;
+      const [kpiRes, notificationRes, payoutRes, docsRes] = await Promise.all([
+        getSellerKPIs(storeId),
+        getSellerNotifications(20),
+        getSellerPayoutSettings(storeId),
+        getSellerComplianceDocuments(storeId),
+      ]);
+
+      const access = getSellerAccessState(
+        storeRes.data as Store & Record<string, unknown>,
+        payoutRes.ok ? payoutRes.data : null,
+        docsRes.ok ? docsRes.data : null,
+      );
+
+      if (!access.canAccessSellerTools) {
+        setAccessBlocked(access.lockReason);
+        setKpis(null);
+        setNotifications([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      setAccessBlocked(null);
+      if (kpiRes.ok && kpiRes.data) setKpis(kpiRes.data);
+      if (notificationRes.ok && notificationRes.data) setNotifications(notificationRes.data);
+      if (!kpiRes.ok && !notificationRes.ok) setLoadError(kpiRes.error);
+      loadedOnce.current = true;
       setLoading(false);
       setRefreshing(false);
-      return;
-    }
-
-    setLoadError(null);
-    if (!storeRes.data) {
-      setStore(null);
-      setKpis(null);
-      setNotifications([]);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    setStore(storeRes.data);
-    const [payoutRes, docsRes] = await Promise.all([
-      getSellerPayoutSettings(storeRes.data.id),
-      getSellerComplianceDocuments(storeRes.data.id),
-    ]);
-    const access = getSellerAccessState(
-      storeRes.data as Store & Record<string, unknown>,
-      payoutRes.ok ? payoutRes.data : null,
-      docsRes.ok ? docsRes.data : null,
-    );
-
-    if (!access.canAccessSellerTools) {
-      setAccessBlocked(access.lockReason);
-      setKpis(null);
-      setNotifications([]);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    setAccessBlocked(null);
-    const [kpiRes, notificationRes] = await Promise.all([
-      getSellerKPIs(storeRes.data.id),
-      getSellerNotifications(20),
-    ]);
-    setKpis(kpiRes.ok ? kpiRes.data : null);
-    setNotifications(notificationRes.ok ? notificationRes.data : []);
-    if (!kpiRes.ok && !notificationRes.ok) setLoadError(kpiRes.error);
-    setLoading(false);
-    setRefreshing(false);
-  }, [user]);
+    },
+    [user, store],
+  );
 
   useEffect(() => {
     void fetchData();
@@ -167,21 +247,25 @@ export default function SellerDashboard() {
 
   const activeStoreId = store?.id;
 
+  // Returning to the screen uses stale-while-revalidate without wiping cache
+  // so tab switching is instant (0ms delay).
   useFocusEffect(
     useCallback(() => {
-      if (activeStoreId) void fetchData();
+      if (!activeStoreId || !loadedOnce.current) return;
+      void fetchData({ silent: true });
     }, [activeStoreId, fetchData]),
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    void fetchData();
+    invalidateSellerCache();
+    void fetchData({ silent: true });
   }, [fetchData]);
 
   const handleCreateStore = async () => {
     if (!user) return;
     if (!newStoreName.trim()) {
-      Alert.alert("Store name required", "Enter a name for your store to continue.");
+      themedAlert("Store name required", "Enter a name for your store to continue.");
       return;
     }
     setCreatingStore(true);
@@ -196,7 +280,7 @@ export default function SellerDashboard() {
       void fetchData();
       return;
     }
-    Alert.alert("Could not create store", result.error, [
+    themedAlert("Could not create store", result.error, [
       { text: "Try again", onPress: () => void handleCreateStore() },
       { text: "Cancel", style: "cancel" },
     ]);
@@ -205,7 +289,7 @@ export default function SellerDashboard() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+        <StatusBar barStyle="dark-content" />
         <View style={[styles.loadingHeader, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
           <View style={styles.rowBetween}>
             <Skeleton width={152} height={18} />
@@ -319,14 +403,19 @@ export default function SellerDashboard() {
 
   const analyticsReady = kpis?.analyticsReady === true;
   const inventoryReady = kpis?.inventoryReady === true;
-  const pendingOrders = kpis?.pendingReady ? kpis.pendingOrders : null;
-  const returnsCount = kpis?.returnsReady ? kpis.returnsCount : null;
+  const pendingOrders = kpis ? (kpis.pendingOrders ?? 0) : null;
+  const newOrdersCount = pendingOrders ?? 0;
+  const latestNewOrder =
+    kpis?.recentOrders && kpis.recentOrders.length > 0
+      ? kpis.recentOrders.find((o) => isNewOrder(o))
+      : undefined;
+  const returnsCount = kpis ? (kpis.returnsCount ?? 0) : null;
   const lowStockCount = inventoryReady ? kpis.lowStockVariants : null;
   const outOfStockCount = inventoryReady ? kpis.outOfStockVariants : null;
   const inventoryIssues = (lowStockCount ?? 0) + (outOfStockCount ?? 0);
   const totalRevenue = analyticsReady ? kpis.totalRevenue : null;
   const totalOrders = analyticsReady ? kpis.totalOrders : null;
-  const totalProducts = kpis?.productsReady ? kpis.totalProducts : null;
+  const totalProducts = kpis ? (kpis.totalProducts ?? 0) : null;
   const unreadCount = notifications.filter(isNotificationUnread).length;
   const storeName = store.name || "Your store";
   const monogram = storeName[0]?.toUpperCase() || "S";
@@ -346,7 +435,7 @@ export default function SellerDashboard() {
   const todayLabel = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const pickupMissing = !hasPickupAddress(store);
   const openTaskCount =
-    [pendingOrders, inventoryIssues, returnsCount].filter((value) => (value ?? 0) > 0).length + (pickupMissing ? 1 : 0);
+    [inventoryIssues, returnsCount].filter((value) => (value ?? 0) > 0).length + (pickupMissing ? 1 : 0);
   const revenueParts = splitCurrency(formatCompactPrice(totalRevenue));
 
   const tasks = [
@@ -365,17 +454,6 @@ export default function SellerDashboard() {
           route: PICKUP_ADDRESS_ROUTE,
         }]
       : []),
-    {
-      key: "orders",
-      icon: "bag-check-outline" as const,
-      label: "Orders",
-      open: (pendingOrders ?? 0) > 0,
-      unavailable: pendingOrders == null,
-      title: `${pendingOrders ?? 0} ${pluralize(pendingOrders ?? 0, "order")} to process`,
-      subtitle: "Confirm and prepare fulfilment",
-      action: "Process",
-      route: "/(seller)/orders",
-    },
     {
       key: "stock",
       icon: "cube-outline" as const,
@@ -409,7 +487,7 @@ export default function SellerDashboard() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+      <StatusBar barStyle="dark-content" />
       <SellerGlow height={360} />
       <ScrollView
         style={styles.scroller}
@@ -434,7 +512,13 @@ export default function SellerDashboard() {
                   <Text style={styles.monogramText}>{monogram}</Text>
                 </View>
               )}
-              <View style={[styles.presenceDot, !store.is_online && styles.presenceDotOff]} />
+              <View
+                style={[
+                  styles.presenceDot,
+                  (store.is_suspended || (store.status !== "approved" && store.status !== "active")) &&
+                    styles.presenceDotOff,
+                ]}
+              />
             </View>
             <View style={styles.storeIdentityText}>
               <View style={styles.eyebrowRow}>
@@ -460,14 +544,6 @@ export default function SellerDashboard() {
             ) : null}
           </TouchableOpacity>
         </View>
-
-        {/* Store type */}
-        {store.is_online ? (
-          <View style={styles.liveChip}>
-            <Ionicons name="globe-outline" size={13} color={INK} />
-            <Text style={styles.liveChipText}>Online-only store</Text>
-          </View>
-        ) : null}
 
         {/* Revenue hero */}
         <TouchableOpacity
@@ -564,7 +640,13 @@ export default function SellerDashboard() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.viewStoreButton}
-            onPress={() => router.push(`/stores/${store.slug || store.id}` as any)}
+            onPress={() => {
+              // The public web storefront, in an in-app browser sheet: its
+              // Close/Done button returns straight to this dashboard.
+              void WebBrowser.openBrowserAsync(`${SITE_ORIGIN}/stores/${store.slug || store.id}`).catch(() => {
+                themedAlert("Couldn't open store", "Try again in a moment.");
+              });
+            }}
             activeOpacity={0.86}
             accessibilityRole="button"
           >
@@ -572,6 +654,47 @@ export default function SellerDashboard() {
             <Text style={styles.viewStoreText}>View store</Text>
           </TouchableOpacity>
         </View>
+
+        {/* New orders */}
+        <TouchableOpacity
+          style={[styles.newOrdersCard, newOrdersCount > 0 && styles.newOrdersCardActive]}
+          onPress={() => router.push("/(seller)/orders" as any)}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel={newOrdersCount > 0 ? `${newOrdersCount} new orders to process` : "No new orders to process"}
+        >
+          <View style={[styles.newOrdersIcon, newOrdersCount > 0 && styles.newOrdersIconActive]}>
+            <Ionicons
+              name={newOrdersCount > 0 ? "notifications-outline" : "checkmark-circle-outline"}
+              size={22}
+              color={newOrdersCount > 0 ? "#FFFFFF" : INK}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.newOrdersTitle}>
+              {pendingOrders == null
+                ? "Checking for new orders…"
+                : newOrdersCount > 0
+                  ? `${newOrdersCount} new ${pluralize(newOrdersCount, "order")}`
+                  : "No new orders to process"}
+            </Text>
+            <Text style={styles.newOrdersSub} numberOfLines={1}>
+              {pendingOrders == null
+                ? "Pull down to refresh"
+                : newOrdersCount > 0
+                  ? latestNewOrder
+                    ? `Latest ${latestNewOrder.order_number ?? "order"} · ${formatPrice(latestNewOrder.total ?? 0)}`
+                    : "Tap to review and prepare them"
+                  : "New orders will show up here"}
+            </Text>
+          </View>
+          {newOrdersCount > 0 ? (
+            <View style={styles.newOrdersBadge}>
+              <Text style={styles.newOrdersBadgeText}>{newOrdersCount}</Text>
+            </View>
+          ) : null}
+          <Ionicons name="chevron-forward" size={18} color={INK} />
+        </TouchableOpacity>
 
         {/* Today */}
         <View style={styles.section}>
@@ -939,21 +1062,6 @@ const styles = StyleSheet.create({
   },
   notificationBadgeText: { color: "#FFFFFF", fontFamily: fontFamilies.sans.bold, fontSize: 9.5 },
 
-  // Status
-  liveChip: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    backgroundColor: "#FFFFFF",
-    borderRadius: radii.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginTop: 20,
-    ...CARD_SHADOW,
-  },
-  liveChipText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: INK },
-
   // Hero
   hero: {
     marginTop: 16,
@@ -1106,6 +1214,38 @@ const styles = StyleSheet.create({
   viewAllText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: INK },
 
   // Tasks
+  newOrdersCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 14,
+    marginTop: 14,
+    ...CARD_SHADOW,
+  },
+  newOrdersCardActive: { borderWidth: 1.5, borderColor: SELLER_RUST },
+  newOrdersIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(34,43,16,0.07)",
+  },
+  newOrdersIconActive: { backgroundColor: SELLER_RUST },
+  newOrdersTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: INK },
+  newOrdersSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.olive[700], marginTop: 2 },
+  newOrdersBadge: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: SELLER_RUST,
+  },
+  newOrdersBadgeText: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: "#FFFFFF" },
   taskCountPill: {
     flexDirection: "row",
     alignItems: "center",

@@ -6,7 +6,6 @@ import {
   Text,
   TouchableOpacity,
   RefreshControl,
-  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +25,7 @@ import {
 import { LogWearSheet } from "@/components/wardrobe/LogWearSheet";
 import type { WardrobeItem, WardrobeOutfit } from "@/lib/types";
 import { HeaderButton, UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 const OLIVE = "#556b2f";
 const INK = "#16170f";
@@ -125,7 +125,7 @@ export default function WardrobeItemDetailScreen() {
 
   const handleDelete = useCallback(() => {
     if (!item) return;
-    Alert.alert(
+    themedAlert(
       "Delete this item?",
       "This will remove it from your wardrobe. This can't be undone.",
       [

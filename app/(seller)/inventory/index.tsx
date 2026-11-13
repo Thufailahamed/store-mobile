@@ -7,7 +7,6 @@ import {
   TextInput,
   StyleSheet,
   RefreshControl,
-  Alert,
   Share,
   StatusBar,
   ScrollView,
@@ -43,6 +42,7 @@ import {
 } from "@/components/seller/chrome";
 import { HERO, LuxeHero, PressScale } from "@/components/seller/luxe";
 import type { Product, ProductVariant } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const GOLD = SELLER_GOLD;
 const CREAM = SELLER_CREAM;
@@ -267,7 +267,7 @@ export default function SellerInventory() {
     if (breaches.length === 1) {
       const row = breaches[0];
       const available = Math.max(0, newStock - row.reserved);
-      Alert.alert(
+      themedAlert(
         "Held stock exceeds on-hand",
         `${row.reserved} units are held in carts. Setting on-hand to ${newStock} makes ${available} available to shoppers.`,
         [
@@ -283,7 +283,7 @@ export default function SellerInventory() {
       .map((r) => `${r.sku} (${r.reserved} held)`)
       .join("\n");
     const more = breaches.length > 5 ? `\n…and ${breaches.length - 5} more` : "";
-    Alert.alert(
+    themedAlert(
       "Held stock exceeds on-hand",
       `${breaches.length} of the selected variants have ${totalReserved} unit(s) held in carts. Setting on-hand to ${newStock} will make some or all of those carts break:\n\n${preview}${more}`,
       [

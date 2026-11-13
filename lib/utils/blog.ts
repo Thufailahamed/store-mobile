@@ -4,7 +4,7 @@ export function blogAuthorName(author: unknown): string {
     const name = (author as { full_name?: string | null }).full_name;
     if (name) return name;
   }
-  return "LUXE Editorial";
+  return "VESTARA Editorial";
 }
 
 export function blogReadingTime(content?: string | null): number | null {

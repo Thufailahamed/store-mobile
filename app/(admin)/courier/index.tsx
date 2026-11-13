@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { router } from "expo-router";
@@ -18,6 +17,7 @@ import {
 } from "@/lib/api/courier-api";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function AdminCourierIndexScreen() {
   const [providers, setProviders] = useState<CourierProvider[]>([]);
@@ -46,10 +46,10 @@ export default function AdminCourierIndexScreen() {
     const r = await testCourierProvider(id);
     setTestingId(null);
     if (!r.ok) {
-      Alert.alert("Test failed", r.error);
+      themedAlert("Test failed", r.error);
       return;
     }
-    Alert.alert(
+    themedAlert(
       "Provider OK",
       r.data.reachable ? "Reachable." : "Test ping succeeded.",
     );

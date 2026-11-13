@@ -7,7 +7,6 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -19,6 +18,7 @@ import { Button, useToast } from "@/components/ui";
 import { typography, radii } from "@/lib/theme/tokens";
 import { getDriverSelf, updateDriverSelf, type ProfilePatch } from "@/lib/api/driver-profile";
 import type { DriverProfile, DriverType } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const DRIVER_TYPES: { value: DriverType; label: string; sub: string }[] = [
   { value: "pickup", label: "Pickup", sub: "Collect packages from sellers" },
@@ -88,7 +88,7 @@ export default function DriverProfileScreen() {
   };
 
   const confirmSignOut = () => {
-    Alert.alert("Sign out?", "You will stop receiving deliveries until you sign back in.", [
+    themedAlert("Sign out?", "You will stop receiving deliveries until you sign back in.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Sign out",

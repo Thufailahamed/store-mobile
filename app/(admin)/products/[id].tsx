@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, Alert, RefreshControl, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, RefreshControl, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, resolveImageUrl } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
 
 const CREAM = colors.paper.cream;
 const RUST = "#7a2f1a";
@@ -57,25 +58,25 @@ export default function AdminProductDetail() {
     mutationFn: () => approveProduct(id!, "active"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Approve failed", res.error);
+        themedAlert("Approve failed", res.error);
         return;
       }
       qc.invalidateQueries({ queryKey: ["admin-product", id] });
       qc.invalidateQueries({ queryKey: ["cat-products"] });
     },
-    onError: (e) => Alert.alert("Approve failed", e instanceof Error ? e.message : "Try again."),
+    onError: (e) => themedAlert("Approve failed", e instanceof Error ? e.message : "Try again."),
   });
   const reject = useMutation({
     mutationFn: () => approveProduct(id!, "rejected"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Reject failed", res.error);
+        themedAlert("Reject failed", res.error);
         return;
       }
       qc.invalidateQueries({ queryKey: ["admin-product", id] });
       qc.invalidateQueries({ queryKey: ["cat-products"] });
     },
-    onError: (e) => Alert.alert("Reject failed", e instanceof Error ? e.message : "Try again."),
+    onError: (e) => themedAlert("Reject failed", e instanceof Error ? e.message : "Try again."),
   });
 
   if (q.isLoading) {
@@ -295,7 +296,7 @@ export default function AdminProductDetail() {
             style={[styles.actionBtn, styles.actionReject, mutating && styles.actionDisabled]}
             disabled={mutating}
             onPress={() =>
-              Alert.alert("Reject product?", "The seller will see this as rejected.", [
+              themedAlert("Reject product?", "The seller will see this as rejected.", [
                 { text: "Cancel", style: "cancel" },
                 { text: "Reject", style: "destructive", onPress: () => reject.mutate() },
               ])
@@ -309,7 +310,7 @@ export default function AdminProductDetail() {
             style={[styles.actionBtn, styles.actionApprove, mutating && styles.actionDisabled]}
             disabled={mutating}
             onPress={() =>
-              Alert.alert("Approve product?", "This product will go live in the catalogue.", [
+              themedAlert("Approve product?", "This product will go live in the catalogue.", [
                 { text: "Cancel", style: "cancel" },
                 { text: "Approve", onPress: () => approve.mutate() },
               ])

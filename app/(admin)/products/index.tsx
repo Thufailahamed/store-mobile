@@ -358,13 +358,22 @@ export default function AdminProducts() {
             Every boutique&apos;s range in one place — open a store, then any piece for full control.
           </Text>
         </View>
-        <Pressable
-          style={({ pressed }) => [styles.roundBtn, pressed && styles.pressed]}
-          onPress={handleRefresh}
-          accessibilityLabel="Refresh catalogue"
-        >
-          <Ionicons name="refresh-outline" size={18} color={INK} />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Pressable
+            style={({ pressed }) => [styles.roundBtn, { backgroundColor: colors.olive[900] }, pressed && styles.pressed]}
+            onPress={() => router.push((selectedStore ? `/(admin)/products/new?storeId=${selectedStore.id}` : "/(admin)/products/new") as any)}
+            accessibilityLabel="Upload product"
+          >
+            <Ionicons name="add" size={20} color={colors.paper.cream} />
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.roundBtn, pressed && styles.pressed]}
+            onPress={handleRefresh}
+            accessibilityLabel="Refresh catalogue"
+          >
+            <Ionicons name="refresh-outline" size={18} color={INK} />
+          </Pressable>
+        </View>
       </View>
 
       {/* KPI bento */}

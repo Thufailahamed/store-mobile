@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, TextInput, Alert } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { Card, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { useDebounce } from "@/lib/hooks/useDebounce";
+import { themedAlert } from "@/lib/themed-alert";
 
 const STATUS_TABS = ["all", "active", "pending", "draft", "archived"];
 
@@ -118,7 +119,7 @@ export default function BrandProducts() {
                 <Pressable
                   style={styles.deleteBtn}
                   onPress={() => {
-                    Alert.alert("Delete", `Delete "${item.name}"?`, [
+                    themedAlert("Delete", `Delete "${item.name}"?`, [
                       { text: "Cancel", style: "cancel" },
                       { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(item.id) },
                     ]);

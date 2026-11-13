@@ -21,6 +21,7 @@ import {
   getSellerNotifications,
   getSellerPayoutSettings,
   getSellerStore,
+  invalidateSellerCache,
 } from "@/lib/api";
 import { describePayoutProfile } from "@/lib/seller-access";
 import { isNotificationUnread } from "@/lib/notifications/seller-inbox";
@@ -136,8 +137,10 @@ export default function SellerMoreScreen() {
     { key: "alerts", label: "Alerts", hint: unread ? `${unread} unread` : "You're caught up", icon: "notifications-outline", route: "/(seller)/notifications", tone: unread ? "rust" : "ink", badge: unread > 0 ? unread : null },
   ];
 
-  const monogram = (store?.name ?? "S")[0].toUpperCase();
-  const isLive = !!store?.is_online;
+  const monogram = (store?.name || "S").trim().charAt(0).toUpperCase() || "S";
+  const isApproved = store?.status === "approved" || store?.status === "active";
+  // is_online is the store type (online vs physical shop), not open/closed.
+  const isLive = isApproved && !store?.is_suspended;
   const attentionCount = (pendingOrders ?? 0) + (returnsCount ?? 0) + unread;
   const appVersion = Constants.expoConfig?.version;
 
@@ -147,7 +150,17 @@ export default function SellerMoreScreen() {
       <SellerScreenHeader kicker="Workspace" title="More" />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.olive[700]} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              invalidateSellerCache();
+              void load();
+            }}
+            tintColor={colors.olive[700]}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
@@ -175,7 +188,9 @@ export default function SellerMoreScreen() {
                     <View style={styles.heroMetaRow}>
                       <View style={[styles.statusPill, isLive ? styles.statusLive : styles.statusOff]}>
                         <View style={[styles.statusDot, { backgroundColor: isLive ? colors.olive[500] : "rgba(83,94,44,0.35)" }]} />
-                        <Text style={[styles.statusText, { color: isLive ? colors.olive[800] : HERO.mute }]}>{isLive ? "LIVE" : "OFFLINE"}</Text>
+                        <Text style={[styles.statusText, { color: isLive ? colors.olive[800] : HERO.mute }]}>
+                          {store?.is_suspended ? "SUSPENDED" : isLive ? "LIVE" : store?.status === "pending" ? "PENDING" : "OFFLINE"}
+                        </Text>
                       </View>
                       {store?.slug ? <Text style={styles.heroSlug} numberOfLines={1}>@{store.slug}</Text> : null}
                     </View>
@@ -268,11 +283,11 @@ export default function SellerMoreScreen() {
             <View style={styles.listCard}>
               <View style={styles.accountRow}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{(user?.email ?? "?")[0].toUpperCase()}</Text>
+                  <Text style={styles.avatarText}>{(user?.user_metadata?.full_name || user?.email || "?").trim().charAt(0).toUpperCase() || "?"}</Text>
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowLabel}>Signed in</Text>
-                  <Text style={styles.rowSub} numberOfLines={1}>{user?.email ?? "—"}</Text>
+                  <Text style={styles.rowSub} numberOfLines={1}>{user?.email || user?.phone || "—"}</Text>
                 </View>
               </View>
               <Pressable
@@ -286,7 +301,7 @@ export default function SellerMoreScreen() {
               </Pressable>
             </View>
 
-            {appVersion ? <Text style={styles.version}>LUXE SELLER · v{appVersion}</Text> : null}
+            {appVersion ? <Text style={styles.version}>VESTARA SELLER · v{appVersion}</Text> : null}
           </>
         )}
       </ScrollView>

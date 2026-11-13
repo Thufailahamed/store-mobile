@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   ScrollView,
 } from "react-native";
 import { Modal } from "@/components/ui/Modal";
@@ -35,6 +34,7 @@ import {
 import { buildPendingQueueForLeg } from "@/lib/delivery-assignment-queues";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { formatRelative } from "@/lib/utils/delivery-format";
+import { themedAlert } from "@/lib/themed-alert";
 
 type Leg = "pickup" | "last_mile" | "delivery";
 
@@ -162,14 +162,14 @@ export default function CompanyAssignmentsScreen() {
     if (assigning) return; // double-tap guard
     const ids = Array.from(selected);
     if (ids.length === 0) {
-      Alert.alert("Select orders", "Choose at least one package to assign.");
+      themedAlert("Select orders", "Choose at least one package to assign.");
       return;
     }
     setAssigning(true);
     try {
       const res = await autoAssignOrders(ids, leg, policy);
       if (!res.ok) {
-        Alert.alert("Assignment failed", res.error);
+        themedAlert("Assignment failed", res.error);
         return;
       }
       const assigned = (res.data.assignments as unknown[] | undefined)?.length ?? 0;
@@ -183,7 +183,7 @@ export default function CompanyAssignmentsScreen() {
               .join("\n")}`
           : "";
       const scoringLine = scoring ? `\nScoring: ${scoring.method} (${scoring.leg})` : "";
-      Alert.alert("Done", `${assigned} assigned · ${skipped.length} skipped${scoringLine}${skipDetail}`);
+      themedAlert("Done", `${assigned} assigned · ${skipped.length} skipped${scoringLine}${skipDetail}`);
       setSelected(new Set());
       load();
     } finally {
@@ -204,7 +204,7 @@ export default function CompanyAssignmentsScreen() {
     try {
       const res = await getAssignmentCandidates(order.id, leg);
       if (!res.ok) {
-        Alert.alert("Could not load drivers", res.error);
+        themedAlert("Could not load drivers", res.error);
         setManualOrder(null);
         return;
       }
@@ -224,10 +224,10 @@ export default function CompanyAssignmentsScreen() {
         warehouse_id: manualOrder.warehouse_id,
       });
       if (!res.ok) {
-        Alert.alert("Assignment failed", res.error);
+        themedAlert("Assignment failed", res.error);
         return;
       }
-      Alert.alert("Assigned", `Order #${manualOrder.order_number} assigned.`);
+      themedAlert("Assigned", `Order #${manualOrder.order_number} assigned.`);
       setManualOrder(null);
       load();
     } finally {
@@ -239,7 +239,7 @@ export default function CompanyAssignmentsScreen() {
     if (!manualOrder || manualAssigning) return;
     // A mis-tap on this dense candidate list would otherwise assign the
     // wrong driver to a real delivery with no undo — confirm first.
-    Alert.alert(
+    themedAlert(
       "Assign driver?",
       `Assign ${driverName} to order #${manualOrder.order_number} (${leg.replace(/_/g, " ")})?`,
       [

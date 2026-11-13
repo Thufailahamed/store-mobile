@@ -1,5 +1,5 @@
 /**
- * LUXE Editorial Olive — Design Tokens
+ * VESTARA Editorial Olive — Design Tokens
  * Translated from web's CSS variables + Tailwind config.
  */
 

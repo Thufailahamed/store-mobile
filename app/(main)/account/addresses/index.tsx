@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,6 +33,7 @@ import type { Address } from "@/lib/types";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 const TYPE_META: Record<AddressType, { label: string }> = {
   home: { label: "Home" },
@@ -183,7 +183,7 @@ export default function AddressesScreen() {
   };
 
   const handleDelete = (a: Address) => {
-    Alert.alert(
+    themedAlert(
       "Remove address",
       "This will remove the address from your saved list.",
       [

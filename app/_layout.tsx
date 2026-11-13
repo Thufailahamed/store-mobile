@@ -3,11 +3,12 @@ import "@/lib/theme/setup-android-text";
 import { initMobileSentry } from "@/lib/sentry";
 // Activate Sentry before any other module runs. No-op when DSN unset.
 initMobileSentry();
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Appearance } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { CascadeLaunch } from "@/components/launch/CascadeLaunch";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -34,17 +35,24 @@ import { useAuth, AuthProvider } from "@/lib/supabase/auth";
 import { useSyncStores, useCartRemoteSync, useWishlistRemoteSync } from "@/lib/hooks";
 import { ToastProvider, useToast } from "@/components/ui";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ThemedAlertHost } from "@/components/ui/ThemedAlertHost";
 import { CartDrawer } from "@/components/cart/CartDrawer";
+import { AppUpdateGate } from "@/components/app-update/AppUpdateGate";
 import { colors } from "@/lib/theme/tokens";
+import * as Notifications from "expo-notifications";
 import {
   registerForPushNotifications,
   addNotificationResponseListener,
+  setupNotificationPresentation,
+  firstPartyPath,
 } from "@/lib/notifications";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
+
+/** Notification responses already routed this process (cold-start replay dedupe). */
+const handledNotifResponses = new Set<string>();
 import { resolveDeliveryHomeRoute } from "@/lib/delivery-company-routing";
 import { completeAuthCallback } from "@/lib/supabase/oauth";
 import { isAllowedRoute, isUuid, isValidToken, sanitizeSlug, safeRoutePush, mapWebPathToMobileRoute } from "@/lib/utils/safe-route";
-import { BiometricGate } from "@/components/auth/BiometricGate";
 import { useAuthRedirectHeld } from "@/lib/auth-redirect-hold";
 
 SplashScreen.preventAutoHideAsync();
@@ -158,12 +166,21 @@ function RootLayoutNav() {
     }
   }, [session, user?.id, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete, redirectHeld]);
 
-  // Hide splash once onboarding + auth bootstrap finish. Role lookup continues in background.
+  // The animated Vestara launch screen covers the app from the first JS
+  // frame, so the native splash can go straight away; the overlay itself
+  // waits for onboarding + auth bootstrap before fading out.
+  const [showLaunch, setShowLaunch] = useState(true);
+  const launchReady = onboardingChecked && !loading;
+  const finishLaunch = useCallback(() => setShowLaunch(false), []);
   useEffect(() => {
-    if (onboardingChecked && !loading) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [loading, onboardingChecked]);
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+  // Never trap users behind the intro if auth/storage hangs.
+  const [launchTimedOut, setLaunchTimedOut] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLaunchTimedOut(true), 8000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Never leave users stuck on the native splash if auth/storage is slow.
   useEffect(() => {
@@ -186,8 +203,19 @@ function RootLayoutNav() {
 
   // Notification tap → deep link. Auth-gated: tapping a notif when signed
   // out redirects to login rather than landing on a screen with no session.
+  // Android channels + rich-push button categories. Independent of
+  // permission, so older tokens also get buttons once the app updates.
   useEffect(() => {
-    notifListenerRef.current = addNotificationResponseListener(async (response) => {
+    void setupNotificationPresentation();
+  }, []);
+
+  useEffect(() => {
+    const handleResponse = async (response: Notifications.NotificationResponse) => {
+      // Each tap is handled once — the cold-start replay below and the
+      // listener can both see the same response.
+      const responseKey = `${response.notification.request.identifier}:${response.actionIdentifier}`;
+      if (handledNotifResponses.has(responseKey)) return;
+      handledNotifResponses.add(responseKey);
       const data = response.notification.request.content.data as
         | { screen?: string; order_id?: string; link?: string; url?: string }
         | undefined;
@@ -196,8 +224,13 @@ function RootLayoutNav() {
         return;
       }
 
+      // 0. First-party absolute URL → in-app route (rich push "Shop Now").
+      const linkCandidate = data?.url || data?.link;
+      const inAppPath =
+        typeof linkCandidate === "string" ? firstPartyPath(linkCandidate) : null;
+      const rawUrl = inAppPath ?? linkCandidate;
+
       // 1. External URL (e.g. Courier tracking URL)
-      const rawUrl = data?.url || data?.link;
       if (rawUrl && typeof rawUrl === "string" && /^https?:\/\//i.test(rawUrl)) {
         try {
           const supported = await Linking.canOpenURL(rawUrl);
@@ -265,7 +298,25 @@ function RootLayoutNav() {
             : `/(main)/account/orders/${orderId}`;
         safeRoutePush(router, target, { id: orderId });
       }
+    };
+
+    notifListenerRef.current = addNotificationResponseListener((response) => {
+      void handleResponse(response);
     });
+
+    // Cold start: a tap that launched the app from killed state may land
+    // before the listener exists. Replay it once the session is known.
+    if (user?.id) {
+      Notifications.getLastNotificationResponseAsync()
+        .then((last) => {
+          if (!last) return;
+          // Clear so a later relaunch doesn't replay an old tap.
+          Notifications.clearLastNotificationResponse();
+          void handleResponse(last);
+        })
+        .catch(() => {});
+    }
+
     return () => {
       notifListenerRef.current?.remove();
     };
@@ -289,7 +340,7 @@ function RootLayoutNav() {
         return;
       }
 
-      // OAuth / magic-link callback: luxe://auth/callback?code=... or #access_token=...
+      // OAuth / magic-link callback: vestara://auth/callback?code=... or #access_token=...
       if (parsed.hostname === "auth" && (parsed.path === "/callback" || parsed.path === "callback")) {
         void completeAuthCallback(url).then(({ error }) => {
           if (error) console.warn("[deeplink] auth callback failed:", error);
@@ -306,6 +357,18 @@ function RootLayoutNav() {
         if (role) qs.set("role", role);
         if (code) qs.set("code", code);
         safeRoutePush(router, `/(auth)/register${qs.toString() ? `?${qs.toString()}` : ""}`);
+        return;
+      }
+
+      // Shared web product link (Android App Links / iOS Universal Links):
+      // https://synapstore.shop/products/<slug>?src=app — public catalogue.
+      if (
+        (parsed.scheme === "https" || parsed.scheme === "http") &&
+        /(^|\.)synapstore\.shop$/i.test(parsed.hostname ?? "")
+      ) {
+        const m = (parsed.path ?? "").match(/^\/?products\/([^/?#]+)/);
+        const slug = m ? sanitizeSlug(m[1]) : null;
+        if (slug) safeRoutePush(router, `/(main)/products/${slug}`);
         return;
       }
 
@@ -376,14 +439,16 @@ function RootLayoutNav() {
 
   return (
     <ErrorBoundary>
-      <BiometricGate>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.light.background },
-          }}
-        />
-      </BiometricGate>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.light.background },
+        }}
+      />
+      {showLaunch ? (
+        <CascadeLaunch ready={launchReady || launchTimedOut} onFinish={finishLaunch} />
+      ) : null}
+      <AppUpdateGate suspended={showLaunch} />
     </ErrorBoundary>
   );
 }
@@ -424,6 +489,7 @@ export default function RootLayout() {
               <StatusBar style="dark" />
               <RootLayoutNav />
               <CartDrawer />
+              <ThemedAlertHost />
             </ToastProvider>
           </AuthProvider>
         </QueryClientProvider>

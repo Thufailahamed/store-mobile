@@ -29,7 +29,7 @@ const LINKS = [
   },
 ];
 
-/** Shared frame for the LUXE AI tools: Orders-style header + glow, a tab
+/** Shared frame for the VESTARA AI tools: Orders-style header + glow, a tab
  *  strip of chips between the tools, and the AI disclaimer footer. */
 export function AiPageShell({
   title,

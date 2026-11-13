@@ -79,7 +79,7 @@ export default function BlogScreen() {
     <View style={[styles.masthead, { paddingTop: barHeight + spacing[2] }]}>
       <View style={styles.issueRow}>
         <View style={styles.issueRule} />
-        <Text style={styles.issueText}>THE LUXE JOURNAL  ·  {issueLabel}</Text>
+        <Text style={styles.issueText}>THE VESTARA JOURNAL  ·  {issueLabel}</Text>
         <View style={styles.issueRule} />
       </View>
       <Text style={styles.title}>Editorial</Text>

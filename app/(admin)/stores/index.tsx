@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, Alert, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -11,6 +11,7 @@ import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { resolveImageUrl } from "@/lib/utils";
 import { AdminMasthead, StatBand, SearchField, ChipRail, premiumCard, GOLD, CREAM, RUST } from "@/components/admin/premium-kit";
+import { themedAlert } from "@/lib/themed-alert";
 
 const STATUS_TABS = ["all", "pending", "approved", "suspended", "rejected"] as const;
 type StatusTab = (typeof STATUS_TABS)[number];
@@ -62,7 +63,7 @@ export default function AdminStores() {
       approveStore(storeId, newStatus),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Action failed", res.error);
+        themedAlert("Action failed", res.error);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["admin-stores"] });
@@ -76,7 +77,7 @@ export default function AdminStores() {
   const featured = stores.filter((s) => s.is_featured).length;
 
   const decide = (s: StoreRow, newStatus: "approved" | "rejected") =>
-    Alert.alert(
+    themedAlert(
       newStatus === "approved" ? "Approve atelier?" : "Reject atelier?",
       newStatus === "approved"
         ? `“${s.name}” will go live on the marketplace.`
@@ -112,7 +113,7 @@ export default function AdminStores() {
               eyebrow="People"
               title="Atelier"
               italic="Registry"
-              subtitle="Every seller storefront on LUXE. Approve newcomers, keep the roster sharp."
+              subtitle="Every seller storefront on VESTARA. Approve newcomers, keep the roster sharp."
             />
             <StatBand
               items={[

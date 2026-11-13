@@ -203,7 +203,7 @@ export default function StoresDirectoryScreen() {
             {item.name}
           </Display>
           <Body size="sm" style={styles.featuredDesc} numberOfLines={1}>
-            {item.description || "An independent LUXE atelier"}
+            {item.description || "An independent VESTARA atelier"}
           </Body>
           <View style={styles.featuredFoot}>
             <Label style={styles.featuredMeta}>
@@ -235,7 +235,7 @@ export default function StoresDirectoryScreen() {
             </Display>
           </Display>
           <Body muted size="sm" style={styles.subtitle}>
-            Independent labels and boutiques from across the island, curated by LUXE.
+            Independent labels and boutiques from across the island, curated by VESTARA.
           </Body>
         </View>
 

@@ -15,7 +15,7 @@
  *       tracking pages surface external links + provider name.
  *     - When `false` (default), the new path is dormant.
  *
- * LUXE roll-out flags (mirror NEXT_PUBLIC_* from the web store):
+ * VESTARA roll-out flags (mirror NEXT_PUBLIC_* from the web store):
  *
  *   EXPO_PUBLIC_LUXE_BRAND_WITHDRAWAL      — brand bank/PayPal withdraw UI (0310)
  *   EXPO_PUBLIC_LUXE_ANALYTICS_SLICE_B     — marketing analytics tabs (Slice B)
@@ -25,7 +25,7 @@
  *   EXPO_PUBLIC_BRAND_PORTAL               — brand-owner portal (default OFF;
  *                                            brands are admin-created)
  *
- * Implemented LUXE surfaces default ON so a local Expo build shows working
+ * Implemented VESTARA surfaces default ON so a local Expo build shows working
  * storefront / AI studio / payouts / withdraw UI. Set EXPO_PUBLIC_*=false to
  * hide them when a caller wires FeatureOffScreen. Courier flags stay off.
  */
@@ -47,7 +47,7 @@ export const MOBILE_FEATURE_FLAGS = {
     "EXPO_PUBLIC_EXTERNAL_COURIER_ENABLED",
     false,
   ),
-  // Implemented LUXE surfaces default ON. Courier migration flags stay off.
+  // Implemented VESTARA surfaces default ON. Courier migration flags stay off.
   luxeBrandWithdrawal: readBool("EXPO_PUBLIC_LUXE_BRAND_WITHDRAWAL", true),
   luxeAnalyticsSliceB: readBool("EXPO_PUBLIC_LUXE_ANALYTICS_SLICE_B", true),
   luxeAiStudio: readBool("EXPO_PUBLIC_LUXE_AI_STUDIO", true),

@@ -66,7 +66,7 @@ const TONES: Tone[] = [
     fallback: [colors.olive[200], colors.olive[400]],
   },
   {
-    tier: "Luxe",
+    tier: "Vestara",
     bg: [colors.olive[800], colors.olive[950]],
     ink: colors.paper.cream,
     sub: colors.accent2.ochre,
@@ -185,7 +185,7 @@ function PriceTile({
 }
 
 /**
- * Shop by price — a 2×2 scale of budget bands (Essentials → Luxe). Each
+ * Shop by price — a 2×2 scale of budget bands (Essentials → Vestara). Each
  * tile frames the band's best-seller, shows the live piece count, and
  * deep-links to the grid scoped to exactly that band (server-side, max
  * exclusive). Empty bands are dropped; `count === -1` = counts unavailable.

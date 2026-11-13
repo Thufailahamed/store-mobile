@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Alert, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -12,6 +12,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { getAdminBrandById, approveBrand } from "@/lib/api";
 import { formatPrice, resolveImageUrl } from "@/lib/utils";
 import { INK, LIME, HAIRLINE, StatusPill, Empty, statusTone } from "@/components/admin/catalog-kit";
+import { themedAlert } from "@/lib/themed-alert";
 
 const CREAM = colors.paper.cream;
 const RUST = "#7a2f1a";
@@ -69,23 +70,23 @@ export default function BrandDetail() {
     mutationFn: () => approveBrand(String(id), "approved"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Approve failed", res.error);
+        themedAlert("Approve failed", res.error);
         return;
       }
       invalidate();
     },
-    onError: (e) => Alert.alert("Approve failed", e instanceof Error ? e.message : "Try again."),
+    onError: (e) => themedAlert("Approve failed", e instanceof Error ? e.message : "Try again."),
   });
   const reject = useMutation({
     mutationFn: () => approveBrand(String(id), "rejected"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Reject failed", res.error);
+        themedAlert("Reject failed", res.error);
         return;
       }
       invalidate();
     },
-    onError: (e) => Alert.alert("Reject failed", e instanceof Error ? e.message : "Try again."),
+    onError: (e) => themedAlert("Reject failed", e instanceof Error ? e.message : "Try again."),
   });
 
   if (q.isLoading) {
@@ -327,7 +328,7 @@ export default function BrandDetail() {
             style={[styles.actionBtn, styles.actionReject, mutating && styles.actionDisabled]}
             disabled={mutating}
             onPress={() =>
-              Alert.alert("Reject brand?", `${b.name} will be marked as rejected.`, [
+              themedAlert("Reject brand?", `${b.name} will be marked as rejected.`, [
                 { text: "Cancel", style: "cancel" },
                 { text: "Reject", style: "destructive", onPress: () => reject.mutate() },
               ])
@@ -341,7 +342,7 @@ export default function BrandDetail() {
             style={[styles.actionBtn, styles.actionApprove, mutating && styles.actionDisabled]}
             disabled={mutating}
             onPress={() =>
-              Alert.alert("Approve brand?", `${b.name} will go live on the storefront.`, [
+              themedAlert("Approve brand?", `${b.name} will go live on the storefront.`, [
                 { text: "Cancel", style: "cancel" },
                 { text: "Approve", onPress: () => approve.mutate() },
               ])

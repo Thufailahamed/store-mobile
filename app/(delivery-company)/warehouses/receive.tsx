@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -23,6 +22,7 @@ import { useAuth } from "@/lib/supabase/auth";
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { canReceiveAtWarehouse } from "@/lib/warehouse-routing";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 function warehouseCapacityLabel(w: DcWarehouse): string {
   const inv = w.inventory_count ?? 0;
@@ -77,13 +77,13 @@ export default function WarehouseReceiveScreen() {
     try {
       const res = await receiveAtWarehouse(whId, orderId);
       if (!res.ok) {
-        Alert.alert("Receive failed", res.error);
+        themedAlert("Receive failed", res.error);
         return;
       }
       const lastMileNote = res.data.last_mile_error
         ? `\n\nAuto last-mile: ${res.data.last_mile_error.replace(/_/g, " ")}`
         : "";
-      Alert.alert("Received", `Package recorded at hub (#${orderNumber}).${lastMileNote}`, [
+      themedAlert("Received", `Package recorded at hub (#${orderNumber}).${lastMileNote}`, [
         { text: "Receive another", onPress: () => setOrderRef("") },
         { text: "Done", onPress: () => router.back() },
       ]);
@@ -95,25 +95,25 @@ export default function WarehouseReceiveScreen() {
   const submit = async () => {
     if (submitting) return;
     if (!warehouseId) {
-      Alert.alert("Select hub", "Choose a warehouse to receive into.");
+      themedAlert("Select hub", "Choose a warehouse to receive into.");
       return;
     }
     const trimmed = orderRef.trim();
     if (!trimmed) {
-      Alert.alert("Order required", "Enter an order number or ID to receive.");
+      themedAlert("Order required", "Enter an order number or ID to receive.");
       return;
     }
     setSubmitting(true);
     const lookup = await lookupDeliveryCompanyOrder(trimmed).finally(() => setSubmitting(false));
     if (!lookup.ok) {
-      Alert.alert("Order lookup failed", lookup.error);
+      themedAlert("Order lookup failed", lookup.error);
       return;
     }
     // Confirm before committing — the dispatcher should see which real order
     // the reference resolved to (a typo'd order ref can still match a valid,
     // but wrong, order) before the receive is recorded.
     const warehouseName = selectedWarehouse?.name ?? "the selected hub";
-    Alert.alert(
+    themedAlert(
       "Confirm receive",
       `Order #${lookup.data.order_number}\nStatus: ${lookup.data.status.replace(/_/g, " ")}\nHub: ${warehouseName}\n\nReceive this package?`,
       [

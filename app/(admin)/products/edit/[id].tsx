@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -21,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui";
-import { getAdminBrands, getAdminCategories } from "@/lib/api";
+import { getAdminBrands, getAdminCategories, updateAdminStock } from "@/lib/api";
 import {
   getAdminCatalogProductBackend,
   updateAdminCatalogProductBackend,
@@ -38,6 +37,7 @@ import {
   productEditPatch,
   type ProductEditForm as Form,
 } from "@/lib/admin/product-edit";
+import { themedAlert } from "@/lib/themed-alert";
 
 const INK = colors.olive[950];
 const RUST = "#7a2f1a";
@@ -88,6 +88,40 @@ export default function AdminProductEdit() {
   const dirty = useMemo(() => (form && initial ? productEditPatch(form, initial) : {}), [form, initial]);
   const dirtyCount = Object.keys(dirty).length;
 
+  const initialStock = useMemo(() => {
+    const p = productQ.data as any;
+    if (!p) return 0;
+    if (p.variants && p.variants.length > 0) {
+      return p.variants.reduce((n: number, v: any) => n + (v.inventory?.quantity ?? v.quantity ?? v.stock ?? 0), 0);
+    }
+    return p.stock ?? p.inventory_quantity ?? 0;
+  }, [productQ.data]);
+
+  const [stockDraft, setStockDraft] = useState("");
+  const [stockChanged, setStockChanged] = useState(false);
+
+  useEffect(() => {
+    if (productQ.data) {
+      setStockDraft(String(initialStock));
+      setStockChanged(false);
+    }
+  }, [productQ.data, initialStock]);
+
+  const updateStockM = useMutation({
+    mutationFn: async (qty: number) => {
+      const r = await updateAdminStock(id!, qty);
+      if (!r.ok) throw new Error(r.error);
+    },
+    onSuccess: () => {
+      setStockChanged(false);
+      void qc.invalidateQueries({ queryKey: ["admin-catalog-product", id] });
+      void qc.invalidateQueries({ queryKey: ["admin-product", id] });
+      void qc.invalidateQueries({ queryKey: ["cat-products"] });
+      themedAlert("Stock Updated", `Stock set to ${stockDraft} units.`);
+    },
+    onError: (e) => themedAlert("Stock update failed", e instanceof Error ? e.message : "Try again."),
+  });
+
   const categoryOptions = useMemo(() => {
     const list = categoriesQ.data ?? [];
     const byId = new Map(list.map((c) => [c.id, c]));
@@ -105,9 +139,18 @@ export default function AdminProductEdit() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const r = await updateAdminCatalogProductBackend(id!, dirty);
-      if (!r.ok) throw new Error(r.error);
-      return r.data.product;
+      if (stockChanged) {
+        const qty = parseInt(stockDraft, 10);
+        if (!isNaN(qty) && qty >= 0) {
+          await updateAdminStock(id!, qty);
+        }
+      }
+      if (dirtyCount > 0) {
+        const r = await updateAdminCatalogProductBackend(id!, dirty);
+        if (!r.ok) throw new Error(r.error);
+        return r.data.product;
+      }
+      return productQ.data;
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin-catalog-product", id] });
@@ -115,7 +158,7 @@ export default function AdminProductEdit() {
       void qc.invalidateQueries({ queryKey: ["cat-products"] });
       router.back();
     },
-    onError: (e) => Alert.alert("Couldn't save", e instanceof Error ? e.message : "Try again."),
+    onError: (e) => themedAlert("Couldn't save", e instanceof Error ? e.message : "Try again."),
   });
 
   const header = (
@@ -168,7 +211,7 @@ export default function AdminProductEdit() {
         ? "Selling price is higher than MRP"
         : null;
   const nameError = !form.name.trim() ? "Name is required" : null;
-  const canSave = dirtyCount > 0 && !priceError && !nameError && !save.isPending;
+  const canSave = (dirtyCount > 0 || stockChanged) && !priceError && !nameError && !save.isPending;
 
   const addTags = () => {
     const parts = tagDraft.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
@@ -294,7 +337,40 @@ export default function AdminProductEdit() {
           </View>
         </Section>
 
-        <Text style={styles.footnote}>Sizes, colours, stock and photos are edited from the web admin.</Text>
+        <Section title="Stock & inventory">
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>AVAILABLE STOCK (UNITS)</Text>
+            <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+              <TextInput
+                value={stockDraft}
+                onChangeText={(v) => {
+                  setStockDraft(v);
+                  setStockChanged(true);
+                }}
+                keyboardType="number-pad"
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Units in stock"
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  const qty = parseInt(stockDraft, 10);
+                  if (!isNaN(qty) && qty >= 0) {
+                    updateStockM.mutate(qty);
+                  }
+                }}
+                disabled={updateStockM.isPending}
+                style={[styles.addTagBtn, { width: "auto", paddingHorizontal: 14 }]}
+                accessibilityRole="button"
+              >
+                <Text style={{ fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: colors.paper.cream }}>
+                  {updateStockM.isPending ? "Updating..." : "Update stock"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Section>
+
+        <Text style={styles.footnote}>Per-variant sizes and colors are edited from the web admin.</Text>
       </ScrollView>
 
       <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>

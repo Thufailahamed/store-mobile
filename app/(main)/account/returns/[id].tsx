@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -21,6 +21,7 @@ import {
   returnRailLabel,
   returnStage,
 } from "@/components/orders/return-track";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function ReturnDetailScreen() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function ReturnDetailScreen() {
   async function handleCancel() {
     if (!returnReq) return;
     if (returnReq.status !== "requested" && returnReq.status !== "approved") return;
-    Alert.alert(
+    themedAlert(
       "Cancel return?",
       "This will close the return request. The seller will be notified.",
       [
@@ -55,7 +56,7 @@ export default function ReturnDetailScreen() {
             try {
               const res = await cancelReturn(returnReq.return_group_id);
               if (!res.ok) {
-                Alert.alert("Couldn't cancel", res.error ?? "Please try again.");
+                themedAlert("Couldn't cancel", res.error ?? "Please try again.");
                 return;
               }
               // Refresh the local view so the status pill flips to "rejected".

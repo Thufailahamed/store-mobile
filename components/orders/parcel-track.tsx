@@ -1,6 +1,6 @@
 /**
  * Shared "parcel" tracking pieces for the buyer order list + detail:
- * LUXE palette, status ribbons, the four-node dotted rail, ETA estimate
+ * VESTARA palette, status ribbons, the four-node dotted rail, ETA estimate
  * and the cardboard-parcel corner art.
  */
 import React, { useEffect } from "react";
@@ -20,7 +20,7 @@ import { colors } from "@/lib/theme/tokens";
 import { LUX } from "@/components/orders/luxe-order";
 import type { Order, OrderStatus } from "@/lib/types";
 
-/* LUXE system palette (olive · lime · gold on paper) — mirrors LUX in luxe-order. */
+/* VESTARA system palette (olive · lime · gold on paper) — mirrors LUX in luxe-order. */
 export const C = {
   accent: colors.olive[600],
   accentSoft: colors.olive[50],
@@ -40,16 +40,19 @@ export const C = {
   rust: LUX.rust,
 } as const;
 
-export const TRANSIT: OrderStatus[] = ["shipped", "out_for_delivery", "failed_attempt"];
+export const TRANSIT: OrderStatus[] = ["shipped"];
+export const OUT_FOR_DELIVERY: OrderStatus[] = ["out_for_delivery", "failed_attempt"];
+export const PICKED_UP: (OrderStatus | string)[] = ["picked_up"];
 export const PROCESS: OrderStatus[] = ["pending", "confirmed", "processing"];
 export const CLOSED: OrderStatus[] = ["cancelled", "returned", "refunded"];
 
-export const RIBBON: Record<OrderStatus, { label: string; bg: string; fg: string }> = {
+export const RIBBON: Record<string, { label: string; bg: string; fg: string }> = {
   pending: { label: "PROCESS", bg: LUX.ink, fg: LUX.goldSoft },
   confirmed: { label: "PROCESS", bg: LUX.ink, fg: LUX.goldSoft },
   processing: { label: "PROCESS", bg: LUX.ink, fg: LUX.goldSoft },
+  picked_up: { label: "PICKED UP", bg: colors.olive[600], fg: LUX.lime },
   shipped: { label: "TRANSIT", bg: colors.olive[700], fg: LUX.lime },
-  out_for_delivery: { label: "ON ROUTE", bg: colors.olive[700], fg: LUX.lime },
+  out_for_delivery: { label: "OUT FOR DELIVERY", bg: colors.olive[700], fg: LUX.lime },
   failed_attempt: { label: "RETRY", bg: LUX.rust, fg: LUX.cream },
   delivered: { label: "DELIVERED", bg: LUX.lime, fg: LUX.ink },
   cancelled: { label: "CANCELLED", bg: LUX.rust, fg: LUX.cream },
@@ -57,20 +60,21 @@ export const RIBBON: Record<OrderStatus, { label: string; bg: string; fg: string
   refunded: { label: "REFUNDED", bg: LUX.gold, fg: LUX.ink },
 };
 
-/* Four-node rail: Placed → Packing → Transit → Delivered. */
-export const STAGES = 4;
-export function stageOf(status: OrderStatus): number {
-  if (status === "pending") return 0;
-  if (status === "confirmed" || status === "processing") return 1;
-  if (TRANSIT.includes(status)) return 2;
-  if (status === "delivered") return 3;
-  return 1;
+/* Five-node rail: Packing → Picked Up → In Transit → Out for Delivery → Delivered. */
+export const STAGES = 5;
+export function stageOf(status: OrderStatus | string): number {
+  if (status === "pending" || status === "confirmed" || status === "processing") return 0;
+  if (status === "picked_up") return 1;
+  if (status === "shipped") return 2;
+  if (status === "out_for_delivery" || status === "failed_attempt") return 3;
+  if (status === "delivered") return 4;
+  return 0;
 }
 
 /** Typical lead time used for the estimate until couriers report a real ETA. */
 export const LEAD_DAYS = 5;
 /** Days still ahead from each rail stage — keeps late orders' ETA rolling forward. */
-export const DAYS_LEFT = [4, 3, 1, 0];
+export const DAYS_LEFT = [5, 4, 2, 0, 0];
 export const DAY = 86_400_000;
 
 export function shortDate(iso: string | number) {
@@ -94,6 +98,7 @@ export function awayLabel(o: Order): string | null {
   if (CLOSED.includes(o.status) || o.status === "delivered") return null;
   if (o.status === "out_for_delivery") return "Today";
   if (o.status === "failed_attempt") return "Rescheduling";
+  if (String(o.status) === "picked_up") return "Picked Up";
   const { left } = etaFor(o);
   if (left <= 0) return "Arriving soon";
   const hrs = Math.ceil(left / 3_600_000);
@@ -103,7 +108,13 @@ export function awayLabel(o: Order): string | null {
 
 type McIcon = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
 
-const ORDER_ICONS: McIcon[] = ["clipboard-check-outline", "package-variant-closed", "truck-fast", "home-variant-outline"];
+const ORDER_ICONS: McIcon[] = [
+  "package-variant-closed",
+  "truck-check",
+  "truck-fast",
+  "motorbike",
+  "home-variant-outline",
+];
 
 export function TrackRail({ order: o }: { order: Order }) {
   const closed = CLOSED.includes(o.status);
@@ -199,9 +210,7 @@ export function RailNode({
           <Ionicons name="checkmark" size={13} color={kind === "done" ? C.lime : "#fff"} />
         </View>
       ) : (
-        <View style={[styles.nodeSm, styles.nodeTodo]}>
-          <Ionicons name="checkmark" size={11} color={C.faint} />
-        </View>
+        <View style={[styles.nodeSm, styles.nodeTodo]} />
       )}
     </View>
   );
@@ -230,7 +239,7 @@ export function CurrentNode({ icon, failed }: { icon: McIcon; failed: boolean })
 export function Dots({ color }: { color: string }) {
   return (
     <View style={styles.dots}>
-      {Array.from({ length: 5 }).map((_, i) => (
+      {Array.from({ length: 4 }).map((_, i) => (
         <View key={i} style={[styles.dot, { backgroundColor: color }]} />
       ))}
     </View>
@@ -282,21 +291,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 26,
-    marginRight: 78,
+    width: "100%",
     height: 44,
   },
-  nodeSlot: { width: 34, alignItems: "center", justifyContent: "center" },
+  nodeSlot: { width: 38, alignItems: "center", justifyContent: "center" },
   nodeLabel: {
     position: "absolute",
     top: -20,
-    width: 96,
+    width: 88,
     textAlign: "center",
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
+    fontSize: 11.5,
     color: C.text,
   },
   nodeSm: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  nodeTodo: { borderWidth: 1.5, borderColor: C.faint, backgroundColor: "#FFFFFF" },
+  nodeTodo: { borderWidth: 2, borderColor: C.faint, backgroundColor: "#FFFFFF" },
   nodeLgWrap: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   nodePulse: { position: "absolute", width: 38, height: 38, borderRadius: 19 },
   nodeLg: {
@@ -313,7 +322,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
   },
   dot: { width: 3.5, height: 3.5, borderRadius: 1.75 },
 

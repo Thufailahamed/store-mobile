@@ -286,7 +286,7 @@ export default function AdminMore() {
       </Pressable>
       <View style={styles.colophon}>
         <View style={styles.colophonRule} />
-        <Text style={styles.colophonText}>LUXE · PLATFORM CONSOLE</Text>
+        <Text style={styles.colophonText}>VESTARA · PLATFORM CONSOLE</Text>
         <View style={styles.colophonRule} />
       </View>
     </ScrollView>

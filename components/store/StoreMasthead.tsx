@@ -115,7 +115,7 @@ export function StoreMasthead({
           <View style={styles.coverKicker}>
             <View style={styles.coverRule} />
             <Text style={styles.coverMark}>
-              LUXE ATELIER{sinceYear ? `  ·  EST. ${sinceYear}` : ""}
+              VESTARA ATELIER{sinceYear ? `  ·  EST. ${sinceYear}` : ""}
             </Text>
             <View style={styles.coverRule} />
           </View>

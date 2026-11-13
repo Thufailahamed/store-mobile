@@ -6,11 +6,12 @@
  */
 
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   withdrawBrandBackend,
   type BrandPayoutSettings,
 } from "@/lib/api/backend";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface Props {
   available: number;
@@ -38,10 +39,10 @@ export function WithdrawSheet({ available, settings, kycApproved, onSuccess }: P
       const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const res = await withdrawBrandBackend(num, idempotencyKey);
       if (!res.ok) {
-        Alert.alert("Withdrawal failed", typeof res.error === "string" ? res.error : "Try again");
+        themedAlert("Withdrawal failed", typeof res.error === "string" ? res.error : "Try again");
         return;
       }
-      Alert.alert(
+      themedAlert(
         res.data.replay ? "Already submitted" : "Withdrawal requested",
         `Amount ${num} LKR · status ${res.data.payout.status}`,
       );

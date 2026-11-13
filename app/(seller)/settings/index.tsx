@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   RefreshControl,
   StatusBar,
 } from "react-native";
@@ -19,7 +18,6 @@ import {
   getSellerStore,
   getSellerPayoutSettings,
   updateSellerStore,
-  updateStoreMeta,
 } from "@/lib/api";
 import { getPayoutsBackend } from "@/lib/api/backend";
 import { StoreInfoCard } from "@/components/seller/settings/StoreInfoCard";
@@ -39,6 +37,7 @@ import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { SellerGlow } from "@/components/seller/chrome";
 import type { Store } from "@/lib/types";
 import type { PayoutSettings } from "@/lib/api/backend";
+import { themedAlert } from "@/lib/themed-alert";
 
 const GOLD = colors.accent2.ochre;
 const CREAM = colors.paper.cream;
@@ -146,47 +145,38 @@ export default function SellerSettings() {
     if (!store) return;
     const name = draftName.trim();
     if (!name) {
-      Alert.alert("Name required", "Enter a store name.");
+      themedAlert("Name required", "Enter a store name.");
       return;
     }
     const phone = draftPhone.trim();
     const email = draftEmail.trim();
     if (phone && !isValidPhone(phone)) {
-      Alert.alert("Invalid phone", "Enter a valid phone number, or leave it blank.");
+      themedAlert("Invalid phone", "Enter a valid phone number, or leave it blank.");
       return;
     }
     if (email && !isValidEmail(email)) {
-      Alert.alert("Invalid email", "Enter a valid email address, or leave it blank.");
+      themedAlert("Invalid email", "Enter a valid email address, or leave it blank.");
       return;
     }
     setSaving(true);
+    // Contact lives on stores.phone / stores.email; saving it with the same
+    // PATCH keeps it editable while the store is still pending review
+    // (updateStoreMeta is gated on full seller access).
     const storeRes = await updateSellerStore(store.id, {
       name,
       description: draftDescription.trim() || undefined,
-    });
-    if (!storeRes.ok) {
-      setSaving(false);
-      Alert.alert("Save failed", storeRes.error);
-      return;
-    }
-    const metaRes = await updateStoreMeta({
-      contact_phone: phone || null,
-      contact_email: email || null,
-    });
+      phone: phone || "",
+      email: email || "",
+    } as Partial<Store>);
     setSaving(false);
-    if (!metaRes.ok) {
-      Alert.alert("Contact not saved", metaRes.error);
-      applyStore({
-        ...storeRes.data,
-        contact_phone: store.contact_phone,
-        contact_email: store.contact_email,
-      });
+    if (!storeRes.ok) {
+      themedAlert("Save failed", storeRes.error);
       return;
     }
     applyStore({
       ...storeRes.data,
-      contact_phone: metaRes.data.contact_phone ?? null,
-      contact_email: metaRes.data.contact_email ?? null,
+      contact_phone: storeRes.data.contact_phone ?? (phone || null),
+      contact_email: storeRes.data.contact_email ?? (email || null),
     });
     setEditing(false);
   };

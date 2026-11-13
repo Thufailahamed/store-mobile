@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Alert,
   ActionSheetIOS,
   Platform,
   Share,
@@ -40,6 +39,7 @@ import {
   SELLER_GOLD,
 } from "@/components/seller/chrome";
 import type { Product } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 const RUST = SELLER_RUST;
 const CREAM = SELLER_CREAM;
 const INK = SELLER_INK;
@@ -185,7 +185,7 @@ function showActions(item: Product, onAction: (key: string) => void) {
       },
     );
   } else {
-    Alert.alert(item.name, undefined, [
+    themedAlert(item.name, undefined, [
       ...actions.map((a) => ({
         text: a.label,
         style: a.key === "delete" ? ("destructive" as const) : ("default" as const),
@@ -328,7 +328,7 @@ export default function SellerProducts() {
         setRefreshing(false);
         // Keep the message on screen; an alert alone left an empty list
         // that looked like the seller had no products.
-        if (append) Alert.alert("Couldn’t load more", res.error);
+        if (append) themedAlert("Couldn’t load more", res.error);
         else setListError(res.error);
         return;
       }
@@ -417,7 +417,7 @@ export default function SellerProducts() {
   };
 
   const handleDelete = (product: Product) => {
-    Alert.alert(
+    themedAlert(
       "Delete this piece?",
       `"${product.name}" will be removed permanently.`,
       [
@@ -438,7 +438,7 @@ export default function SellerProducts() {
                 return next;
               });
             } else {
-              Alert.alert("Error", res.error);
+              themedAlert("Error", res.error);
             }
           },
         },
@@ -454,7 +454,7 @@ export default function SellerProducts() {
     if (res.ok && res.data?.id) {
       router.replace(`/(seller)/products/${res.data.id}` as any);
     } else if (!res.ok) {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -469,7 +469,7 @@ export default function SellerProducts() {
         prev.map((p) => (p.id === product.id ? { ...p, status: target as Product["status"] } : p)),
       );
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -484,7 +484,7 @@ export default function SellerProducts() {
         prev.map((p) => (p.id === product.id ? { ...p, status: target as Product["status"] } : p)),
       );
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -517,17 +517,17 @@ export default function SellerProducts() {
     const res = await bulkSetSellerStatus(ids, target, storeId);
     setBulkBusy(false);
     if (res.ok) {
-      Alert.alert("Done", `${res.data.updated} piece(s) moved to ${target}.`);
+      themedAlert("Done", `${res.data.updated} piece(s) moved to ${target}.`);
       exitSelect();
       onRefresh();
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
   const bulkDelete = () => {
     if (selectedIds.size === 0) return;
-    Alert.alert(
+    themedAlert(
       "Delete pieces?",
       `${selectedIds.size} piece(s) will be removed.`,
       [
@@ -542,9 +542,9 @@ export default function SellerProducts() {
             setBulkBusy(false);
             const failed = results.filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.ok));
             if (failed.length) {
-              Alert.alert("Partial", `${ids.length - failed.length} deleted, ${failed.length} failed.`);
+              themedAlert("Partial", `${ids.length - failed.length} deleted, ${failed.length} failed.`);
             } else {
-              Alert.alert("Done", `${ids.length} deleted.`);
+              themedAlert("Done", `${ids.length} deleted.`);
             }
             exitSelect();
             onRefresh();
@@ -556,7 +556,7 @@ export default function SellerProducts() {
 
   const exportCsv = async () => {
     if (!storeId || (total === 0 && products.length === 0)) {
-      Alert.alert("Nothing to export", "Load some products first.");
+      themedAlert("Nothing to export", "Load some products first.");
       return;
     }
     setExporting(true);
@@ -572,7 +572,7 @@ export default function SellerProducts() {
           offset: pageOffset,
         });
         if (!res.ok) {
-          Alert.alert("Export failed", res.error);
+          themedAlert("Export failed", res.error);
           return;
         }
         const batch = res.data.products ?? [];
@@ -581,7 +581,7 @@ export default function SellerProducts() {
         if (batch.length < EXPORT_PAGE_SIZE) break;
       }
       if (all.length === 0) {
-        Alert.alert("Nothing to export", "Load some products first.");
+        themedAlert("Nothing to export", "Load some products first.");
         return;
       }
       const csv = toCsv(all);
@@ -590,7 +590,7 @@ export default function SellerProducts() {
         title: `products-${new Date().toISOString().slice(0, 10)}.csv`,
       });
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Could not share");
+      themedAlert("Error", e?.message ?? "Could not share");
     } finally {
       setExporting(false);
     }
@@ -609,7 +609,7 @@ export default function SellerProducts() {
         },
       );
     } else {
-      Alert.alert("More", undefined, [
+      themedAlert("More", undefined, [
         { text: "Add product manually", onPress: addManually },
         { text: "Export CSV", onPress: () => void exportCsv() },
         { text: "Cancel", style: "cancel" },
@@ -618,7 +618,7 @@ export default function SellerProducts() {
   };
 
   const openSortMenu = () => {
-    Alert.alert(
+    themedAlert(
       "Sort",
       undefined,
       [

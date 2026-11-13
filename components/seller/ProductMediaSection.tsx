@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
@@ -14,6 +13,7 @@ import { pickImages, takePhoto } from "@/lib/upload";
 import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { ProductImage } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const CREAM = colors.paper.cream;
 const GOLD = colors.accent2.ochre;
@@ -70,7 +70,7 @@ export function ProductMediaSection({
   const handleLibrary = async () => {
     const result = await pickImages({ limit: remaining, quality: 0.85 });
     if (!result) {
-      Alert.alert("Photos access needed", "Allow photo access in Settings to upload product photos.");
+      themedAlert("Photos access needed", "Allow photo access in Settings to upload product photos.");
       return;
     }
     if (result.canceled || !result.assets?.length) return;
@@ -80,7 +80,7 @@ export function ProductMediaSection({
   const handleCamera = async () => {
     const result = await takePhoto({ allowsEditing: false, quality: 0.85 });
     if (!result) {
-      Alert.alert("Camera access needed", "Allow camera access in Settings to take product photos.");
+      themedAlert("Camera access needed", "Allow camera access in Settings to take product photos.");
       return;
     }
     if (result.canceled || !result.assets?.[0]?.uri) return;
@@ -88,7 +88,7 @@ export function ProductMediaSection({
   };
 
   const confirmRemove = (label: string, onConfirm: () => void) => {
-    Alert.alert("Remove image?", label, [
+    themedAlert("Remove image?", label, [
       { text: "Cancel", style: "cancel" },
       { text: "Remove", style: "destructive", onPress: onConfirm },
     ]);

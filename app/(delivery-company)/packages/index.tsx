@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TextInput,
   TouchableOpacity,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +26,7 @@ import {
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 type TabKey = "all" | "received" | "assigned" | "in_transit" | "delivered" | "failed" | "returned";
 
@@ -162,7 +162,7 @@ export default function CompanyPackagesScreen() {
 
   const handleLastMile = (orderId: string, whId?: string) => {
     if (actingId) return;
-    Alert.alert("Assign last mile", "Auto-assign a last-mile driver for this package?", [
+    themedAlert("Assign last mile", "Auto-assign a last-mile driver for this package?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Assign",
@@ -170,9 +170,9 @@ export default function CompanyPackagesScreen() {
           setActingId(orderId);
           try {
             const res = await assignLastMileBatch([orderId], whId);
-            if (!res.ok) Alert.alert("Failed", res.error);
+            if (!res.ok) themedAlert("Failed", res.error);
             else {
-              Alert.alert("Done", "Last-mile assignment queued.");
+              themedAlert("Done", "Last-mile assignment queued.");
               load();
             }
           } finally {
@@ -263,7 +263,7 @@ export default function CompanyPackagesScreen() {
                   const when = item.received_at
                     ? new Date(item.received_at).toLocaleString()
                     : "earlier";
-                  Alert.alert(
+                  themedAlert(
                     "Already received",
                     `This package was already received at ${item.warehouse?.name ?? "this hub"} on ${when}. It can't be received again.`,
                   );

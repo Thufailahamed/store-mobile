@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   RefreshControl,
 } from "react-native";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
@@ -24,6 +23,7 @@ import {
 import { useAuth } from "@/lib/supabase/auth";
 import { useCompanyRealtime } from "@/lib/hooks/useCompanyRealtime";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function CompanyRouteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -68,7 +68,7 @@ export default function CompanyRouteDetailScreen() {
 
   const handleDispatch = () => {
     if (!route) return;
-    Alert.alert("Dispatch route", "Mint OTPs and notify the driver?", [
+    themedAlert("Dispatch route", "Mint OTPs and notify the driver?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Dispatch",
@@ -77,10 +77,10 @@ export default function CompanyRouteDetailScreen() {
           const res = await dispatchRoute(route.id);
           setActing(false);
           if (!res.ok) {
-            Alert.alert("Failed", res.error);
+            themedAlert("Failed", res.error);
             return;
           }
-          Alert.alert("Dispatched", "Driver has been notified.");
+          themedAlert("Dispatched", "Driver has been notified.");
           load();
         },
       },
@@ -89,7 +89,7 @@ export default function CompanyRouteDetailScreen() {
 
   const handleCancel = () => {
     if (!route) return;
-    Alert.alert("Cancel route", "Unassign stops and return packages to pending?", [
+    themedAlert("Cancel route", "Unassign stops and return packages to pending?", [
       { text: "Keep", style: "cancel" },
       {
         text: "Cancel route",
@@ -99,7 +99,7 @@ export default function CompanyRouteDetailScreen() {
           const res = await cancelRoute(route.id, "Cancelled from mobile HQ");
           setActing(false);
           if (!res.ok) {
-            Alert.alert("Failed", res.error);
+            themedAlert("Failed", res.error);
             return;
           }
           router.back();

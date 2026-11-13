@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TextInput, KeyboardAvoidingView, Platform } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { BrandScreenHeader } from "@/components/brand/BrandScreenHeader";
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { getBrandBranding, updateBrandBranding } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function BrandBranding() {
   const qc = useQueryClient();
@@ -43,9 +44,9 @@ export default function BrandBranding() {
     } as never),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["brand-branding"] });
-      Alert.alert("Saved", "Branding updated.");
+      themedAlert("Saved", "Branding updated.");
     },
-    onError: (e) => Alert.alert("Error", String(e)),
+    onError: (e) => themedAlert("Error", String(e)),
   });
 
   return (

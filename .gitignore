@@ -53,3 +53,6 @@ coverage/
 
 # Superpowers brainstorm mockups
 .superpowers/
+
+# Firebase client config (contains API key)
+google-services.json

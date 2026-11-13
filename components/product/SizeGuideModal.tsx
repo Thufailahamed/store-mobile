@@ -10,6 +10,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Line, Circle, Text as SvgText } from "react-native-svg";
@@ -19,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { colors, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { getSizeChartsBackend } from "@/lib/api/backend";
+import { getSizeChartsBackend, getProductSizeGuideBackend } from "@/lib/api/backend";
 import { C } from "@/components/orders/parcel-track";
 
 interface SizeGuideModalProps {
@@ -28,6 +30,8 @@ interface SizeGuideModalProps {
   category?: string | null;
   brandId?: string | null;
   categoryId?: string | null;
+  productId?: string | null;
+  productName?: string | null;
 }
 
 interface MeasurementRow {
@@ -66,7 +70,15 @@ const toIn = (cm: number) => Math.round((cm / 2.54) * 10) / 10;
 
 const gold = colors.accent2.ochre;
 
-export function SizeGuideModal({ visible, onClose, category, brandId, categoryId }: SizeGuideModalProps) {
+export function SizeGuideModal({
+  visible,
+  onClose,
+  category,
+  brandId,
+  categoryId,
+  productId,
+  productName,
+}: SizeGuideModalProps) {
   const [unit, setUnit] = useState<"cm" | "in">("cm");
   const [chestInput, setChestInput] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
@@ -74,13 +86,42 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
   const inputRef = useRef<TextInput>(null);
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<MeasurementRow[]>(SIZE_DATA);
+  const [chartImages, setChartImages] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<"chart" | "measurements">("measurements");
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [loadingChart, setLoadingChart] = useState(false);
 
   useEffect(() => {
     if (!visible) {
       setChestInput("");
       setPicked(null);
+      setFullscreenImage(null);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !productId) return;
+    let cancelled = false;
+    setLoadingChart(true);
+    void getProductSizeGuideBackend(productId).then((res) => {
+      if (cancelled) return;
+      setLoadingChart(false);
+      if (res.ok && res.data) {
+        const imgs = Array.isArray(res.data.images) ? res.data.images : [];
+        setChartImages(imgs);
+        setActiveImageIndex(0);
+        if (imgs.length > 0) {
+          setActiveTab("chart");
+        } else {
+          setActiveTab("measurements");
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, productId]);
 
   useEffect(() => {
     if (!visible || !brandId || !categoryId) return;
@@ -172,7 +213,7 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
                 <View style={styles.subRow}>
                   <Ionicons name="resize-outline" size={13} color={C.muted} />
                   <Text style={styles.subtitle} numberOfLines={1}>
-                    {category ? `${category} · ` : ""}body measurements
+                    {category ? `${category} · ` : ""}{chartImages.length > 0 ? "size chart & measurements" : "body measurements"}
                   </Text>
                 </View>
               </View>
@@ -186,6 +227,44 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
                 <Ionicons name="close" size={19} color={C.text} />
               </TouchableOpacity>
             </View>
+
+            {/* Segmented tab control when chart images exist */}
+            {chartImages.length > 0 && (
+              <View style={styles.tabToggleRow}>
+                <TouchableOpacity
+                  onPress={() => setActiveTab("chart")}
+                  style={[styles.tabBtn, activeTab === "chart" && styles.tabBtnActive]}
+                  activeOpacity={0.7}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: activeTab === "chart" }}
+                >
+                  <Ionicons
+                    name="image-outline"
+                    size={14}
+                    color={activeTab === "chart" ? colors.olive[900] : C.muted}
+                  />
+                  <Text style={[styles.tabBtnText, activeTab === "chart" && styles.tabBtnTextActive]}>
+                    Size Chart {chartImages.length > 1 ? `(${chartImages.length})` : ""}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setActiveTab("measurements")}
+                  style={[styles.tabBtn, activeTab === "measurements" && styles.tabBtnActive]}
+                  activeOpacity={0.7}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: activeTab === "measurements" }}
+                >
+                  <Ionicons
+                    name="resize-outline"
+                    size={14}
+                    color={activeTab === "measurements" ? colors.olive[900] : C.muted}
+                  />
+                  <Text style={[styles.tabBtnText, activeTab === "measurements" && styles.tabBtnTextActive]}>
+                    Measurements
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <ScrollView
@@ -193,8 +272,70 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
           >
-            {/* Find your size */}
-            <Animated.View layout={LinearTransition.duration(220)} style={styles.finder}>
+            {activeTab === "chart" && chartImages.length > 0 ? (
+              <View style={styles.chartContainer}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setFullscreenImage(chartImages[activeImageIndex])}
+                  style={styles.imageCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View full size chart image ${activeImageIndex + 1}`}
+                >
+                  <Image
+                    source={{ uri: chartImages[activeImageIndex] }}
+                    style={styles.mainImage}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.zoomPill}>
+                    <Ionicons name="scan-outline" size={12} color="#FFFFFF" />
+                    <Text style={styles.zoomPillText}>Tap to zoom</Text>
+                  </View>
+                  {chartImages.length > 1 && (
+                    <View style={styles.pagePill}>
+                      <Text style={styles.pagePillText}>
+                        {activeImageIndex + 1} / {chartImages.length}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                {chartImages.length > 1 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.imageThumbRow}
+                    style={styles.imageThumbScroll}
+                  >
+                    {chartImages.map((img, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => setActiveImageIndex(idx)}
+                        style={[
+                          styles.imageThumb,
+                          activeImageIndex === idx && styles.imageThumbActive,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Select image ${idx + 1}`}
+                      >
+                        <Image source={{ uri: img }} style={styles.thumbImg} resizeMode="contain" />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <TouchableOpacity
+                  onPress={() => setActiveTab("measurements")}
+                  style={styles.switchLink}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="options-outline" size={14} color={C.lime} />
+                  <Text style={styles.switchLinkText}>View body measurement helper</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                {/* Find your size */}
+                <Animated.View layout={LinearTransition.duration(220)} style={styles.finder}>
               <View style={styles.finderTop}>
                 <View style={styles.finderIcon}>
                   <Ionicons name="body-outline" size={18} color={C.lime} />
@@ -398,9 +539,46 @@ export function SizeGuideModal({ visible, onClose, category, brandId, categoryId
                 </View>
               </View>
             </View>
+            </>
+          )}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+
+      {fullscreenImage ? (
+        <Modal
+          visible={!!fullscreenImage}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setFullscreenImage(null)}
+        >
+          <View style={styles.lightboxBackdrop}>
+            <TouchableOpacity
+              style={styles.lightboxClose}
+              onPress={() => setFullscreenImage(null)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Close full screen view"
+            >
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <ScrollView
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              contentContainerStyle={styles.lightboxScroll}
+              centerContent
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+            >
+              <Image
+                source={{ uri: fullscreenImage }}
+                style={styles.lightboxImage}
+                resizeMode="contain"
+              />
+            </ScrollView>
+          </View>
+        </Modal>
+      ) : null}
     </Modal>
   );
 }
@@ -536,6 +714,160 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   scrollContent: { paddingHorizontal: 20, paddingTop: 2, paddingBottom: 24, gap: 16 },
+
+  tabToggleRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(22,23,15,0.06)",
+    borderRadius: 20,
+    padding: 3,
+    alignSelf: "flex-start",
+    gap: 4,
+  },
+  tabBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+  },
+  tabBtnActive: {
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  tabBtnText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12.5,
+    color: C.muted,
+  },
+  tabBtnTextActive: {
+    fontFamily: fontFamilies.sans.semibold,
+    color: C.text,
+  },
+  chartContainer: {
+    gap: 14,
+    paddingBottom: 8,
+  },
+  imageCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.1)",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 12,
+    minHeight: 280,
+    maxHeight: 460,
+  },
+  mainImage: {
+    width: "100%",
+    height: 320,
+  },
+  zoomPill: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: "rgba(22,23,15,0.75)",
+  },
+  zoomPillText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  pagePill: {
+    position: "absolute",
+    bottom: 10,
+    left: "50%",
+    transform: [{ translateX: -30 }],
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(22,23,15,0.75)",
+  },
+  pagePillText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  imageThumbScroll: {
+    marginTop: 2,
+  },
+  imageThumbRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 2,
+  },
+  imageThumb: {
+    width: 72,
+    height: 60,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "rgba(22,23,15,0.15)",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+    padding: 2,
+  },
+  imageThumbActive: {
+    borderColor: colors.olive[900],
+    borderWidth: 2,
+  },
+  thumbImg: {
+    width: "100%",
+    height: "100%",
+  },
+  switchLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+  },
+  switchLinkText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.olive[900],
+    textDecorationLine: "underline",
+  },
+  lightboxBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  lightboxClose: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  lightboxScroll: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  lightboxImage: {
+    width: Dimensions.get("window").width - 32,
+    height: Dimensions.get("window").height * 0.8,
+  },
 
   // Finder — ink card, lime accents
   finder: {

@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -17,7 +15,6 @@ import Animated, {
 } from "react-native-reanimated";
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
 import { Ionicons } from "@/components/ui/Icon";
-import { getDevicePosition } from "@/lib/location";
 import { colors, radii, shadows, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { C } from "@/components/orders/parcel-track";
@@ -26,14 +23,11 @@ interface AddressMapPickerProps {
   latitude?: number | null;
   longitude?: number | null;
   onLocationChange: (lat: number, lng: number) => void;
-  onUseMyLocation?: () => void;
   height?: number;
   initialDelta?: { latitudeDelta: number; longitudeDelta: number };
   disabled?: boolean;
   /** Show the raw lat/lng strip along the bottom (useful for staff tools, noise for shoppers). */
   showCoords?: boolean;
-  /** Show the round "locate me" button in the corner. */
-  showLocateButton?: boolean;
   /** Extra content layered over the bottom of the map (e.g. a CTA pill). */
   overlay?: React.ReactNode;
   /** Notifies parent when the user starts/stops touching the map to avoid ScrollView conflicts. */
@@ -75,12 +69,10 @@ export function AddressMapPicker({
   latitude,
   longitude,
   onLocationChange,
-  onUseMyLocation,
   height = 240,
   initialDelta = { latitudeDelta: 0.008, longitudeDelta: 0.008 },
   disabled = false,
   showCoords = true,
-  showLocateButton = true,
   overlay,
   onInteractionChange,
 }: AddressMapPickerProps) {
@@ -90,7 +82,7 @@ export function AddressMapPicker({
   const pendingAnimate = useRef(false);
   const isProgrammaticMove = useRef(false);
   const isUserInteracting = useRef(false);
-  const userInteractionTimeout = useRef<NodeJS.Timeout | null>(null);
+  const userInteractionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [pin, setPin] = useState<{ lat: number; lng: number } | null>(
     latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null
@@ -101,7 +93,6 @@ export function AddressMapPicker({
       : FALLBACK_REGION
   );
   const [mapReady, setMapReady] = useState(false);
-  const [loadingLocation, setLoadingLocation] = useState(false);
   const [tilesLoaded, setTilesLoaded] = useState(false);
   const [tilesFailed, setTilesFailed] = useState(false);
 
@@ -208,20 +199,6 @@ export function AddressMapPicker({
     }
   };
 
-  const handleUseMyLocation = async () => {
-    if (loadingLocation) return;
-    setLoadingLocation(true);
-    try {
-      const { lat, lng } = await getDevicePosition();
-      setPinCoords(lat, lng, true);
-      onLocationChange(lat, lng);
-    } catch {
-      onUseMyLocation?.();
-    } finally {
-      setLoadingLocation(false);
-    }
-  };
-
   return (
     <View
       style={[styles.container, { height }]}
@@ -285,12 +262,12 @@ export function AddressMapPicker({
           sub={
             pin
               ? `${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}`
-              : "Use your current location to pin it exactly"
+              : "Tap the map to drop a pin"
           }
         />
       ) : null}
 
-      {!pin && !loadingLocation && (mapReady || tilesLoaded) ? (
+      {!pin && (mapReady || tilesLoaded) ? (
         <View pointerEvents="none" style={styles.hint}>
           <Ionicons name="hand-left-outline" size={14} color={colors.light.primaryForeground} />
           <Text style={styles.hintText}>Tap map or drag to place pin</Text>
@@ -300,22 +277,6 @@ export function AddressMapPicker({
           <Ionicons name="move-outline" size={13} color={C.lime} />
           <Text style={styles.hintPinnedText}>Tap map or drag pin to adjust</Text>
         </View>
-      ) : null}
-
-      {showLocateButton ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleUseMyLocation}
-          style={({ pressed }) => [styles.fab, !showCoords && styles.fabLow, pressed && styles.fabPressed]}
-          accessibilityLabel="Use my location"
-          disabled={loadingLocation || disabled}
-        >
-          {loadingLocation ? (
-            <ActivityIndicator size="small" color={colors.light.primary} />
-          ) : (
-            <Ionicons name="navigate" size={18} color={colors.light.primary} />
-          )}
-        </Pressable>
       ) : null}
 
       {overlay ? <View style={styles.overlay}>{overlay}</View> : null}

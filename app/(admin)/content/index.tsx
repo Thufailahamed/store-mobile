@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert, ScrollView } from "react-native";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, ScrollView } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
@@ -9,6 +9,7 @@ import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { resolveImageUrl } from "@/lib/utils";
 import { AdminMasthead, Segmented, ChipRail, premiumCard, GOLD, RUST } from "@/components/admin/premium-kit";
+import { themedAlert } from "@/lib/themed-alert";
 
 type Tab = "reviews" | "qa";
 type ReviewFilter = "all" | "approved" | "pending" | "rejected";
@@ -225,11 +226,11 @@ function ReviewsList({ header, query, items }: { header: React.ReactElement; que
       return r;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-reviews"] }),
-    onError: (e: unknown) => Alert.alert("Error", e instanceof Error ? e.message : "Delete failed"),
+    onError: (e: unknown) => themedAlert("Error", e instanceof Error ? e.message : "Delete failed"),
   });
 
   const confirmDelete = (r: ModerationReview) =>
-    Alert.alert("Remove review?", "This permanently deletes the review and its photos.", [
+    themedAlert("Remove review?", "This permanently deletes the review and its photos.", [
       { text: "Cancel", style: "cancel" },
       { text: "Remove", style: "destructive", onPress: () => remove.mutate(r.id) },
     ]);

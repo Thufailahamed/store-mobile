@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Switch,
   KeyboardAvoidingView,
   Platform,
@@ -21,6 +20,7 @@ import {
 } from "@/lib/api/delivery-company-api";
 import { getDeliveryCompanyAccessState } from "@/lib/delivery-company-access";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 const POLICIES = [
   { id: "zone", label: "Zone-based" },
@@ -95,9 +95,9 @@ export default function CompanySettingsScreen() {
           }),
     });
     setSaving(false);
-    if (!res.ok) Alert.alert("Save failed", res.error);
+    if (!res.ok) themedAlert("Save failed", res.error);
     else {
-      Alert.alert("Saved", "Company settings updated.");
+      themedAlert("Saved", "Company settings updated.");
       load();
     }
   };

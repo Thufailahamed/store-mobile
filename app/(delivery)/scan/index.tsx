@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Linking,
@@ -45,6 +44,7 @@ import {
 } from "@/lib/delivery-workflow";
 import { ISSUE_REASONS, type IssueReason } from "@/lib/utils/delivery-format";
 import { notifyDeliveryFailure } from "@/lib/notifications/assignments";
+import { themedAlert } from "@/lib/themed-alert";
 
 const ACTION_LABELS: Record<string, string> = {
   pickup: "Pick up",
@@ -118,7 +118,7 @@ export default function DeliveryScanScreen() {
     async (raw: string) => {
       const pkgToken = extractPackageToken(raw);
       if (!pkgToken || pkgToken.length < 8) {
-        Alert.alert("Invalid QR", "Could not read a package token from that code.");
+        themedAlert("Invalid QR", "Could not read a package token from that code.");
         return;
       }
       setLoading(true);
@@ -126,7 +126,7 @@ export default function DeliveryScanScreen() {
       const res = await resolvePackageQr(pkgToken);
       setLoading(false);
       if (!res.ok) {
-        Alert.alert("Package not found", res.error);
+        themedAlert("Package not found", res.error);
         setScanning(true);
         setScannedOnce(false);
         return;
@@ -174,18 +174,18 @@ export default function DeliveryScanScreen() {
           .then((res) => {
             setActing(false);
             if (res.ok) {
-              Alert.alert("Delivered", "Customer QR verified.", [
+              themedAlert("Delivered", "Customer QR verified.", [
                 { text: "OK", onPress: () => router.replace("/(delivery)/orders") },
               ]);
             } else {
-              Alert.alert("Verification failed", res.error);
+              themedAlert("Verification failed", res.error);
               setScannedOnce(false);
               setAwaitingCustomerQr(true);
             }
           })
           .catch((e) => {
             setActing(false);
-            Alert.alert("Verification failed", e?.message ?? "Network error");
+            themedAlert("Verification failed", e?.message ?? "Network error");
             setScannedOnce(false);
             setAwaitingCustomerQr(true);
           });
@@ -204,7 +204,7 @@ export default function DeliveryScanScreen() {
     const uploaded = await uploadDeliveryProof(user.id, token, pick.assets[0].uri);
     setUploadingProof(false);
     if (uploaded.error || !uploaded.url) {
-      Alert.alert("Upload failed", uploaded.error ?? "Could not upload proof");
+      themedAlert("Upload failed", uploaded.error ?? "Could not upload proof");
       return;
     }
     setProofUrl(uploaded.url);
@@ -235,7 +235,7 @@ export default function DeliveryScanScreen() {
     const uploaded = await uploadDeliverySignature(user.id, token, dataUrl);
     setUploadingSignature(false);
     if (uploaded.error || !uploaded.url) {
-      Alert.alert("Signature upload failed", uploaded.error ?? "Try again");
+      themedAlert("Signature upload failed", uploaded.error ?? "Try again");
       return;
     }
     setSignatureUrl(uploaded.url);
@@ -254,7 +254,7 @@ export default function DeliveryScanScreen() {
         failureCtx,
       );
       if (!legality.ok) {
-        Alert.alert("Action blocked", legality.reason);
+        themedAlert("Action blocked", legality.reason);
         return;
       }
     }
@@ -262,17 +262,17 @@ export default function DeliveryScanScreen() {
     // Phase 14 — fail_delivery requires a categorical reason client-side. The
     // server may accept "other" as a fallback, but the rider must pick one.
     if (action === "fail_delivery" && !failureReason) {
-      Alert.alert("Reason required", "Pick a failure reason before submitting.");
+      themedAlert("Reason required", "Pick a failure reason before submitting.");
       return;
     }
 
     if (action === "verify_otp") {
       if (!isValidOtp(otp)) {
-        Alert.alert("OTP required", "Enter the 6-digit code from the customer.");
+        themedAlert("OTP required", "Enter the 6-digit code from the customer.");
         return;
       }
       if (!proofUrl) {
-        Alert.alert("Proof required", "Upload a delivery proof photo before verifying.");
+        themedAlert("Proof required", "Upload a delivery proof photo before verifying.");
         return;
       }
       setActing(true);
@@ -283,18 +283,18 @@ export default function DeliveryScanScreen() {
       });
       setActing(false);
       if (res.ok) {
-        Alert.alert("Delivered", "Package verified successfully.", [
+        themedAlert("Delivered", "Package verified successfully.", [
           { text: "OK", onPress: () => router.replace("/(delivery)/orders") },
         ]);
       } else {
-        Alert.alert("Verification failed", res.error);
+        themedAlert("Verification failed", res.error);
       }
       return;
     }
 
     if (action === "verify_customer_qr") {
       if (!proofUrl) {
-        Alert.alert("Proof required", "Upload a delivery proof photo before scanning the customer QR.");
+        themedAlert("Proof required", "Upload a delivery proof photo before scanning the customer QR.");
         return;
       }
       // Switch the camera back on and wait for the customer QR.
@@ -328,7 +328,7 @@ export default function DeliveryScanScreen() {
           /* swallow — server is authority */
         });
       }
-      Alert.alert("Success", `${ACTION_LABELS[action] ?? action} recorded.`, [
+      themedAlert("Success", `${ACTION_LABELS[action] ?? action} recorded.`, [
         {
           text: "OK",
           onPress: async () => {
@@ -342,7 +342,7 @@ export default function DeliveryScanScreen() {
         },
       ]);
     } else {
-      Alert.alert("Action failed", res.error);
+      themedAlert("Action failed", res.error);
     }
   };
 
@@ -379,7 +379,7 @@ export default function DeliveryScanScreen() {
             onPress={async () => {
               const res = await requestPermission();
               if (!res.granted && !res.canAskAgain) {
-                Alert.alert(
+                themedAlert(
                   "Camera blocked",
                   "Camera access was denied. Open Settings to allow it.",
                   [
@@ -643,7 +643,7 @@ export default function DeliveryScanScreen() {
         visible={signatureModalOpen}
         onClose={() => setSignatureModalOpen(false)}
         onCapture={handleCaptureSignature}
-        onEmpty={() => Alert.alert("Signature empty", "Please sign before saving.")}
+        onEmpty={() => themedAlert("Signature empty", "Please sign before saving.")}
         descriptionText="Customer signature"
       />
     </View>

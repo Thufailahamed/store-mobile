@@ -196,6 +196,11 @@ export const POPULAR_DEPARTMENTS = [
   { label: "Sale & Edit", icon: "pricetag-outline", path: "/(main)/products?sale=true" },
 ];
 
+/** Lowercase and strip everything but letters/digits ("T-Shirts" → "tshirts"). */
+export function normalizeTerm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 /**
  * Returns ranked keyword completions matching the user query from the taxonomy.
  */
@@ -208,15 +213,18 @@ export function getFashionKeywordCompletions(rawQuery: string, limit = 6): V2Sug
   const wordStarts: string[] = [];
   const contains: string[] = [];
 
+  // Compare with punctuation stripped so "tsh" matches "T-Shirts".
+  const nq = normalizeTerm(q);
   for (const phrase of FASHION_TAXONOMY) {
     const lower = phrase.toLowerCase();
-    if (lower === q) {
+    const np = normalizeTerm(lower);
+    if (lower === q || np === nq) {
       exact.push(phrase);
-    } else if (lower.startsWith(q)) {
+    } else if (np.startsWith(nq)) {
       startsWith.push(phrase);
-    } else if (lower.split(/\s+/).some((word) => word.startsWith(q))) {
+    } else if (lower.split(/[\s-]+/).some((word) => word.startsWith(q) || normalizeTerm(word).startsWith(nq))) {
       wordStarts.push(phrase);
-    } else if (lower.includes(q)) {
+    } else if (np.includes(nq)) {
       contains.push(phrase);
     }
   }
@@ -345,9 +353,10 @@ export function matchCategories(
   const q = rawQuery.trim().toLowerCase();
   if (!q || !categories.length) return [];
 
+  const nq = normalizeTerm(q);
   const matches = categories.filter((c) => {
     const name = c.name.toLowerCase();
-    return name.startsWith(q) || name.includes(q);
+    return name.startsWith(q) || name.includes(q) || normalizeTerm(name).includes(nq);
   });
 
   return matches.slice(0, limit).map((c) => ({

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Linking,
   useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -252,13 +251,13 @@ export default function OnboardingScreen() {
         </Text>
 
         <View style={styles.legalRow}>
-          <TouchableOpacity onPress={() => Linking.openURL("https://luxe.marketplace/terms")} hitSlop={8}>
+          <TouchableOpacity onPress={() => router.push("/legal/terms")} hitSlop={8}>
             <Text style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
               User Terms
             </Text>
           </TouchableOpacity>
           <Text style={[styles.legalBullet, { color: theme.colors.mutedForeground }]}>·</Text>
-          <TouchableOpacity onPress={() => Linking.openURL("https://luxe.marketplace/privacy")} hitSlop={8}>
+          <TouchableOpacity onPress={() => router.push("/legal/privacy")} hitSlop={8}>
             <Text style={[styles.legalLink, { color: theme.colors.mutedForeground }]}>
               Privacy
             </Text>

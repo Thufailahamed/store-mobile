@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   TextInput,
   KeyboardAvoidingView,
   Platform,
@@ -26,6 +25,7 @@ import {
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function DriverDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -89,7 +89,7 @@ export default function DriverDetailScreen() {
     setSaving(true);
     try {
       const res = await updateDriverMember(member.id, { capacity_max: next });
-      if (!res.ok) Alert.alert("Failed", res.error);
+      if (!res.ok) themedAlert("Failed", res.error);
       else fetchData();
     } finally {
       setSaving(false);
@@ -101,7 +101,7 @@ export default function DriverDetailScreen() {
     setSaving(true);
     try {
       const res = await updateDriverMember(member.id, { driver_type: driverType });
-      if (!res.ok) Alert.alert("Failed", res.error);
+      if (!res.ok) themedAlert("Failed", res.error);
       else fetchData();
     } finally {
       setSaving(false);
@@ -113,7 +113,7 @@ export default function DriverDetailScreen() {
     setSaving(true);
     try {
       const res = await updateDriverMember(member.id, { home_warehouse_id: warehouseId });
-      if (!res.ok) Alert.alert("Failed", res.error);
+      if (!res.ok) themedAlert("Failed", res.error);
       else fetchData();
     } finally {
       setSaving(false);
@@ -130,9 +130,9 @@ export default function DriverDetailScreen() {
     try {
       const res = await updateDriverMember(member.id, { serviceable_postal_codes: list });
       if (!res.ok) {
-        Alert.alert("Failed", res.error);
+        themedAlert("Failed", res.error);
       } else {
-        Alert.alert("Saved", "Serviceable postal codes updated.");
+        themedAlert("Saved", "Serviceable postal codes updated.");
         fetchData();
       }
     } finally {
@@ -146,7 +146,7 @@ export default function DriverDetailScreen() {
     if (!member || saving) return;
     const next = !member.is_active;
     const displayName = member.user?.full_name ?? "this driver";
-    Alert.alert(next ? "Activate" : "Deactivate", `Change status for ${displayName}?`, [
+    themedAlert(next ? "Activate" : "Deactivate", `Change status for ${displayName}?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Confirm",
@@ -154,7 +154,7 @@ export default function DriverDetailScreen() {
           setSaving(true);
           try {
             const res = await updateDriverMember(member.id, { is_active: next });
-            if (!res.ok) Alert.alert("Failed", res.error);
+            if (!res.ok) themedAlert("Failed", res.error);
             else fetchData();
           } finally {
             setSaving(false);

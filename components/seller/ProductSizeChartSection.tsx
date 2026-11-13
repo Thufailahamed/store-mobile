@@ -1,10 +1,23 @@
-import React from "react";
-import { View, Text, TextInput, TouchableOpacity, Pressable, ScrollView, StyleSheet, type LayoutChangeEvent } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Image,
+  ActivityIndicator,
+  Alert,
+  type LayoutChangeEvent,
+} from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { SIZE_SYSTEM_LABELS, type SizeSystem } from "@/lib/size-presets";
 import type { SizeGuideGrid } from "@/lib/api/backend";
+import { pickImages, uploadSizeChartImage } from "@/lib/upload";
 import { EditorCard, INK, RUST, FIELD_BG } from "./product-editor/primitives";
 
 type Props = {
@@ -141,8 +154,44 @@ function GridView({ grid }: { grid: SizeGuideGrid }) {
 }
 
 export function ProductSizeChartSection({ sizeSystem, standard, value, onChange, onLayout }: Props) {
+  const [uploading, setUploading] = useState(false);
+  const images = Array.isArray(value.images) ? value.images : [];
   const custom = value.columns.length > 0;
   const label = SIZE_SYSTEM_LABELS[sizeSystem];
+
+  const handlePickImages = async () => {
+    try {
+      const res = await pickImages({ limit: 6 });
+      if (!res || res.canceled || !res.assets || res.assets.length === 0) return;
+      setUploading(true);
+      const newUrls: string[] = [];
+      for (const asset of res.assets) {
+        const up = await uploadSizeChartImage(asset.uri, { mimeType: asset.mimeType });
+        if (up.url) {
+          newUrls.push(up.url);
+        } else if (up.error) {
+          Alert.alert("Upload Failed", up.error);
+        }
+      }
+      if (newUrls.length > 0) {
+        onChange({
+          ...value,
+          images: [...images, ...newUrls],
+        });
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Failed to pick images");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    onChange({
+      ...value,
+      images: images.filter((_, i) => i !== index),
+    });
+  };
 
   return (
     <EditorCard
@@ -151,41 +200,215 @@ export function ProductSizeChartSection({ sizeSystem, standard, value, onChange,
       hint={label}
       onLayout={onLayout}
     >
-      {custom ? (
-        <View style={{ gap: 12 }}>
-          <Text style={styles.note}>Custom chart for this product.</Text>
-          <GridEditor grid={value} onChange={onChange} />
-          <TouchableOpacity onPress={() => onChange(EMPTY)} accessibilityRole="button">
-            <Text style={styles.link}>Use the standard chart instead</Text>
-          </TouchableOpacity>
+      <View style={{ gap: 16 }}>
+        {/* Images uploader */}
+        <View style={styles.imageBlock}>
+          <View style={styles.imageHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.imageTitle}>Size chart image(s)</Text>
+              <Text style={styles.imageSubtitle}>
+                Upload single or multiple size chart diagrams
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handlePickImages}
+              disabled={uploading}
+              style={styles.uploadBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Upload size chart image"
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.olive[900]} />
+              ) : (
+                <Ionicons name="camera-outline" size={15} color={colors.olive[900]} />
+              )}
+              <Text style={styles.uploadBtnText}>
+                {uploading ? "Uploading..." : "Upload image"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {images.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbScroll}>
+              <View style={styles.thumbRow}>
+                {images.map((url, idx) => (
+                  <View key={idx} style={styles.thumbWrap}>
+                    <Image source={{ uri: url }} style={styles.thumb} resizeMode="contain" />
+                    <TouchableOpacity
+                      onPress={() => handleRemoveImage(idx)}
+                      style={styles.thumbRemove}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove image ${idx + 1}`}
+                    >
+                      <Ionicons name="close" size={13} color="#FFFFFF" />
+                    </TouchableOpacity>
+                    <View style={styles.thumbBadge}>
+                      <Text style={styles.thumbBadgeText}>#{idx + 1}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          ) : (
+            <Text style={styles.imageEmpty}>
+              No size chart images uploaded yet. Buyers can view your size chart photo on the product page.
+            </Text>
+          )}
         </View>
-      ) : standard ? (
-        <View style={{ gap: 12 }}>
-          <Text style={styles.note}>
-            Standard chart for {label}. Shoppers see it unless you customise it.
-          </Text>
-          <GridView grid={standard} />
-          <TouchableOpacity
-            style={styles.customiseBtn}
-            onPress={() =>
-              onChange({
-                columns: [...standard.columns],
-                rows: standard.rows.map((r) => [...r]),
-              })
-            }
-            accessibilityRole="button"
-          >
-            <Text style={styles.customiseText}>Customise for this product</Text>
-          </TouchableOpacity>
+
+        {/* Tabular measurement section */}
+        <View style={styles.tableBlock}>
+          <Text style={styles.sectionHeader}>Measurements table</Text>
+          {custom ? (
+            <View style={{ gap: 12 }}>
+              <Text style={styles.note}>Custom measurements for this product.</Text>
+              <GridEditor
+                grid={value}
+                onChange={(g) => onChange({ ...g, images })}
+              />
+              <TouchableOpacity
+                onPress={() => onChange({ columns: [], rows: [], images })}
+                accessibilityRole="button"
+              >
+                <Text style={styles.link}>Use the standard chart instead</Text>
+              </TouchableOpacity>
+            </View>
+          ) : standard ? (
+            <View style={{ gap: 12 }}>
+              <Text style={styles.note}>
+                Standard chart for {label}. Shoppers see it unless you customise it.
+              </Text>
+              <GridView grid={standard} />
+              <TouchableOpacity
+                style={styles.customiseBtn}
+                onPress={() =>
+                  onChange({
+                    columns: [...standard.columns],
+                    rows: standard.rows.map((r) => [...r]),
+                    images,
+                  })
+                }
+                accessibilityRole="button"
+              >
+                <Text style={styles.customiseText}>Customise for this product</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.note}>No standard chart for {label} yet. Ask an admin to add one.</Text>
+          )}
         </View>
-      ) : (
-        <Text style={styles.note}>No standard chart for {label} yet. Ask an admin to add one.</Text>
-      )}
+      </View>
     </EditorCard>
   );
 }
 
 const styles = StyleSheet.create({
+  imageBlock: {
+    backgroundColor: "rgba(83,94,44,0.04)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.08)",
+    padding: 12,
+    gap: 10,
+  },
+  imageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  imageTitle: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: INK,
+  },
+  imageSubtitle: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    color: "rgba(22,23,15,0.55)",
+    marginTop: 1,
+  },
+  uploadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.15)",
+  },
+  uploadBtnText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: colors.olive[900],
+  },
+  thumbScroll: {
+    marginTop: 4,
+  },
+  thumbRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 2,
+  },
+  thumbWrap: {
+    width: 90,
+    height: 75,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(22,23,15,0.12)",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  thumb: {
+    width: "100%",
+    height: "100%",
+  },
+  thumbRemove: {
+    position: "absolute",
+    top: 3,
+    right: 3,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbBadge: {
+    position: "absolute",
+    bottom: 2,
+    left: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  thumbBadgeText: {
+    fontFamily: fontFamilies.mono.medium,
+    fontSize: 9,
+    color: "#FFFFFF",
+  },
+  imageEmpty: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: "rgba(22,23,15,0.5)",
+    fontStyle: "italic",
+  },
+  tableBlock: {
+    gap: 8,
+  },
+  sectionHeader: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12.5,
+    color: INK,
+  },
   note: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, lineHeight: 18, color: "rgba(22,23,15,0.6)" },
   row: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   cell: { width: 112, gap: 2 },

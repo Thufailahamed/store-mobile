@@ -17,6 +17,8 @@ import { UserPageFrame, UP as C } from "@/components/user/user-page";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { submitContactSubmission } from "@/lib/api";
+import { SUPPORT_EMAIL } from "@/lib/legal/documents";
+import { safeOpenUrl } from "@/lib/utils/safe-open-url";
 
 import { fontFamilies } from "@/lib/theme/fonts";
 
@@ -167,6 +169,20 @@ export default function ContactScreen() {
                 </View>
               </View>
             </View>
+
+            {/* Direct email */}
+            <TouchableOpacity
+              style={styles.emailRow}
+              activeOpacity={0.8}
+              onPress={() => void safeOpenUrl(`mailto:${SUPPORT_EMAIL}`)}
+              accessibilityRole="link"
+              accessibilityLabel={`Email us at ${SUPPORT_EMAIL}`}
+            >
+              <Ionicons name="mail-outline" size={16} color={C.accent} />
+              <Text style={styles.emailRowText}>
+                Prefer email? <Text style={styles.emailRowLink}>{SUPPORT_EMAIL}</Text>
+              </Text>
+            </TouchableOpacity>
 
             {/* Topics */}
             <View style={styles.topicsSection}>
@@ -359,6 +375,9 @@ const styles = StyleSheet.create({
   },
   introTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 18, letterSpacing: -0.4, color: C.text },
   introSub: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted, marginTop: 2 },
+  emailRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 },
+  emailRowText: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: C.muted },
+  emailRowLink: { fontFamily: fontFamilies.sans.semibold, color: C.text, textDecorationLine: "underline" },
 
   /* Topics */
   topicsSection: { gap: 10 },

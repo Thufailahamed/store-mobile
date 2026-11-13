@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { Card } from "@/components/ui";
 import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { generateAdminReport, shareAdminReportCsv, type AdminReportKey } from "@/lib/admin/generate-report";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface Report {
   key: AdminReportKey;
@@ -34,13 +35,13 @@ export default function AdminReports() {
     const result = await generateAdminReport(r.key);
     setBusyKey(null);
     if (!result.ok) {
-      Alert.alert("Couldn't generate report", result.error);
+      themedAlert("Couldn't generate report", result.error);
       return;
     }
     try {
       await shareAdminReportCsv(result.title, result.csv);
     } catch {
-      Alert.alert("Share cancelled");
+      themedAlert("Share cancelled");
     }
   };
 

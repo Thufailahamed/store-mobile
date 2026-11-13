@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,14 +12,9 @@ import {
   View,
 } from "react-native";
 import { Modal } from "@/components/ui/Modal";
-import { getDevicePosition, LocationError } from "@/lib/location";
-import { useToast } from "@/components/ui";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
-import { AddressMapPicker } from "./AddressMapPicker";
-import { useDebounce } from "@/lib/hooks/useDebounce";
-import { reverseGeocode, type GeocodeResult } from "@/lib/maps";
 import { colors, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { C } from "@/components/orders/parcel-track";
@@ -116,70 +111,7 @@ export function AddressFormSheet({
     }),
   );
   const [saving, setSaving] = useState(false);
-  const [geoBusy, setGeoBusy] = useState(false);
-  const [mapInteracting, setMapInteracting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const debouncedLatLng = useDebounce(
-    { lat: form.latitude, lng: form.longitude },
-    500,
-  );
-  const lastReverseKey = useRef<string | null>(null);
-  const hasAutoFetchedRef = useRef(false);
-  const [fetchingLoc, setFetchingLoc] = useState(false);
-  const { toast } = useToast();
-
-  const applyGeocodeResult = useCallback((res: GeocodeResult) => {
-    setForm((prev) => ({
-      ...prev,
-      line1: res.components.line1 || prev.line1,
-      city: res.components.city || prev.city,
-      state: res.components.state || prev.state,
-      postal_code: res.components.postal_code || prev.postal_code,
-      country: res.components.country || prev.country,
-      latitude: res.lat,
-      longitude: res.lng,
-    }));
-    lastReverseKey.current = `${res.lat.toFixed(5)}|${res.lng.toFixed(5)}`;
-  }, []);
-
-  const handleAutoFetch = async () => {
-    if (fetchingLoc) return;
-    setFetchingLoc(true);
-    try {
-      const { lat, lng } = await getDevicePosition();
-
-      lastReverseKey.current = `${lat.toFixed(5)}|${lng.toFixed(5)}`;
-      setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
-
-      setGeoBusy(true);
-      const res = await reverseGeocode(lat, lng).finally(() =>
-        setGeoBusy(false),
-      );
-
-      if (!res) {
-        toast(
-          "Pinned your location — please type the street address below.",
-          "info",
-        );
-      } else {
-        applyGeocodeResult(res);
-        toast(
-          res.components.line1
-            ? "Address filled in — check the house number."
-            : "Pinned your location — add your house number and street.",
-          "success",
-        );
-      }
-    } catch (err: unknown) {
-      const message =
-        err instanceof LocationError || err instanceof Error
-          ? err.message
-          : "Couldn't get your location";
-      toast(message, "error");
-    } finally {
-      setFetchingLoc(false);
-    }
-  };
 
   // Reset form when sheet opens with a new initial value.
   useEffect(() => {
@@ -191,45 +123,8 @@ export function AddressFormSheet({
         }),
       );
       setErrors({});
-      lastReverseKey.current = null;
     }
   }, [visible, initial, defaultName, defaultPhone]);
-
-  // Automatically autofetch device location when opening for a new address without coordinates
-  useEffect(() => {
-    if (visible) {
-      if (
-        !initial?.id &&
-        initial?.latitude == null &&
-        !hasAutoFetchedRef.current
-      ) {
-        hasAutoFetchedRef.current = true;
-        handleAutoFetch();
-      }
-    } else {
-      hasAutoFetchedRef.current = false;
-    }
-  }, [visible, initial?.id, initial?.latitude]);
-
-  // Reverse-geocode whenever the pin lands somewhere we haven't looked up.
-  useEffect(() => {
-    if (debouncedLatLng.lat == null || debouncedLatLng.lng == null) return;
-    const key = `${debouncedLatLng.lat.toFixed(5)}|${debouncedLatLng.lng.toFixed(5)}`;
-    if (key === lastReverseKey.current) return;
-    lastReverseKey.current = key;
-    let cancelled = false;
-    setGeoBusy(true);
-    reverseGeocode(debouncedLatLng.lat, debouncedLatLng.lng).then((res) => {
-      if (cancelled) return;
-      setGeoBusy(false);
-      if (!res) return;
-      applyGeocodeResult(res);
-    });
-    return () => {
-      cancelled = true;
-      setGeoBusy(false);
-    };
-  }, [debouncedLatLng.lat, debouncedLatLng.lng, applyGeocodeResult]);
 
   const handlePlaceSelect = useCallback(
     (res: {
@@ -253,14 +148,9 @@ export function AddressFormSheet({
         latitude: res.lat,
         longitude: res.lng,
       }));
-      lastReverseKey.current = `${res.lat.toFixed(5)}|${res.lng.toFixed(5)}`;
     },
     [],
   );
-
-  const handleMapChange = useCallback((lat: number, lng: number) => {
-    setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
-  }, []);
 
   const set = <K extends keyof AddressFormPayload>(
     key: K,
@@ -306,10 +196,6 @@ export function AddressFormSheet({
   };
 
   const isEdit = Boolean(initial?.id);
-  const resolvedLine =
-    form.latitude != null
-      ? [form.line1, form.city, form.state].filter(Boolean).join(", ")
-      : "";
 
   return (
     <Modal
@@ -359,77 +245,7 @@ export function AddressFormSheet({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
-            scrollEnabled={!mapInteracting}
           >
-            {/* ── Location: map + one-tap auto-fill ─────────────────── */}
-            <View style={styles.locationCard}>
-              <AddressMapPicker
-                latitude={form.latitude}
-                longitude={form.longitude}
-                onLocationChange={handleMapChange}
-                onInteractionChange={setMapInteracting}
-                showCoords={false}
-                showLocateButton={false}
-                height={210}
-                overlay={
-                  <Pressable
-                    onPress={handleAutoFetch}
-                    disabled={fetchingLoc}
-                    accessibilityRole="button"
-                    accessibilityLabel="Use my current location"
-                    style={({ pressed }) => [
-                      styles.locatePill,
-                      form.latitude != null && styles.locatePillCompact,
-                      pressed && { opacity: 0.85 },
-                    ]}
-                  >
-                    <View style={styles.locateIcon}>
-                      {fetchingLoc ? (
-                        <ActivityIndicator size="small" color={INK} />
-                      ) : (
-                        <Ionicons name="navigate" size={14} color={INK} />
-                      )}
-                    </View>
-                    <Text style={styles.locatePillText}>
-                      {fetchingLoc
-                        ? "Finding you…"
-                        : form.latitude != null
-                          ? "My location"
-                          : "Use my current location"}
-                    </Text>
-                  </Pressable>
-                }
-              />
-              <View style={styles.deliverRow}>
-                <View style={styles.deliverIcon}>
-                  {geoBusy ? (
-                    <ActivityIndicator size="small" color={C.accent} />
-                  ) : (
-                    <Ionicons
-                      name={resolvedLine ? "location" : "location-outline"}
-                      size={20}
-                      color={C.accent}
-                    />
-                  )}
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.deliverEyebrow}>Deliver to</Text>
-                  <Text style={styles.deliverText} numberOfLines={2}>
-                    {geoBusy
-                      ? "Looking up this spot…"
-                      : resolvedLine ||
-                        "Tap the map or use your location to drop a pin"}
-                  </Text>
-                </View>
-                {form.latitude != null && !geoBusy ? (
-                  <View style={styles.pinnedBadge}>
-                    <Ionicons name="checkmark-circle" size={14} color={C.accent} />
-                    <Text style={styles.pinnedBadgeText}>Pinned</Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-
             {/* ── Contact ────────────────────────────────────────────── */}
             <Section
               index="01"

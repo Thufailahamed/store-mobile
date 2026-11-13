@@ -35,9 +35,9 @@ export default function WelcomeScreen() {
       <View style={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <Animated.View entering={FadeInDown.duration(500)} style={styles.brand}>
           <View style={styles.mark}>
-            <Text style={styles.markText}>L</Text>
+            <Text style={styles.markText}>V</Text>
           </View>
-          <Text style={styles.word}>LUXE</Text>
+          <Text style={styles.word}>VESTARA</Text>
           <Text style={styles.tagline}>Curated boutiques, delivered to your door.</Text>
         </Animated.View>
 

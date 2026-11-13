@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
   Text,
 } from "react-native";
 import {
@@ -28,6 +27,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { pickImage, takePhoto, uploadAvatar } from "@/lib/upload";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 function getInitials(name: string): string {
   const parts = name.trim().split(" ").filter(Boolean);
@@ -249,7 +249,7 @@ export default function ProfileScreen() {
   };
 
   const handlePhotoSelect = useCallback(() => {
-    Alert.alert("Update Profile Photo", "Choose an option", [
+    themedAlert("Update Profile Photo", "Choose an option", [
       {
         text: "Take Photo",
         onPress: async () => {
@@ -419,7 +419,7 @@ export default function ProfileScreen() {
                       color={colors.accent2.ochre}
                     />
                     <Text style={styles.heroRolePillText}>
-                      {role === "admin" ? "PLATFORM EXECUTIVE" : "LUXE MEMBER"}
+                      {role === "admin" ? "PLATFORM EXECUTIVE" : "VESTARA MEMBER"}
                     </Text>
                   </View>
                 </View>

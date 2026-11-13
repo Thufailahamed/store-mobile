@@ -12,11 +12,10 @@ import { C, ParcelArt } from "@/components/orders/parcel-track";
 import { ParcelScreen } from "@/components/orders/detail-chrome";
 
 const DROPOFF = {
-  company: "LUXE Returns",
-  line1: "No. 42, Independence Avenue",
-  line2: "Colombo 03",
+  company: "VESTARA Returns",
+  line1: "85/1, Courts Road",
+  line2: "Mawanella",
   country: "Sri Lanka",
-  phone: "+94 11 234 5678",
 };
 
 /** Decorative bar pattern derived from the return number (not a scannable code). */
@@ -74,13 +73,12 @@ export default function ReturnLabelScreen() {
   const shareLabel = async () => {
     if (!summary) return;
     const text = [
-      `LUXE return label · #${summary.return_number}`,
+      `VESTARA return label · #${summary.return_number}`,
       `Order #${summary.order_number}`,
       `Ship to: ${DROPOFF.company}`,
       DROPOFF.line1,
       DROPOFF.line2,
       DROPOFF.country,
-      DROPOFF.phone,
     ].join("\n");
     await Share.share({ message: text });
   };
@@ -110,7 +108,7 @@ export default function ReturnLabelScreen() {
           <View style={styles.intro}>
             <Text style={styles.introKicker}>PREPAID DROP-OFF</Text>
             <Text style={styles.introTitle}>Tape this to your parcel</Text>
-            <Text style={styles.introSub}>Postage is covered. Hand it to the rider or any LUXE drop-off point.</Text>
+            <Text style={styles.introSub}>Postage is covered. Hand it to the rider or any VESTARA drop-off point.</Text>
           </View>
 
           <View style={styles.labelShadow}>
@@ -118,7 +116,7 @@ export default function ReturnLabelScreen() {
               <View style={styles.labelHead}>
                 <View style={styles.labelBrand}>
                   <MaterialCommunityIcons name="keyboard-return" size={16} color={C.lime} />
-                  <Text style={styles.labelBrandText}>LUXE RETURNS</Text>
+                  <Text style={styles.labelBrandText}>VESTARA RETURNS</Text>
                 </View>
                 <Text style={styles.labelPaid}>POSTAGE PAID</Text>
               </View>
@@ -138,7 +136,6 @@ export default function ReturnLabelScreen() {
                 <Text style={styles.toLine}>
                   {DROPOFF.line2}, {DROPOFF.country}
                 </Text>
-                <Text style={styles.toPhone}>{DROPOFF.phone}</Text>
 
                 <View style={styles.cut} />
 
@@ -214,7 +211,6 @@ const styles = StyleSheet.create({
     color: C.text,
   },
   toLine: { marginTop: 2, fontFamily: fontFamilies.sans.medium, fontSize: 14.5, color: C.text },
-  toPhone: { marginTop: 6, fontFamily: fontFamilies.mono.medium, fontSize: 12.5, color: C.muted },
   barcode: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   barcodeText: {
     marginTop: 8,

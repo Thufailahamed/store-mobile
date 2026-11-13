@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform } from "react-native";
 import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import type { BrandCampaign } from "@/lib/api/backend";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
 
 const TYPES = ["sponsored", "seasonal", "launch", "collaboration", "awareness"] as const;
 type CampaignType = (typeof TYPES)[number];
@@ -65,7 +66,7 @@ export default function BrandCampaigns() {
               campaign={c}
               onEdit={() => setEditing(c)}
               onToggle={() => toggle.mutate({ id: c.id, status: c.status === "active" ? "paused" : "active" })}
-              onDelete={() => Alert.alert("Delete campaign?", c.name ?? "", [
+              onDelete={() => themedAlert("Delete campaign?", c.name ?? "", [
                 { text: "Cancel", style: "cancel" },
                 { text: "Delete", style: "destructive", onPress: () => del.mutate(c.id) },
               ])}
@@ -132,7 +133,7 @@ function CampaignModal({ campaign, onClose }: { campaign: BrandCampaign | null; 
       qc.invalidateQueries({ queryKey: ["brand-campaigns"] });
       onClose();
     },
-    onError: (e) => Alert.alert("Error", String(e)),
+    onError: (e) => themedAlert("Error", String(e)),
   });
 
   return (

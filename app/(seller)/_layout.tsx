@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Tabs, useRouter, useSegments } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -6,10 +6,28 @@ import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { getSellerStore, getSellerPayoutSettings, getSellerComplianceDocuments } from "@/lib/api";
+import {
+  getSellerStore,
+  getSellerPayoutSettings,
+  getSellerComplianceDocuments,
+  getSellerKPIs,
+  getSellerNotifications,
+  getSellerOrders,
+  getSellerProducts,
+  getSellerInventory,
+  peekSellerSnapshot,
+  SELLER_CACHE_KEYS,
+} from "@/lib/api";
 import { getSellerAccessState } from "@/lib/seller-access";
+import {
+  hasCompletedSellerOnboarding,
+  seedStoreContactFromAccount,
+  storeLooksSetUp,
+} from "@/lib/seller-onboarding";
 import type { SellerPayoutCompliance, SellerComplianceDocument } from "@/lib/seller-access";
 import type { Store } from "@/lib/types";
+import { PendingReviewScreen } from "@/components/seller/PendingReviewScreen";
+import { PICKUP_ADDRESS_ROUTE } from "@/lib/seller-pickup-address";
 
 export default function SellerLayout() {
   const { role, roleLoading, loading, user } = useAuth();
@@ -20,6 +38,10 @@ export default function SellerLayout() {
   const [payout, setPayout] = useState<SellerPayoutCompliance | null>(null);
   const [documents, setDocuments] = useState<SellerComplianceDocument[]>([]);
   const [storeLoading, setStoreLoading] = useState(true);
+  // New sellers (fresh store, onboarding not finished/skipped) go through
+  // onboarding once. null = flag not read yet.
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+  const onboardingRedirected = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,28 +53,83 @@ export default function SellerLayout() {
         }
         return;
       }
-      setStoreLoading(true);
-      const res = await getSellerStore(user.id);
-      if (!cancelled) {
-        const nextStore = res.ok ? res.data : null;
-        setStore(nextStore);
-        if (nextStore) {
-          const [payoutRes, docsRes] = await Promise.all([
-            getSellerPayoutSettings(nextStore.id),
-            getSellerComplianceDocuments(nextStore.id),
-          ]);
-          setPayout(payoutRes.ok ? payoutRes.data : null);
-          setDocuments(docsRes.ok ? docsRes.data : []);
-        } else {
-          setPayout(null);
-          setDocuments([]);
-        }
+      // 1. Paint instantly from the last-known snapshot (disk, no network).
+      const [snapStore, snapPayout, snapDocs] = await Promise.all([
+        peekSellerSnapshot<Store | null>(SELLER_CACHE_KEYS.store),
+        peekSellerSnapshot<SellerPayoutCompliance | null>(SELLER_CACHE_KEYS.payout),
+        peekSellerSnapshot<SellerComplianceDocument[]>(SELLER_CACHE_KEYS.docs),
+      ]);
+      if (cancelled) return;
+      if (snapStore) {
+        setStore(snapStore);
+        setPayout(snapPayout ?? null);
+        setDocuments(snapDocs ?? []);
         setStoreLoading(false);
+        // Warm the dashboard's own reads in parallel with ours.
+        void getSellerKPIs(snapStore.id);
+        void getSellerNotifications(20);
+      } else {
+        setStoreLoading(true);
       }
+
+      // 2. Revalidate: store, payout and docs in one parallel round-trip
+      //    (none of them needs the store id server-side).
+      const [res, payoutRes, docsRes] = await Promise.all([
+        getSellerStore(user.id),
+        getSellerPayoutSettings(""),
+        getSellerComplianceDocuments(""),
+      ]);
+      if (cancelled) return;
+      const nextStore = res.ok ? res.data : null;
+      if (nextStore && nextStore.id !== snapStore?.id) {
+        void getSellerKPIs(nextStore.id);
+        void getSellerNotifications(20);
+      }
+      setStore(nextStore);
+      setPayout(nextStore && payoutRes.ok ? payoutRes.data : null);
+      setDocuments(nextStore && docsRes.ok ? docsRes.data : []);
+      setStoreLoading(false);
+
+      // Warm the other tabs' first page once the dashboard has had its turn,
+      // so opening Orders / Products / Inventory paints from cache. Options
+      // must match each screen's own call (they form the cache key).
+      if (
+        nextStore &&
+        getSellerAccessState(
+          nextStore as Store & Record<string, unknown>,
+          payoutRes.ok ? payoutRes.data : null,
+          docsRes.ok ? docsRes.data : [],
+        ).canAccessSellerTools
+      ) {
+        const id = nextStore.id;
+        prefetchTimer = setTimeout(() => {
+          void getSellerOrders(id, { limit: 200 });
+          void getSellerProducts(id, { sort: "newest", limit: 20, offset: 0 });
+          void getSellerInventory(id);
+          void getSellerProducts(id, { limit: 100 });
+        }, 1200);
+      }
+
+      // 3. Backfill the store's contact from the sign-up phone/email —
+      //    off the critical path.
+      void seedStoreContactFromAccount(nextStore, user).then((seeded) => {
+        if (!seeded || cancelled) return;
+        setStore((cur) =>
+          cur
+            ? {
+                ...cur,
+                contact_phone: cur.contact_phone || seeded.phone || null,
+                contact_email: cur.contact_email || seeded.email || null,
+              }
+            : cur,
+        );
+      });
     };
+    let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
     void loadStore();
     return () => {
       cancelled = true;
+      if (prefetchTimer) clearTimeout(prefetchTimer);
     };
   }, [user, role]);
 
@@ -61,17 +138,54 @@ export default function SellerLayout() {
     [store, payout, documents],
   );
 
+  const isOnboardingRoute = (segments as string[]).includes("onboarding");
   const isSettingsRoute =
-    (segments as string[]).includes("settings") || (segments as string[]).includes("more");
+    (segments as string[]).includes("settings") ||
+    (segments as string[]).includes("more") ||
+    isOnboardingRoute;
 
+  // Re-read the done flag whenever the seller is outside onboarding, so
+  // finishing or skipping it is picked up without reloading the layout.
+  useEffect(() => {
+    if (!user || role !== "store_owner" || isOnboardingRoute) {
+      if (isOnboardingRoute) onboardingRedirected.current = true;
+      return;
+    }
+    let cancelled = false;
+    void hasCompletedSellerOnboarding(user.id).then((done) => {
+      if (!cancelled) setOnboardingDone(done);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, role, isOnboardingRoute]);
+
+  // Non-sellers leave the seller area. Deps stay minimal: re-firing this on
+  // every route change while the layout is still mounted ping-pongs the
+  // navigator ("Maximum update depth exceeded").
   useEffect(() => {
     if (loading || roleLoading || storeLoading) return;
-    if (role !== "store_owner") {
-      router.replace("/(main)");
-    }
+    if (role !== "store_owner") router.replace("/(main)");
   }, [role, roleLoading, loading, storeLoading, router]);
 
-  if (loading || roleLoading || storeLoading) {
+  useEffect(() => {
+    if (loading || roleLoading || storeLoading || role !== "store_owner") return;
+    // At most one automatic redirect per session — never loop back after
+    // the seller finishes or skips.
+    if (
+      onboardingDone === false &&
+      !storeLooksSetUp(store) &&
+      !isOnboardingRoute &&
+      !onboardingRedirected.current
+    ) {
+      onboardingRedirected.current = true;
+      router.replace("/(seller)/onboarding" as any);
+    }
+  }, [role, roleLoading, loading, storeLoading, router, onboardingDone, store, isOnboardingRoute]);
+
+  const awaitingOnboardingFlag =
+    role === "store_owner" && onboardingDone === null && !isOnboardingRoute;
+  if (loading || roleLoading || storeLoading || awaitingOnboardingFlag) {
     return (
       <View style={styles.boot}>
         <ActivityIndicator size="large" color={colors.light.primary} />
@@ -85,34 +199,21 @@ export default function SellerLayout() {
 
   const locked = !access.canAccessSellerTools;
 
-  if (locked && !isSettingsRoute) {
+  // Locked stores see a status screen on top of the navigator. The <Tabs>
+  // navigator stays mounted underneath: swapping it out for this view while
+  // a back/tab navigation is in flight loops the native stack
+  // ("Maximum update depth exceeded").
+  const blockedView = (() => {
+    if (!locked || isSettingsRoute) return null;
     const goSettings = () => router.push("/(seller)/settings" as any);
     if (access.isPendingReview) {
       return (
-        <View style={styles.blockedContainer}>
-          <View style={styles.reviewBadge}>
-            <Text style={styles.reviewBadgeText}>Under review</Text>
-          </View>
-          <Text style={styles.blockedTitle}>Store in review</Text>
-          <Text style={styles.blockedBody}>
-            Thank you for submitting your application. Our admin team is reviewing{" "}
-            {store?.name ? `"${store.name}"` : "your store"}. You&apos;ll get full seller access once
-            it&apos;s approved.
-          </Text>
-          <View style={styles.reviewCard}>
-            <Text style={styles.reviewCardLabel}>Application status</Text>
-            <View style={styles.reviewCardRow}>
-              <Text style={styles.reviewStoreName}>{store?.name ?? "Your store"}</Text>
-              <View style={styles.pendingPill}>
-                <View style={styles.pendingDot} />
-                <Text style={styles.pendingPillText}>Pending review</Text>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.blockedCta} onPress={goSettings} accessibilityRole="button">
-            <Text style={styles.blockedCtaText}>View store settings</Text>
-          </TouchableOpacity>
-        </View>
+        <PendingReviewScreen
+          store={store}
+          onOpenSettings={goSettings}
+          onOpenSetup={() => router.push("/(seller)/onboarding" as any)}
+          onOpenPickup={() => router.push(PICKUP_ADDRESS_ROUTE as any)}
+        />
       );
     }
 
@@ -146,11 +247,13 @@ export default function SellerLayout() {
         </View>
       );
     }
-  }
+    return null;
+  })();
 
   const tabBarHeight = 62 + Math.max(insets.bottom, 10);
 
   return (
+    <View style={styles.root}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -242,6 +345,7 @@ export default function SellerLayout() {
         }}
       />
 
+      <Tabs.Screen name="onboarding" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="analytics" options={{ href: null }} />
       <Tabs.Screen name="settings/index" options={{ href: null }} />
       <Tabs.Screen name="settings/pickup-address" options={{ href: null }} />
@@ -262,10 +366,14 @@ export default function SellerLayout() {
       <Tabs.Screen name="payouts/verify" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]/invoice" options={{ href: null }} />
     </Tabs>
+      {blockedView ? <View style={styles.blockedOverlay}>{blockedView}</View> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
+  blockedOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10 },
   boot: {
     flex: 1,
     justifyContent: "center",
@@ -305,70 +413,6 @@ const styles = StyleSheet.create({
     color: colors.paper.cream,
     fontFamily: fontFamilies.sans.semibold,
     fontSize: typography.fontSizes.sm,
-  },
-  reviewBadge: {
-    alignSelf: "center",
-    backgroundColor: "#FEF3C7",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 4,
-  },
-  reviewBadgeText: {
-    color: "#92400E",
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.xs,
-    letterSpacing: typography.letterSpacing.wide,
-    textTransform: "uppercase",
-  },
-  reviewCard: {
-    marginTop: 20,
-    width: "100%",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: colors.light.card,
-    padding: 16,
-    gap: 10,
-  },
-  reviewCardLabel: {
-    color: colors.light.mutedForeground,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: typography.fontSizes.xs,
-    letterSpacing: typography.letterSpacing.wide,
-    textTransform: "uppercase",
-  },
-  reviewCardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  reviewStoreName: {
-    flex: 1,
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: typography.fontSizes.sm,
-  },
-  pendingPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#FEF3C7",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  pendingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#F59E0B",
-  },
-  pendingPillText: {
-    color: "#92400E",
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 10,
   },
   tabIconWrap: {
     width: 44,

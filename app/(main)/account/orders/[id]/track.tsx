@@ -53,6 +53,34 @@ const STATUS_META: Record<string, { label: string; icon: keyof typeof Ionicons.g
   cancelled: { label: "Cancelled", icon: "close-circle-outline", copy: "Order cancelled." },
   returned: { label: "Returned", icon: "refresh-outline", copy: "Items returned." },
   refunded: { label: "Refunded", icon: "card-outline", copy: "Refund issued." },
+  failed_attempt: { label: "Delivery attempt failed", icon: "alert-circle-outline", copy: "The courier will try again." },
+  // Courier events (tracking_events.status written by the Domex poller).
+  pickup_scheduled: { label: "Booked with courier", icon: "calendar-outline", copy: "The courier will collect it from the seller." },
+  picked_up: { label: "Picked up by courier", icon: "cube-outline", copy: "Collected from the seller." },
+  in_transit: { label: "In transit", icon: "car-outline", copy: "Moving through the courier network." },
+  failed_delivery: { label: "Delivery rescheduled", icon: "alert-circle-outline", copy: "The rider will try again." },
+  returned_to_origin: { label: "Returned to seller", icon: "return-down-back-outline", copy: "The parcel went back to the seller." },
+  // Return parcel events (customer -> store), prefixed by the poller.
+  return_pickup_scheduled: { label: "Return pickup booked", icon: "calendar-outline", copy: "The courier will collect your return." },
+  return_picked_up: { label: "Return collected", icon: "cube-outline", copy: "The courier has your return." },
+  return_in_transit: { label: "Return in transit", icon: "car-outline", copy: "On its way back to the seller." },
+  return_out_for_delivery: { label: "Return out for delivery", icon: "bicycle-outline", copy: "Arriving at the seller." },
+  return_delivered: { label: "Return received by seller", icon: "checkmark-done-outline", copy: "Refund follows inspection." },
+  return_pickup_cancelled: { label: "Return pickup cancelled", icon: "close-circle-outline", copy: "The return pickup was cancelled." },
+};
+
+/** Courier parcel status, as the buyer reads it. */
+const COURIER_STATUS_LABEL: Record<string, string> = {
+  created: "Booked",
+  pickup_scheduled: "Waiting for courier pickup",
+  rider_assigned: "Rider assigned",
+  picked_up: "Picked up",
+  in_transit: "In transit",
+  out_for_delivery: "Out for delivery",
+  delivered: "Delivered",
+  failed_delivery: "Delivery rescheduled",
+  returned_to_origin: "Returned to seller",
+  cancelled: "Cancelled",
 };
 
 export default function OrderTrackScreen() {
@@ -252,16 +280,17 @@ export default function OrderTrackScreen() {
                 <Ionicons name="bicycle-outline" size={20} color={colors.olive[700]} />
               </View>
               <View style={{ flex: 1 }}>
-                <Label style={styles.riderKicker}>EXTERNAL COURIER</Label>
+                <Label style={styles.riderKicker}>DELIVERY PARTNER</Label>
                 <Body size="sm" style={styles.riderName}>
                   {courier.provider_name}
                 </Body>
                 <Body muted size="xs">
-                  Status: {courier.status.replace(/_/g, " ")}
+                  {COURIER_STATUS_LABEL[courier.status] ?? courier.status.replace(/_/g, " ")}
+                  {courier.last_event_at ? ` · ${fmtDateTime(courier.last_event_at)}` : ""}
                 </Body>
                 {courier.external_tracking_id ? (
                   <Body muted size="xs" selectable>
-                    Tracking: {courier.external_tracking_id}
+                    Tracking no. {courier.external_tracking_id}
                   </Body>
                 ) : null}
               </View>

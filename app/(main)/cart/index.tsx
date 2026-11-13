@@ -533,7 +533,7 @@ export default function CartScreen() {
                   <>
                     <PriceRow label="Discount on MRP" value={`– ${formatPrice(discountOnMrp)}`} accent />
                     <PriceRow label="Delivery" value={shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)} />
-                    <PriceRow label={`Platform fee · ${pricing.platform_fee_pct}%`} value={formatPrice(tax)} />
+                    <PriceRow label={`Tax and fees · ${pricing.platform_fee_pct}%`} value={formatPrice(tax)} />
                   </>
                 )}
                 <View style={bs.priceDivider} />
@@ -572,7 +572,7 @@ export default function CartScreen() {
             </View>
 
             <Text style={bs.terms}>
-              By placing the order, you agree to Luxe's <Text style={bs.termsLink}>Terms of Use</Text> and{" "}
+              By placing the order, you agree to Vestara's <Text style={bs.termsLink}>Terms of Use</Text> and{" "}
               <Text style={bs.termsLink}>Privacy Policy</Text>
             </Text>
 

@@ -18,7 +18,6 @@ import { Ionicons } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import { getSellerStore, updateSellerStore } from "@/lib/api";
-import { getDevicePosition, LocationError } from "@/lib/location";
 import { hasPickupAddress } from "@/lib/seller-pickup-address";
 import { SellerBackButton } from "@/components/seller/SellerBackButton";
 import { SellerStateView, SellerGlow } from "@/components/seller/chrome";
@@ -32,6 +31,7 @@ const INK = colors.olive[950];
 type Draft = {
   line1: string;
   line2: string;
+  phone: string;
   city: string;
   state: string;
   postal: string;
@@ -43,6 +43,7 @@ function draftFrom(store: Store): Draft {
   return {
     line1: store.delivery_address_line1 ?? "",
     line2: store.delivery_address_line2 ?? "",
+    phone: store.delivery_phone ?? "",
     city: store.delivery_city ?? "",
     state: store.delivery_state ?? "",
     postal: store.delivery_postal_code ?? "",
@@ -66,7 +67,6 @@ export default function PickupAddressScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [locating, setLocating] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -91,19 +91,6 @@ export default function PickupAddressScreen() {
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((d) => (d ? { ...d, [key]: value } : d));
 
-  const pinHere = async () => {
-    setLocating(true);
-    try {
-      const pos = await getDevicePosition();
-      setDraft((d) => (d ? { ...d, lat: pos.lat, lng: pos.lng } : d));
-      toast("Pin set to your current location", "success");
-    } catch (e) {
-      toast(e instanceof LocationError ? e.message : "Couldn't get your location", "error");
-    } finally {
-      setLocating(false);
-    }
-  };
-
   const save = async () => {
     if (!store || !draft) return;
     if (!draft.line1.trim() || !draft.city.trim()) {
@@ -114,6 +101,8 @@ export default function PickupAddressScreen() {
     const res = await updateSellerStore(store.id, {
       delivery_address_line1: draft.line1.trim(),
       delivery_address_line2: draft.line2.trim() || null,
+      // Blank = couriers call the owner's login phone.
+      delivery_phone: draft.phone.trim() || null,
       delivery_city: draft.city.trim(),
       delivery_state: draft.state.trim() || null,
       delivery_postal_code: draft.postal.trim() || null,
@@ -176,7 +165,6 @@ export default function PickupAddressScreen() {
   }
 
   const saved = hasPickupAddress(store);
-  const pinned = draft.lat != null && draft.lng != null;
 
   return (
     <KeyboardAvoidingView
@@ -213,6 +201,15 @@ export default function PickupAddressScreen() {
             placeholder="Loading bay B"
             textContentType="streetAddressLine2"
           />
+          <Field
+            label="Pickup contact phone"
+            optional
+            value={draft.phone}
+            onChangeText={(v) => set("phone", v)}
+            placeholder="Leave blank to use your login phone"
+            keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+          />
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <Field
@@ -245,29 +242,6 @@ export default function PickupAddressScreen() {
           />
         </View>
 
-        <TouchableOpacity
-          style={styles.pinButton}
-          onPress={pinHere}
-          disabled={locating}
-          accessibilityRole="button"
-          accessibilityLabel="Use my current location as the pickup pin"
-        >
-          {locating ? (
-            <ActivityIndicator color={colors.olive[700]} />
-          ) : (
-            <Ionicons name={pinned ? "checkmark-circle" : "locate-outline"} size={18} color={colors.olive[700]} />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.pinTitle}>
-              {pinned ? "Map pin set" : "Use my current location"}
-            </Text>
-            <Text style={styles.pinSub}>
-              {pinned
-                ? `${draft.lat!.toFixed(5)}, ${draft.lng!.toFixed(5)} · tap to update`
-                : "Optional — helps drivers navigate straight to you"}
-            </Text>
-          </View>
-        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.saveButton, saving && { opacity: 0.6 }]}

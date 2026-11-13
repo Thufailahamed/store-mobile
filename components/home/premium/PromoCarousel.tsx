@@ -159,7 +159,7 @@ export function PromoCarousel({ banners }: PromoCarouselProps) {
 const FALLBACK_PROMOS: Banner[] = [
   {
     id: "fallback-1",
-    title: "LUXE Edit",
+    title: "VESTARA Edit",
     subtitle: "Up to 50% off selected styles",
     image_url: "",
     position: "home_hero",

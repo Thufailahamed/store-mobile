@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl, Alert } from "react-native";
+import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminCommissions, updateCommissionTier } from "@/lib/api";
 import { Card, EmptyState, Skeleton, Input, Button } from "@/components/ui";
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function AdminCommissions() {
   const qc = useQueryClient();
@@ -56,10 +57,10 @@ function TierRow({ tier, index, onSave }: { tier: any; index: number; onSave: (p
             onPress={() => {
               const n = Number(rate);
               if (!Number.isFinite(n) || n < 0 || n > 100) {
-                Alert.alert("Invalid rate", "Enter a commission between 0 and 100.");
+                themedAlert("Invalid rate", "Enter a commission between 0 and 100.");
                 return;
               }
-              Alert.alert(
+              themedAlert(
                 "Update commission?",
                 `Set ${tier.name} to ${n}%? This applies to future seller orders.`,
                 [

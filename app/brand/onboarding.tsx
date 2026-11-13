@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, KeyboardAvoidingView, Platform, Pressable } from "react-native";
+import { View, Text, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Redirect, router } from "expo-router";
 import { isBrandPortalEnabledMobile } from "@/lib/feature-flags";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { checkBrandSlug, submitBrandApplication } from "@/lib/api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 type Step = 0 | 1 | 2;
 
@@ -60,11 +61,11 @@ function BrandOnboarding() {
     }),
     onSuccess: (r) => {
       if (r.ok) {
-        Alert.alert("Application submitted", "We'll review and approve shortly.", [
+        themedAlert("Application submitted", "We'll review and approve shortly.", [
           { text: "OK", onPress: () => router.replace("/(brand)") },
         ]);
       } else {
-        Alert.alert("Submission failed", String(r.error ?? "Unknown error"));
+        themedAlert("Submission failed", String(r.error ?? "Unknown error"));
       }
     },
   });
@@ -72,7 +73,7 @@ function BrandOnboarding() {
   const next = () => {
     if (step === 0) {
       if (!name || !slug || slugStatus !== "ok") {
-        Alert.alert("Missing info", "Brand name and a unique slug are required.");
+        themedAlert("Missing info", "Brand name and a unique slug are required.");
         return;
       }
     }
@@ -82,7 +83,7 @@ function BrandOnboarding() {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.eyebrow}>LUXE</Text>
+        <Text style={styles.eyebrow}>VESTARA</Text>
         <Text style={styles.title}>Open your brand</Text>
         <Text style={styles.subtitle}>Step {step + 1} of 3</Text>
 

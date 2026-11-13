@@ -7,7 +7,6 @@ import {
   StyleSheet,
   RefreshControl,
   Linking,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +29,7 @@ import {
   isCompleted,
 } from "@/lib/utils/delivery-format";
 import type { Order } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const REFRESH_INTERVAL_MS = 30_000;
 
@@ -55,9 +55,9 @@ export default function DeliveryDashboard() {
       // off rather than leaving the UI showing a running timer for a shift
       // that's silently doing nothing.
       void toggleShift(false);
-      Alert.alert(
+      themedAlert(
         "Location access needed",
-        "Turn on location access for LUXE to go on shift — dispatch uses it to route orders to you.",
+        "Turn on location access for VESTARA to go on shift — dispatch uses it to route orders to you.",
       );
     }, [toggleShift]),
   );
@@ -129,10 +129,10 @@ export default function DeliveryDashboard() {
     const res = await riderStartDelivery(order.id);
     setStarting(null);
     if (res.ok) {
-      Alert.alert("Out for delivery", `${order.order_number}\nOTP: ${res.data.otp}`);
+      themedAlert("Out for delivery", `${order.order_number}\nOTP: ${res.data.otp}`);
       fetchOrders();
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 

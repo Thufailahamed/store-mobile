@@ -259,7 +259,7 @@ export default function LoyaltyScreen() {
   const memberName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
     user?.email?.split("@")[0] ||
-    "LUXE Patron";
+    "VESTARA Patron";
   const memberSince = user?.created_at
     ? new Date(user.created_at).getFullYear()
     : null;

@@ -63,7 +63,7 @@ interface LettersProps {
 }
 
 /**
- * Letters — a parchment of correspondence from the LUXE community.
+ * Letters — a parchment of correspondence from the VESTARA community.
  * One active card with a wax-seal feel; rotates every 6.5s.
  */
 export function Letters({

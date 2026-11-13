@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   TextInput,
   Linking,
   ActivityIndicator,
@@ -23,6 +22,7 @@ import { useTheme } from "@/lib/hooks/useTheme";
 import { typography, radii } from "@/lib/theme/tokens";
 import { isValidOtp, MAX_PICKUP_ATTEMPTS } from "@/lib/delivery-workflow";
 import { ISSUE_REASONS, type IssueReason } from "@/lib/utils/delivery-format";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function ReturnPickupDetail() {
   const router = useRouter();
@@ -98,22 +98,22 @@ export default function ReturnPickupDetail() {
       });
       setActing(false);
       if (res.ok) {
-        Alert.alert("Updated", `Pickup marked as ${res.data.status}.`);
+        themedAlert("Updated", `Pickup marked as ${res.data.status}.`);
         setFailReason("");
         setFailNotes("");
         setFailEvidenceUrl(null);
         load();
       } else {
-        Alert.alert("Error", res.error);
+        themedAlert("Error", res.error);
       }
     };
 
     if (action === "fail") {
       if (!failReason) {
-        Alert.alert("Reason required", "Pick a failure reason before submitting.");
+        themedAlert("Reason required", "Pick a failure reason before submitting.");
         return;
       }
-      Alert.alert(
+      themedAlert(
         "Mark failed?",
         "The pickup will be marked failed and the buyer notified.",
         [
@@ -125,7 +125,7 @@ export default function ReturnPickupDetail() {
     }
 
     if (action === "verify" && !isValidOtp(otp)) {
-      Alert.alert("OTP required", "Enter the 6-digit pickup verification code.");
+      themedAlert("OTP required", "Enter the 6-digit pickup verification code.");
       return;
     }
 

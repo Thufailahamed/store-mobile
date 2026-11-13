@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Modal } from "@/components/ui/Modal";
 import { Ionicons, type IonIconName } from "@/components/ui/Icon";
 import {
@@ -28,9 +29,10 @@ import {
 } from "@/lib/api/facets";
 import * as api from "@/lib/api";
 import type { Brand, Category } from "@/lib/types";
-import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
+import { radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { C } from "@/components/orders/parcel-track";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -72,9 +74,12 @@ const nearestStep = (v: number) => {
 const shortPrice = (n: number) =>
   n >= 1000 ? `${n % 1000 === 0 ? n / 1000 : (n / 1000).toFixed(1)}K` : String(n);
 
-const INK = colors.olive[900];
-const CREAM = colors.paper.cream;
-const SURFACE = "#ffffff";
+/* Account-page palette (components/orders/parcel-track `C`) so the sheet
+ * reads as the same system: paper + glow, white line-bordered cards, mono
+ * olive kickers, ink actives with lime accents. */
+const INK = C.ink;
+const CREAM = C.cream;
+const SURFACE = C.card;
 
 interface FilterSheetProps {
   visible: boolean;
@@ -109,6 +114,8 @@ const animateLayout = () =>
 
 function Section({
   title,
+  kicker,
+  icon,
   summary,
   active,
   onClear,
@@ -116,6 +123,8 @@ function Section({
   children,
 }: {
   title: string;
+  kicker: string;
+  icon: IonIconName;
   summary?: string;
   active?: boolean;
   onClear?: () => void;
@@ -135,7 +144,11 @@ function Section({
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
       >
-        <View style={{ flex: 1 }}>
+        <View style={[styles.cardIcon, active && styles.cardIconActive]}>
+          <Ionicons name={icon} size={18} color={active ? C.lime : C.text} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.cardKicker}>{kicker}</Text>
           <Text style={styles.cardTitle}>{title}</Text>
           {summary ? (
             <Text style={[styles.cardSummary, active && styles.cardSummaryActive]} numberOfLines={1}>
@@ -149,7 +162,7 @@ function Section({
           </TouchableOpacity>
         ) : null}
         <View style={[styles.chevron, open && styles.chevronOpen]}>
-          <Ionicons name="chevron-down" size={14} color={colors.light.foreground} />
+          <Ionicons name="chevron-down" size={15} color={C.muted} />
         </View>
       </TouchableOpacity>
       {open ? <View style={styles.cardBody}>{children}</View> : null}
@@ -165,7 +178,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
       activeOpacity={0.8}
       accessibilityState={{ selected: active }}
     >
-      {active ? <Ionicons name="checkmark" size={13} color={CREAM} /> : null}
+      {active ? <Ionicons name="checkmark" size={13} color={C.lime} /> : null}
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -193,7 +206,7 @@ function Segmented<T extends string | number>({
             accessibilityState={{ selected: on }}
           >
             {o.icon ? (
-              <Ionicons name={o.icon} size={12} color={on ? colors.accent2.ochre : colors.light.mutedForeground} />
+              <Ionicons name={o.icon} size={12} color={on ? C.lime : C.muted} />
             ) : null}
             <Text style={[styles.segmentText, on && styles.segmentTextActive]} numberOfLines={1}>
               {o.label}
@@ -468,6 +481,12 @@ export function FilterSheet({
 
       <Animated.View style={[styles.sheet, { maxHeight: sheetMaxH, transform: [{ translateY }] }]}>
         {/* Header — drag area */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[C.glow, C.glowSoft, C.paper]}
+          locations={[0, 0.6, 1]}
+          style={styles.glow}
+        />
         <View {...dragPR.panHandlers} style={styles.headerArea}>
           <View style={styles.handle} />
           <View style={styles.header}>
@@ -488,7 +507,7 @@ export function FilterSheet({
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity onPress={dismiss} hitSlop={10} style={styles.closeBtn} accessibilityLabel="Close filters">
-              <Ionicons name="close" size={18} color={colors.light.foreground} />
+              <Ionicons name="close" size={19} color={C.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -500,7 +519,7 @@ export function FilterSheet({
           keyboardShouldPersistTaps="handled"
         >
           {/* Sort */}
-          <Section title="Sort by" summary={sortLabel} active={draftSort !== "newest"} onClear={() => setDraftSort("newest")}>
+          <Section title="Sort by" kicker="ORDER" icon="swap-vertical-outline" summary={sortLabel} active={draftSort !== "newest"} onClear={() => setDraftSort("newest")}>
             <View style={styles.tileGrid}>
               {SORTS.map((s) => {
                 const on = draftSort === s.key;
@@ -513,12 +532,12 @@ export function FilterSheet({
                     accessibilityState={{ selected: on }}
                   >
                     <View style={[styles.sortIcon, on && styles.sortIconActive]}>
-                      <Ionicons name={s.icon} size={15} color={on ? colors.accent2.ochre : colors.olive[700]} />
+                      <Ionicons name={s.icon} size={16} color={on ? C.ink : C.text} />
                     </View>
                     <Text style={[styles.sortTileText, on && styles.sortTileTextActive]} numberOfLines={1}>
                       {s.label}
                     </Text>
-                    {on ? <Ionicons name="checkmark-circle" size={16} color={colors.accent2.ochre} /> : null}
+                    {on ? <Ionicons name="checkmark-circle" size={17} color={C.lime} /> : null}
                   </TouchableOpacity>
                 );
               })}
@@ -527,7 +546,7 @@ export function FilterSheet({
 
           {/* Price */}
           <Section
-            title="Price"
+            title="Price" kicker="BUDGET" icon="wallet-outline"
             summary={priceSummary}
             active={priceActive}
             onClear={() => setPriceIdx([0, PRICE_STEPS.length - 1])}
@@ -537,7 +556,7 @@ export function FilterSheet({
                 <Text style={styles.priceBoxLabel}>Min</Text>
                 <Text style={styles.priceBoxValue} numberOfLines={1}>{formatPrice(priceMin)}</Text>
               </View>
-              <View style={styles.priceDash} />
+              <View style={styles.priceDivider} />
               <View style={styles.priceBox}>
                 <Text style={styles.priceBoxLabel}>Max</Text>
                 <Text style={styles.priceBoxValue} numberOfLines={1}>
@@ -576,7 +595,7 @@ export function FilterSheet({
 
           {/* Discount */}
           <Section
-            title="Discount"
+            title="Discount" kicker="SALE" icon="pricetag-outline"
             summary={draft.minDiscount ? `${draft.minDiscount}% off or more` : "Any discount"}
             active={!!draft.minDiscount}
             onClear={() => setDraft({ ...draft, minDiscount: 0 })}
@@ -590,7 +609,7 @@ export function FilterSheet({
 
           {/* Rating */}
           <Section
-            title="Customer rating"
+            title="Customer rating" kicker="REVIEWS" icon="star-outline"
             summary={draft.minRating ? `${draft.minRating} stars & up` : "Any rating"}
             active={!!draft.minRating}
             onClear={() => setDraft({ ...draft, minRating: 0 })}
@@ -607,7 +626,7 @@ export function FilterSheet({
                     accessibilityState={{ selected: on }}
                   >
                     <View style={styles.ratingStars}>
-                      <Ionicons name="star" size={13} color={colors.accent2.ochre} />
+                      <Ionicons name="star" size={13} color={on ? C.lime : C.gold} />
                       <Text style={[styles.ratingValue, on && styles.ratingValueActive]}>{r.toFixed(1)}</Text>
                     </View>
                     <Text style={[styles.ratingCaption, on && styles.ratingCaptionActive]}>& up</Text>
@@ -619,7 +638,7 @@ export function FilterSheet({
 
           {/* Colour */}
           <Section
-            title="Colour"
+            title="Colour" kicker="PALETTE" icon="color-palette-outline"
             summary={draft.colors?.length ? draft.colors.join(", ") : "All colours"}
             active={!!draft.colors?.length}
             onClear={() => setDraft({ ...draft, colors: [] })}
@@ -651,7 +670,7 @@ export function FilterSheet({
 
           {/* Size */}
           <Section
-            title="Size"
+            title="Size" kicker="FIT" icon="resize-outline"
             summary={draft.sizes?.length ? draft.sizes.join(" · ") : "All sizes"}
             active={!!draft.sizes?.length}
             onClear={() => setDraft({ ...draft, sizes: [] })}
@@ -676,7 +695,7 @@ export function FilterSheet({
 
           {/* Gender */}
           <Section
-            title="Shop for"
+            title="Shop for" kicker="DEPARTMENT" icon="people-outline"
             summary={GENDERS.find((g) => g.key === (draft.gender ?? ""))?.label ?? "All"}
             active={!!draft.gender}
             onClear={() => setDraft({ ...draft, gender: undefined })}
@@ -691,7 +710,7 @@ export function FilterSheet({
           {/* Category */}
           {uniqueCategories.length > 0 ? (
             <Section
-              title="Category"
+              title="Category" kicker="GARMENT" icon="grid-outline"
               summary={namesFor(draft.categories, uniqueCategories) ?? "All categories"}
               active={!!draft.categories?.length}
               onClear={() => setDraft({ ...draft, categories: [] })}
@@ -718,7 +737,7 @@ export function FilterSheet({
                   <Text style={styles.moreText}>
                     {showAllCategories ? "Show fewer" : `Show all ${uniqueCategories.length}`}
                   </Text>
-                  <Ionicons name={showAllCategories ? "chevron-up" : "chevron-down"} size={13} color={colors.olive[700]} />
+                  <Ionicons name={showAllCategories ? "chevron-up" : "chevron-down"} size={13} color={C.accent} />
                 </TouchableOpacity>
               ) : null}
             </Section>
@@ -727,7 +746,7 @@ export function FilterSheet({
           {/* Brand */}
           {uniqueBrands.length > 0 ? (
             <Section
-              title="Brand"
+              title="Brand" kicker="LABELS" icon="diamond-outline"
               summary={namesFor(draft.brands, uniqueBrands) ?? "All brands"}
               active={!!draft.brands?.length}
               onClear={() => setDraft({ ...draft, brands: [] })}
@@ -735,19 +754,19 @@ export function FilterSheet({
             >
               {uniqueBrands.length > 8 ? (
                 <View style={styles.searchField}>
-                  <Ionicons name="search" size={15} color={colors.light.mutedForeground} />
+                  <Ionicons name="search" size={15} color={C.muted} />
                   <TextInput
                     value={brandQuery}
                     onChangeText={setBrandQuery}
                     placeholder={`Search ${uniqueBrands.length} brands`}
-                    placeholderTextColor={colors.light.mutedForeground}
+                    placeholderTextColor={C.muted}
                     style={styles.searchInput}
                     autoCorrect={false}
                     returnKeyType="search"
                   />
                   {brandQuery ? (
                     <TouchableOpacity onPress={() => setBrandQuery("")} hitSlop={8}>
-                      <Ionicons name="close-circle" size={16} color={colors.light.mutedForeground} />
+                      <Ionicons name="close-circle" size={16} color={C.muted} />
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -776,7 +795,7 @@ export function FilterSheet({
                   <Text style={styles.moreText}>
                     {showAllBrands ? "Show fewer" : `Show all ${uniqueBrands.length}`}
                   </Text>
-                  <Ionicons name={showAllBrands ? "chevron-up" : "chevron-down"} size={13} color={colors.olive[700]} />
+                  <Ionicons name={showAllBrands ? "chevron-up" : "chevron-down"} size={13} color={C.accent} />
                 </TouchableOpacity>
               ) : null}
             </Section>
@@ -785,7 +804,7 @@ export function FilterSheet({
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing[3]) }]}>
           <TouchableOpacity onPress={handleReset} activeOpacity={0.7} style={styles.resetBtn} accessibilityLabel="Reset all filters">
-            <Ionicons name="refresh" size={18} color={colors.light.foreground} />
+            <Ionicons name="refresh" size={19} color={C.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleApply} activeOpacity={0.9} style={styles.applyBtn} accessibilityLabel="Apply filters">
             <Text style={styles.applyText}>
@@ -796,7 +815,7 @@ export function FilterSheet({
                 <Text style={styles.applyCountText}>{draftCount}</Text>
               </View>
             ) : (
-              <Ionicons name="arrow-forward" size={16} color={CREAM} />
+              <Ionicons name="arrow-forward" size={17} color={C.lime} />
             )}
           </TouchableOpacity>
         </View>
@@ -804,6 +823,22 @@ export function FilterSheet({
     </Modal>
   );
 }
+
+const SOFT_SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.07,
+  shadowRadius: 20,
+  elevation: 3,
+} as const;
+
+const BTN_SHADOW = {
+  shadowColor: "#16170f",
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.12,
+  shadowRadius: 12,
+  elevation: 3,
+} as const;
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -814,22 +849,18 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.paper.DEFAULT,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    backgroundColor: C.paper,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     overflow: "hidden",
-    ...shadows.editorial,
   },
-  headerArea: {
-    backgroundColor: CREAM,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.light.border,
-  },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 260 },
+  headerArea: {},
   handle: {
-    width: 42,
+    width: 44,
     height: 5,
     borderRadius: 3,
-    backgroundColor: colors.light.border,
+    backgroundColor: "rgba(22,23,15,0.14)",
     alignSelf: "center",
     marginTop: 10,
     marginBottom: spacing[3],
@@ -837,96 +868,114 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
   },
   eyebrow: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: colors.olive[600],
-    marginBottom: 2,
+    color: C.accent,
+    marginBottom: 3,
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    gap: 10,
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 30,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 31,
     letterSpacing: -0.8,
-    color: colors.light.foreground,
+    color: C.text,
   },
   countBadge: {
-    minWidth: 24,
-    height: 24,
-    paddingHorizontal: 7,
-    borderRadius: 12,
-    backgroundColor: colors.accent2.ochre,
+    minWidth: 26,
+    height: 26,
+    paddingHorizontal: 8,
+    borderRadius: 13,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },
   countBadgeText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
-    color: colors.olive[950],
+    fontSize: 12.5,
+    color: C.ink,
   },
   headerClear: {
     paddingVertical: 6,
   },
   headerClearText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.accent2.rust,
+    fontSize: 13.5,
+    color: C.accent,
   },
   closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.muted,
+    backgroundColor: "#FFFFFF",
+    ...BTN_SHADOW,
   },
   content: {
-    padding: spacing[4],
-    gap: spacing[3],
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 20,
+    gap: 14,
   },
 
-  /* Section card */
+  /* Section card — same as account menu card */
   card: {
     backgroundColor: SURFACE,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: `${colors.light.border}aa`,
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: C.line,
+    ...SOFT_SHADOW,
   },
   cardHead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[4],
+    gap: 12,
+    paddingHorizontal: 14,
     paddingVertical: 14,
   },
+  cardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: C.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardIconActive: {
+    backgroundColor: C.ink,
+  },
+  cardKicker: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    color: C.accent,
+  },
   cardTitle: {
+    marginTop: 1,
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 15,
-    color: colors.light.foreground,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
+    color: C.text,
   },
   cardSummary: {
-    marginTop: 2,
+    marginTop: 1,
     fontFamily: fontFamilies.sans.regular,
     fontSize: 12.5,
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
   cardSummaryActive: {
-    color: colors.olive[700],
+    color: C.accent,
     fontFamily: fontFamilies.sans.semibold,
   },
   clearLink: {
@@ -934,14 +983,14 @@ const styles = StyleSheet.create({
   },
   clearLinkText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: colors.accent2.rust,
+    fontSize: 13,
+    color: C.accent,
   },
   chevron: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.paper.DEFAULT,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.paper,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -949,27 +998,32 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "180deg" }],
   },
   cardBody: {
-    paddingHorizontal: spacing[4],
-    paddingBottom: spacing[4],
+    paddingHorizontal: 14,
+    paddingBottom: 16,
+    paddingTop: 2,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+    marginHorizontal: 0,
   },
 
-  /* Sort tiles */
+  /* Sort tiles — quick-action language */
   tileGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    rowGap: spacing[2],
+    rowGap: 10,
+    paddingTop: 14,
   },
   sortTile: {
-    width: "48.8%",
+    width: "48.5%",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    height: 50,
+    gap: 10,
+    height: 56,
     paddingHorizontal: 8,
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: C.line,
     backgroundColor: SURFACE,
   },
   sortTileActive: {
@@ -977,67 +1031,69 @@ const styles = StyleSheet.create({
     borderColor: INK,
   },
   sortIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: colors.olive[50],
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   sortIconActive: {
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: C.lime,
   },
   sortTileText: {
     flex: 1,
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: colors.light.foreground,
+    fontSize: 13.5,
+    color: C.text,
   },
   sortTileTextActive: {
     color: CREAM,
   },
 
-  /* Price */
+  /* Price — dark stats strip like the account card */
   priceReadout: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    marginTop: 14,
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: C.ink,
   },
   priceBox: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: colors.paper.DEFAULT,
+    alignItems: "center",
+    paddingHorizontal: 10,
+    gap: 2,
   },
   priceBoxLabel: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 9.5,
-    letterSpacing: 1.4,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
-    color: colors.light.mutedForeground,
+    color: "rgba(250,248,241,0.55)",
   },
   priceBoxValue: {
-    marginTop: 2,
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 18,
     letterSpacing: -0.3,
-    color: colors.light.foreground,
+    color: C.cream,
+    fontVariant: ["tabular-nums"],
   },
-  priceDash: {
-    width: 10,
-    height: 1.5,
-    backgroundColor: colors.light.border,
+  priceDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: "rgba(250,248,241,0.12)",
   },
   sliderWrap: {
     paddingHorizontal: THUMB / 2,
-    paddingTop: spacing[5],
+    paddingTop: spacing[6],
     paddingBottom: spacing[1],
   },
   sliderTrack: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.light.muted,
+    backgroundColor: C.accentSoft,
     justifyContent: "center",
   },
   sliderFill: {
@@ -1051,10 +1107,10 @@ const styles = StyleSheet.create({
     width: 2,
     height: 2,
     borderRadius: 1,
-    backgroundColor: colors.light.border,
+    backgroundColor: C.faint,
   },
   sliderTickActive: {
-    backgroundColor: "rgba(250,248,241,0.6)",
+    backgroundColor: "rgba(250,248,241,0.55)",
   },
   thumb: {
     position: "absolute",
@@ -1063,15 +1119,11 @@ const styles = StyleSheet.create({
     height: THUMB,
     borderRadius: THUMB / 2,
     backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: colors.light.border,
+    borderWidth: 2,
+    borderColor: C.goldSoft,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 4,
+    ...BTN_SHADOW,
   },
   thumbActive: {
     transform: [{ scale: 1.15 }],
@@ -1090,21 +1142,23 @@ const styles = StyleSheet.create({
     marginHorizontal: -THUMB / 2,
   },
   sliderScaleText: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    color: colors.light.mutedForeground,
+    letterSpacing: 1,
+    color: C.muted,
   },
   presetRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
     marginTop: spacing[3],
   },
   preset: {
     flex: 1,
-    height: 36,
+    height: 38,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: C.line,
+    backgroundColor: C.paper,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
@@ -1115,8 +1169,8 @@ const styles = StyleSheet.create({
   },
   presetText: {
     fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.light.foreground,
+    fontSize: 12.5,
+    color: C.text,
   },
   presetTextActive: {
     color: CREAM,
@@ -1126,31 +1180,32 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: "row",
     padding: 4,
-    borderRadius: 16,
-    backgroundColor: colors.paper.DEFAULT,
+    marginTop: 14,
+    borderRadius: 22,
+    backgroundColor: C.accentSoft,
     gap: 2,
   },
   segmentItem: {
     flex: 1,
     flexDirection: "row",
     gap: 4,
-    height: 38,
-    borderRadius: 12,
+    height: 40,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   segmentItemActive: {
     backgroundColor: INK,
-    shadowColor: colors.ink.DEFAULT,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowRadius: 6,
     elevation: 2,
   },
   segmentText: {
     fontFamily: fontFamilies.sans.semibold,
     fontSize: 12.5,
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
   segmentTextActive: {
     color: CREAM,
@@ -1159,14 +1214,16 @@ const styles = StyleSheet.create({
   /* Rating */
   ratingRow: {
     flexDirection: "row",
-    gap: spacing[2],
+    gap: 10,
+    marginTop: 14,
   },
   ratingTile: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 13,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: C.line,
+    backgroundColor: SURFACE,
     alignItems: "center",
     gap: 2,
   },
@@ -1180,20 +1237,21 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   ratingValue: {
-    fontFamily: fontFamilies.display.semibold,
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 18,
-    color: colors.light.foreground,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
   },
   ratingValueActive: {
     color: CREAM,
   },
   ratingCaption: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.light.mutedForeground,
+    fontSize: 11.5,
+    color: C.muted,
   },
   ratingCaptionActive: {
-    color: "rgba(250,248,241,0.7)",
+    color: "rgba(250,248,241,0.6)",
   },
 
   /* Colour */
@@ -1201,6 +1259,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     rowGap: spacing[3],
+    paddingTop: 14,
   },
   colorItem: {
     width: "25%",
@@ -1210,11 +1269,11 @@ const styles = StyleSheet.create({
   swatchRing: {
     padding: 3,
     borderRadius: 26,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: "transparent",
   },
   swatchRingActive: {
-    borderColor: INK,
+    borderColor: C.goldSoft,
   },
   swatch: {
     width: 38,
@@ -1225,29 +1284,31 @@ const styles = StyleSheet.create({
   },
   swatchBorder: {
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: C.faint,
   },
   colorName: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 11.5,
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
   colorNameActive: {
     fontFamily: fontFamilies.sans.bold,
-    color: colors.light.foreground,
+    color: C.text,
   },
 
   /* Size */
   sizeGrid: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
+    paddingTop: 14,
   },
   sizeTile: {
     flex: 1,
     height: 46,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: C.line,
+    backgroundColor: C.paper,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1258,17 +1319,18 @@ const styles = StyleSheet.create({
   sizeText: {
     fontFamily: fontFamilies.mono.semibold,
     fontSize: 12.5,
-    color: colors.light.foreground,
+    color: C.text,
   },
   sizeTextActive: {
-    color: CREAM,
+    color: C.lime,
   },
 
   /* Chips (category / brand) */
   chipsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing[2],
+    gap: 8,
+    paddingTop: 14,
   },
   chip: {
     flexDirection: "row",
@@ -1278,8 +1340,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radii.full,
     borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: SURFACE,
+    borderColor: C.line,
+    backgroundColor: C.paper,
   },
   chipActive: {
     backgroundColor: INK,
@@ -1288,7 +1350,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: fontFamilies.sans.medium,
     fontSize: 13,
-    color: colors.light.foreground,
+    color: C.text,
   },
   chipTextActive: {
     color: CREAM,
@@ -1298,58 +1360,57 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: 4,
+    gap: 2,
     marginTop: spacing[3],
     paddingVertical: 4,
   },
   moreText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12.5,
-    color: colors.olive[700],
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13.5,
+    color: C.accent,
   },
   searchField: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    height: 42,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: colors.paper.DEFAULT,
-    marginBottom: spacing[3],
+    height: 44,
+    paddingHorizontal: 14,
+    marginTop: 14,
+    borderRadius: 22,
+    backgroundColor: C.accentSoft,
   },
   searchInput: {
     flex: 1,
     height: "100%",
     fontFamily: fontFamilies.sans.medium,
     fontSize: 14,
-    color: colors.light.foreground,
+    color: C.text,
   },
   emptyText: {
     fontFamily: fontFamilies.sans.regular,
     fontSize: 13,
-    color: colors.light.mutedForeground,
+    color: C.muted,
   },
 
   /* Footer */
   footer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
-    backgroundColor: CREAM,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: C.paper,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
   resetBtn: {
     width: 54,
     height: 54,
     borderRadius: 27,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-    backgroundColor: SURFACE,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    ...BTN_SHADOW,
   },
   applyBtn: {
     flex: 1,
@@ -1360,8 +1421,8 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 27,
     backgroundColor: INK,
-    ...shadows.glow,
-    shadowColor: INK,
+    ...BTN_SHADOW,
+    shadowOpacity: 0.22,
   },
   applyText: {
     fontFamily: fontFamilies.sans.bold,
@@ -1374,14 +1435,14 @@ const styles = StyleSheet.create({
     height: 24,
     paddingHorizontal: 7,
     borderRadius: 12,
-    backgroundColor: colors.accent2.ochre,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },
   applyCountText: {
     fontFamily: fontFamilies.sans.bold,
     fontSize: 12,
-    color: colors.olive[950],
+    color: C.ink,
   },
 });
 

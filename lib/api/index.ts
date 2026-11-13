@@ -15,8 +15,10 @@ import {
 } from "@/lib/api/backend";
 export type { ApiResult, BulkSellerProductInput, BulkSellerProductsResponse } from "@/lib/api/backend";
 import * as B from "@/lib/api/backend";
+import { onSellerDataMutation } from "@/lib/api/_fetch";
 import { hasStoreApi } from "@/lib/api/delivery-api";
 import { supabase } from "@/lib/supabase/client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { mapProduct, mapProducts, mapStore, mapBrand, mapCategory, mapBanner, mapFlatProductRows, mapFlatProductRow } from "@/lib/api/product-mapper";
 import { getProductCards, getProductCardsByIds } from "@/lib/api/product-queries";
 import type {
@@ -45,7 +47,7 @@ import {
 import { getSellerAccessState, getSellerComplianceGaps, readStorefrontContact, type SellerPayoutCompliance, type SellerComplianceDocument, type ComplianceDocType } from "@/lib/seller-access";
 import { getBrowsableStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 import { summarizeInventoryHealth, readInventoryQuantities, LOW_STOCK_THRESHOLD } from "@/lib/inventory";
-import { mapSellerOrderRow, isAmbiguousRelationshipError, SELLER_ORDERS_LIST_SELECT } from "@/lib/orders/seller-list";
+import { mapSellerOrderRow, isAmbiguousRelationshipError, SELLER_ORDERS_LIST_SELECT, isNewOrder } from "@/lib/orders/seller-list";
 import { mapSellerReturnRow } from "@/lib/returns/seller-list";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
 import {
@@ -658,19 +660,23 @@ export async function getNotifications(_userId: string, limit = 30): Promise<Res
   return ok(loose<Notification[]>(res.data.notifications ?? []));
 }
 
-export async function getSellerNotifications(_limit = 50): Promise<Result<Notification[]>> {
-  const res = await B.listSellerNotificationsBackend();
-  if (!res.ok) return fail(res.error);
-  return ok(loose<Notification[]>(res.data.notifications ?? []));
+export function getSellerNotifications(_limit = 50): Promise<Result<Notification[]>> {
+  return sellerCached(`seller-notifs:${_limit}`, async () => {
+    const res = await B.listSellerNotificationsBackend();
+    if (!res.ok) return fail(res.error);
+    return ok(loose<Notification[]>(res.data.notifications ?? []));
+  }, 30_000);
 }
 
 export async function markSellerNotificationRead(id: string): Promise<Result<void>> {
+  invalidateSellerCache();
   const res = await B.markSellerNotificationReadBackend(id);
   if (!res.ok) return fail(res.error);
   return ok(undefined);
 }
 
 export async function markAllSellerNotificationsRead(): Promise<Result<void>> {
+  invalidateSellerCache();
   const res = await B.markAllSellerNotificationsReadBackend();
   if (!res.ok) return fail(res.error);
   return ok(undefined);
@@ -762,19 +768,128 @@ function scopeOrderToStore(order: Order, storeId: string): Order | null {
   };
 }
 
-export async function getSellerStore(_ownerId: string): Promise<Result<Store | null>> {
+// ── Seller read cache ─────────────────────────────────────────────────────
+// The seller layout, the home screen and assertSellerCanOperate all fetch the
+// same store / payout / compliance-doc rows on every navigation. Share one
+// in-flight request and reuse the result for a few seconds; any seller
+// mutation (or a pull-to-refresh) clears it.
+const SELLER_CACHE_TTL_MS = 60_000;
+const sellerReadCache = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+export function sellerCached<T>(key: string, load: () => Promise<Result<T>>, ttl = SELLER_CACHE_TTL_MS): Promise<Result<T>> {
+  const hit = sellerReadCache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.promise as Promise<Result<T>>;
+  const promise = load().then((res) => {
+    // Never keep a failed response around.
+    if (!res.ok && sellerReadCache.get(key)?.promise === promise) sellerReadCache.delete(key);
+    else if (res.ok) void writeSellerSnapshot(key, res.data);
+    return res;
+  });
+  sellerReadCache.set(key, { at: Date.now(), promise });
+  return promise;
+}
+
+export function invalidateSellerCache(): void {
+  sellerReadCache.clear();
+}
+// Any successful seller write (orders, products, stock, store…) drops the
+// memory cache so cached lists never outlive a mutation.
+onSellerDataMutation(invalidateSellerCache);
+
+// Default (unsearched, first-page) seller lists are cached like the store
+// reads so switching tabs is instant; searches and pagination always hit
+// the network.
+export function getSellerProducts(
+  storeId: string,
+  opts: Parameters<typeof loadSellerProducts>[1] = {},
+): ReturnType<typeof loadSellerProducts> {
+  if (opts.search || opts.offset) return loadSellerProducts(storeId, opts);
+  return sellerCached(SELLER_CACHE_KEYS.products(opts), () => loadSellerProducts(storeId, opts), 30_000);
+}
+
+export function getSellerOrders(
+  storeId: string,
+  opts: Parameters<typeof loadSellerOrders>[1] = {},
+): ReturnType<typeof loadSellerOrders> {
+  if (opts.search || opts.offset) return loadSellerOrders(storeId, opts);
+  return sellerCached(SELLER_CACHE_KEYS.orders(opts), () => loadSellerOrders(storeId, opts), 30_000);
+}
+
+export function getSellerInventory(storeId: string): ReturnType<typeof loadSellerInventory> {
+  return sellerCached(SELLER_CACHE_KEYS.inventoryList, () => loadSellerInventory(storeId), 30_000);
+}
+
+// ── Last-known snapshots ────────────────────────────────────────────────
+// The memory cache above dies with the JS context, so every app launch
+// re-paid ~3 sequential backend round-trips before the seller dashboard
+// could paint. Successful reads are also written to disk (scoped per
+// user); screens paint the snapshot instantly, then revalidate. Snapshots
+// are display-only — every gate is re-checked against the fresh response.
+const SNAPSHOT_PREFIX = "seller-snap:v1:";
+const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function snapshotKey(key: string): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const uid = data.session?.user?.id;
+    return uid ? `${SNAPSHOT_PREFIX}${uid}:${key}` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSellerSnapshot(key: string, data: unknown): Promise<void> {
+  const k = await snapshotKey(key);
+  if (!k) return;
+  try {
+    await AsyncStorage.setItem(k, JSON.stringify({ at: Date.now(), data }));
+  } catch {
+    // best-effort
+  }
+}
+
+/** Last successful response for a sellerCached key, or null. Never hits the network. */
+export async function peekSellerSnapshot<T>(key: string): Promise<T | null> {
+  const k = await snapshotKey(key);
+  if (!k) return null;
+  try {
+    const raw = await AsyncStorage.getItem(k);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at: number; data: T };
+    if (!parsed || Date.now() - parsed.at > SNAPSHOT_MAX_AGE_MS) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+/** Cache keys, shared so screens can peek the same snapshot they later fetch. */
+export const SELLER_CACHE_KEYS = {
+  store: "store",
+  payout: "payout",
+  docs: "docs",
+  kpis: (storeId: string) => `kpis:${storeId}`,
+  notifications: (limit: number) => `seller-notifs:${limit}`,
+  products: (opts: object) => `products:${JSON.stringify(opts)}`,
+  orders: (opts: object) => `orders:${JSON.stringify(opts)}`,
+  inventoryList: "inventory-list",
+} as const;
+
+export function getSellerStore(_ownerId: string): Promise<Result<Store | null>> {
+  return sellerCached("store", () => loadSellerStore());
+}
+
+async function loadSellerStore(): Promise<Result<Store | null>> {
   const res = await B.getSellerStoreBackend();
   if (!res.ok) return fail(res.error);
   const raw = res.data.store as (Store & Record<string, unknown>) | null;
   if (!raw) return ok(null);
   const mapped = mapStore(raw);
   const contact = readStorefrontContact(mapped as Store & Record<string, unknown>);
-  const online =
-    typeof mapped.is_online === "boolean"
-      ? mapped.is_online
-      : typeof (mapped as Store & { is_active?: boolean }).is_active === "boolean"
-      ? Boolean((mapped as Store & { is_active?: boolean }).is_active)
-      : mapped.is_online;
+  const isApproved = mapped.status === "approved" || mapped.status === "active";
+  // Every store is online (0369); "online" here means live = approved and
+  // not suspended.
+  const online = isApproved && !mapped.is_suspended;
   return ok(
     loose<Store>({
       ...mapped,
@@ -791,6 +906,7 @@ export async function createSellerStore(
 ): Promise<Result<Store>> {
   const name = input.name.trim();
   if (!name) return fail("Store name is required");
+  invalidateSellerCache();
   const res = await B.createSellerStoreBackend({
     name,
     slug: input.slug?.trim() || undefined,
@@ -801,6 +917,7 @@ export async function createSellerStore(
 }
 
 export async function updateSellerStore(id: string, patch: Partial<Store>): Promise<Result<Store>> {
+  invalidateSellerCache();
   const res = await B.updateSellerStoreBackend(patch);
   if (!res.ok) return fail(res.error);
   const mapped = mapStore(res.data.store as Store & Record<string, unknown>);
@@ -815,7 +932,11 @@ export async function updateSellerStore(id: string, patch: Partial<Store>): Prom
   );
 }
 
-export async function getSellerPayoutSettings(_storeId: string): Promise<Result<SellerPayoutCompliance | null>> {
+export function getSellerPayoutSettings(_storeId: string): Promise<Result<SellerPayoutCompliance | null>> {
+  return sellerCached("payout", () => loadSellerPayoutSettings());
+}
+
+async function loadSellerPayoutSettings(): Promise<Result<SellerPayoutCompliance | null>> {
   const res = await B.getSellerPayoutSettingsBackend();
   if (!res.ok) return fail(res.error);
   return ok((res.data.settings as SellerPayoutCompliance | null) ?? null);
@@ -825,12 +946,17 @@ export async function upsertSellerPayoutSettings(
   _storeId: string,
   patch: SellerPayoutCompliance & { method?: string; schedule?: string },
 ): Promise<Result<SellerPayoutCompliance>> {
+  invalidateSellerCache();
   const res = await B.upsertSellerPayoutSettingsBackend(patch as Record<string, unknown>);
   if (!res.ok) return fail(res.error);
   return ok(res.data.settings as SellerPayoutCompliance);
 }
 
-export async function getSellerComplianceDocuments(_storeId: string): Promise<Result<SellerComplianceDocument[]>> {
+export function getSellerComplianceDocuments(_storeId: string): Promise<Result<SellerComplianceDocument[]>> {
+  return sellerCached("docs", () => loadSellerComplianceDocuments());
+}
+
+async function loadSellerComplianceDocuments(): Promise<Result<SellerComplianceDocument[]>> {
   const res = await B.getSellerComplianceDocsBackend();
   if (!res.ok) return fail(res.error);
   return ok((res.data.documents as unknown[] as SellerComplianceDocument[]) ?? []);
@@ -842,6 +968,7 @@ export async function upsertSellerComplianceDocument(
   fileUrl: string,
   fileName?: string,
 ): Promise<Result<SellerComplianceDocument>> {
+  invalidateSellerCache();
   const res = await B.upsertSellerComplianceDocBackend({
     store_id: storeId,
     doc_type: docType,
@@ -896,7 +1023,7 @@ export async function assertSellerCanOperate(storeId: string): Promise<Result<vo
 // Seller — Products
 // ============================================================================
 
-export async function getSellerProducts(storeId: string, opts: {
+async function loadSellerProducts(storeId: string, opts: {
   status?: string;
   search?: string;
   sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "sales_desc" | "name_asc";
@@ -1094,7 +1221,13 @@ export async function saveSellerVariants(
 // Seller — Orders + Inventory
 // ============================================================================
 
-export async function getSellerOrders(storeId: string, opts: {
+export async function markSellerOrderProcessed(orderId: string, processed = true): Promise<Result<{ seller_processed_at: string | null }>> {
+  const res = await B.markSellerOrderProcessedBackend(orderId, processed);
+  if (!res.ok) return fail(res.error);
+  return ok({ seller_processed_at: res.data.seller_processed_at ?? null });
+}
+
+async function loadSellerOrders(storeId: string, opts: {
   status?: string;
   search?: string;
   limit?: number;
@@ -1237,7 +1370,7 @@ export async function cancelOrderItems(
   return ok({ cancelled: 0, remaining_items: res.data.order?.items?.length ?? 0 });
 }
 
-export async function getSellerInventory(_storeId: string): Promise<Result<{
+async function loadSellerInventory(_storeId: string): Promise<Result<{
   product: Product;
   variants: (ProductVariant & { quantity: number | null; reserved: number; available: number | null; stock: number | null })[];
 }[]>> {
@@ -1328,7 +1461,7 @@ function firstFiniteNumber(...vals: unknown[]): number | null {
   return null;
 }
 
-export async function getSellerKPIs(_storeId: string): Promise<Result<{
+export function getSellerKPIs(storeId: string): Promise<Result<{
   totalRevenue: number;
   totalOrders: number;
   totalProducts: number;
@@ -1351,14 +1484,37 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
   pendingReady: boolean;
   returnsReady: boolean;
 }>> {
-  const [kpis, orders, products, inventory, pending, returns] = await Promise.all([
+  return sellerCached(`kpis:${storeId}`, () => loadSellerKPIs(storeId), 30_000);
+}
+
+async function loadSellerKPIs(storeId: string): Promise<Result<{
+  totalRevenue: number;
+  totalOrders: number;
+  totalProducts: number;
+  pendingOrders: number;
+  returnsCount: number;
+  lowStockVariants: number;
+  outOfStockVariants: number;
+  totalSkus: number;
+  recentOrders: Order[];
+  topProducts: Array<{ id: string; name: string; revenue: number }>;
+  revenueSeries: Array<{ date: string; revenue: number; orders: number }>;
+  revenueDelta: number;
+  ordersDelta: number;
+  aov: number;
+  refundRate: number;
+  analyticsReady: boolean;
+  inventoryReady: boolean;
+  productsReady: boolean;
+  ordersReady: boolean;
+  pendingReady: boolean;
+  returnsReady: boolean;
+}>> {
+  const [kpis, orders, products, inventory, returns] = await Promise.all([
     B.getSellerKPIsBackend(),
-    B.getSellerOrdersBackend({ limit: 5 }),
+    B.getSellerOrdersBackend({ limit: 100 }),
     B.getSellerProductsBackend({ limit: 1 }),
-    B.getSellerInventoryBackend(),
-    // `pending` and `returns` are not part of the analytics payload, so
-    // count them off their own endpoints instead of reporting zero.
-    B.getSellerOrdersBackend({ status: "pending", limit: 1 }),
+    sellerCached(`inventory:${storeId}`, () => B.getSellerInventoryBackend(), 60_000),
     B.getSellerReturnsBackend({ status: "requested" }),
   ]);
 
@@ -1366,7 +1522,61 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
     return fail(kpis.error || orders.error || products.error || inventory.error || "Could not load seller metrics");
   }
 
-  const recentOrders = orders.ok ? loose<Order[]>(orders.data.orders ?? []).slice(0, 5) : [];
+  const allOrders = orders.ok ? (orders.data.orders ?? []).map((row) => mapSellerOrderRow(row)) : [];
+  const DEAD = new Set(["cancelled", "canceled", "failed", "refunded", "returned"]);
+  const activeOrders = allOrders.filter((o) => !DEAD.has(String(o.status ?? "").toLowerCase()));
+
+  const thirtyDaysAgo = Date.now() - 30 * 86_400_000;
+  const recent30dActive = activeOrders.filter((o) => {
+    const t = new Date(o.placed_at || (o as unknown as { created_at?: string }).created_at || 0).getTime();
+    return t >= thirtyDaysAgo;
+  });
+
+  const computed30dRev = recent30dActive.reduce((s, o) => s + Number(o.total ?? 0), 0);
+  const computed30dOrders = recent30dActive.length;
+
+  const kpiData = kpis.ok ? kpis.data : null;
+
+  const finalRevenue =
+    kpiData?.revenue && kpiData.revenue > 0
+      ? kpiData.revenue
+      : computed30dRev > 0
+        ? computed30dRev
+        : activeOrders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+
+  const finalOrders =
+    kpiData?.orders && kpiData.orders > 0
+      ? kpiData.orders
+      : computed30dOrders > 0
+        ? computed30dOrders
+        : activeOrders.length;
+
+  const finalAov = finalOrders > 0 ? Math.round(finalRevenue / finalOrders) : 0;
+
+  const newOrders = activeOrders.filter((o) => isNewOrder(o));
+  const pendingCount = newOrders.length;
+
+  const recentOrders = activeOrders.slice(0, 5);
+
+  let revenueSeries = kpiData?.series ?? [];
+  const hasSeriesData = revenueSeries.some((p) => (p.revenue ?? 0) > 0);
+  if (!hasSeriesData && recent30dActive.length > 0) {
+    const buckets = new Map<string, { revenue: number; orders: number }>();
+    for (const o of recent30dActive) {
+      const d = (o.placed_at || "").slice(0, 10);
+      if (!d) continue;
+      const b = buckets.get(d) ?? { revenue: 0, orders: 0 };
+      b.revenue += Number(o.total ?? 0);
+      b.orders += 1;
+      buckets.set(d, b);
+    }
+    revenueSeries = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+      const b = buckets.get(d) ?? { revenue: 0, orders: 0 };
+      revenueSeries.push({ date: d, revenue: Math.round(b.revenue), orders: b.orders });
+    }
+  }
 
   const stats = products.ok && products.data.stats && typeof products.data.stats === "object"
     ? products.data.stats
@@ -1378,15 +1588,11 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
   const health = inventory.ok
     ? summarizeInventoryHealth(inventory.data.inventory ?? [])
     : { totalSkus: 0, healthyCount: 0, lowStockVariants: 0, outOfStockVariants: 0 };
-  const kpiData = kpis.ok ? kpis.data : null;
-  const pendingCount = pending.ok
-    ? (firstFiniteNumber(pending.data.total) ?? (pending.data.orders ?? []).length)
-    : 0;
   const returnsCount = returns.ok ? (returns.data.returns ?? []).length : 0;
 
   return ok({
-    totalRevenue: Number(kpiData?.revenue ?? 0),
-    totalOrders: Number(kpiData?.orders ?? 0),
+    totalRevenue: finalRevenue,
+    totalOrders: finalOrders,
     totalProducts: listedCount ?? 0,
     pendingOrders: pendingCount,
     returnsCount,
@@ -1395,16 +1601,16 @@ export async function getSellerKPIs(_storeId: string): Promise<Result<{
     totalSkus: health.totalSkus,
     recentOrders,
     topProducts: kpiData?.topProducts ?? [],
-    revenueSeries: kpiData?.series ?? [],
+    revenueSeries,
     revenueDelta: kpiData?.deltas.revenue ?? 0,
     ordersDelta: kpiData?.deltas.orders ?? 0,
-    aov: Number(kpiData?.aov ?? 0),
+    aov: finalAov,
     refundRate: Number(kpiData?.refundRate ?? 0),
-    analyticsReady: kpis.ok,
+    analyticsReady: kpis.ok || orders.ok,
     inventoryReady: inventory.ok,
     productsReady: products.ok && listedCount != null,
     ordersReady: orders.ok,
-    pendingReady: pending.ok,
+    pendingReady: orders.ok,
     returnsReady: returns.ok,
   });
 }
@@ -1892,11 +2098,48 @@ export interface AdminStoreDetail {
   complianceGaps: string[];
 }
 
+export async function updateAdminStore(id: string, patch: Record<string, unknown>): Promise<Result<Store>> {
+  const res = await B.updateAdminStoreBackend(id, patch);
+  if (res.ok && res.data?.store) return ok(res.data.store as unknown as Store);
+
+  try {
+    const { bank_name, account_name, account_number, branch_name, ifsc, ...storePatch } = patch;
+    if (bank_name || account_name || account_number || branch_name || ifsc) {
+      await supabase.from("payout_settings").upsert({
+        store_id: id,
+        bank_name: bank_name || null,
+        account_name: account_name || null,
+        account_number: account_number || null,
+        account_number_last4: account_number ? String(account_number).slice(-4) : null,
+        ifsc: branch_name || ifsc || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "store_id" });
+    }
+    if (Object.keys(storePatch).length > 0) {
+      const { data, error } = await supabase.from("stores").update(storePatch).eq("id", id).select().single();
+      if (error) return fail(error.message);
+      return ok(data as unknown as Store);
+    }
+    const { data: s } = await supabase.from("stores").select().eq("id", id).single();
+    return ok(s as unknown as Store);
+  } catch (e: any) {
+    return fail(e?.message ?? "Failed to update store");
+  }
+}
+
+export async function createAdminProduct(payload: Record<string, unknown>): Promise<Result<Product>> {
+  const res = await B.createAdminProductBackend(payload);
+  if (res.ok && res.data?.product) return ok(res.data.product as unknown as Product);
+  return fail(res.ok ? "Product creation failed" : res.error);
+}
+
+export async function updateAdminStock(productId: string, quantity: number, variantId?: string): Promise<Result<void>> {
+  const res = await B.updateAdminStockBackend(productId, quantity, variantId);
+  if (!res.ok) return fail(res.error);
+  return ok(undefined);
+}
+
 export async function getAdminStoreDetail(id: string): Promise<Result<AdminStoreDetail | null>> {
-  // Backend-first: GET /api/admin/stores/:id returns { store, owner, products }.
-  // There is no admin payout endpoint, so payout stays null (the detail
-  // screen already renders payout rows as missing). Compliance docs are
-  // best-effort via Supabase; failures degrade to an empty list, never null.
   try {
     const res = await B.getAdminStoreDetailBackend(id);
     if (res.ok && res.data) {
@@ -1904,16 +2147,20 @@ export async function getAdminStoreDetail(id: string): Promise<Result<AdminStore
         store?: Record<string, unknown>;
         owner?: AdminStoreDetail["store"]["owner"];
         products?: AdminStoreDetail["store"]["products"];
+        payout?: SellerPayoutCompliance | null;
+        documents?: SellerComplianceDocument[];
       };
       if (raw.store && typeof raw.store === "object") {
-        let documents: SellerComplianceDocument[] = [];
-        try {
-          const { data } = await supabase
-            .from("compliance_documents")
-            .select("id, doc_type, file_url, file_name, status")
-            .eq("store_id", id);
-          if (Array.isArray(data)) documents = data as unknown as SellerComplianceDocument[];
-        } catch (_e) {}
+        let documents: SellerComplianceDocument[] = raw.documents ?? [];
+        if (!documents.length) {
+          try {
+            const { data } = await supabase
+              .from("compliance_documents")
+              .select("id, doc_type, file_url, file_name, status")
+              .eq("store_id", id);
+            if (Array.isArray(data)) documents = data as unknown as SellerComplianceDocument[];
+          } catch (_e) {}
+        }
         const store = {
           ...(raw.store as unknown as Store),
           owner: raw.owner ?? null,
@@ -1921,11 +2168,11 @@ export async function getAdminStoreDetail(id: string): Promise<Result<AdminStore
         } as AdminStoreDetail["store"];
         return ok({
           store,
-          payout: null,
+          payout: raw.payout ?? null,
           documents,
           complianceGaps: getSellerComplianceGaps(
             store as unknown as Store & Record<string, unknown>,
-            null,
+            raw.payout ?? null,
             documents,
           ),
         });
@@ -1935,7 +2182,7 @@ export async function getAdminStoreDetail(id: string): Promise<Result<AdminStore
 
   // Supabase fallback for environments where the detail route is unavailable.
   try {
-    const [{ data: storeRow }, { data: ownerRow }, { data: productRows }, { data: docRows }] = await Promise.all([
+    const [{ data: storeRow }, { data: ownerRow }, { data: productRows }, { data: docRows }, { data: payoutRow }] = await Promise.all([
       supabase.from("stores").select("*").eq("id", id).maybeSingle(),
       supabase.from("stores").select("owner_id").eq("id", id).maybeSingle().then(async (s) => {
         const ownerId = (s.data as { owner_id?: string } | null)?.owner_id;
@@ -1944,6 +2191,7 @@ export async function getAdminStoreDetail(id: string): Promise<Result<AdminStore
       }),
       supabase.from("products").select("id, name, status, total_sales").eq("store_id", id).limit(100),
       supabase.from("compliance_documents").select("id, doc_type, file_url, file_name, status").eq("store_id", id),
+      supabase.from("payout_settings").select("*").eq("store_id", id).maybeSingle(),
     ]);
     if (!storeRow) return ok(null);
     const documents = (Array.isArray(docRows) ? docRows : []) as unknown as SellerComplianceDocument[];
@@ -1952,13 +2200,14 @@ export async function getAdminStoreDetail(id: string): Promise<Result<AdminStore
       owner: (ownerRow as AdminStoreDetail["store"]["owner"]) ?? null,
       products: ((Array.isArray(productRows) ? productRows : []) as AdminStoreDetail["store"]["products"]) ?? [],
     } as AdminStoreDetail["store"];
+    const payout = (payoutRow as unknown as SellerPayoutCompliance) ?? null;
     return ok({
       store,
-      payout: null,
+      payout,
       documents,
       complianceGaps: getSellerComplianceGaps(
         store as unknown as Store & Record<string, unknown>,
-        null,
+        payout,
         documents,
       ),
     });
@@ -2429,7 +2678,12 @@ export async function getAdminBroadcasts(): Promise<Result<NotificationBroadcast
 }
 
 export async function sendBroadcast(b: Partial<NotificationBroadcast>): Promise<Result<NotificationBroadcast>> {
-  const res = await B.sendBroadcastBackend(b as Record<string, unknown>);
+  // Backend takes `channels: string[]`; this screen picks one channel.
+  const { channel, ...rest } = b;
+  const res = await B.sendBroadcastBackend({
+    ...rest,
+    channels: channel ? [channel] : ["push"],
+  } as Record<string, unknown>);
   if (!res.ok) return fail(res.error);
   return ok(loose<NotificationBroadcast>(res.data.broadcast));
 }
@@ -2941,7 +3195,11 @@ export interface AdminOverviewStats {
 export async function getAdminOverviewStats(): Promise<Result<AdminOverviewStats>> {
   try {
     const res = await B.getAdminOverviewStatsBackend();
-    if (res.ok && res.data) return ok(res.data as unknown as AdminOverviewStats);
+    if (res.ok && res.data) {
+      // Backend names the store total `totalStores`; this type calls it `stores`.
+      const d = res.data as unknown as AdminOverviewStats & { totalStores?: number };
+      return ok({ ...d, stores: d.stores ?? d.totalStores ?? 0 });
+    }
   } catch (_e) {}
 
   try {
@@ -3022,7 +3280,7 @@ export async function getAdminRecentOrders(limit = 6): Promise<Result<Order[]>> 
   try {
     const { data, error } = await supabase
       .from("orders")
-      .select("id, order_number, total, currency, status, created_at, user:users(id, full_name, email)")
+      .select("id, order_number, total, currency, status, created_at, placed_at, user:users!orders_user_id_fkey(id, full_name, email)")
       .order("created_at", { ascending: false })
       .limit(limit);
     if (error) return fail(error.message);
@@ -4068,6 +4326,8 @@ export interface QuickProductInput {
   mrp?: number;
   name?: string;
   mimeType?: string | null;
+  /** quickAnalyzeProduct only: "attrs" returns fast and leaves copy to quickAnalyzeCopy. */
+  stage?: "full" | "attrs";
 }
 
 /** Quick product upload — upload photo, then POST {image_url, price}. */
@@ -4099,9 +4359,19 @@ export async function quickAnalyzeProduct(input: QuickProductInput): Promise<Res
     price: input.price,
     ...(input.mrp ? { mrp: input.mrp } : {}),
     ...(input.name ? { name: input.name } : {}),
+    ...(input.stage ? { stage: input.stage } : {}),
   });
   if (!res.ok) return fail(res.error);
   return ok({ ...res.data, imageUrl: up.url });
+}
+
+export type { QuickCopyAttrs, QuickCopyResult } from "@/lib/api/backend";
+
+/** Progressive quick-analyze, stage 2 — fills name / descriptions / care after the editor opens. */
+export async function quickAnalyzeCopy(input: { image_url: string; attrs: B.QuickCopyAttrs }): Promise<Result<B.QuickCopyResult>> {
+  const res = await B.quickAnalyzeCopyBackend(input);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data);
 }
 export { searchProductsBackend } from "@/lib/api/backend";
 export type { SearchResultRow } from "@/lib/api/backend";

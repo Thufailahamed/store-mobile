@@ -1,16 +1,13 @@
 import React, { useEffect, useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Alert,
-} from "react-native";
+import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Svg, { Circle } from "react-native-svg";
 import { Ionicons } from "@/components/ui/Icon";
+import { Skeleton } from "@/components/ui";
 import { useAuth } from "@/lib/supabase/auth";
 import {
   getAdminOverviewStats,
@@ -23,12 +20,15 @@ import {
   approveBrand,
   approveProduct,
 } from "@/lib/api";
-import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from "react-native-svg";
-import { StatusDot, Skeleton } from "@/components/ui";
-import { colors, radii, shadows } from "@/lib/theme/tokens";
+import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
+// Same palette as the buyer Account screen so the admin console reads as
+// part of one product rather than a separate dashboard skin.
+import { C } from "@/components/orders/parcel-track";
+
+type IconName = keyof typeof Ionicons.glyphMap;
 
 function formatRelative(dateStr?: string) {
   if (!dateStr) return "—";
@@ -47,8 +47,6 @@ function formatRelative(dateStr?: string) {
 function formatClock() {
   return new Intl.DateTimeFormat("en-LK", {
     weekday: "short",
-    month: "short",
-    day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date());
@@ -65,6 +63,15 @@ const STATUS_TONE: Record<string, "default" | "success" | "warning" | "danger" |
   returned: "danger",
   refunded: "muted",
 };
+
+const HUB: { label: string; sub: string; icon: IconName; route: string }[] = [
+  { label: "Analytics", sub: "Revenue & telemetry", icon: "bar-chart-outline", route: "/(admin)/analytics" },
+  { label: "Delivery", sub: "Riders & dispatches", icon: "car-outline", route: "/(admin)/delivery" },
+  { label: "Couriers", sub: "3PL integrations", icon: "bicycle-outline", route: "/(admin)/courier" },
+  { label: "Commissions", sub: "Payout rates & tiers", icon: "wallet-outline", route: "/(admin)/commissions" },
+  { label: "Homepage CMS", sub: "Sections & layout", icon: "globe-outline", route: "/(admin)/homepage" },
+  { label: "Gift Cards", sub: "Codes & balances", icon: "gift-outline", route: "/(admin)/gift-cards" },
+];
 
 export default function AdminOverview() {
   const router = useRouter();
@@ -166,526 +173,436 @@ export default function AdminOverview() {
   const activeStoreRate = s?.stores ? (s.activeStores / s.stores) * 100 : 0;
   const customerShare = s?.users ? (s.customers / s.users) * 100 : 0;
 
-  const adminName = user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "Admin";
+  const adminName: string = user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "Admin";
+  const adminEmail = user?.email ?? "";
 
   const greeting = greetingFor(new Date().getHours());
   const revenueParts = splitCurrency(formatPrice(s?.revenue ?? 0));
   const lowStockCount = lowStockQ.data?.length ?? 0;
   const signupCount = signupsQ.data?.length ?? 0;
 
+  const go = (route: string) => router.push(route as never);
+
   const confirmApprove = (row: { id: string; name: string; kind: "Store" | "Brand" | "Product" }) => {
-    const m =
-      row.kind === "Store" ? approveStoreM : row.kind === "Brand" ? approveBrandM : approveProductM;
-    Alert.alert(`Approve ${row.kind}`, row.name, [
+    const m = row.kind === "Store" ? approveStoreM : row.kind === "Brand" ? approveBrandM : approveProductM;
+    themedAlert(`Approve ${row.kind}`, row.name, [
       { text: "Cancel", style: "cancel" },
       { text: "Approve", onPress: () => m.mutate(row.id) },
     ]);
   };
 
   const confirmRejectStore = (row: { id: string; name: string }) =>
-    Alert.alert("Reject Store", row.name, [
+    themedAlert("Reject Store", row.name, [
       { text: "Cancel", style: "cancel" },
       { text: "Reject", style: "destructive", onPress: () => rejectStoreM.mutate(row.id) },
     ]);
 
+  const stats = [
+    { key: "orders", value: (s?.orders ?? 0).toLocaleString(), label: "Orders", route: "/(admin)/orders" },
+    { key: "stores", value: `${s?.activeStores ?? 0}/${s?.stores ?? 0}`, label: "Ateliers", route: "/(admin)/stores" },
+    { key: "products", value: (s?.products ?? 0).toLocaleString(), label: "Products", route: "/(admin)/catalogue" },
+  ];
+
+  const quick: { icon: IconName; label: string; route: string }[] = [
+    { icon: "bar-chart-outline", label: "Analytics", route: "/(admin)/analytics" },
+    { icon: "storefront-outline", label: "Stores", route: "/(admin)/stores" },
+    { icon: "people-outline", label: "Users", route: "/(admin)/users" },
+    { icon: "document-text-outline", label: "Reports", route: "/(admin)/reports" },
+  ];
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={colors.light.primary} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ── 1. Editorial Masthead ─────────────────────────────── */}
-      <View style={styles.masthead}>
-        <View style={styles.mastheadTop}>
-          <View style={styles.livePill}>
-            <StatusDot tone="live" size={6} />
-            <Text style={styles.livePillText}>PLATFORM ONLINE</Text>
-          </View>
-          <View style={styles.clockWrap}>
-            <Ionicons name="time-outline" size={11} color={colors.ink.mute} />
-            <Text style={styles.clockText}>{clock}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.greeting}>
-          {greeting}, <Text style={styles.greetingName}>{adminName}</Text>
-        </Text>
-        <Text style={styles.headline}>
-          Command <Text style={styles.headlineAccent}>Deck</Text>
-        </Text>
-        <View style={styles.mastheadRule}>
-          <View style={styles.mastheadRuleAccent} />
-          <Text style={styles.mastheadRuleText}>LUXE · EXECUTIVE OVERVIEW</Text>
-          <View style={styles.mastheadRuleLine} />
-        </View>
-
-        {/* Quick actions */}
-        <View style={styles.quickRow}>
-          <QuickAction
-            label="Analytics"
-            icon="bar-chart-outline"
-            onPress={() => router.push("/(admin)/analytics" as any)}
-          />
-          <QuickAction
-            label="Inventory"
-            icon="cube-outline"
-            onPress={() => router.push("/(admin)/catalogue" as any)}
-          />
-          <QuickAction
-            label="Approvals"
-            icon="shield-checkmark-outline"
-            count={pendingTotal}
-            highlight={pendingTotal > 0}
-            onPress={() => router.push("/(admin)/approvals" as any)}
-          />
-        </View>
-      </View>
-
-      {/* ── 2. Hero Performance Deck ──────────────────────────── */}
-      {isLoading ? (
-        <View style={[styles.heroShell, styles.heroSkeleton]}>
-          <Skeleton width="40%" height={12} />
-          <Skeleton width="70%" height={40} style={{ marginTop: 16 }} />
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 24 }}>
-            <Skeleton width="31%" height={64} />
-            <Skeleton width="31%" height={64} />
-            <Skeleton width="31%" height={64} />
-          </View>
-        </View>
-      ) : (
-        <View style={styles.heroShell}>
-          <LinearGradient
-            colors={["#3a4120", colors.olive[900], "#14170a"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.hero}
-          >
-            {/* Decorative glow + guilloché rings */}
-            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-              <Svg width="100%" height="100%">
-                <Defs>
-                  <RadialGradient id="glow" cx="88%" cy="6%" r="60%">
-                    <Stop offset="0" stopColor={colors.accent2.ochre} stopOpacity="0.32" />
-                    <Stop offset="1" stopColor={colors.accent2.ochre} stopOpacity="0" />
-                  </RadialGradient>
-                </Defs>
-                <Rect x="0" y="0" width="100%" height="100%" fill="url(#glow)" />
-                {[70, 110, 150, 190].map((r) => (
-                  <Circle
-                    key={r}
-                    cx="100%"
-                    cy="0"
-                    r={r}
-                    stroke="rgba(232,212,150,0.07)"
-                    strokeWidth={1}
-                    fill="none"
-                  />
-                ))}
-              </Svg>
-            </View>
-            <View style={styles.heroHairline} />
-
-            <View style={styles.heroTop}>
-              <View style={styles.heroIconWrap}>
-                <Ionicons name="pulse-outline" size={15} color={GOLD_LIGHT} />
+    <View style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[C.glowSoft, C.paper]}
+        locations={[0, 1]}
+        style={styles.glow}
+      />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={C.accent} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Admin profile card ─────────────────────────────── */}
+        <Animated.View entering={FadeInDown.duration(420)} style={styles.cardShadow}>
+          <View style={styles.profileCard}>
+            <View pointerEvents="none" style={styles.ribbonClip}>
+              <View style={styles.ribbon}>
+                <Text style={styles.ribbonText}>ADMIN</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.heroEyebrow}>MARKETPLACE VOLUME</Text>
-                <Text style={styles.heroEyebrowSub}>Gross · settled</Text>
+            </View>
+
+            <View style={styles.profileRow}>
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarInitials}>{initials(adminName)}</Text>
+                </View>
               </View>
-              <LinearGradient
-                colors={[GOLD_LIGHT, colors.accent2.ochre]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroBadge}
-              >
-                <Ionicons name="trending-up" size={11} color={colors.olive[900]} />
-                <Text style={styles.heroBadgeText}>LIVE</Text>
-              </LinearGradient>
+              <View style={styles.profileText}>
+                <Text style={styles.profileGreeting} numberOfLines={1}>
+                  {greeting}
+                </Text>
+                <Text style={styles.profileName} numberOfLines={1}>
+                  {adminName}
+                </Text>
+                {adminEmail ? (
+                  <Text style={styles.profileEmail} numberOfLines={1}>
+                    {adminEmail}
+                  </Text>
+                ) : null}
+                <View style={styles.livePill}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.livePillText}>Platform online · {clock}</Text>
+                </View>
+              </View>
             </View>
 
-            {revenueParts.currency ? (
-              <Text style={styles.heroCurrency}>{revenueParts.currency}</Text>
-            ) : null}
-            <Text style={styles.heroMainValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-              {revenueParts.amount}
-            </Text>
-            <Text style={styles.heroSub}>Aggregated settled marketplace volume</Text>
-
-            <View style={styles.heroMetrics}>
-              <HeroMetric
-                icon="receipt-outline"
-                label="ORDERS"
-                value={(s?.orders ?? 0).toLocaleString()}
-                sub={`${formatPrice(s?.aov ?? 0)} avg`}
-              />
-              <HeroMetric
-                icon="storefront-outline"
-                label="ATELIERS"
-                value={String(s?.activeStores ?? 0)}
-                total={s?.stores ?? 0}
-                sub={`${activeStoreRate.toFixed(0)}% live`}
-              />
-              <HeroMetric
-                icon="pricetags-outline"
-                label="CATALOGUE"
-                value={(s?.products ?? 0).toLocaleString()}
-                sub={`${s?.brands ?? 0} brands`}
-              />
+            <View style={styles.statsStrip}>
+              {stats.map((st, i) => (
+                <React.Fragment key={st.key}>
+                  {i > 0 ? <View style={styles.statDivider} /> : null}
+                  <Pressable
+                    style={({ pressed }) => [styles.stat, pressed && { opacity: 0.7 }]}
+                    onPress={() => go(st.route)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${st.value} ${st.label}`}
+                  >
+                    {isLoading ? (
+                      <View style={styles.statSkeleton} />
+                    ) : (
+                      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+                        {st.value}
+                      </Text>
+                    )}
+                    <Text style={styles.statLabel}>{st.label}</Text>
+                  </Pressable>
+                </React.Fragment>
+              ))}
             </View>
+          </View>
+        </Animated.View>
 
-            {pendingTotal > 0 ? (
-              <Pressable
-                onPress={() => router.push("/(admin)/approvals" as any)}
-                style={({ pressed }) => [pressed && styles.pressed]}
-              >
-                <LinearGradient
-                  colors={["#fbf0cf", "#f2dd9c"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.actionBanner}
-                >
-                  <View style={styles.actionBannerCount}>
-                    <Text style={styles.actionBannerCountText}>{pendingTotal}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.actionBannerTitle}>
-                      Submission{pendingTotal > 1 ? "s" : ""} awaiting review
-                    </Text>
-                    <Text style={styles.actionBannerSub}>Moderation queue needs attention</Text>
-                  </View>
-                  <View style={styles.actionBannerBtn}>
-                    <Ionicons name="arrow-forward" size={15} color={colors.accent2.ochre} />
-                  </View>
-                </LinearGradient>
-              </Pressable>
+        {/* ── Quick actions ──────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.duration(420).delay(60)} style={styles.quickRow}>
+          {quick.map((q) => (
+            <Pressable
+              key={q.label}
+              style={({ pressed }) => [styles.quick, pressed && { transform: [{ scale: 0.96 }] }]}
+              onPress={() => go(q.route)}
+              accessibilityRole="button"
+              accessibilityLabel={q.label}
+            >
+              <View style={styles.quickIcon}>
+                <Ionicons name={q.icon} size={21} color={C.text} />
+              </View>
+              <Text style={styles.quickLabel}>{q.label}</Text>
+            </Pressable>
+          ))}
+        </Animated.View>
+
+        {/* ── Marketplace volume ─────────────────────────────── */}
+        <SectionHead title="Marketplace volume" action="Analytics" onAction={() => go("/(admin)/analytics")} />
+        <Animated.View entering={FadeInDown.duration(420).delay(120)} style={styles.cardShadow}>
+          <View style={styles.volumeCard}>
+            <View style={styles.volumeTop}>
+              <Text style={styles.kicker}>GROSS · SETTLED</Text>
+              <View style={styles.liveChip}>
+                <Ionicons name="trending-up" size={11} color={C.ink} />
+                <Text style={styles.liveChipText}>LIVE</Text>
+              </View>
+            </View>
+            {isLoading ? (
+              <Skeleton width="70%" height={40} style={{ marginTop: 12 }} />
             ) : (
-              <View style={styles.nominalBanner}>
-                <Ionicons name="checkmark-circle" size={15} color={GOLD_LIGHT} />
-                <Text style={styles.nominalBannerText}>All submission queues nominal · 0 pending</Text>
+              <View style={styles.volumeValueRow}>
+                {revenueParts.currency ? <Text style={styles.volumeCurrency}>{revenueParts.currency}</Text> : null}
+                <Text style={styles.volumeValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  {revenueParts.amount}
+                </Text>
               </View>
             )}
-          </LinearGradient>
-        </View>
-      )}
-
-      {/* ── 3. Priority Moderation Queue ───────────────────────── */}
-      <View style={styles.sectionCard}>
-        <SectionHead
-          eyebrow="MODERATION"
-          title="Priority Queue"
-          count={pendingTotal}
-          linkLabel="View all"
-          onLink={() => router.push("/(admin)/approvals" as any)}
-        />
-
-        {merged.length === 0 ? (
-          <EmptyBlock
-            icon="checkmark-done-outline"
-            title="Inbox zero"
-            sub="Every submission has been reviewed."
-          />
-        ) : (
-          merged.map((row, i) => (
-            <View key={`${row.kind}-${row.id}`} style={[styles.queueRow, i > 0 && styles.rowDivider]}>
-              <View style={[styles.queueIcon, { backgroundColor: kindBg(row.kind) }]}>
-                <Ionicons name={kindIcon(row.kind)} size={17} color={kindFg(row.kind)} />
-              </View>
-              <View style={styles.rowBody}>
-                <Text style={styles.rowTitle} numberOfLines={1}>
-                  {row.name}
-                </Text>
-                <View style={styles.rowMetaLine}>
-                  <View style={[styles.kindTag, { borderColor: kindFg(row.kind) + "33" }]}>
-                    <Text style={[styles.kindTagText, { color: kindFg(row.kind) }]}>
-                      {row.kind.toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text style={styles.rowMeta}>{formatRelative(row.created_at)}</Text>
-                </View>
-              </View>
-              <View style={styles.queueActions}>
-                {row.kind === "Store" ? (
-                  <Pressable
-                    onPress={() => confirmRejectStore(row)}
-                    hitSlop={6}
-                    style={({ pressed }) => [styles.rejectBtn, pressed && styles.pressed]}
-                  >
-                    <Ionicons name="close" size={15} color={colors.light.destructive} />
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  onPress={() => confirmApprove(row)}
-                  hitSlop={6}
-                  style={({ pressed }) => [pressed && styles.pressed]}
-                >
-                  <LinearGradient
-                    colors={[colors.olive[500], colors.olive[700]]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.approveBtn}
-                  >
-                    <Ionicons name="checkmark" size={16} color={colors.paper.cream} />
-                  </LinearGradient>
-                </Pressable>
-              </View>
+            <View style={styles.volumeSplit}>
+              <MiniStat label="Avg order" value={formatPrice(s?.aov ?? 0)} />
+              <View style={styles.volumeDivider} />
+              <MiniStat label="Stores live" value={`${activeStoreRate.toFixed(0)}%`} />
+              <View style={styles.volumeDivider} />
+              <MiniStat label="Brands" value={String(s?.brands ?? 0)} />
             </View>
-          ))
-        )}
-      </View>
+          </View>
+        </Animated.View>
 
-      {/* ── 4. Operational Health (2x2 ring gauges) ─────────────── */}
-      <View style={styles.gridHeader}>
-        <Text style={styles.sectionEyebrow}>TELEMETRY</Text>
-        <Text style={styles.sectionTitle}>Operational Health</Text>
-      </View>
-      <View style={styles.telemetryGrid}>
-        <TelemetryCard
-          label="Store activation"
-          value={`${activeStoreRate.toFixed(0)}%`}
-          sub={`${s?.activeStores ?? 0} of ${s?.stores ?? 0} live`}
-          pct={activeStoreRate}
-          icon="storefront-outline"
-          color={colors.olive[600]}
-        />
-        <TelemetryCard
-          label="Customer share"
-          value={`${customerShare.toFixed(0)}%`}
-          sub={`${s?.customers ?? 0} purchasers`}
-          pct={customerShare}
-          icon="people-outline"
-          color={colors.accent2.ochre}
-        />
-        <TelemetryCard
-          label="Low stock"
-          value={String(lowStockCount)}
-          sub="Variants near limit"
-          pct={Math.min(100, lowStockCount * 20)}
-          icon="alert-circle-outline"
-          color={colors.accent2.rust}
-          alert={lowStockCount > 0}
-        />
-        <TelemetryCard
-          label="New accounts"
-          value={String(signupCount)}
-          sub="Recent registrations"
-          pct={Math.min(100, signupCount * 25)}
-          icon="person-add-outline"
-          color={colors.olive[400]}
-        />
-      </View>
+        {pendingTotal > 0 ? (
+          <Pressable
+            style={({ pressed }) => [styles.darkCta, pressed && { transform: [{ scale: 0.985 }] }]}
+            onPress={() => go("/(admin)/approvals")}
+            accessibilityRole="button"
+            accessibilityLabel={`${pendingTotal} submissions awaiting review`}
+          >
+            <View style={styles.darkCtaCount}>
+              <Text style={styles.darkCtaCountText}>{pendingTotal > 99 ? "99+" : pendingTotal}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.darkCtaTitle}>
+                Submission{pendingTotal > 1 ? "s" : ""} awaiting review
+              </Text>
+              <Text style={styles.darkCtaSub}>Stores, brands & products in the queue</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={17} color={C.lime} />
+          </Pressable>
+        ) : !isLoading ? (
+          <View style={styles.clearPill}>
+            <Ionicons name="checkmark-circle" size={15} color={colors.olive[700]} />
+            <Text style={styles.clearPillText}>All submission queues clear</Text>
+          </View>
+        ) : null}
 
-      {/* ── 5. Recent Orders Stream ────────────────────────────── */}
-      <View style={styles.sectionCard}>
+        {/* ── Priority queue ─────────────────────────────────── */}
         <SectionHead
-          eyebrow="DISPATCH"
-          title="Recent Orders"
-          linkLabel="View all"
-          onLink={() => router.push("/(admin)/orders" as any)}
+          title="Priority queue"
+          count={pendingTotal}
+          action="View all"
+          onAction={() => go("/(admin)/approvals")}
         />
-
-        {(ordersQ.data ?? []).length === 0 ? (
-          <EmptyBlock icon="receipt-outline" title="No orders yet" sub="New orders will stream in here." />
-        ) : (
-          (ordersQ.data ?? []).map((o: any, i: number) => {
-            const tone = STATUS_TONE[o.status] ?? "muted";
-            const name = o.user?.full_name ?? "Direct Customer";
-            return (
-              <Pressable
-                key={o.id}
-                onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: o.id } })}
-                style={({ pressed }) => [styles.orderRow, i > 0 && styles.rowDivider, pressed && styles.rowPressed]}
-              >
-                <View style={styles.monogram}>
-                  <Text style={styles.monogramText}>{initials(name)}</Text>
+        <View style={styles.menuCard}>
+          {merged.length === 0 ? (
+            <EmptyBlock icon="checkmark-done-outline" title="Inbox zero" sub="Every submission has been reviewed." />
+          ) : (
+            merged.map((row, i) => (
+              <View key={`${row.kind}-${row.id}`} style={[styles.menuRow, i > 0 && styles.menuDivider]}>
+                <View style={[styles.menuIcon, { backgroundColor: kindBg(row.kind) }]}>
+                  <Ionicons name={kindIcon(row.kind)} size={18} color={kindFg(row.kind)} />
                 </View>
                 <View style={styles.rowBody}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {name}
+                  <Text style={styles.menuLabel} numberOfLines={1}>
+                    {row.name}
                   </Text>
-                  <Text style={styles.rowMetaMono} numberOfLines={1}>
-                    #{o.order_number ?? o.id.slice(0, 8)} · {formatRelative(o.placed_at)}
+                  <Text style={styles.menuSub} numberOfLines={1}>
+                    {row.kind} · {formatRelative(row.created_at)}
                   </Text>
                 </View>
-                <View style={{ alignItems: "flex-end", gap: 5 }}>
-                  <Text style={styles.orderAmount}>{formatPrice(Number(o.total ?? 0), o.currency ?? "LKR")}</Text>
-                  <View style={[styles.statusPill, { backgroundColor: pillBg(tone) }]}>
-                    <View style={[styles.statusPillDot, { backgroundColor: pillFg(tone) }]} />
-                    <Text style={[styles.statusPillText, { color: pillFg(tone) }]}>
-                      {String(o.status).replace(/_/g, " ")}
+                <View style={styles.queueActions}>
+                  {row.kind === "Store" ? (
+                    <Pressable
+                      onPress={() => confirmRejectStore(row)}
+                      hitSlop={6}
+                      style={({ pressed }) => [styles.rejectBtn, pressed && styles.pressed]}
+                      accessibilityLabel={`Reject ${row.name}`}
+                    >
+                      <Ionicons name="close" size={16} color={C.rust} />
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    onPress={() => confirmApprove(row)}
+                    hitSlop={6}
+                    style={({ pressed }) => [styles.approveBtn, pressed && styles.pressed]}
+                    accessibilityLabel={`Approve ${row.name}`}
+                  >
+                    <Ionicons name="checkmark" size={17} color={C.ink} />
+                  </Pressable>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* ── Operational health ─────────────────────────────── */}
+        <SectionHead title="Operational health" />
+        <View style={styles.telemetryGrid}>
+          <TelemetryCard
+            label="Store activation"
+            value={`${activeStoreRate.toFixed(0)}%`}
+            sub={`${s?.activeStores ?? 0} of ${s?.stores ?? 0} live`}
+            pct={activeStoreRate}
+            icon="storefront-outline"
+            color={colors.olive[600]}
+          />
+          <TelemetryCard
+            label="Customer share"
+            value={`${customerShare.toFixed(0)}%`}
+            sub={`${s?.customers ?? 0} purchasers`}
+            pct={customerShare}
+            icon="people-outline"
+            color={C.gold}
+          />
+          <TelemetryCard
+            label="Low stock"
+            value={String(lowStockCount)}
+            sub="Variants near limit"
+            pct={Math.min(100, lowStockCount * 20)}
+            icon="alert-circle-outline"
+            color={C.rust}
+            alert={lowStockCount > 0}
+          />
+          <TelemetryCard
+            label="New accounts"
+            value={String(signupCount)}
+            sub="Recent registrations"
+            pct={Math.min(100, signupCount * 25)}
+            icon="person-add-outline"
+            color={colors.olive[400]}
+          />
+        </View>
+
+        {/* ── Recent orders ──────────────────────────────────── */}
+        <SectionHead title="Recent orders" action="All orders" onAction={() => go("/(admin)/orders")} />
+        <View style={styles.menuCard}>
+          {(ordersQ.data ?? []).length === 0 ? (
+            <EmptyBlock icon="receipt-outline" title="No orders yet" sub="New orders will stream in here." />
+          ) : (
+            (ordersQ.data ?? []).map((o: any, i: number) => {
+              const tone = STATUS_TONE[o.status] ?? "muted";
+              const name = o.user?.full_name ?? "Direct Customer";
+              return (
+                <Pressable
+                  key={o.id}
+                  onPress={() => router.push({ pathname: "/(admin)/orders/[id]", params: { id: o.id } })}
+                  style={({ pressed }) => [styles.menuRow, i > 0 && styles.menuDivider, pressed && { opacity: 0.7 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Order ${o.order_number ?? ""} from ${name}`}
+                >
+                  <View style={styles.monogram}>
+                    <Text style={styles.monogramText}>{initials(name)}</Text>
+                  </View>
+                  <View style={styles.rowBody}>
+                    <Text style={styles.menuLabel} numberOfLines={1}>
+                      {name}
+                    </Text>
+                    <Text style={styles.menuSub} numberOfLines={1}>
+                      #{o.order_number ?? String(o.id).slice(0, 8)} · {formatRelative(o.placed_at)}
                     </Text>
                   </View>
-                </View>
-              </Pressable>
-            );
-          })
-        )}
-      </View>
+                  <View style={{ alignItems: "flex-end", gap: 5 }}>
+                    <Text style={styles.orderAmount}>{formatPrice(Number(o.total ?? 0), o.currency ?? "LKR")}</Text>
+                    <View style={[styles.statusPill, { backgroundColor: pillBg(tone) }]}>
+                      <Text style={[styles.statusPillText, { color: pillFg(tone) }]}>
+                        {String(o.status).replace(/_/g, " ")}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
 
-      {/* ── 6. Activity Timeline ───────────────────────────────── */}
-      <View style={styles.sectionCard}>
-        <SectionHead
-          eyebrow="AUDIT LOG"
-          title="Live Activity"
-          linkLabel="Stream"
-          onLink={() => router.push("/(admin)/audit-log" as any)}
-        />
-
-        {(auditQ.data ?? []).length === 0 ? (
-          <EmptyBlock icon="time-outline" title="All quiet" sub="No recent system activity recorded." />
-        ) : (
-          (auditQ.data ?? []).map((e: any, i: number, arr: any[]) => (
-            <View key={e.id} style={styles.timelineRow}>
-              <View style={styles.timelineRail}>
-                <View style={[styles.timelineDotOuter, { borderColor: auditColor(e.action) + "55" }]}>
+        {/* ── Live activity ──────────────────────────────────── */}
+        <SectionHead title="Live activity" action="Audit log" onAction={() => go("/(admin)/audit-log")} />
+        <View style={[styles.menuCard, { paddingVertical: 6 }]}>
+          {(auditQ.data ?? []).length === 0 ? (
+            <EmptyBlock icon="time-outline" title="All quiet" sub="No recent system activity recorded." />
+          ) : (
+            (auditQ.data ?? []).map((e: any, i: number, arr: any[]) => (
+              <View key={e.id} style={styles.timelineRow}>
+                <View style={styles.timelineRail}>
                   <View style={[styles.timelineDot, { backgroundColor: auditColor(e.action) }]} />
+                  {i < arr.length - 1 ? <View style={styles.timelineLine} /> : null}
                 </View>
-                {i < arr.length - 1 ? <View style={styles.timelineLine} /> : null}
-              </View>
-              <View style={styles.timelineBody}>
-                <View style={styles.timelineHead}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {humanize(e.action)}
+                <View style={styles.timelineBody}>
+                  <View style={styles.timelineHead}>
+                    <Text style={[styles.menuLabel, { flex: 1 }]} numberOfLines={1}>
+                      {humanize(e.action)}
+                    </Text>
+                    <Text style={styles.timelineTime}>{formatRelative(e.created_at)}</Text>
+                  </View>
+                  <Text style={styles.menuSub} numberOfLines={1}>
+                    by {e.actor_name ?? "Administrator"}
                   </Text>
-                  <Text style={styles.timelineTime}>{formatRelative(e.created_at)}</Text>
                 </View>
-                <Text style={styles.rowMeta} numberOfLines={1}>
-                  by {e.actor_name ?? "Administrator"}
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* ── Console hub ────────────────────────────────────── */}
+        <SectionHead title="Console" />
+        <View style={styles.menuCard}>
+          {HUB.map((h, i) => (
+            <Pressable
+              key={h.route}
+              style={({ pressed }) => [styles.menuRow, i > 0 && styles.menuDivider, pressed && { opacity: 0.65 }]}
+              onPress={() => go(h.route)}
+              accessibilityRole="button"
+              accessibilityLabel={h.label}
+            >
+              <View style={styles.menuIcon}>
+                <Ionicons name={h.icon} size={18} color={C.text} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={styles.menuLabel} numberOfLines={1}>
+                  {h.label}
+                </Text>
+                <Text style={styles.menuSub} numberOfLines={1}>
+                  {h.sub}
                 </Text>
               </View>
-            </View>
-          ))
-        )}
-      </View>
+              <Ionicons name="chevron-forward" size={16} color={C.faint} />
+            </Pressable>
+          ))}
+        </View>
 
-      {/* ── 7. Console Hub ─────────────────────────────────────── */}
-      <View style={styles.gridHeader}>
-        <Text style={styles.sectionEyebrow}>NAVIGATION</Text>
-        <Text style={styles.sectionTitle}>Console Hub</Text>
-      </View>
-      <View style={styles.hubGrid}>
-        <HubTile label="Analytics" sub="Revenue & telemetry" icon="bar-chart-outline" tint={colors.olive[600]} onPress={() => router.push("/(admin)/analytics" as any)} />
-        <HubTile label="Delivery" sub="Riders & dispatches" icon="car-outline" tint={colors.accent2.ochre} onPress={() => router.push("/(admin)/delivery" as any)} />
-        <HubTile label="Couriers" sub="3PL integrations" icon="bicycle-outline" tint={colors.accent2.rust} onPress={() => router.push("/(admin)/courier" as any)} />
-        <HubTile label="Commissions" sub="Payout rates & tiers" icon="wallet-outline" tint={colors.olive[500]} onPress={() => router.push("/(admin)/commissions" as any)} />
-        <HubTile label="Homepage CMS" sub="Sections & layout" icon="globe-outline" tint={colors.ink.soft} onPress={() => router.push("/(admin)/homepage" as any)} />
-        <HubTile label="Gift Cards" sub="Codes & balances" icon="gift-outline" tint="#8a6a2a" onPress={() => router.push("/(admin)/gift-cards" as any)} />
-      </View>
-    </ScrollView>
+        <View style={styles.footer}>
+          <View style={styles.footerMark}>
+            <MaterialCommunityIcons name="hanger" size={16} color={C.goldSoft} />
+          </View>
+          <Text style={styles.footerWord}>VESTARA</Text>
+          <Text style={styles.footerCaption}>Admin console</Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 /* ───────────────────────── Components ───────────────────────── */
 
-const GOLD_LIGHT = "#e8d496";
-
-function QuickAction({
-  label,
-  icon,
+function SectionHead({
+  title,
   count,
-  highlight,
-  onPress,
+  action,
+  onAction,
 }: {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
   count?: number;
-  highlight?: boolean;
-  onPress: () => void;
+  action?: string;
+  onAction?: () => void;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.quickAction, highlight && styles.quickActionHighlight, pressed && styles.pressed]}
-    >
-      <View style={[styles.quickIcon, highlight && styles.quickIconHighlight]}>
-        <Ionicons name={icon} size={17} color={highlight ? "#7a5b1a" : colors.olive[700]} />
+    <View style={styles.sectionHead}>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
         {count ? (
-          <View style={styles.quickBadge}>
-            <Text style={styles.quickBadgeText}>{count > 99 ? "99+" : count}</Text>
+          <View style={styles.sectionCount}>
+            <Text style={styles.sectionCountText}>{count}</Text>
           </View>
         ) : null}
       </View>
-      <Text style={[styles.quickLabel, highlight && { color: "#7a5b1a" }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function HeroMetric({
-  icon,
-  label,
-  value,
-  total,
-  sub,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  total?: number;
-  sub: string;
-}) {
-  return (
-    <View style={styles.heroMetric}>
-      <View style={styles.heroMetricTop}>
-        <Ionicons name={icon} size={11} color="rgba(232,212,150,0.75)" />
-        <Text style={styles.heroMetricLabel} numberOfLines={1}>
-          {label}
-        </Text>
-      </View>
-      <Text style={styles.heroMetricValue} numberOfLines={1}>
-        {value}
-        {total !== undefined ? <Text style={styles.heroMetricTotal}> / {total}</Text> : null}
-      </Text>
-      <Text style={styles.heroMetricSub} numberOfLines={1}>
-        {sub}
-      </Text>
-    </View>
-  );
-}
-
-function SectionHead({
-  eyebrow,
-  title,
-  count,
-  linkLabel,
-  onLink,
-}: {
-  eyebrow: string;
-  title: string;
-  count?: number;
-  linkLabel?: string;
-  onLink?: () => void;
-}) {
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
-        <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          {count ? (
-            <View style={styles.sectionCount}>
-              <Text style={styles.sectionCountText}>{count}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
-      {linkLabel && onLink ? (
-        <Pressable onPress={onLink} hitSlop={10} style={({ pressed }) => [styles.linkPill, pressed && styles.pressed]}>
-          <Text style={styles.linkPillText}>{linkLabel}</Text>
-          <Ionicons name="arrow-forward" size={12} color={colors.olive[700]} />
+      {action && onAction ? (
+        <Pressable onPress={onAction} hitSlop={8} style={({ pressed }) => [styles.sectionAction, pressed && { opacity: 0.7 }]}>
+          <Text style={styles.sectionActionText}>{action}</Text>
+          <Ionicons name="chevron-forward" size={13} color={C.accent} />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-function EmptyBlock({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap; title: string; sub: string }) {
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.miniStat}>
+      <Text style={styles.miniStatValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
+      <Text style={styles.miniStatLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function EmptyBlock({ icon, title, sub }: { icon: IconName; title: string; sub: string }) {
   return (
     <View style={styles.emptyWrap}>
-      <View style={styles.emptyIcon}>
-        <Ionicons name={icon} size={22} color={colors.olive[600]} />
+      <View style={styles.menuIcon}>
+        <Ionicons name={icon} size={20} color={C.accent} />
       </View>
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptySub}>{sub}</Text>
@@ -693,13 +610,13 @@ function EmptyBlock({ icon, title, sub }: { icon: keyof typeof Ionicons.glyphMap
   );
 }
 
-function RingGauge({ pct, color, size = 46, stroke = 4 }: { pct: number; color: string; size?: number; stroke?: number }) {
+function RingGauge({ pct, color, size = 48, stroke = 4 }: { pct: number; color: string; size?: number; stroke?: number }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(100, pct || 0));
   return (
     <Svg width={size} height={size} style={{ transform: [{ rotate: "-90deg" }] }}>
-      <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.light.muted} strokeWidth={stroke} fill="none" />
+      <Circle cx={size / 2} cy={size / 2} r={r} stroke={C.accentSoft} strokeWidth={stroke} fill="none" />
       <Circle
         cx={size / 2}
         cy={size / 2}
@@ -728,7 +645,7 @@ function TelemetryCard({
   value: string;
   sub: string;
   pct: number;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   color: string;
   alert?: boolean;
 }) {
@@ -738,7 +655,7 @@ function TelemetryCard({
         <View style={styles.ringWrap}>
           <RingGauge pct={pct} color={color} />
           <View style={styles.ringIcon}>
-            <Ionicons name={icon} size={15} color={color} />
+            <Ionicons name={icon} size={16} color={color} />
           </View>
         </View>
         {alert ? (
@@ -747,7 +664,7 @@ function TelemetryCard({
           </View>
         ) : null}
       </View>
-      <Text style={[styles.telemetryValue, alert && { color: colors.accent2.rust }]}>{value}</Text>
+      <Text style={[styles.telemetryValue, alert && { color: C.rust }]}>{value}</Text>
       <Text style={styles.telemetryLabel} numberOfLines={1}>
         {label}
       </Text>
@@ -755,37 +672,6 @@ function TelemetryCard({
         {sub}
       </Text>
     </View>
-  );
-}
-
-function HubTile({
-  label,
-  sub,
-  icon,
-  tint,
-  onPress,
-}: {
-  label: string;
-  sub: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tint: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.hubTile, pressed && styles.pressed]}>
-      <View style={styles.hubTop}>
-        <View style={[styles.hubIconWrap, { backgroundColor: tint + "1A", borderColor: tint + "33" }]}>
-          <Ionicons name={icon} size={18} color={tint} />
-        </View>
-        <Ionicons name="arrow-forward" size={14} color={colors.light.mutedForeground} style={styles.hubArrow} />
-      </View>
-      <Text style={styles.hubLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text style={styles.hubSub} numberOfLines={1}>
-        {sub}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -809,47 +695,66 @@ function initials(name: string) {
   return ((parts[0][0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-function kindIcon(kind: string): keyof typeof Ionicons.glyphMap {
+function kindIcon(kind: string): IconName {
   switch (kind) {
-    case "Store": return "storefront-outline";
-    case "Brand": return "ribbon-outline";
-    default: return "cube-outline";
+    case "Store":
+      return "storefront-outline";
+    case "Brand":
+      return "ribbon-outline";
+    default:
+      return "cube-outline";
   }
 }
 
 function kindBg(kind: string) {
   switch (kind) {
-    case "Store": return "#e4e9dc";
-    case "Brand": return "#fbf1d6";
-    default: return "#f9e6dd";
+    case "Store":
+      return C.accentSoft;
+    case "Brand":
+      return "#fbf1d6";
+    default:
+      return "#f9e6dd";
   }
 }
 
 function kindFg(kind: string) {
   switch (kind) {
-    case "Store": return colors.olive[700];
-    case "Brand": return "#8a6a2a";
-    default: return "#a14a2c";
+    case "Store":
+      return colors.olive[700];
+    case "Brand":
+      return "#8a6a2a";
+    default:
+      return "#a14a2c";
   }
 }
 
 function pillBg(tone: string) {
   switch (tone) {
-    case "success": return "#e3ecd0";
-    case "warning": return "#fbf1d6";
-    case "danger": return "#f9e6dd";
-    case "info": return "#e4e9dc";
-    default: return colors.light.secondary;
+    case "success":
+      return C.lime;
+    case "warning":
+      return "#fbf1d6";
+    case "danger":
+      return "#f9e6dd";
+    case "info":
+      return C.accentSoft;
+    default:
+      return "#efede4";
   }
 }
 
 function pillFg(tone: string) {
   switch (tone) {
-    case "success": return "#3d4a1f";
-    case "warning": return "#8a6a2a";
-    case "danger": return "#a14a2c";
-    case "info": return colors.olive[700];
-    default: return colors.light.mutedForeground;
+    case "success":
+      return C.ink;
+    case "warning":
+      return "#8a6a2a";
+    case "danger":
+      return "#a14a2c";
+    case "info":
+      return colors.olive[700];
+    default:
+      return C.muted;
   }
 }
 
@@ -858,683 +763,303 @@ function humanize(s: string) {
 }
 
 function auditColor(action: string) {
-  if (action.includes("delete") || action.includes("reject") || action.includes("ban")) return colors.light.destructive;
+  if (action.includes("delete") || action.includes("reject") || action.includes("ban")) return C.rust;
   if (action.includes("create") || action.includes("approve")) return colors.olive[600];
-  if (action.includes("update")) return colors.accent2.ochre;
+  if (action.includes("update")) return C.gold;
   return colors.olive[300];
 }
 
 /* ───────────────────────── Styles ───────────────────────── */
 
-const cardShadow = {
-  shadowColor: "#2c3119",
-  shadowOffset: { width: 0, height: 10 },
-  shadowOpacity: 0.07,
-  shadowRadius: 22,
-  elevation: 4,
-} as const;
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.light.background },
-  content: { paddingBottom: 140 },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
-  rowPressed: { opacity: 0.6 },
+  root: { flex: 1, backgroundColor: C.paper },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 320 },
+  scroll: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 32 },
+  pressed: { transform: [{ scale: 0.94 }] },
 
-  /* ── Masthead ─────────────────────────────── */
-  masthead: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+  cardShadow: {
+    borderRadius: 26,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#16170f",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    elevation: 3,
   },
-  mastheadTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+
+  /* Profile card */
+  profileCard: { borderRadius: 26, overflow: "hidden", borderWidth: 1, borderColor: C.line, padding: 18 },
+  ribbonClip: { position: "absolute", top: 0, right: 0, width: 116, height: 116, overflow: "hidden" },
+  ribbon: {
+    position: "absolute",
+    top: 24,
+    right: -44,
+    width: 170,
+    paddingVertical: 6,
     alignItems: "center",
+    backgroundColor: C.ink,
+    transform: [{ rotate: "35deg" }],
   },
+  ribbonText: { fontFamily: fontFamilies.sans.bold, fontSize: 11, letterSpacing: 1.6, color: C.goldSoft },
+  profileRow: { flexDirection: "row", alignItems: "center", gap: 14, paddingRight: 56 },
+  avatarRing: { width: 72, height: 72, borderRadius: 36, padding: 3, borderWidth: 2, borderColor: C.goldSoft },
+  avatarFallback: { flex: 1, borderRadius: 33, backgroundColor: C.ink, alignItems: "center", justifyContent: "center" },
+  avatarInitials: { fontFamily: fontFamilies.display.semibold, fontSize: 24, color: C.goldSoft },
+  profileText: { flex: 1, minWidth: 0, gap: 1 },
+  profileGreeting: { fontFamily: fontFamilies.sans.medium, fontSize: 12.5, color: C.muted },
+  profileName: { fontFamily: fontFamilies.sans.bold, fontSize: 20, letterSpacing: -0.4, color: C.text },
+  profileEmail: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: C.muted },
   livePill: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: colors.paper.cream,
+    marginTop: 7,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.olive[200],
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: C.accentSoft,
   },
-  livePillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[700],
-    letterSpacing: 1.2,
-  },
-  clockWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
-  clockText: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.ink.mute,
-    letterSpacing: 0.2,
-  },
-  greeting: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: colors.ink.mute,
-    marginTop: 22,
-  },
-  greetingName: {
-    fontFamily: fontFamilies.sans.bold,
-    color: colors.ink.soft,
-  },
-  headline: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 42,
-    color: colors.ink.DEFAULT,
-    letterSpacing: -1.4,
-    lineHeight: 48,
-    marginTop: 2,
-  },
-  headlineAccent: {
-    fontFamily: fontFamilies.display.italic,
-    color: colors.olive[600],
-  },
-  mastheadRule: {
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.olive[500] },
+  livePillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 11.5, color: colors.olive[800] },
+
+  statsStrip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 10,
-  },
-  mastheadRuleAccent: {
-    width: 18,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: colors.accent2.ochre,
-  },
-  mastheadRuleText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: colors.ink.mute,
-  },
-  mastheadRuleLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.light.border,
-  },
-  quickRow: {
-    flexDirection: "row",
-    gap: 10,
     marginTop: 18,
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: C.ink,
   },
-  quickAction: {
+  stat: { flex: 1, alignItems: "center", gap: 2, paddingHorizontal: 6 },
+  statValue: { fontFamily: fontFamilies.sans.bold, fontSize: 21, color: C.cream, fontVariant: ["tabular-nums"] },
+  statLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 12, color: "rgba(250,248,241,0.6)" },
+  statDivider: { width: 1, height: 28, backgroundColor: "rgba(250,248,241,0.12)" },
+  statSkeleton: { width: 36, height: 22, borderRadius: 6, backgroundColor: "rgba(250,248,241,0.12)" },
+
+  /* Quick row */
+  quickRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+  quick: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 12,
     gap: 8,
-    borderRadius: radii["2xl"],
-    backgroundColor: colors.paper.cream,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    ...cardShadow,
-    shadowOpacity: 0.05,
-  },
-  quickActionHighlight: {
-    backgroundColor: "#fdf6e2",
-    borderColor: "#ecd590",
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
   },
   quickIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.olive[50],
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  quickIconHighlight: { backgroundColor: "#f7e7b4" },
-  quickBadge: {
-    position: "absolute",
-    top: -4,
-    right: -8,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: colors.accent2.rust,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#fdf6e2",
-  },
-  quickBadgeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 9,
-    color: "#fff",
-  },
-  quickLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12,
-    color: colors.ink.soft,
-  },
+  quickLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: C.text },
 
-  /* ── Hero ─────────────────────────────────── */
-  heroShell: {
-    marginHorizontal: 16,
-    marginTop: 22,
-    borderRadius: 26,
-    shadowColor: "#161a0a",
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.28,
-    shadowRadius: 28,
-    elevation: 12,
-  },
-  heroSkeleton: {
-    padding: 22,
-    backgroundColor: colors.paper.cream,
-    borderWidth: 1,
-    borderColor: colors.light.border,
-  },
-  hero: {
-    borderRadius: 26,
-    padding: 22,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(232,212,150,0.16)",
-  },
-  heroHairline: {
-    position: "absolute",
-    top: 0,
-    left: 40,
-    right: 40,
-    height: 1,
-    backgroundColor: "rgba(232,212,150,0.45)",
-  },
-  heroTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  heroIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "rgba(232,212,150,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(232,212,150,0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9.5,
-    color: "rgba(244,242,234,0.78)",
-    letterSpacing: 1.6,
-  },
-  heroEyebrowSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10.5,
-    color: "rgba(244,242,234,0.45)",
-    marginTop: 1,
-  },
-  heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-  },
-  heroBadgeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.olive[900],
-    letterSpacing: 1,
-  },
-  heroCurrency: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 12,
-    color: GOLD_LIGHT,
-    letterSpacing: 1.6,
-    marginTop: 22,
-  },
-  heroMainValue: {
-    alignSelf: "stretch",
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 44,
-    lineHeight: 50,
-    color: colors.paper.cream,
-    letterSpacing: -1.4,
-  },
-  heroSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: "rgba(244,242,234,0.55)",
-    marginTop: 2,
-  },
-  heroMetrics: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 22,
-  },
-  heroMetric: {
-    flex: 1,
-    padding: 11,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.055)",
-    borderWidth: 1,
-    borderColor: "rgba(244,242,234,0.09)",
-  },
-  heroMetricTop: { flexDirection: "row", alignItems: "center", gap: 5 },
-  heroMetricLabel: {
-    flexShrink: 1,
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 8,
-    color: "rgba(244,242,234,0.55)",
-    letterSpacing: 1,
-  },
-  heroMetricValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 21,
-    color: colors.paper.cream,
-    marginTop: 8,
-    letterSpacing: -0.4,
-  },
-  heroMetricTotal: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "rgba(244,242,234,0.45)",
-  },
-  heroMetricSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 10,
-    color: "rgba(244,242,234,0.5)",
-    marginTop: 2,
-  },
-  actionBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 10,
-    paddingRight: 10,
-    borderRadius: 18,
-    marginTop: 16,
-  },
-  actionBannerCount: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionBannerCountText: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: GOLD_LIGHT,
-  },
-  actionBannerTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13,
-    color: "#5c4413",
-  },
-  actionBannerSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: "#8a6a2a",
-    marginTop: 1,
-  },
-  actionBannerBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  nominalBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(232,212,150,0.14)",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 16,
-    marginTop: 16,
-  },
-  nominalBannerText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: "rgba(244,242,234,0.8)",
-  },
-
-  /* ── Section cards ────────────────────────── */
-  sectionCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: colors.paper.cream,
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 8,
-    ...cardShadow,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 8,
-  },
-  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 },
-  sectionEyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 9,
-    color: colors.accent2.ochre,
-    letterSpacing: 1.8,
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 22,
-    letterSpacing: -0.4,
-    color: colors.ink.DEFAULT,
-  },
+  /* Section head */
+  sectionHead: { flexDirection: "row", alignItems: "flex-end", marginTop: 28, marginBottom: 12, paddingHorizontal: 2 },
+  sectionTitleRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  sectionTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 19, letterSpacing: -0.4, color: C.text },
   sectionCount: {
     minWidth: 22,
     height: 22,
     paddingHorizontal: 6,
     borderRadius: 11,
-    backgroundColor: colors.olive[900],
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
   },
-  sectionCountText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    color: GOLD_LIGHT,
-  },
-  linkPill: {
+  sectionCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 11, color: C.goldSoft },
+  sectionAction: { flexDirection: "row", alignItems: "center", gap: 2, paddingBottom: 2 },
+  sectionActionText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.accent },
+
+  /* Volume card */
+  volumeCard: { borderRadius: 26, borderWidth: 1, borderColor: C.line, padding: 18 },
+  volumeTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  kicker: { fontFamily: fontFamilies.mono.semibold, fontSize: 10, letterSpacing: 1.8, color: C.accent },
+  liveChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.olive[50],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.olive[200],
+    paddingHorizontal: 9,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.lime,
   },
-  linkPillText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11.5,
-    color: colors.olive[700],
-  },
-  gridHeader: {
-    marginHorizontal: 20,
-    marginTop: 26,
-    marginBottom: 2,
-  },
-
-  /* Rows */
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  rowBody: { flex: 1, minWidth: 0 },
-  rowTitle: {
-    fontFamily: fontFamilies.sans.semibold,
+  liveChipText: { fontFamily: fontFamilies.sans.bold, fontSize: 10.5, letterSpacing: 1, color: C.ink },
+  volumeValueRow: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 10 },
+  volumeCurrency: {
+    fontFamily: fontFamilies.sans.bold,
     fontSize: 14,
-    color: colors.ink.DEFAULT,
+    letterSpacing: 0.6,
+    color: C.muted,
+    marginTop: 8,
   },
-  rowMeta: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: colors.ink.mute,
-    marginTop: 2,
+  volumeValue: {
+    flexShrink: 1,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 42,
+    letterSpacing: -1,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
   },
-  rowMetaMono: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10.5,
-    color: colors.ink.mute,
-    marginTop: 3,
+  volumeSplit: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
   },
-  rowMetaLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  volumeDivider: { width: 1, height: 26, backgroundColor: C.line },
+  miniStat: { flex: 1, alignItems: "center", gap: 2, paddingHorizontal: 4 },
+  miniStatValue: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.text, fontVariant: ["tabular-nums"] },
+  miniStatLabel: { fontFamily: fontFamilies.sans.medium, fontSize: 11.5, color: C.muted },
 
-  /* Queue */
-  queueRow: {
+  /* Dark CTA */
+  darkCta: {
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 13,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: C.ink,
   },
-  queueIcon: {
+  darkCtaCount: {
     width: 42,
     height: 42,
     borderRadius: 14,
+    backgroundColor: C.lime,
     alignItems: "center",
     justifyContent: "center",
   },
-  kindTag: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 5,
+  darkCtaCountText: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: C.ink, fontVariant: ["tabular-nums"] },
+  darkCtaTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.cream },
+  darkCtaSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: "rgba(250,248,241,0.6)", marginTop: 1 },
+  clearPill: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.accentSoft,
+  },
+  clearPillText: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: colors.olive[800] },
+
+  /* Menu cards */
+  menuCard: {
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
+    borderColor: C.line,
   },
-  kindTagText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.8,
-  },
-  queueActions: { flexDirection: "row", gap: 8, alignItems: "center" },
-  approveBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  menuRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13 },
+  menuDivider: { borderTopWidth: 1, borderTopColor: C.line },
+  menuIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: C.accentSoft,
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.glow,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
   },
+  rowBody: { flex: 1, minWidth: 0 },
+  menuLabel: { fontFamily: fontFamilies.sans.bold, fontSize: 15, letterSpacing: -0.2, color: C.text },
+  menuSub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, marginTop: 1 },
+
+  queueActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   rejectBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#efd3c8",
+    borderColor: "rgba(184,92,58,0.3)",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
+  approveBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: C.lime,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  monogram: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: C.ink,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monogramText: { fontFamily: fontFamilies.display.semibold, fontSize: 15, color: C.goldSoft },
+  orderAmount: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: C.text, fontVariant: ["tabular-nums"] },
+  statusPill: { paddingHorizontal: 9, height: 22, borderRadius: 11, justifyContent: "center" },
+  statusPillText: { fontFamily: fontFamilies.sans.bold, fontSize: 10.5, textTransform: "capitalize" },
+
+  /* Telemetry */
+  telemetryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  telemetryCard: {
+    width: "48.5%",
+    flexGrow: 1,
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  telemetryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  ringWrap: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
+  ringIcon: { position: "absolute" },
+  alertChip: { paddingHorizontal: 7, height: 20, borderRadius: 10, backgroundColor: C.rust, justifyContent: "center" },
+  alertChipText: { fontFamily: fontFamilies.sans.bold, fontSize: 9.5, letterSpacing: 0.8, color: C.cream },
+  telemetryValue: {
+    marginTop: 12,
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 24,
+    letterSpacing: -0.5,
+    color: C.text,
+    fontVariant: ["tabular-nums"],
+  },
+  telemetryLabel: { fontFamily: fontFamilies.sans.semibold, fontSize: 13.5, color: C.text, marginTop: 2 },
+  telemetrySub: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted, marginTop: 1 },
+
+  /* Timeline */
+  timelineRow: { flexDirection: "row", gap: 12, paddingVertical: 8 },
+  timelineRail: { width: 12, alignItems: "center", paddingTop: 6 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5 },
+  timelineLine: { flex: 1, width: 1, backgroundColor: C.line, marginTop: 4, marginBottom: -14 },
+  timelineBody: { flex: 1, minWidth: 0 },
+  timelineHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  timelineTime: { fontFamily: fontFamilies.mono.medium, fontSize: 11, color: C.muted },
 
   /* Empty */
-  emptyWrap: { paddingVertical: 26, alignItems: "center", gap: 4 },
-  emptyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.olive[50],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.olive[200],
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 6,
-  },
-  emptyTitle: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 17,
-    color: colors.ink.DEFAULT,
-  },
-  emptySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: colors.ink.mute,
-    textAlign: "center",
-  },
+  emptyWrap: { alignItems: "center", paddingVertical: 22, gap: 4 },
+  emptyTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 15, color: C.text, marginTop: 6 },
+  emptySub: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: C.muted, textAlign: "center" },
 
-  /* ── Telemetry ────────────────────────────── */
-  telemetryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 16,
-    gap: 12,
-    marginTop: 12,
-  },
-  telemetryCard: {
-    width: "47%",
-    flexGrow: 1,
-    backgroundColor: colors.paper.cream,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    ...cardShadow,
-  },
-  telemetryTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  ringWrap: { width: 46, height: 46 },
-  ringIcon: {
-    ...StyleSheet.absoluteFillObject,
+  /* Footer */
+  footer: { alignItems: "center", marginTop: 30, gap: 4 },
+  footerMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: C.ink,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 4,
   },
-  alertChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
-    backgroundColor: "#f9e6dd",
-  },
-  alertChipText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8,
-    letterSpacing: 0.8,
-    color: colors.accent2.rust,
-  },
-  telemetryValue: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 30,
-    color: colors.ink.DEFAULT,
-    letterSpacing: -0.8,
-    marginTop: 14,
-  },
-  telemetryLabel: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: colors.ink.soft,
-    marginTop: 2,
-  },
-  telemetrySub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.ink.mute,
-    marginTop: 1,
-  },
-
-  /* ── Orders ───────────────────────────────── */
-  orderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 13,
-  },
-  monogram: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.olive[900],
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(200,164,74,0.55)",
-  },
-  monogramText: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 14,
-    color: GOLD_LIGHT,
-  },
-  orderAmount: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 14,
-    color: colors.ink.DEFAULT,
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
-    borderRadius: radii.full,
-  },
-  statusPillDot: { width: 5, height: 5, borderRadius: 3 },
-  statusPillText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 8.5,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-
-  /* ── Timeline ─────────────────────────────── */
-  timelineRow: { flexDirection: "row", gap: 12 },
-  timelineRail: { width: 18, alignItems: "center", paddingTop: 14 },
-  timelineDotOuter: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  timelineDot: { width: 7, height: 7, borderRadius: 4 },
-  timelineLine: {
-    flex: 1,
-    width: 1,
-    backgroundColor: colors.light.border,
-    marginTop: 4,
-  },
-  timelineBody: { flex: 1, paddingVertical: 12, minWidth: 0 },
-  timelineHead: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "space-between" },
-  timelineTime: {
-    fontFamily: fontFamilies.mono.regular,
-    fontSize: 10,
-    color: colors.ink.mute,
-  },
-
-  /* ── Hub ──────────────────────────────────── */
-  hubGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    paddingHorizontal: 16,
-    marginTop: 12,
-  },
-  hubTile: {
-    width: "47%",
-    flexGrow: 1,
-    backgroundColor: colors.paper.cream,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    padding: 14,
-    ...cardShadow,
-    shadowOpacity: 0.05,
-  },
-  hubTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
-  hubIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hubArrow: { transform: [{ rotate: "-45deg" }] },
-  hubLabel: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 14,
-    color: colors.ink.DEFAULT,
-  },
-  hubSub: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11,
-    color: colors.ink.mute,
-    marginTop: 2,
-  },
+  footerWord: { fontFamily: fontFamilies.display.semibold, fontSize: 15, letterSpacing: 4, color: C.text },
+  footerCaption: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: C.muted },
 });

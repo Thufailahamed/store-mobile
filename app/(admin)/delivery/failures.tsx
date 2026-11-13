@@ -6,8 +6,6 @@ import {
   RefreshControl,
   StyleSheet,
   TouchableOpacity,
-  Alert,
-
   TextInput,
   Pressable,
 } from "react-native";
@@ -31,6 +29,7 @@ import {
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Order } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface FailureRow {
   id: string;
@@ -106,7 +105,7 @@ export default function AdminDeliveryFailures() {
   }, [load]);
 
   const handleReschedule = (row: FailureRow) => {
-    Alert.alert(
+    themedAlert(
       "Reschedule?",
       `Move ${row.order_number} back to out_for_delivery for another attempt.`,
       [
@@ -117,9 +116,9 @@ export default function AdminDeliveryFailures() {
             const res = await riderReschedule(row.id);
             if (res.ok) {
               await load();
-              Alert.alert("Rescheduled", `${row.order_number} moved to out_for_delivery.`);
+              themedAlert("Rescheduled", `${row.order_number} moved to out_for_delivery.`);
             } else {
-              Alert.alert("Error", res.error);
+              themedAlert("Error", res.error);
             }
           },
         },
@@ -142,11 +141,11 @@ export default function AdminDeliveryFailures() {
     setReassignRow(null);
     if (res.ok) {
       await load();
-      Alert.alert("Reassigned", `${row.order_number} handed off to ${to}.`);
+      themedAlert("Reassigned", `${row.order_number} handed off to ${to}.`);
     } else if (res.error === "reassign-not-supported") {
-      Alert.alert("Unavailable", "Server doesn't expose the reassign endpoint yet.");
+      themedAlert("Unavailable", "Server doesn't expose the reassign endpoint yet.");
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 

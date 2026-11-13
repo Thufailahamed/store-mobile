@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   TextInput,
   ActivityIndicator,
   RefreshControl,
@@ -29,6 +28,7 @@ import { C } from "@/components/orders/parcel-track";
 import { DetailTopBar } from "@/components/orders/detail-chrome";
 import { formatPrice } from "@/lib/utils";
 import { formatReturnStatusLabel, returnRefundAmount } from "@/lib/returns/seller-list";
+import { themedAlert } from "@/lib/themed-alert";
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   requested: { bg: C.ink, text: C.goldSoft },
@@ -120,7 +120,7 @@ export default function SellerReturnDetail() {
           ? `Refund ${money(returnReq.refund_amount, returnReq.currency)} to the buyer?`
           : `Mark this return as "${label}"?`;
 
-    Alert.alert(`${label} return?`, confirmCopy, [
+    themedAlert(`${label} return?`, confirmCopy, [
       { text: "Cancel", style: "cancel" },
       {
         text: label,
@@ -138,7 +138,7 @@ export default function SellerReturnDetail() {
             setRefreshing(true);
             load();
           } else {
-            Alert.alert("Error", res.error);
+            themedAlert("Error", res.error);
           }
         },
       },

@@ -1,10 +1,11 @@
 import React from "react";
-import { View, Text, FlatList, RefreshControl, StyleSheet, Pressable, Alert } from "react-native";
+import { View, Text, FlatList, RefreshControl, StyleSheet, Pressable } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAdminBlogPosts, toggleBlogPost } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 function rel(s: string) {
   const d = new Date(s).getTime();
@@ -54,7 +55,7 @@ export default function AdminBlog() {
               </View>
               <Pressable
                 onPress={() =>
-                  Alert.alert(
+                  themedAlert(
                     item.status === "published" ? "Unpublish" : "Publish",
                     item.title,
                     [

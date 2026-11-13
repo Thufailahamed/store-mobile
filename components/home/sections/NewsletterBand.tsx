@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { View, TouchableOpacity, TextInput, StyleSheet, Alert } from "react-native";
+import { View, TouchableOpacity, TextInput, StyleSheet } from "react-native";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { colors, radii, spacing, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface NewsletterBandProps {
   kicker?: string;
@@ -30,7 +31,7 @@ export function NewsletterBand({
 
   const submit = () => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      Alert.alert("Doesn't look like an email", "Try again?");
+      themedAlert("Doesn't look like an email", "Try again?");
       return;
     }
     setSent(true);

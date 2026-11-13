@@ -1,58 +1,25 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    ext {
-        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '35.0.0'
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '24')
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '35')
-        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '34')
-        kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.25'
-
-        ndkVersion = "27.1.12297006"
-    }
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath('com.android.tools.build:gradle')
-        classpath('com.facebook.react:react-native-gradle-plugin')
-        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
-    }
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+        classpath 'com.google.gms:google-services:4.4.1'
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+  }
 }
-
-apply plugin: "com.facebook.react.rootproject"
 
 allprojects {
-    repositories {
-        maven {
-            // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-            url(new File(['node', '--print', "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), '../android'))
-        }
-        maven {
-            // Android JSC is installed from npm
-            url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
-        }
-
-        google()
-        mavenCentral()
-        maven { url 'https://www.jitpack.io' }
-    }
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://www.jitpack.io' }
+  }
 }
 
-// Windows' classic 260-char MAX_PATH is easily exceeded by AGP's own
-// transform-cache paths (e.g. an AAR's jetified dex output nested under
-// node_modules/<lib>/android/build/.transforms/<hash>/...), even with the
-// registry's LongPathsEnabled=1, because AGP's own file APIs don't
-// consistently opt in to long-path mode. Redirect every *library*
-// module's build dir to a short, drive-root-relative folder so the total
-// path stays under the limit. `:app` is left alone so build scripts that
-// expect the APK at android/app/build/outputs/... keep working.
-if (System.getProperty('os.name', '').toLowerCase().contains('windows')) {
-    def shortBuildRoot = "${System.getenv('SystemDrive') ?: 'C:'}\\gradle-out"
-    subprojects { subproject ->
-        if (subproject.name != 'app') {
-            subproject.buildDir = "${shortBuildRoot}\\${subproject.name}"
-        }
-    }
-}
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

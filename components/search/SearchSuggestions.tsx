@@ -38,15 +38,18 @@ interface SearchSuggestionsProps {
   onSelect: (suggestion: V2Suggestion) => void;
   onSearchDraft: () => void;
   onSearchDraftWith?: (term: string) => void;
+  /** Put a completion into the search box without searching (↖ arrow). */
+  onFillDraft?: (term: string) => void;
   onImageSearch: () => void;
   onCameraSearch: () => void;
   onPriceDropPress?: (drop: WishlistPriceDrop) => void;
 }
 
-type GroupKind = "category" | "keyword" | "product" | "store";
+type GroupKind = "category" | "product" | "store";
 
 type Row =
   | { type: "search"; label: string }
+  | { type: "completions"; items: string[] }
   | { type: "chips"; chips: DepartmentChip[] }
   | { type: "intent"; label: string; canonical: string }
   | { type: "group"; kind: GroupKind; title: string; items: V2Suggestion[] }
@@ -55,7 +58,6 @@ type Row =
 
 const GROUP_ICON: Record<GroupKind, keyof typeof Ionicons.glyphMap> = {
   category: "grid-outline",
-  keyword: "search-outline",
   product: "pricetag-outline",
   store: "storefront-outline",
 };
@@ -93,6 +95,20 @@ function highlightMatch(label: string, query: string, styleMatch?: object, style
   );
 }
 
+/** Bold the typed prefix ("tsh" → **Tsh**irt For Men); falls back to word-start match. */
+function highlightPrefix(label: string, query: string) {
+  const term = query.trim().toLowerCase();
+  if (term && label.toLowerCase().startsWith(term)) {
+    return (
+      <Text style={styles.completionText} numberOfLines={1}>
+        <Text style={styles.completionMatch}>{label.slice(0, term.length)}</Text>
+        {label.slice(term.length)}
+      </Text>
+    );
+  }
+  return highlightMatch(label, query, styles.completionMatch, styles.completionText);
+}
+
 export function SearchSuggestions({
   draft,
   suggestions,
@@ -102,6 +118,7 @@ export function SearchSuggestions({
   onSelect,
   onSearchDraft,
   onSearchDraftWith,
+  onFillDraft,
   onPriceDropPress,
 }: SearchSuggestionsProps) {
   const term = draft.trim();
@@ -119,6 +136,30 @@ export function SearchSuggestions({
     return items;
   }, [localSuggestions, suggestions]);
 
+  // Autocomplete phrases, marketplace style ("tsh" → "Tshirt For Men",
+  // "Tshirt Men Nike"…). Backend phrases are mined from the live catalogue,
+  // so they lead first; recent searches + taxonomy fill in while it loads.
+  const completions = useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>([term.toLowerCase()]);
+    const add = (label: string) => {
+      const l = label.trim();
+      const k = l.toLowerCase();
+      if (!l || seen.has(k) || /^shop\b/i.test(l) || out.length >= 8) return;
+      seen.add(k);
+      out.push(l);
+    };
+    for (const s of suggestions) if (s.kind === "keyword") add(s.label);
+    for (const s of localSuggestions) if (s.kind === "keyword") add(s.label);
+    // Offline / pre-deploy fallback: refine the best completion by gender.
+    const head = out[0];
+    if (head && out.length < 6 && !/\b(men|women|kids)\b/i.test(head)) {
+      add(`${head} For Men`);
+      add(`${head} For Women`);
+    }
+    return out;
+  }, [term, suggestions, localSuggestions]);
+
   // Demographic & garment intent mapping
   const expanded = useMemo(() => expandQueryTerms(term), [term]);
   const departmentChips = useMemo(() => getDepartmentIntentChips(term), [term]);
@@ -132,6 +173,9 @@ export function SearchSuggestions({
 
     // 1. Primary "Search for ..." action row
     list.push({ type: "search", label: term });
+
+    // 1b. Autocomplete phrases right under the box, like every marketplace.
+    if (completions.length > 0) list.push({ type: "completions", items: completions });
 
     // 2. Department quick filter chips (All, Men's, Women's, Sale)
     if (departmentChips.length > 0) {
@@ -153,13 +197,13 @@ export function SearchSuggestions({
     }
 
     // 4. If loading with 0 results
-    if (loading && merged.length === 0) {
+    if (loading && merged.length === 0 && completions.length === 0) {
       list.push({ type: "loading" });
       return list;
     }
 
     // 5. If zero results after loading, show rich fallback instead of blank void
-    if (!loading && merged.length === 0) {
+    if (!loading && merged.length === 0 && completions.length === 0) {
       list.push({ type: "emptyFallback", term });
       return list;
     }
@@ -167,7 +211,6 @@ export function SearchSuggestions({
     // 6. Partition suggestions into one card per section
     const groups: { kind: GroupKind; title: string; items: V2Suggestion[] }[] = [
       { kind: "category", title: "Categories", items: merged.filter((i) => i.kind === "category") },
-      { kind: "keyword", title: "Suggested searches", items: merged.filter((i) => i.kind === "keyword") },
       { kind: "product", title: "Products", items: merged.filter((i) => i.kind === "product") },
       {
         kind: "store",
@@ -180,7 +223,7 @@ export function SearchSuggestions({
     }
 
     return list;
-  }, [term, departmentChips, attrChip, expanded, loading, merged]);
+  }, [term, completions, departmentChips, attrChip, expanded, loading, merged]);
 
   if (!term) return null;
 
@@ -195,30 +238,6 @@ export function SearchSuggestions({
           </View>
           <View style={styles.itemCopy}>{highlightMatch(item.label, term)}</View>
           <Ionicons name="chevron-forward" size={16} color={MUTED} />
-        </TouchableOpacity>
-      );
-    }
-
-    if (kind === "keyword") {
-      return (
-        <TouchableOpacity style={rowStyle} activeOpacity={0.7} onPress={() => onSelect(item)}>
-          <View style={styles.iconCircleSoft}>
-            <Ionicons name="search-outline" size={16} color={MUTED} />
-          </View>
-          <View style={styles.itemCopy}>{highlightMatch(item.label, term)}</View>
-          <TouchableOpacity
-            style={styles.fillBtn}
-            hitSlop={8}
-            accessibilityLabel={`Search ${item.label}`}
-            onPress={() => onSearchDraftWith?.(item.label)}
-          >
-            <Ionicons
-              name="arrow-up-outline"
-              size={15}
-              color={INK}
-              style={{ transform: [{ rotate: "45deg" }] }}
-            />
-          </TouchableOpacity>
         </TouchableOpacity>
       );
     }
@@ -316,6 +335,42 @@ export function SearchSuggestions({
             </Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
           </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // ── Autocomplete phrases ──
+    if (row.type === "completions") {
+      return (
+        <View style={styles.completions}>
+          {row.items.map((label, i) => (
+            <TouchableOpacity
+              key={label}
+              style={[styles.completionRow, i === row.items.length - 1 && styles.groupRowLast]}
+              activeOpacity={0.6}
+              onPress={() => onSearchDraftWith?.(label)}
+              accessibilityRole="button"
+              accessibilityLabel={`Search ${label}`}
+            >
+              <Ionicons name="search-outline" size={18} color={MUTED} />
+              <View style={styles.itemCopy}>
+                {highlightPrefix(label, term)}
+              </View>
+              <TouchableOpacity
+                hitSlop={10}
+                style={styles.completionFill}
+                accessibilityLabel={`Use ${label} in search box`}
+                onPress={() => (onFillDraft ? onFillDraft(`${label} `) : onSearchDraftWith?.(label))}
+              >
+                <Ionicons
+                  name="arrow-up-outline"
+                  size={17}
+                  color={MUTED}
+                  style={{ transform: [{ rotate: "-45deg" }] }}
+                />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
         </View>
       );
     }
@@ -561,6 +616,21 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.65)",
   },
   primaryTerm: { fontFamily: fontFamilies.sans.bold, color: "#FFFFFF" },
+
+  // ── Autocomplete list ──
+  completions: { marginBottom: 14 },
+  completionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    minHeight: 50,
+    paddingHorizontal: PAD + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.line,
+  },
+  completionText: { fontFamily: fontFamilies.sans.regular, fontSize: 15, color: "#4a4b44" },
+  completionMatch: { fontFamily: fontFamilies.sans.bold, color: INK },
+  completionFill: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 
   // ── Chips ──
   chipsScroll: { flexGrow: 0, marginBottom: 12 },

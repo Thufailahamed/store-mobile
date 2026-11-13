@@ -56,11 +56,12 @@ export function StoreInfoCard({
 }: Props) {
   const router = useRouter();
   const monogram = (store.name || "S").trim().charAt(0).toUpperCase();
-  const live = store.is_online === true;
   const status = String(store.status ?? "").trim();
   const description = displayValue(store.description);
   const statusKey = status.toLowerCase();
   const approved = statusKey === "approved" || statusKey === "active";
+  // is_online is the store type (online vs physical shop), not open/closed.
+  const live = approved && !store.is_suspended;
   const rows: { icon: IonIconName; label: string; value: string | null; empty: string }[] = [
     { icon: "link-outline", label: "Store link", value: store.slug ? `/stores/${store.slug}` : null, empty: "Not set" },
     { icon: "call-outline", label: "Phone", value: displayValue(phone), empty: "Add phone number" },

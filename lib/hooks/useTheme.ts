@@ -8,7 +8,7 @@ import {
 } from "@/lib/theme/tokens";
 
 /**
- * LUXE is light-mode only. System dark theme is ignored.
+ * VESTARA is light-mode only. System dark theme is ignored.
  */
 export function useTheme() {
   const palette: ThemeColors = colors.light;

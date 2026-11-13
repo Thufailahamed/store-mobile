@@ -16,12 +16,14 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SearchResultCard, SearchResultRow } from "@/components/search/SearchResultCard";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
 import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
 import { SearchDiscover } from "@/components/search/SearchDiscover";
 import { SearchSuggestions } from "@/components/search/SearchSuggestions";
-import { ProductGridControls } from "@/components/products/ProductGridControls";
+import { SearchResultTile } from "@/components/search/SearchResultTile";
+import { SearchQuickBar } from "@/components/search/SearchQuickBar";
+import { DeliveryAddressStrip } from "@/components/search/DeliveryAddressStrip";
+import { RelatedCategoryRow } from "@/components/search/RelatedCategoryRow";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
@@ -30,7 +32,7 @@ import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, discountPct } from "@/lib/utils";
-import { SORTS, PRICE_BOUNDS, EMPTY_FILTERS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
+import { PRICE_BOUNDS, EMPTY_FILTERS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
 import { applySearchFilters } from "@/lib/search-filters";
 import type { ProductFilters } from "@/lib/api/facets";
 import * as api from "@/lib/api";
@@ -51,6 +53,8 @@ import {
 
 const GRID_GAP = 12;
 const GRID_PADDING = 16;
+const TILE_GAP = 10;
+const TILE_PADDING = 12;
 
 const INK = "#1b1c1c";
 const MUTED = "#5e5e5d";
@@ -75,7 +79,7 @@ export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const cardWidth = (screenWidth - GRID_PADDING * 2 - GRID_GAP) / 2;
+  const tileWidth = (screenWidth - TILE_PADDING * 2 - TILE_GAP) / 2;
   const tabBarScrollHandler = useHideTabBarOnScroll();
 
   const [query, setQuery] = useState("");
@@ -121,7 +125,7 @@ export default function SearchScreen() {
 
   // Load recent searches from AsyncStorage
   useEffect(() => {
-    AsyncStorage.getItem("luxe_search_history").then((v) => {
+    AsyncStorage.getItem("vestara_search_history").then((v) => {
       if (!v) return;
       try {
         const parsed = JSON.parse(v);
@@ -149,14 +153,14 @@ export default function SearchScreen() {
     const next = [term, ...recentSearches.filter((r) => r !== term)].slice(0, 20);
     setRecentSearches(next);
     try {
-      await AsyncStorage.setItem("luxe_search_history", JSON.stringify(next));
+      await AsyncStorage.setItem("vestara_search_history", JSON.stringify(next));
     } catch {}
   }, [recentSearches]);
 
   const clearRecent = async () => {
     setRecentSearches([]);
     try {
-      await AsyncStorage.removeItem("luxe_search_history");
+      await AsyncStorage.removeItem("vestara_search_history");
     } catch {}
   };
 
@@ -197,19 +201,10 @@ export default function SearchScreen() {
     tracker.search(q, tokenizeQuery(q), productCount);
   }, [saveRecent, tracker]);
 
-  const removeAttrToken = useCallback((token: string) => {
-    const next = query
-      .split(/\s+/)
-      .filter((w) => w.toLowerCase() !== token.toLowerCase())
-      .join(" ")
-      .trim();
-    if (next) void doSearch(next);
-  }, [query, doSearch]);
-
   const handleResultPress = useCallback(
     (p: Product) => {
       tracker.searchResultClick(query, p);
-      router.push(`/(main)/products/${p.slug}`);
+      router.push(`/(main)/products/${p.slug}?from=search`);
     },
     [query, router, tracker],
   );
@@ -433,6 +428,7 @@ export default function SearchScreen() {
   const brandCount = matchedBrands.length;
   const storeCount = matchedStores.length;
   const totalCount = productCount + brandCount + storeCount;
+  const resultsOnScreen = searched && !showSuggestions && !loading && totalCount > 0;
   const displayedCount =
     tab === "products" ? productCount : tab === "brands" ? brandCount : tab === "stores" ? storeCount : totalCount;
   const showingProducts = tab === "all" || tab === "products";
@@ -470,16 +466,18 @@ export default function SearchScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={[styles.screen, resultsOnScreen && styles.screenWhite]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      <LinearGradient
-        pointerEvents="none"
-        colors={[C.glow, C.glowSoft, C.paper]}
-        locations={[0, 0.45, 1]}
-        style={styles.glow}
-      />
+      {resultsOnScreen ? null : (
+        <LinearGradient
+          pointerEvents="none"
+          colors={[C.glow, C.glowSoft, C.paper]}
+          locations={[0, 0.45, 1]}
+          style={styles.glow}
+        />
+      )}
       <SearchOrbitChrome
         topInset={insets.top}
         draft={draft}
@@ -505,9 +503,10 @@ export default function SearchScreen() {
             setDraft(t);
             doSearch(t);
           }}
+          onFillDraft={(t) => setDraft(t)}
           onImageSearch={() => runScan("library")}
           onCameraSearch={() => runScan("camera")}
-          onPriceDropPress={(d) => router.push(`/(main)/products/${d.slug}`)}
+          onPriceDropPress={(d) => router.push(`/(main)/products/${d.slug}?from=search`)}
         />
       ) : (
         <View style={styles.body}>
@@ -666,61 +665,19 @@ export default function SearchScreen() {
               onScroll={tabBarScrollHandler}
               scrollEventThrottle={16}
               keyboardDismissMode="on-drag"
-              contentContainerStyle={{ paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }}
+              contentContainerStyle={{
+                paddingBottom: expandableTabBarInset(insets.bottom) + (showingProducts ? 104 : spacing[4]),
+              }}
             >
-              {/* Editorial results header */}
-              <View style={styles.resultsHero}>
-                <View style={styles.resultsKickerRow}>
-                  <View style={styles.resultsKickerDot} />
-                  <Text style={styles.resultsKicker}>
-                    {totalCount} {totalCount === 1 ? "result" : "results"}
-                    {brandCount + storeCount > 0 ? ` · ${productCount} pieces` : ""}
-                  </Text>
-                </View>
-                <Text style={styles.resultsQuery} numberOfLines={2}>
-                  “{query}”
-                </Text>
+              <DeliveryAddressStrip />
+              <RelatedCategoryRow
+                products={results}
+                categories={preloadedCategories.length > 0 ? preloadedCategories : categories}
+              />
 
-                {/* Smart-search: what we understood from the query */}
-                {parsedAttrs && (parsedAttrs.colors.length > 0 || parsedAttrs.garment || parsedAttrs.material) ? (
-                  <View style={styles.understoodRow}>
-                    <View style={styles.understoodLabel}>
-                      <Ionicons name="sparkles" size={11} color={colors.accent2.ochre} />
-                      <Text style={styles.understoodText}>Understood as</Text>
-                    </View>
-                    {parsedAttrs.colors.map((c) =>
-                      droppedAttrs.includes(c) ? (
-                        <View key={`dropped-${c}`} style={[styles.attrPill, styles.attrPillDropped]}>
-                          <Text style={[styles.attrPillText, styles.attrPillTextDropped]}>{c}</Text>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          key={`color-${c}`}
-                          style={styles.attrPill}
-                          onPress={() => removeAttrToken(c)}
-                          activeOpacity={0.8}
-                          accessibilityLabel={`Remove ${c} from search`}
-                        >
-                          <View style={[styles.attrSwatch, { backgroundColor: c }]} />
-                          <Text style={styles.attrPillText}>{c}</Text>
-                          <Ionicons name="close" size={11} color={colors.olive[200]} />
-                        </TouchableOpacity>
-                      ),
-                    )}
-                    {[parsedAttrs.garment, parsedAttrs.material].filter(Boolean).map((t) => (
-                      <TouchableOpacity
-                        key={`attr-${t}`}
-                        style={styles.attrPill}
-                        onPress={() => removeAttrToken(t!)}
-                        activeOpacity={0.8}
-                        accessibilityLabel={`Remove ${t} from search`}
-                      >
-                        <Text style={styles.attrPillText}>{t}</Text>
-                        <Ionicons name="close" size={11} color={colors.olive[200]} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
+              {/* Spell-correction / rescue notices only — no count line. */}
+              {correctedQuery || (rescued && parsedAttrs) ? (
+              <View style={styles.resultsHero}>
 
                 {/* Spell-correction banner — backend fixed a typo ("sneekers" → "sneakers") */}
                 {correctedQuery ? (
@@ -755,6 +712,9 @@ export default function SearchScreen() {
                   </View>
                 ) : null}
               </View>
+              ) : (
+                <View style={styles.resultsTopGap} />
+              )}
 
               {/* Tabs — only worth showing when brands/stores also matched */}
               {brandCount + storeCount > 0 ? (
@@ -794,21 +754,6 @@ export default function SearchScreen() {
                 </ScrollView>
               ) : null}
 
-              {showingProducts ? (
-                <ProductGridControls
-                  sort={sort}
-                  setSort={handleSearchSortChange}
-                  sorts={SORTS}
-                  view={view}
-                  setView={(v) => setView(v === "list" ? "list" : "grid")}
-                  viewModes={["grid", "list"]}
-                  filterCount={activeFilterCount}
-                  openFilter={() => setFilterVisible(true)}
-                  filters={filters}
-                  setFilters={setFilters}
-                  summary={`${productCount} ${productCount === 1 ? "piece" : "pieces"} · ${SORTS.find((s) => s.value === sort)?.label ?? "Newest"}`}
-                />
-              ) : null}
 
               <View style={styles.resultsBody}>
                 {/* Products */}
@@ -827,23 +772,11 @@ export default function SearchScreen() {
                     {tab === "all" && brandCount + storeCount > 0 && (
                       <SectionHeader title="Pieces" count={productCount} />
                     )}
-                    {view === "list" ? (
-                      filtered.map((p, i) => (
-                        <SearchResultRow key={p.id} product={p} index={i} onPress={handleResultPress} />
-                      ))
-                    ) : (
-                      <View style={styles.grid}>
-                        {filtered.map((p, i) => (
-                          <SearchResultCard
-                            key={p.id}
-                            product={p}
-                            width={cardWidth}
-                            index={i}
-                            onPress={handleResultPress}
-                          />
-                        ))}
-                      </View>
-                    )}
+                    <View style={styles.tileGrid}>
+                      {filtered.map((p) => (
+                        <SearchResultTile key={p.id} product={p} width={tileWidth} onPress={handleResultPress} />
+                      ))}
+                    </View>
                   </View>
                 )}
 
@@ -938,6 +871,17 @@ export default function SearchScreen() {
                 </LinearGradient>
               </View>
             </AnimatedScrollView>
+            {showingProducts && results.length > 0 ? (
+              <SearchQuickBar
+                sort={sort}
+                filters={filters}
+                products={results}
+                filterCount={activeFilterCount}
+                onSortChange={handleSearchSortChange}
+                onFiltersChange={handleSearchFilterChange}
+                onOpenFilters={() => setFilterVisible(true)}
+              />
+            ) : null}
           </View>
         )}
         </View>
@@ -985,6 +929,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: C.paper,
   },
+  /** Results page sits on plain white, marketplace-style. */
+  screenWhite: { backgroundColor: "#ffffff" },
+  resultsTopGap: { height: spacing[3] },
   glow: {
     position: "absolute",
     top: 0,
@@ -1280,9 +1227,20 @@ const styles = StyleSheet.create({
   },
   resultsHero: {
     paddingHorizontal: GRID_PADDING,
-    paddingTop: spacing[5],
-    paddingBottom: spacing[4],
-    gap: spacing[2],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[3],
+    gap: spacing[1],
+  },
+  resultsTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 17,
+    letterSpacing: 0.6,
+    color: INK,
+  },
+  resultsCount: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    color: MUTED,
   },
   resultsKickerRow: {
     flexDirection: "row",
@@ -1478,6 +1436,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1,
     color: colors.light.mutedForeground,
+  },
+
+  /* Marketplace tile grid — tighter gutters than the page padding. */
+  tileGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: TILE_GAP,
+    rowGap: 22,
+    marginHorizontal: TILE_PADDING - GRID_PADDING,
   },
 
   /* Grid */

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, Pressable, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform } from "react-native";
 import { Modal } from "@/components/ui/Modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { getBrandCollections, createBrandCollection, updateBrandCollection, dele
 import type { BrandCollection } from "@/lib/api/backend";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function BrandCollections() {
   const qc = useQueryClient();
@@ -53,7 +54,7 @@ export default function BrandCollections() {
       ) : (
         <ScrollView contentContainerStyle={styles.grid}>
           {q.data.map((c) => (
-            <Pressable key={c.id} onPress={() => setEditing(c)} onLongPress={() => Alert.alert("Delete collection?", c.name ?? "", [
+            <Pressable key={c.id} onPress={() => setEditing(c)} onLongPress={() => themedAlert("Delete collection?", c.name ?? "", [
               { text: "Cancel", style: "cancel" },
               { text: "Delete", style: "destructive", onPress: () => del.mutate(c.id) },
             ])} style={styles.gridItem}>
@@ -89,7 +90,7 @@ function CollectionModal({ collection, onClose }: { collection: BrandCollection 
       qc.invalidateQueries({ queryKey: ["brand-collections"] });
       onClose();
     },
-    onError: (e) => Alert.alert("Error", String(e)),
+    onError: (e) => themedAlert("Error", String(e)),
   });
 
   return (

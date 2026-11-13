@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Switch,
   KeyboardAvoidingView,
   Platform,
@@ -27,6 +26,7 @@ import {
   type DcWarehouse,
 } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function WarehouseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,7 +64,7 @@ export default function WarehouseDetailScreen() {
   const save = async () => {
     if (!id || !form || saving) return;
     if (!form.postal_code.trim()) {
-      Alert.alert("Missing postal code", "Enter a valid postal code for the hub address.");
+      themedAlert("Missing postal code", "Enter a valid postal code for the hub address.");
       return;
     }
     setSaving(true);
@@ -76,9 +76,9 @@ export default function WarehouseDetailScreen() {
         longitude: payload.longitude,
         is_active: isActive,
       });
-      if (!res.ok) Alert.alert("Save failed", res.error);
+      if (!res.ok) themedAlert("Save failed", res.error);
       else {
-        Alert.alert("Saved", "Warehouse updated.");
+        themedAlert("Saved", "Warehouse updated.");
         fetchData();
       }
     } finally {
@@ -88,7 +88,7 @@ export default function WarehouseDetailScreen() {
 
   const remove = () => {
     if (!id || deleting) return;
-    Alert.alert("Delete warehouse", "Only empty hubs can be deleted.", [
+    themedAlert("Delete warehouse", "Only empty hubs can be deleted.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -97,7 +97,7 @@ export default function WarehouseDetailScreen() {
           setDeleting(true);
           try {
             const res = await deleteWarehouse(id);
-            if (!res.ok) Alert.alert("Failed", res.error);
+            if (!res.ok) themedAlert("Failed", res.error);
             else router.back();
           } finally {
             setDeleting(false);

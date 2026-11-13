@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -17,6 +16,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@/components/ui/Icon";
 import { SellerGlow } from "@/components/seller/chrome";
 import { useAuth } from "@/lib/supabase/auth";
+import { themedAlert } from "@/lib/themed-alert";
+import { QUICK_AI_DRAFT_STORAGE_KEY, clearProductDrafts, productDraftKey } from "@/lib/product-draft";
 import {
   getSellerStore,
   getSellerProductById,
@@ -31,6 +32,7 @@ import {
   getBrands,
   preflightModeration,
   checkSellerSkuAvailability,
+  quickAnalyzeCopy,
   type SellerVariantInput,
 } from "@/lib/api";
 import { uploadProductImage } from "@/lib/upload";
@@ -43,6 +45,7 @@ import {
 import {
   ProductVariantsSection,
   createEmptyVariant,
+  type VariantColor,
   type VariantDraft,
 } from "@/components/seller/ProductVariantsSection";
 import { ProductSizeChartSection } from "@/components/seller/ProductSizeChartSection";
@@ -93,7 +96,7 @@ const NAME_MAX = 120;
 const SHORT_MAX = 180;
 const DESC_MAX = 8000;
 const META_MAX = 160;
-const DRAFT_KEY = (userId: string) => `luxe:mobile-product-draft:${userId}`;
+const DRAFT_KEY = productDraftKey;
 
 // Same keys the web editor writes into products.attributes (LuxuryFieldsCard).
 const ATELIER_SHORT = [
@@ -146,12 +149,30 @@ type SkuState = { state: "idle" | "checking" | "ok" | "conflict"; message?: stri
 // Expo Router reuses this screen when only the [id] param changes (e.g. opening
 // a product, going back, then tapping "Add"). Keying by id forces a fresh mount
 // so no form state from the previously opened product leaks into the new one.
-export default function SellerProductEditRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return <SellerProductEdit key={id ?? "new"} id={id ?? "new"} />;
+/** Inline "Generating" marker for fields the AI is still writing. */
+function AiGenerating() {
+  return (
+    <View style={styles.aiGen} accessibilityLabel="Generating with AI" accessibilityLiveRegion="polite">
+      <ActivityIndicator size="small" color={colors.accent2.ochre} style={{ transform: [{ scale: 0.7 }] }} />
+      <Text style={styles.aiGenText}>Generating</Text>
+    </View>
+  );
 }
 
-function SellerProductEdit({ id }: { id: string }) {
+export default function SellerProductEditRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  // Clearing a draft bumps the epoch, which remounts the editor so every field is empty again.
+  const [epoch, setEpoch] = useState(0);
+  return (
+    <SellerProductEdit
+      key={`${id ?? "new"}-${epoch}`}
+      id={id ?? "new"}
+      onDraftCleared={() => setEpoch((e) => e + 1)}
+    />
+  );
+}
+
+function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared: () => void }) {
   const router = useRouter();
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -193,6 +214,18 @@ function SellerProductEdit({ id }: { id: string }) {
   const [initialStatus, setInitialStatus] = useState<string>("draft");
   const [tags, setTags] = useState<string[]>([]);
   const [isFeatured, setIsFeatured] = useState(false);
+  /** Progressive Quick-with-AI: fields whose AI copy is still being written. */
+  const [aiGenerating, setAiGenerating] = useState<{ name: boolean; copy: boolean }>({ name: false, copy: false });
+  // Retake tips from the quick-upload photo check (blur / dark / cropped).
+  const [photoTips, setPhotoTips] = useState<string[]>([]);
+  /** Brand text the AI read off the photo; applied once brands have loaded. */
+  const [aiBrandHint, setAiBrandHint] = useState<string | null>(null);
+  useEffect(() => {
+    if (!aiBrandHint || brands.length === 0) return;
+    const hit = brands.filter((b) => b.name?.trim().toLowerCase() === aiBrandHint);
+    if (hit.length === 1) setBrandId((prev) => prev ?? hit[0].id);
+    setAiBrandHint(null);
+  }, [aiBrandHint, brands]);
   const [skuCheck, setSkuCheck] = useState<SkuState>({ state: "idle" });
 
   const [preflight, setPreflight] = useState<{
@@ -210,6 +243,8 @@ function SellerProductEdit({ id }: { id: string }) {
   const [moderation, setModeration] = useState<ModerationResult>(null);
 
   const [variants, setVariants] = useState<VariantDraft[]>([]);
+  // The product's one colour. Size rows are created in this colour.
+  const [variantColor, setVariantColor] = useState<VariantColor>({ name: "", hex: "" });
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
   // Size system and size chart. The system defaults to the one detected from the
   // category and name. The chart is the product's own, or the standard for its system.
@@ -234,7 +269,11 @@ function SellerProductEdit({ id }: { id: string }) {
     getProductSizeGuideBackend(id).then((res) => {
       if (!alive || !res.ok || !res.data) return;
       if (res.data.size_system) setSizeSystemPick(res.data.size_system as SizeSystem);
-      setSizeGuide({ columns: res.data.columns ?? [], rows: res.data.rows ?? [] });
+      setSizeGuide({
+        columns: res.data.columns ?? [],
+        rows: res.data.rows ?? [],
+        images: Array.isArray(res.data.images) ? res.data.images : [],
+      });
     });
     return () => {
       alive = false;
@@ -343,6 +382,7 @@ function SellerProductEdit({ id }: { id: string }) {
               }))
             : [];
         setVariants(loadedVariants);
+        setVariantColor({ name: loadedVariants[0]?.color ?? "", hex: loadedVariants[0]?.colorHex ?? "" });
         setInitialVariantIds(loadedVariants.map((v) => v.id).filter(Boolean) as string[]);
       }
       setLoading(false);
@@ -365,11 +405,12 @@ function SellerProductEdit({ id }: { id: string }) {
         material, pattern, fit, sleeve, occasion, season, careInstructions, atelier,
         mrp, price, taxRate, gender, categoryId, brandId, status, tags, isFeatured,
         variants: variants.map(({ key: _k, ...rest }) => rest),
+        variantColor,
         images: visibleExistingImages.map((i) => i.id),
       }),
     [name, effectiveSlug, sku, description, shortDescription, metaDescription, material, pattern, fit,
       sleeve, occasion, season, careInstructions, atelier, mrp, price, taxRate, gender, categoryId,
-      brandId, status, tags, isFeatured, variants, visibleExistingImages],
+      brandId, status, tags, isFeatured, variants, variantColor, visibleExistingImages],
   );
 
   useEffect(() => {
@@ -387,7 +428,7 @@ function SellerProductEdit({ id }: { id: string }) {
     if (!isNew || loading || quickAppliedRef.current) return;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem("luxe:mobile-quick-ai-draft");
+        const raw = await AsyncStorage.getItem(QUICK_AI_DRAFT_STORAGE_KEY);
         if (!raw) {
           quickAppliedRef.current = true;
           return;
@@ -410,16 +451,62 @@ function SellerProductEdit({ id }: { id: string }) {
           }
           return v;
         };
-        setName(str(d.name).slice(0, 120));
-        setDescription(str(d.description).slice(0, 8000));
-        setShortDescription(str(d.short_description ?? d.shortDescription).slice(0, 180));
+        // Progressive Quick-with-AI: attrs arrived first, copy is still being
+        // written. Leave those fields empty with a "Generating" state and fill
+        // them when quickAnalyzeCopy answers — unless the seller typed first.
+        const copyPending = Boolean(d.copyPending) && typeof d.imageUrl === "string";
+        setPhotoTips(arr((d.extraction as { photo_tips?: unknown } | undefined)?.photo_tips).slice(0, 2));
+        const nameFromSeller = (d.extraction as { name_source?: string } | undefined)?.name_source === "seller";
+        setName(copyPending && !nameFromSeller ? "" : str(d.name).slice(0, 120));
+        setDescription(copyPending ? "" : str(d.description).slice(0, 8000));
+        setShortDescription(copyPending ? "" : str(d.short_description ?? d.shortDescription).slice(0, 180));
         setMaterial(str(d.material));
         setPattern(str(d.pattern));
         setFit(str(d.fit));
         setSleeve(str(d.sleeve));
         setOccasion(str(d.occasion));
         setSeason(str(d.season));
-        setCareInstructions(str(d.care_instructions ?? d.careInstructions).slice(0, 400));
+        setCareInstructions(copyPending ? "" : str(d.care_instructions ?? d.careInstructions).slice(0, 400));
+        if (copyPending) {
+          setAiGenerating({ name: !nameFromSeller, copy: true });
+          // Template copy from stage 1 is the fallback if stage 2 fails.
+          const fb = {
+            name: str(d.name).slice(0, 120),
+            description: str(d.description).slice(0, 8000),
+            short: str(d.short_description ?? d.shortDescription).slice(0, 180),
+            care: str(d.care_instructions ?? d.careInstructions).slice(0, 400),
+          };
+          const keep = (v: string | null | undefined, fallback: string, max: number) => (prev: string) =>
+            prev.trim() ? prev : (v?.trim() || fallback).slice(0, max);
+          quickAnalyzeCopy({
+            image_url: str(d.imageUrl),
+            attrs: {
+              category: str(d.category_guess || d.categoryGuess) || "other",
+              colors: arr(d.colors), color_hex: str(d.color_hex) || null,
+              material: str(d.material) || null, pattern: str(d.pattern) || null, fit: str(d.fit) || null,
+              sleeve: str(d.sleeve) || null, style: str(d.style) || null, occasion: str(d.occasion) || null,
+              season: str(d.season) || null, gender: str(d.gender) || null,
+            },
+          })
+            .then((res) => {
+              const c = res.ok ? res.data.copy : null;
+              if (!nameFromSeller) setName(keep(c?.name, fb.name, 120));
+              setShortDescription(keep(c?.short_description, fb.short, 180));
+              setDescription(keep(c?.description, fb.description, 8000));
+              setCareInstructions(keep(c?.care_instructions, fb.care, 400));
+              const brand = c?.brand_hint?.trim().toLowerCase() ?? "";
+              const extra = [...(c?.tags ?? []), ...(brand ? [brand] : [])].map((t) => t.trim().toLowerCase()).filter((t) => t.length >= 2);
+              if (extra.length) setTags((prev) => [...new Set([...prev, ...extra])].slice(0, 20));
+              if (brand) setAiBrandHint(brand);
+            })
+            .catch(() => {
+              if (!nameFromSeller) setName(keep(null, fb.name, 120));
+              setShortDescription(keep(null, fb.short, 180));
+              setDescription(keep(null, fb.description, 8000));
+              setCareInstructions(keep(null, fb.care, 400));
+            })
+            .finally(() => setAiGenerating({ name: false, copy: false }));
+        }
         const priceStr = numStr(d.price);
         const mrpStr = numStr(d.mrp) || priceStr;
         if (priceStr) setPrice(priceStr);
@@ -443,24 +530,11 @@ function SellerProductEdit({ id }: { id: string }) {
         if (tags.length) setTags(tags);
         const colorName = str(d.color) || arr(d.colors)[0] || "";
         const colorHex = typeof d.color_hex === "string" && /^#[0-9a-fA-F]{6}$/.test(d.color_hex) ? d.color_hex : "";
-        setVariants((prev) => {
-          // Keep the AI's colour and price on a variant with no size yet, so
-          // the seller picks one instead of getting a placeholder "One Size" row.
-          const base = prev.length ? prev : [{ ...createEmptyVariant(), size: "" }];
-          return base.map((v, i) =>
-            i === 0
-              ? {
-                  ...v,
-                  color: colorName || v.color,
-                  colorHex: colorHex || v.colorHex,
-                  material: str(d.material) || v.material,
-                  pattern: str(d.pattern) || v.pattern,
-                  fit: str(d.fit) || v.fit,
-                  price: priceStr || v.price,
-                }
-              : v,
-          );
-        });
+        // The AI's colour is only pre-selected. No row is made until the seller picks a size.
+        if (colorName) {
+          setVariantColor({ name: colorName, hex: colorHex });
+          setVariants((prev) => prev.map((v) => ({ ...v, color: colorName, colorHex: colorHex || v.colorHex })));
+        }
         // Seed the exact photo the seller picked so save re-uploads it via
         // the existing syncImages path (remote vision URL is not reused).
         const localUri = str((d as Record<string, unknown>).localUri);
@@ -475,9 +549,16 @@ function SellerProductEdit({ id }: { id: string }) {
             },
           ]);
         }
-        await AsyncStorage.removeItem("luxe:mobile-quick-ai-draft").catch(() => {});
+        await AsyncStorage.removeItem(QUICK_AI_DRAFT_STORAGE_KEY).catch(() => {});
         const needsReview = Boolean(d.needs_review ?? d.needsReview);
-        Alert.alert(
+        // Quick upload already told the seller the AI failed; don't stack a
+        // "draft ready" dialog on top of that error.
+        const extraction = (d as Record<string, unknown>).extraction as { vision_error?: unknown } | undefined;
+        if (extraction?.vision_error) return;
+        // Progressive mode: the "Generating" fields say what's happening;
+        // a blocking dialog would defeat opening the editor early.
+        if (copyPending) return;
+        themedAlert(
           "AI draft ready — review and publish",
           needsReview
             ? "The photo was unclear, so double-check the name, category and details before publishing."
@@ -500,7 +581,7 @@ function SellerProductEdit({ id }: { id: string }) {
         if (!raw) return;
         const d = JSON.parse(raw) as Record<string, any>;
         if (!d?.name && !d?.price && !d?.description) return;
-        Alert.alert("Continue your draft?", `You have an unsaved product${d.name ? ` “${d.name}”` : ""}. Photos need to be added again.`, [
+        themedAlert("Continue your draft?", `You have an unsaved product${d.name ? ` “${d.name}”` : ""}. Photos need to be added again.`, [
           {
             text: "Discard",
             style: "destructive",
@@ -537,6 +618,9 @@ function SellerProductEdit({ id }: { id: string }) {
               if (Array.isArray(d.variants) && d.variants.length) {
                 setVariants(d.variants.map((v: Omit<VariantDraft, "key">, i: number) => ({ ...createEmptyVariant(`restored-${i}`), ...v, id: undefined })));
               }
+              if (d.variantColor && typeof d.variantColor === "object") {
+                setVariantColor({ name: String(d.variantColor.name ?? ""), hex: String(d.variantColor.hex ?? "") });
+              }
             },
           },
         ]);
@@ -562,7 +646,7 @@ function SellerProductEdit({ id }: { id: string }) {
     const unsub = navigation.addListener("beforeRemove" as any, (e: any) => {
       if (allowLeave.current || !isDirty || saving) return;
       e.preventDefault();
-      Alert.alert(
+      themedAlert(
         "Leave without saving?",
         isNew ? "Your text is kept as a draft on this device, but new photos will be lost." : "Your unsaved changes will be discarded.",
         [
@@ -726,12 +810,12 @@ function SellerProductEdit({ id }: { id: string }) {
   const handleSave = async (mode: "draft" | "submit" | "save") => {
     if (!name.trim()) {
       scrollToSection("info");
-      Alert.alert("Name needed", "Give this product a name before saving.");
+      themedAlert("Name needed", "Give this product a name before saving.");
       return;
     }
     if (!price || Number.isNaN(Number(price))) {
       scrollToSection("pricing");
-      Alert.alert("Price needed", "Enter a valid selling price.");
+      themedAlert("Price needed", "Enter a valid selling price.");
       return;
     }
     // price ≤ mrp — same gate as the web form
@@ -739,32 +823,32 @@ function SellerProductEdit({ id }: { id: string }) {
     const priceNum = Number(price);
     if (mrpNum > 0 && priceNum > mrpNum) {
       scrollToSection("pricing");
-      Alert.alert("Check prices", "Selling price must be less than or equal to the compare-at price.");
+      themedAlert("Check prices", "Selling price must be less than or equal to the compare-at price.");
       return;
     }
     if (!storeId) {
-      Alert.alert("Error", "Store not found");
+      themedAlert("Error", "Store not found");
       return;
     }
     if (variants.length === 0) {
-      Alert.alert("Error", "Add at least one variant with stock");
+      themedAlert("Error", "Add at least one variant with stock");
       return;
     }
     if (variants.some((v) => !v.size.trim())) {
       scrollToSection("variants");
-      Alert.alert("Choose a size", "Every variant needs a size. Pick one in Quick add sizes & colours.");
+      themedAlert("Choose a size", "Every variant needs a size. Pick one in Variants & stock.");
       return;
     }
 
     const totalImages = visibleExistingImages.length + pendingImages.length;
     if (totalImages === 0) {
       scrollToSection("photos");
-      Alert.alert("Add a photo", "Add at least one product photo.");
+      themedAlert("Add a photo", "Add at least one product photo.");
       return;
     }
     if (skuCheck.state === "conflict") {
       scrollToSection("info");
-      Alert.alert("Duplicate SKU", skuCheck.message ?? "This SKU is already used in your store.");
+      themedAlert("Duplicate SKU", skuCheck.message ?? "This SKU is already used in your store.");
       return;
     }
 
@@ -775,7 +859,7 @@ function SellerProductEdit({ id }: { id: string }) {
       variants: variants.map((variant) => ({ id: variant.id, sku: variant.sku })),
     });
     if (!skuValidation.ok) {
-      Alert.alert("Duplicate SKU", skuValidation.error);
+      themedAlert("Duplicate SKU", skuValidation.error);
       return;
     }
 
@@ -861,6 +945,7 @@ function SellerProductEdit({ id }: { id: string }) {
         size_system: sizeSystemPick,
         columns: sizeGuide.columns,
         rows: sizeGuide.rows,
+        images: sizeGuide.images ?? [],
       });
       const guideWarning = guideRes.ok ? null : guideRes.error;
 
@@ -879,12 +964,12 @@ function SellerProductEdit({ id }: { id: string }) {
       }
       if (!isNew && mode === "save") banner = nextModeration ? banner : "Your product has been updated.";
       if (guideWarning) banner = `${banner} Size chart not saved: ${guideWarning}`;
-      Alert.alert(title, banner, [{ text: "OK", onPress: () => router.back() }]);
+      themedAlert(title, banner, [{ text: "OK", onPress: () => router.back() }]);
     } catch (e: any) {
       if (e instanceof ImageSyncError && productId) {
         const failedCount = e.totalPending - e.uploadedCount;
         allowLeave.current = true;
-        Alert.alert(
+        themedAlert(
           "Product incomplete",
           `Product ${isNew ? "created" : "updated"}, but ${failedCount} of ${e.totalPending} image${e.totalPending === 1 ? "" : "s"} failed to upload and variants weren't saved. Please edit this product to finish setting it up.`,
           [
@@ -897,7 +982,7 @@ function SellerProductEdit({ id }: { id: string }) {
           ],
         );
       } else {
-        Alert.alert("Couldn’t save", e?.message ?? "Failed to save product");
+        themedAlert("Couldn’t save", e?.message ?? "Failed to save product");
       }
     } finally {
       setSaving(false);
@@ -1010,7 +1095,7 @@ function SellerProductEdit({ id }: { id: string }) {
 
   const handleDeleteProduct = () => {
     if (isNew || !id) return;
-    Alert.alert("Delete product?", "This cannot be undone.", [
+    themedAlert("Delete product?", "This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -1023,7 +1108,7 @@ function SellerProductEdit({ id }: { id: string }) {
             allowLeave.current = true;
             router.back();
           } else {
-            Alert.alert("Error", res.error);
+            themedAlert("Error", res.error);
           }
         },
       },
@@ -1065,6 +1150,25 @@ function SellerProductEdit({ id }: { id: string }) {
   const statusLabel =
     status === "active" ? (isLive ? "Live" : "Submit") : status === "pending" ? "In review" : status === "archived" ? "Archived" : "Draft";
 
+  const clearDraft = () => {
+    themedAlert(
+      "Clear draft?",
+      "Removes this unsaved product's details and photos from this device. This can't be undone.",
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            clearProductDrafts(user?.id)
+              .catch(() => {})
+              .finally(() => onDraftCleared());
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <StatusBar barStyle="dark-content" />
@@ -1105,6 +1209,16 @@ function SellerProductEdit({ id }: { id: string }) {
           <View style={[styles.headerStatusDot, status === "active" && styles.headerStatusDotLive]} />
           <Text style={[styles.headerStatusText, status === "active" && styles.headerStatusTextLive]}>{statusLabel}</Text>
         </View>
+        {isNew && isDirty ? (
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={clearDraft}
+            accessibilityRole="button"
+            accessibilityLabel="Clear draft"
+          >
+            <Ionicons name="trash-outline" size={19} color={INK} />
+          </TouchableOpacity>
+        ) : null}
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
@@ -1160,6 +1274,19 @@ function SellerProductEdit({ id }: { id: string }) {
             </View>
           </View>
 
+          {photoTips.length > 0 && (
+            <View style={styles.photoTip} accessibilityRole="alert">
+              <Ionicons name="camera-outline" size={18} color={colors.accent2.ochre} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.photoTipTitle}>A better photo sells faster</Text>
+                {photoTips.map((t) => <Text key={t} style={styles.photoTipText}>{t}</Text>)}
+              </View>
+              <TouchableOpacity onPress={() => setPhotoTips([])} accessibilityRole="button" accessibilityLabel="Dismiss photo tip" hitSlop={10}>
+                <Ionicons name="close" size={18} color={colors.ink.mute} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* ── Photos ───────────────────────────────────────────────── */}
           <View onLayout={trackSection("photos")}>
             <ProductMediaSection
@@ -1188,19 +1315,21 @@ function SellerProductEdit({ id }: { id: string }) {
               required
               counter={{ value: name.length, max: NAME_MAX }}
               hint={name.length ? undefined : "Clear and descriptive helps shoppers find it."}
+              right={aiGenerating.name && !name ? <AiGenerating /> : undefined}
             >
-              <Input value={name} onChangeText={setName} placeholder="e.g. Atelier Cotton Crew Tee" maxLength={NAME_MAX + 20} />
+              <Input value={name} onChangeText={setName} placeholder={aiGenerating.name ? "Writing a name from your photo…" : "e.g. Atelier Cotton Crew Tee"} maxLength={NAME_MAX + 20} />
             </Field>
 
             <Field
               label="Short description"
               hint="Shown on product cards"
               counter={{ value: shortDescription.length, max: SHORT_MAX }}
+              right={aiGenerating.copy && !shortDescription ? <AiGenerating /> : undefined}
             >
               <Input
                 value={shortDescription}
                 onChangeText={setShortDescription}
-                placeholder="e.g. Heritage cotton, garment-dyed"
+                placeholder={aiGenerating.copy ? "Generating…" : "e.g. Heritage cotton, garment-dyed"}
                 maxLength={SHORT_MAX + 40}
               />
             </Field>
@@ -1209,11 +1338,12 @@ function SellerProductEdit({ id }: { id: string }) {
               label="Full description"
               hint="Craft, fit, occasion, styling notes."
               counter={{ value: description.length, max: DESC_MAX }}
+              right={aiGenerating.copy && !description ? <AiGenerating /> : undefined}
             >
               <Input
                 value={description}
                 onChangeText={setDescription}
-                placeholder="Describe the fabric, the cut, the maker…"
+                placeholder={aiGenerating.copy ? "Writing a description from your photo…" : "Describe the fabric, the cut, the maker…"}
                 multiline
                 numberOfLines={5}
                 style={{ minHeight: 132 }}
@@ -1325,6 +1455,8 @@ function SellerProductEdit({ id }: { id: string }) {
             variants={variants}
             basePrice={price}
             onChange={trackRemovedVariant}
+            color={variantColor}
+            onColorChange={setVariantColor}
             lowStockThreshold={LOW_STOCK}
             sizeSystem={sizeSystem}
             onSizeSystemChange={setSizeSystemPick}
@@ -1434,11 +1566,16 @@ function SellerProductEdit({ id }: { id: string }) {
             <Field label="Occasion">
               <SuggestInput value={occasion} onChange={setOccasion} suggestions={SUGGEST.occasion} placeholder="Casual, formal…" />
             </Field>
-            <Field label="Care instructions" style={{ marginBottom: 0 }} counter={{ value: careInstructions.length, max: 400 }}>
+            <Field
+              label="Care instructions"
+              style={{ marginBottom: 0 }}
+              counter={{ value: careInstructions.length, max: 400 }}
+              right={aiGenerating.copy && !careInstructions ? <AiGenerating /> : undefined}
+            >
               <Input
                 value={careInstructions}
                 onChangeText={setCareInstructions}
-                placeholder="Machine wash cold, tumble dry low…"
+                placeholder={aiGenerating.copy ? "Generating…" : "Machine wash cold, tumble dry low…"}
                 multiline
                 numberOfLines={3}
                 style={{ minHeight: 80 }}
@@ -1504,7 +1641,7 @@ function SellerProductEdit({ id }: { id: string }) {
                   <Text style={styles.serpFavText}>L</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.serpSite}>LUXE</Text>
+                  <Text style={styles.serpSite}>VESTARA</Text>
                   <Text style={styles.serpUrl} numberOfLines={1}>
                     luxe.lk › products › {effectiveSlug || "your-product"}
                   </Text>
@@ -1812,6 +1949,11 @@ function SellerProductEdit({ id }: { id: string }) {
 }
 
 const styles = StyleSheet.create({
+  aiGen: { flexDirection: "row", alignItems: "center", gap: 2 },
+  photoTip: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderRadius: 14, backgroundColor: "#fbf3df", borderWidth: 1, borderColor: "#ecd9a8", marginBottom: 12 },
+  photoTipTitle: { fontSize: 13, fontWeight: "700", color: colors.ink.DEFAULT, marginBottom: 2 },
+  photoTipText: { fontSize: 12.5, color: colors.ink.mute, lineHeight: 17 },
+  aiGenText: { fontSize: 11, fontWeight: "600", color: colors.accent2.ochre, letterSpacing: 0.3 },
   scroller: { flex: 1 },
   container: { flex: 1, backgroundColor: "#f8f7f2" },
   content: { paddingHorizontal: spacing[4], paddingTop: spacing[3], paddingBottom: spacing[7] },

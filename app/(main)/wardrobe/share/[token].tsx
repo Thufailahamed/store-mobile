@@ -92,7 +92,7 @@ export default function SharedWardrobeScreen() {
         <View style={styles.hero}>
           <View style={styles.pill}>
             <Ionicons name="sparkles-outline" size={12} color={OLIVE} />
-            <Text style={styles.pillText}>LUXE · Public share</Text>
+            <Text style={styles.pillText}>VESTARA · Public share</Text>
           </View>
           <Text style={styles.title}>
             {payload.type === "outfit" ? payload.outfit.name : payload.wardrobe.name}

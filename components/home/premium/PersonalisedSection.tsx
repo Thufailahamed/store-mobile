@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -31,6 +30,47 @@ import { formatPrice } from "@/lib/utils";
 import type { Product, ProductImage } from "@/lib/types";
 import { createSeenSet } from "./dedupe";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
+import { loadProductSeller } from "@/lib/api/product-seller-loader";
+import { themedAlert } from "@/lib/themed-alert";
+
+/** Seller name + discount for the photo tiles (fills a missing seller via the batched loader). */
+function useTileMeta(product: Product) {
+  const needsSeller = !product.store?.name && !product.brand?.name && !!product.id;
+  const q = useQuery({
+    queryKey: ["product-seller", product.id],
+    queryFn: () => loadProductSeller(product.id),
+    enabled: needsSeller,
+    staleTime: 10 * 60_000,
+  });
+  const seller =
+    product.store?.name || product.brand?.name || q.data?.store?.name || q.data?.brand?.name || null;
+  const mrp = product.mrp > 0 ? product.mrp : q.data?.mrp ?? 0;
+  const discount = mrp > product.price && product.price > 0 ? Math.round(((mrp - product.price) / mrp) * 100) : 0;
+  return { seller, discount };
+}
+
+function TileMeta({ product, small }: { product: Product; small?: boolean }) {
+  const { discount } = useTileMeta(product);
+  return (
+    <>
+      {discount > 0 ? (
+        <View style={[styles.tileBadge, small && styles.tileBadgeSmall]}>
+          <Text style={styles.tileBadgeText}>-{discount}%</Text>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+function TileSeller({ product }: { product: Product }) {
+  const { seller } = useTileMeta(product);
+  if (!seller) return null;
+  return (
+    <Text style={styles.tileSeller} numberOfLines={1}>
+      {seller}
+    </Text>
+  );
+}
 
 function productImage(product: Product) {
   return product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
@@ -200,7 +240,7 @@ export function PersonalisedSection({
     (product: Product) => {
       setHidden((prev) => new Set(prev).add(product.id));
       tracker.notInterested(product);
-      Alert.alert("Got it", "We'll show fewer items like this.");
+      themedAlert("Got it", "We'll show fewer items like this.");
     },
     [tracker],
   );
@@ -209,7 +249,7 @@ export function PersonalisedSection({
   // buttons on the card, which cluttered the image.
   const openFeedbackMenu = useCallback(
     (product: Product) => {
-      Alert.alert(product.name, undefined, [
+      themedAlert(product.name, undefined, [
         { text: "Not interested", onPress: () => handleNotInterested(product) },
         { text: "Hide this piece", onPress: () => handleDismiss(product) },
         { text: "Cancel", style: "cancel" },
@@ -276,7 +316,9 @@ export function PersonalisedSection({
               <View style={styles.heroHeart}>
                 <WishlistHeart product={heroProduct} size={15} />
               </View>
+              <TileMeta product={heroProduct} />
               <View style={styles.heroCopy}>
+                <TileSeller product={heroProduct} />
                 <Text style={styles.heroName} numberOfLines={2}>
                   {heroProduct.name}
                 </Text>
@@ -314,7 +356,9 @@ export function PersonalisedSection({
                     <View style={styles.smallHeart}>
                       <WishlistHeart product={p} size={13} />
                     </View>
+                    <TileMeta product={p} small />
                     <View style={styles.smallCopy}>
+                      <TileSeller product={p} />
                       <Text style={styles.smallName} numberOfLines={1}>
                         {p.name}
                       </Text>
@@ -429,6 +473,37 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: spacing[2],
     right: spacing[2],
+  },
+  tileBadge: {
+    position: "absolute",
+    top: spacing[2.5],
+    left: spacing[2.5],
+    height: 24,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    backgroundColor: "#16170f",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tileBadgeSmall: {
+    top: spacing[2],
+    left: spacing[2],
+    height: 20,
+    paddingHorizontal: 7,
+    borderRadius: 10,
+  },
+  tileBadgeText: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 10.5,
+    color: "#d9f99d",
+  },
+  tileSeller: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 9,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    color: "#f3e9c9",
+    marginBottom: 2,
   },
   heroCopy: {
     position: "absolute",

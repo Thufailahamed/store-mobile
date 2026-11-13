@@ -176,7 +176,7 @@ export default function StoreScreen() {
     if (!store) return;
     try {
       await Share.share({
-        message: `Discover ${store.name} on LUXE — handpicked pieces from this boutique.`,
+        message: `Discover ${store.name} on VESTARA — handpicked pieces from this boutique.`,
         url: `luxe://store/${store.slug}`,
       });
     } catch {
@@ -234,7 +234,7 @@ export default function StoreScreen() {
           <EmptyState
             icon="storefront-outline"
             title="Boutique not found"
-            description="This boutique may have moved or is no longer on LUXE."
+            description="This boutique may have moved or is no longer on VESTARA."
             framed={false}
           />
           <Button variant="brand" onPress={() => navigateHome(router)}>Browse home</Button>

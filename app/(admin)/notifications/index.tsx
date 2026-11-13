@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Alert } from "react-native";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet } from "react-native";
 import { Modal } from "@/components/ui/Modal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
@@ -7,6 +7,7 @@ import { getAdminBroadcasts, sendBroadcast } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton, Input, Button } from "@/components/ui";
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 function rel(s: string) {
   const d = new Date(s).getTime();
@@ -75,12 +76,12 @@ function SendModal({ visible, onClose, onSent }: { visible: boolean; onClose: ()
   const [loading, setLoading] = useState(false);
 
   const send = async () => {
-    if (!title.trim() || !body.trim()) return Alert.alert("Missing fields", "Title and body required");
+    if (!title.trim() || !body.trim()) return themedAlert("Missing fields", "Title and body required");
     setLoading(true);
     const r = await sendBroadcast({ title, body, audience, channel });
     setLoading(false);
     if (r.ok) { setTitle(""); setBody(""); onSent(); }
-    else Alert.alert("Error", r.error);
+    else themedAlert("Error", r.error);
   };
 
   return (

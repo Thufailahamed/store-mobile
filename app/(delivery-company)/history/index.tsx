@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Share,
-  Alert,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
@@ -24,6 +23,7 @@ import {
 } from "@/lib/api/delivery-company-api";
 import { useIsTablet } from "@/lib/hooks/useIsTablet";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 const KPI_H_PADDING = 16;
 const KPI_GAP = 10;
@@ -88,7 +88,7 @@ export default function CompanyHistoryScreen() {
         if (pages >= 25) break; // 25 × 200 = 5000 hard cap
       }
       if (allRows.length === 0) {
-        Alert.alert("No history", "Nothing to export yet.");
+        themedAlert("No history", "Nothing to export yet.");
         return;
       }
       const csv = [

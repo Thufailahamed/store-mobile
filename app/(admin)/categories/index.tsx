@@ -6,8 +6,6 @@ import {
   Pressable,
   RefreshControl,
   StyleSheet,
-  Alert,
-
   Switch,
 } from "react-native";
 import { Modal } from "@/components/ui/Modal";
@@ -37,6 +35,7 @@ import {
   type CategoryDeleteImpact,
 } from "@/lib/utils/category-admin";
 import type { Category, Gender } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const GENDERS: (Gender | "none")[] = ["none", "men", "women", "kids", "unisex"];
 
@@ -116,7 +115,7 @@ export default function AdminCategories() {
   };
 
   const openActions = (item: AdminCategory) => {
-    Alert.alert(item.name, `/${item.slug}`, [
+    themedAlert(item.name, `/${item.slug}`, [
       { text: "Add subcategory", onPress: () => openCreate(item.id) },
       { text: "Delete…", style: "destructive", onPress: () => setDeleting(item) },
       { text: "Cancel", style: "cancel" },
@@ -389,11 +388,11 @@ function CategoryModal({
   const parentError = validateCategoryParent(initial?.id, parentId, categories);
 
   const save = async () => {
-    if (!name.trim()) return Alert.alert("Missing fields", "Name is required");
+    if (!name.trim()) return themedAlert("Missing fields", "Name is required");
     const finalSlug = slug.trim() || slugifyCategoryName(name);
-    if (!finalSlug) return Alert.alert("Missing fields", "Slug is required");
+    if (!finalSlug) return themedAlert("Missing fields", "Slug is required");
     const pErr = validateCategoryParent(initial?.id, parentId, categories);
-    if (pErr) return Alert.alert("Invalid parent", pErr);
+    if (pErr) return themedAlert("Invalid parent", pErr);
 
     setLoading(true);
     const payload: Partial<Category> = {
@@ -414,7 +413,7 @@ function CategoryModal({
     setLoading(false);
 
     if (r.ok) onSaved();
-    else Alert.alert("Error", r.error);
+    else themedAlert("Error", r.error);
   };
 
   return (
@@ -497,7 +496,7 @@ function DeleteModal({
     getCategoryDeleteImpact(category.id).then((r) => {
       setImpact(r.ok ? r.data : null);
       setLoadingImpact(false);
-      if (!r.ok) Alert.alert("Error", r.error);
+      if (!r.ok) themedAlert("Error", r.error);
     });
   }, [category]);
 
@@ -517,7 +516,7 @@ function DeleteModal({
     const r = await deleteCategoryWithOptions(category.id, options, categories);
     setDeleting(false);
     if (r.ok) onDeleted();
-    else Alert.alert("Delete failed", r.error);
+    else themedAlert("Delete failed", r.error);
   };
 
   return (

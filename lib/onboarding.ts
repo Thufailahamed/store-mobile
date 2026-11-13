@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const ONBOARDING_KEY = "luxe_onboarding_complete";
+const ONBOARDING_KEY = "vestara_onboarding_complete";
 
 export async function hasCompletedOnboarding(): Promise<boolean> {
   const value = await AsyncStorage.getItem(ONBOARDING_KEY);

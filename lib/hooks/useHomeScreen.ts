@@ -59,7 +59,9 @@ function dedupeProductRails(...rails: Product[][]): Product[][] {
 
 export async function fetchHomeCatalogPrimary(): Promise<HomeCatalogPrimary> {
   const [cats, heroBanners, flash, arrivalsRes] = await Promise.all([
-    api.getCategories(12),
+    // Full tree: the Men / Women / Kids tiles need each root's children, which
+    // a short `limit` slice of the position-ordered list cuts off.
+    api.getAllCategories(),
     api.getBanners("home_hero"),
     api.getFlashSaleRail(12),
     api.getHomepageProductPicks("new_arrivals_rail"),

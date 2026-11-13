@@ -10,6 +10,7 @@ import {
   Clipboard,
   ActivityIndicator,
   Share,
+  AccessibilityInfo,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
@@ -29,6 +30,7 @@ import { colors, shadows } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import type { Order, OrderItem, Product, OrderStatus } from "@/lib/types";
 import { ProductCard } from "@/components/product/ProductCard";
+import { HERO_T, OrderPlacedHero, useTypeSequence } from "@/components/checkout/OrderPlacedHero";
 
 export default function OrderSuccessScreen() {
   const { orderId, orderIds } = useLocalSearchParams<{ orderId?: string; orderIds?: string }>();
@@ -120,7 +122,7 @@ export default function OrderSuccessScreen() {
   }, [siblingOrderIds.join(",")]);
 
   // Fetch Referral Code — backend owns the source of truth (no fabricated
-  // "LUXE${id.slice}" strings that collide in analytics / share intent).
+  // "VESTARA${id.slice}" strings that collide in analytics / share intent).
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -195,7 +197,7 @@ export default function OrderSuccessScreen() {
   };
 
   const handleHelpPress = () => {
-    toast("Support is available 24/7 at support@luxe.com or +1 800 555 1234", "success");
+    toast("Need help? Email us at munxhd@gmail.com", "success");
   };
 
   const handleCopyReferral = () => {
@@ -215,7 +217,7 @@ export default function OrderSuccessScreen() {
     if (!referralCode) return;
     try {
       await Share.share({
-        message: `Shop LUXE with my invite ${referralCode} — https://synapstore.shop/r/${referralCode}\nI earn 100 loyalty points when you complete your first paid order!`,
+        message: `Shop VESTARA with my invite ${referralCode} — https://synapstore.shop/r/${referralCode}\nI earn 100 loyalty points when you complete your first paid order!`,
         url: `https://synapstore.shop/r/${referralCode}`,
       });
     } catch {
@@ -223,35 +225,50 @@ export default function OrderSuccessScreen() {
     }
   };
 
-  // Entrance choreography: badge springs in, halo pulses, content rises.
-  const checkScale = useRef(new Animated.Value(0)).current;
-  const haloAnim = useRef(new Animated.Value(0)).current;
+  // Entrance choreography: pieces drop into the bag, orbit bursts out, the
+  // subtitle types itself (twice, like a status line), then the rest rises in.
   const contentAnim = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then(setReduceMotion)
+      .catch(() => {});
+  }, []);
+  const heroImages = React.useMemo(
+    () =>
+      (order?.items ?? [])
+        .map(
+          (item) =>
+            item.product?.images?.find((i) => i.is_primary)?.url || item.product?.images?.[0]?.url || "",
+        )
+        .filter(Boolean),
+    [order?.id],
+  );
+  const heroSettleMs = reduceMotion ? 0 : HERO_T.settle;
+  const subFinal =
+    order?.payment_method === "cod"
+      ? "Your order is in. Keep the amount ready for delivery."
+      : "Payment received. Your order is in.";
+  const sub = useTypeSequence(
+    [
+      { text: "Placing your pieces with the atelier", at: HERO_T.type1, msPerChar: 28 },
+      { text: subFinal, at: HERO_T.type2, msPerChar: 36 },
+    ],
+    !!order && !reduceMotion,
+  );
   useEffect(() => {
     if (!order) return;
-    checkScale.setValue(0);
     contentAnim.setValue(0);
-    haloAnim.setValue(0);
-    Animated.sequence([
-      Animated.spring(checkScale, { toValue: 1, damping: 10, stiffness: 170, useNativeDriver: true }),
-      Animated.timing(contentAnim, {
-        toValue: 1,
-        duration: 480,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-    const pulse = Animated.loop(
-      Animated.timing(haloAnim, {
-        toValue: 1,
-        duration: 2200,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [order?.id, checkScale, contentAnim, haloAnim]);
+    const anim = Animated.timing(contentAnim, {
+      toValue: 1,
+      duration: 620,
+      delay: heroSettleMs,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [order?.id, heroSettleMs, contentAnim]);
 
   if (loading) {
     return (
@@ -351,7 +368,7 @@ export default function OrderSuccessScreen() {
         >
           <Ionicons name="close" size={20} color={INK} />
         </TouchableOpacity>
-        <Text style={styles.wordmark}>LUXE</Text>
+        <Text style={styles.wordmark}>VESTARA</Text>
         <TouchableOpacity onPress={handleHelpPress} style={styles.helpPill} activeOpacity={0.7}>
           <Ionicons name="chatbubble-ellipses-outline" size={14} color={INK} />
           <Text style={styles.helpText}>Help</Text>
@@ -364,44 +381,10 @@ export default function OrderSuccessScreen() {
       >
         {/* Hero */}
         <View style={styles.hero}>
-          <View style={styles.badgeStage}>
-            <Animated.View
-              style={[
-                styles.halo,
-                {
-                  opacity: haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
-                  transform: [{ scale: haloAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
-                },
-              ]}
-            />
-            <View style={styles.haloStatic} />
-            {CONFETTI.map((c, i) => (
-              <Animated.View
-                key={i}
-                style={[
-                  styles.confetti,
-                  {
-                    backgroundColor: c.color,
-                    width: c.size,
-                    height: c.size,
-                    borderRadius: c.round ? c.size / 2 : 2,
-                    left: 80 + c.x,
-                    top: 80 + c.y,
-                    opacity: contentAnim,
-                    transform: [
-                      { rotate: `${c.rot}deg` },
-                      { scale: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) },
-                    ],
-                  },
-                ]}
-              />
-            ))}
-            <Animated.View style={[styles.checkCircle, { transform: [{ scale: checkScale }] }]}>
-              <Ionicons name="checkmark" size={42} color={CREAM} />
-            </Animated.View>
-          </View>
+          <OrderPlacedHero key={order.id} images={heroImages} />
 
-          <Animated.View style={[styles.heroText, rise(0)]}>
+          {/* Title holds still from the first frame; the subtitle types live under it. */}
+          <View style={styles.heroText}>
             <Text style={styles.eyebrow}>
               {siblingOrderIds.length > 0 ? `${allOrderIds.length} orders confirmed` : "Order confirmed"}
             </Text>
@@ -409,11 +392,12 @@ export default function OrderSuccessScreen() {
               Thank you{firstName ? "," : "."}
               {firstName ? <Text style={styles.heroTitleItalic}>{`\n${firstName}.`}</Text> : null}
             </Text>
-            <Text style={styles.heroSub}>
-              {isCod
-                ? "Your order is in. Keep the amount ready — you'll pay when it arrives."
-                : "Your payment went through and your order is in."}
+            <Text style={[styles.heroSub, { minHeight: 42 }]}>
+              {sub.typed}
+              <Text style={{ opacity: sub.cursorVisible ? 1 : 0 }}>{sub.typing ? "_" : ""}</Text>
             </Text>
+          </View>
+          <Animated.View style={[styles.heroText, rise(0)]}>
             <TouchableOpacity onPress={copyOrderNumber} activeOpacity={0.75} style={styles.orderChip}>
               <Text style={styles.orderChipLabel}>Order</Text>
               <Text style={styles.orderChipValue}>#{order.order_number}</Text>
@@ -589,7 +573,7 @@ export default function OrderSuccessScreen() {
                 value={order.shipping_fee === 0 ? "Free" : formatPrice(order.shipping_fee, order.currency)}
                 accent={order.shipping_fee === 0}
               />
-              {order.tax > 0 ? <SummaryRow label="Platform fee" value={formatPrice(order.tax, order.currency)} /> : null}
+              {order.tax > 0 ? <SummaryRow label="Tax and fees" value={formatPrice(order.tax, order.currency)} /> : null}
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>{isCod ? "Due on delivery" : "Total paid"}</Text>
                 <Text style={styles.totalValue}>{formatPrice(order.total, order.currency)}</Text>
@@ -657,7 +641,7 @@ export default function OrderSuccessScreen() {
                 <Ionicons name="sparkles" size={16} color={colors.accent2.ochre} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.referralTitle}>Share LUXE, earn 100 points</Text>
+                <Text style={styles.referralTitle}>Share VESTARA, earn 100 points</Text>
                 <Text style={styles.referralSub}>
                   For every friend who completes their first paid order.
                 </Text>
@@ -750,18 +734,6 @@ function DetailRow({
 const INK = colors.olive[900];
 const CREAM = colors.paper.cream;
 const SURFACE = "#ffffff";
-
-/** Decorative confetti around the check badge (offsets from badge centre). */
-const CONFETTI = [
-  { x: -70, y: -40, size: 8, color: colors.accent2.ochre, rot: 20, round: false },
-  { x: 62, y: -52, size: 6, color: colors.accent2.rust, rot: 0, round: true },
-  { x: 74, y: 18, size: 9, color: colors.olive[400], rot: 45, round: false },
-  { x: -78, y: 30, size: 5, color: colors.olive[600], rot: 0, round: true },
-  { x: -40, y: -70, size: 5, color: colors.olive[300], rot: 0, round: true },
-  { x: 30, y: 66, size: 7, color: colors.accent2.ochre, rot: 30, round: false },
-  { x: -56, y: 62, size: 6, color: colors.accent2.rust, rot: 60, round: false },
-  { x: 44, y: -78, size: 4, color: colors.olive[500], rot: 0, round: true },
-];
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

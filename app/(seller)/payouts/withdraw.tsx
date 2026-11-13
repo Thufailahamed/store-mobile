@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Alert,
   ScrollView,
   StatusBar,
   KeyboardAvoidingView,
@@ -32,6 +31,7 @@ import {
   PressScale,
   describeAccount,
 } from "@/components/payouts/PayoutSurfaces";
+import { themedAlert } from "@/lib/themed-alert";
 
 const CREAM = colors.paper.cream;
 const INK = colors.olive[950];
@@ -97,18 +97,18 @@ export default function WithdrawScreen() {
       if (res.ok) {
         qc.invalidateQueries({ queryKey: ["payouts"] });
         qc.invalidateQueries({ queryKey: ["payout-balance"] });
-        Alert.alert("Withdraw requested", `Payout is ${res.data.status}.`, [
+        themedAlert("Withdraw requested", `Payout is ${res.data.status}.`, [
           { text: "OK", onPress: () => router.replace("/(seller)/payouts") },
         ]);
       } else if (isPayoutKycError(res.error)) {
-        Alert.alert("Verify your identity first", payoutKycUserMessage(res.error ?? ""), [
+        themedAlert("Verify your identity first", payoutKycUserMessage(res.error ?? ""), [
           { text: "Not now", style: "cancel" },
           { text: "Verify now", onPress: () => router.push("/(seller)/payouts/verify" as never) },
         ]);
-      } else Alert.alert("Withdraw failed", payoutUserMessage(res.error, "Try again."));
+      } else themedAlert("Withdraw failed", payoutUserMessage(res.error, "Try again."));
     },
     onError: (e: unknown) =>
-      Alert.alert("Withdraw failed", e instanceof Error ? e.message : "Try again."),
+      themedAlert("Withdraw failed", e instanceof Error ? e.message : "Try again."),
   });
 
   const balanceError =

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -25,6 +24,7 @@ import {
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 const BRAND_META: Record<
   PaymentBrand,
@@ -132,7 +132,7 @@ export default function PaymentsScreen() {
 
   const removeCard = async (id: string) => {
     if (!user?.id) return;
-    Alert.alert(
+    themedAlert(
       "Remove Payment Instrument",
       "Are you sure you wish to remove this card from your saved wallet?",
       [

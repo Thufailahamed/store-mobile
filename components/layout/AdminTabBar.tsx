@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, type LayoutChangeEvent } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -14,6 +13,7 @@ import { Ionicons, type IonIconName } from "@/components/ui/Icon";
 import { getAdminOverviewStats } from "@/lib/api";
 import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { C } from "@/components/orders/parcel-track";
 
 const TABS: { name: string; label: string; icon: IonIconName; iconActive: IonIconName }[] = [
   { name: "index", label: "Overview", icon: "grid-outline", iconActive: "grid" },
@@ -25,7 +25,6 @@ const TABS: { name: string; label: string; icon: IonIconName; iconActive: IonIco
 
 const BAR_PADDING = 6;
 const SPRING = { damping: 18, stiffness: 180, mass: 0.7 };
-const GOLD = { light: "#f6ebc8", DEFAULT: "#e6cf8f", deep: "#c8a44a" };
 const INACTIVE = "rgba(250,248,241,0.6)";
 
 export function AdminTabBar({ state, navigation }: BottomTabBarProps) {
@@ -70,13 +69,7 @@ export function AdminTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 8, 12) }]}>
       <View style={styles.shadow}>
-        <LinearGradient
-          colors={[colors.olive[800], colors.olive[950]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.bar}
-          onLayout={onLayout}
-        >
+        <View style={styles.bar} onLayout={onLayout}>
           <View pointerEvents="none" style={styles.sheen} />
 
           {tabWidth > 0 && (
@@ -84,12 +77,7 @@ export function AdminTabBar({ state, navigation }: BottomTabBarProps) {
               pointerEvents="none"
               style={[styles.indicator, { width: tabWidth }, indicatorStyle]}
             >
-              <LinearGradient
-                colors={[GOLD.light, GOLD.DEFAULT]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={styles.indicatorFill}
-              />
+              <View style={styles.indicatorFill} />
             </Animated.View>
           )}
 
@@ -97,7 +85,7 @@ export function AdminTabBar({ state, navigation }: BottomTabBarProps) {
             const route = state.routes.find((r) => r.name === tab.name);
             if (!route) return null;
             const focused = i === activeIndex;
-            const tint = focused ? colors.olive[950] : INACTIVE;
+            const tint = focused ? C.ink : INACTIVE;
             const badge = tab.name === "approvals/index" && pendingTotal > 0 ? pendingTotal : 0;
 
             const onPress = () => {
@@ -134,7 +122,7 @@ export function AdminTabBar({ state, navigation }: BottomTabBarProps) {
               </Pressable>
             );
           })}
-        </LinearGradient>
+        </View>
       </View>
     </View>
   );
@@ -144,11 +132,11 @@ const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 14,
     paddingTop: 8,
-    backgroundColor: colors.light.background,
+    backgroundColor: C.paper,
   },
   shadow: {
     borderRadius: 30,
-    shadowColor: colors.olive[950],
+    shadowColor: C.ink,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.28,
     shadowRadius: 20,
@@ -160,8 +148,7 @@ const styles = StyleSheet.create({
     height: 66,
     padding: BAR_PADDING,
     borderRadius: 30,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(230,207,143,0.28)",
+    backgroundColor: C.ink,
     overflow: "hidden",
   },
   sheen: {
@@ -170,7 +157,7 @@ const styles = StyleSheet.create({
     left: 24,
     right: 24,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(246,235,200,0.45)",
+    backgroundColor: "rgba(250,248,241,0.18)",
   },
   indicator: {
     position: "absolute",
@@ -178,16 +165,11 @@ const styles = StyleSheet.create({
     bottom: BAR_PADDING,
     left: BAR_PADDING,
     borderRadius: 24,
-    shadowColor: GOLD.deep,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
   },
   indicatorFill: {
     flex: 1,
     borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.6)",
+    backgroundColor: C.lime,
   },
   tab: {
     flex: 1,
@@ -219,10 +201,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.accent2.rust,
     borderWidth: 2,
-    borderColor: colors.olive[900],
+    borderColor: C.ink,
   },
   badgeOnActive: {
-    borderColor: GOLD.light,
+    borderColor: C.lime,
   },
   badgeText: {
     color: colors.paper.cream,

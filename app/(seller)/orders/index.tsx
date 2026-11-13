@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
-  Alert,
   View,
   Text,
   FlatList,
@@ -20,15 +19,17 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@/components/ui/Icon";
 import { useAuth } from "@/lib/supabase/auth";
-import { getSellerStore, getSellerOrders, transitionOrderStatus, cancelOrder } from "@/lib/api";
+import { getSellerStore, getSellerOrders, markSellerOrderProcessed, cancelOrder } from "@/lib/api";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   C,
   CLOSED,
   PROCESS,
+  PICKED_UP,
   RIBBON,
   TRANSIT,
+  OUT_FOR_DELIVERY,
   ParcelArt,
   TrackRail,
   etaFor,
@@ -41,28 +42,38 @@ import {
   firstLineItem,
   formatOrderStatusLabel,
   formatPaymentStatus,
+  isNewOrder,
+  isOrderReceivedBySeller,
   readShippingContact,
 } from "@/lib/orders/seller-list";
 import { formatPrice } from "@/lib/utils";
-import { canSellerCancelOrder, getSellerAdvanceStatus } from "@/lib/order-lifecycle";
+import { canSellerCancelOrder } from "@/lib/order-lifecycle";
 import type { Order, OrderStatus } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
-type Tab = "all" | "new" | "process" | "transit" | "delivered" | "closed";
+type Tab = "all" | "new" | "process" | "picked_up" | "transit" | "out_for_delivery" | "delivered" | "closed";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
   { key: "new", label: "New" },
   { key: "process", label: "On Process" },
+  { key: "picked_up", label: "Picked Up" },
   { key: "transit", label: "Transit" },
+  { key: "out_for_delivery", label: "Out for Delivery" },
   { key: "delivered", label: "Delivered" },
   { key: "closed", label: "Cancelled" },
 ];
 
-function inTab(status: OrderStatus, tab: Tab) {
-  if (tab === "all") return true;
-  if (tab === "new") return status === "pending";
-  if (tab === "process") return PROCESS.includes(status) && status !== "pending";
-  if (tab === "transit") return TRANSIT.includes(status);
+function inTab(order: Order, tab: Tab) {
+  const status = order.status;
+  // "All" tab displays all active orders, excluding cancelled and returned
+  if (tab === "all") return !CLOSED.includes(status);
+  // "New" = received and not yet marked processed by the seller.
+  if (tab === "new") return isNewOrder(order);
+  if (tab === "process") return PROCESS.includes(status) && !isNewOrder(order);
+  if (tab === "picked_up") return PICKED_UP.includes(status);
+  if (tab === "transit") return status === "shipped";
+  if (tab === "out_for_delivery") return OUT_FOR_DELIVERY.includes(status);
   if (tab === "delivered") return status === "delivered";
   return CLOSED.includes(status);
 }
@@ -148,27 +159,22 @@ export default function SellerOrders() {
     void fetchOrders();
   }, [fetchOrders]);
 
-  const handleAdvance = useCallback(async (order: Order) => {
-    const next = getSellerAdvanceStatus(order.status);
-    if (!next || updatingId) return;
-    Alert.alert("Update status?", `Mark ${order.order_number || "order"} as "${formatOrderStatusLabel(next)}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Confirm", onPress: async () => {
-        setUpdatingId(order.id);
-        const res = await transitionOrderStatus(order.id, next);
-        if (res.ok) {
-          setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
-        } else {
-          Alert.alert("Error", res.error);
-        }
-        setUpdatingId(null);
-      } },
-    ]);
+  const handleProcessed = useCallback(async (order: Order) => {
+    if (updatingId) return;
+    setUpdatingId(order.id);
+    const res = await markSellerOrderProcessed(order.id);
+    if (res.ok) {
+      const at = res.data.seller_processed_at ?? new Date().toISOString();
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, seller_processed_at: at } : o)));
+    } else {
+      themedAlert("Error", res.error);
+    }
+    setUpdatingId(null);
   }, [updatingId]);
 
   const handleCancel = useCallback(async (order: Order) => {
     if (updatingId || !canSellerCancelOrder(order.status)) return;
-    Alert.alert("Cancel order?", `Cancel ${order.order_number || "order"}? Stock will be restored.`, [
+    themedAlert("Cancel order?", `Cancel ${order.order_number || "order"}? Stock will be restored.`, [
       { text: "Keep", style: "cancel" },
       { text: "Cancel order", style: "destructive", onPress: async () => {
         setUpdatingId(order.id);
@@ -176,7 +182,7 @@ export default function SellerOrders() {
         if (res.ok) {
           setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "cancelled" as OrderStatus } : o)));
         } else {
-          Alert.alert("Error", res.error);
+          themedAlert("Error", res.error);
         }
         setUpdatingId(null);
       } },
@@ -186,14 +192,14 @@ export default function SellerOrders() {
   const searched = useMemo(() => filterSellerOrders(orders, { status: "all", search }), [orders, search]);
 
   const counts = useMemo(() => {
-    const c = { all: 0, new: 0, process: 0, transit: 0, delivered: 0, closed: 0 } as Record<Tab, number>;
+    const c = { all: 0, new: 0, process: 0, picked_up: 0, transit: 0, out_for_delivery: 0, delivered: 0, closed: 0 } as Record<Tab, number>;
     for (const o of searched) {
-      for (const t of TABS) if (inTab(o.status, t.key)) c[t.key] += 1;
+      for (const t of TABS) if (inTab(o, t.key)) c[t.key] += 1;
     }
     return c;
   }, [searched]);
 
-  const visible = useMemo(() => searched.filter((o) => inTab(o.status, tab)), [searched, tab]);
+  const visible = useMemo(() => searched.filter((o) => inTab(o, tab)), [searched, tab]);
   const visibleTabs = TABS.filter((t) => t.key !== "closed" || counts.closed > 0 || tab === "closed");
 
   const listHeader = (
@@ -299,7 +305,7 @@ export default function SellerOrders() {
                 storeName={storeName}
                 busy={updatingId === item.id}
                 onPress={() => router.push(`/(seller)/orders/${item.id}` as const)}
-                onAdvance={() => void handleAdvance(item)}
+                onProcessed={() => void handleProcessed(item)}
                 onCancel={() => void handleCancel(item)}
               />
             </Animated.View>
@@ -331,14 +337,14 @@ function SellerParcelCard({
   storeName,
   busy,
   onPress,
-  onAdvance,
+  onProcessed,
   onCancel,
 }: {
   order: Order;
   storeName: string | null;
   busy: boolean;
   onPress: () => void;
-  onAdvance: () => void;
+  onProcessed: () => void;
   onCancel: () => void;
 }) {
   const line = firstLineItem(o.items);
@@ -346,7 +352,8 @@ function SellerParcelCard({
   const more = (o.items?.length ?? 0) - 1;
   const ship = readShippingContact(o);
   const ribbon = RIBBON[o.status] ?? RIBBON.pending;
-  const nextStatus = getSellerAdvanceStatus(o.status);
+  const isNew = isNewOrder(o);
+  const isReceived = isOrderReceivedBySeller(o);
   const canCancel = canSellerCancelOrder(o.status);
   const codUnpaid = o.payment_method === "cod" && o.payment_status !== "paid";
   const customer = ship.name?.trim() || "Customer";
@@ -441,18 +448,23 @@ function SellerParcelCard({
                 <Ionicons name="close" size={17} color={C.rust} />
               </TouchableOpacity>
             ) : null}
-            {nextStatus ? (
+            {isReceived ? (
+              <View style={styles.receivedPill} accessibilityLabel="Order marked as received">
+                <Ionicons name="checkmark-circle" size={13} color="#2e7d32" />
+                <Text style={styles.receivedText}>Order received</Text>
+              </View>
+            ) : isNew ? (
               <TouchableOpacity
                 style={[styles.advanceBtn, busy && styles.advanceBtnBusy]}
-                onPress={onAdvance}
+                onPress={onProcessed}
                 disabled={busy}
                 accessibilityRole="button"
-                accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+                accessibilityLabel={`Mark ${o.order_number} as order received`}
               >
                 <Text style={styles.advanceText} numberOfLines={1}>
-                  {busy ? "Working…" : `Mark ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}
+                  {busy ? "Updating…" : "Order received"}
                 </Text>
-                {busy ? null : <Ionicons name="arrow-forward" size={14} color={C.lime} />}
+                {busy ? null : <Ionicons name="checkmark" size={14} color={C.lime} />}
               </TouchableOpacity>
             ) : null}
           </View>
@@ -611,8 +623,8 @@ const styles = StyleSheet.create({
   },
   ribbonText: {
     fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    letterSpacing: 1.6,
+    fontSize: 9.5,
+    letterSpacing: 1.1,
   },
 
   cardHead: { flexDirection: "row", alignItems: "center", gap: 14, paddingRight: 64 },
@@ -690,6 +702,22 @@ const styles = StyleSheet.create({
   },
   advanceBtnBusy: { opacity: 0.6 },
   advanceText: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, color: C.cream },
+  receivedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 19,
+    backgroundColor: "rgba(46, 125, 50, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(46, 125, 50, 0.22)",
+  },
+  receivedText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 12,
+    color: "#2e7d32",
+  },
 
   empty: {
     alignItems: "center",

@@ -214,6 +214,18 @@ export type HomepagePayload = {
 let homepageCache: { data: HomepagePayload; timestamp: number } | null = null;
 let homepagePromise: Promise<ApiResult<HomepagePayload>> | null = null;
 
+/** Public — works signed-out, so an expired session can still be told to update. */
+export async function getAppVersionPolicyBackend(
+  platform: "ios" | "android",
+  version: string,
+): Promise<ApiResult<unknown>> {
+  return fetchJson("/api/app/version-policy", {
+    requireAuth: false,
+    query: { platform, version },
+    timeoutMs: 8_000,
+  });
+}
+
 export async function getHomepageBackend(): Promise<ApiResult<HomepagePayload>> {
   const now = Date.now();
   if (homepageCache && now - homepageCache.timestamp < 10000) {
@@ -571,14 +583,6 @@ export async function getReferralInfoBackend(): Promise<ApiResult<ReferralInfo>>
 
 export function isValidReferralCode(code: string): boolean {
   return /^[A-Z0-9]{4,12}$/.test(code.trim().toUpperCase());
-}
-
-/** Fixed-code phone login. Fails unless the backend flag is on and the code matches. */
-export async function verifyPhoneOtpBackend(
-  phone: string,
-  token: string,
-): Promise<ApiResult<{ token_hash: string; type: "magiclink" }>> {
-  return fetchJson("/api/auth/verify-phone-otp", { method: "POST", body: { phone, token }, requireAuth: false });
 }
 
 export async function applyReferralCodeBackend(
@@ -1339,6 +1343,13 @@ export async function createSellerProductBackend(input: Partial<CatalogProduct> 
   return fetchJson("/api/seller/products", { method: "POST", body: input });
 }
 
+/**
+ * Quick upload runs server-side vision: up to 10s image download + a 45s
+ * model fallback chain. The 30s fetchJson default aborted slow-but-valid
+ * runs, so give it the same ~70s headroom the web proxy has.
+ */
+const QUICK_AI_TIMEOUT_MS = 70_000;
+
 export interface QuickCreateResult {
   product: Record<string, unknown> & { id: string; name: string };
   extraction: { name_source: string; category_match: string; tags_added: number; description_source: string };
@@ -1352,7 +1363,7 @@ export async function quickCreateProductBackend(input: {
   name?: string;
   category_hint?: string;
 }): Promise<ApiResult<QuickCreateResult>> {
-  return fetchJson("/api/seller/products/quick", { method: "POST", body: input });
+  return fetchJson("/api/seller/products/quick", { method: "POST", body: input, timeoutMs: QUICK_AI_TIMEOUT_MS });
 }
 
 export interface QuickAnalyzeDraft {
@@ -1386,7 +1397,29 @@ export interface QuickAnalyzeDraft {
 
 export interface QuickAnalyzeResult {
   draft: QuickAnalyzeDraft;
-  extraction: { name_source: string; category_match: string; tags_added: number; description_source: string; confidence: number | null; vision_error: string | null };
+  extraction: {
+    name_source: string; category_match: string; tags_added: number; description_source: string; confidence: number | null; vision_error: string | null;
+    /** stage "attrs": name / descriptions / care still to come from quickAnalyzeCopyBackend. */
+    copy_pending?: boolean;
+    /** Retake tips from the photo-quality check (blur / dark / cropped). */
+    photo_tips?: string[];
+  };
+}
+
+/** Attrs sent to the copy stage (subset of the draft). */
+export interface QuickCopyAttrs {
+  category: string; colors?: string[]; color_hex?: string | null; material?: string | null; pattern?: string | null;
+  fit?: string | null; sleeve?: string | null; style?: string | null; occasion?: string | null; season?: string | null; gender?: string | null;
+}
+
+export interface QuickCopyResult {
+  copy: { name: string | null; short_description: string | null; description: string | null; care_instructions: string | null; brand_hint: string | null; tags: string[] };
+  source: string | null;
+}
+
+/** Progressive quick-analyze, stage 2: name / descriptions / care for the attrs stage 1 returned. */
+export async function quickAnalyzeCopyBackend(input: { image_url: string; attrs: QuickCopyAttrs }): Promise<ApiResult<QuickCopyResult>> {
+  return fetchJson("/api/seller/products/quick-analyze/copy", { method: "POST", body: input, timeoutMs: QUICK_AI_TIMEOUT_MS });
 }
 
 /** Quick analyze — vision extraction with NO DB insert. Draft goes to the product-add form for review. */
@@ -1397,8 +1430,10 @@ export async function quickAnalyzeProductBackend(input: {
   mrp?: number;
   name?: string;
   category_hint?: string;
+  /** "attrs" = return after the fast tagger; copy follows via quickAnalyzeCopyBackend. */
+  stage?: "full" | "attrs";
 }): Promise<ApiResult<QuickAnalyzeResult>> {
-  return fetchJson("/api/seller/products/quick-analyze", { method: "POST", body: input });
+  return fetchJson("/api/seller/products/quick-analyze", { method: "POST", body: input, timeoutMs: QUICK_AI_TIMEOUT_MS });
 }
 
 export async function updateSellerProductBackend(id: string, patch: Partial<CatalogProduct>): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
@@ -1424,28 +1459,29 @@ export async function setSellerProductVariantsBackend(
   return fetchJson(`/api/seller/products/${productId}/variants`, { method: "PUT", body: input });
 }
 
-/** A size chart: header labels, then one array of cell strings per size. */
+/** A size chart: header labels, then one array of cell strings per size, and optional image URLs. */
 export interface SizeGuideGrid {
   columns: string[];
   rows: string[][];
+  images?: string[];
 }
 
 /** Standard charts are public reads, so no auth header is required. */
 export async function getStandardSizeGuidesBackend(): Promise<
-  ApiResult<Array<SizeGuideGrid & { size_system: string }>>
+  ApiResult<Array<SizeGuideGrid & { size_system: string; images?: string[] }>>
 > {
   return fetchJson(`/api/size-guides/standard`, { requireAuth: false });
 }
 
 export async function getProductSizeGuideBackend(
   productId: string,
-): Promise<ApiResult<(SizeGuideGrid & { size_system: string | null }) | null>> {
+): Promise<ApiResult<(SizeGuideGrid & { size_system: string | null; images?: string[] }) | null>> {
   return fetchJson(`/api/size-guides/product/${productId}`, { requireAuth: false });
 }
 
 export async function setProductSizeGuideBackend(
   productId: string,
-  input: SizeGuideGrid & { size_system: string | null },
+  input: SizeGuideGrid & { size_system: string | null; images?: string[] },
 ): Promise<ApiResult<unknown>> {
   return fetchJson(`/api/size-guides/product/${productId}`, { method: "PUT", body: input });
 }
@@ -1454,8 +1490,14 @@ export async function deleteSellerProductBackend(id: string): Promise<ApiResult<
   return fetchJson(`/api/seller/products/${id}`, { method: "DELETE" });
 }
 
-export async function getSellerOrdersBackend(opts: { limit?: number; offset?: number; status?: string; search?: string } = {}): Promise<ApiResult<{ orders: Order[]; total?: number }>> {
-  return fetchJson("/api/seller/orders", { query: { ...opts } });
+export async function getSellerOrdersBackend(opts: { limit?: number; offset?: number; status?: string; search?: string; unprocessed?: boolean } = {}): Promise<ApiResult<{ orders: Order[]; total?: number }>> {
+  const { unprocessed, ...rest } = opts;
+  return fetchJson("/api/seller/orders", { query: { ...rest, unprocessed: unprocessed ? "1" : undefined } });
+}
+
+/** Seller acknowledges an order. Only sets a flag — order status is untouched. */
+export async function markSellerOrderProcessedBackend(id: string, processed = true): Promise<ApiResult<{ id: string; seller_processed_at: string | null }>> {
+  return fetchJson(`/api/seller/orders/${encodeURIComponent(id)}/processed`, { method: "POST", body: { processed } });
 }
 
 export type SellerSettlement = {
@@ -2178,6 +2220,21 @@ export async function approveStoreBackend(id: string, status: "approved" | "reje
   return fetchJson(`/api/admin/stores/${id}`, { method: "PATCH", body: { status } });
 }
 
+export async function updateAdminStoreBackend(id: string, patch: Record<string, unknown>): Promise<ApiResult<{ store: Store; payout?: any }>> {
+  return fetchJson(`/api/admin/stores/${id}`, { method: "PATCH", body: patch });
+}
+
+export async function createAdminProductBackend(data: Record<string, unknown>): Promise<ApiResult<{ product: CatalogProduct }>> {
+  return fetchJson("/api/admin/catalog/products", { method: "POST", body: data });
+}
+
+export async function updateAdminStockBackend(productId: string, quantity: number, variantId?: string): Promise<ApiResult<{ success: boolean; quantity: number }>> {
+  return fetchJson(`/api/admin/catalog/products/${productId}/inventory`, {
+    method: "PATCH",
+    body: { quantity, variant_id: variantId },
+  });
+}
+
 export async function getAdminStoreDetailBackend(id: string): Promise<ApiResult<{ store: Store; owner: UserProfile; products: CatalogProduct[] }>> {
   return fetchJson(`/api/admin/stores/${id}`);
 }
@@ -2426,7 +2483,8 @@ export async function getAdminBroadcastsBackend(): Promise<ApiResult<{ broadcast
 }
 
 export async function sendBroadcastBackend(b: Record<string, unknown>): Promise<ApiResult<{ broadcast: unknown }>> {
-  return fetchJson("/api/admin/notifications/broadcasts", { method: "POST", body: b });
+  // POST lives on the singular path; "/broadcasts" is the GET list.
+  return fetchJson("/api/admin/notifications/broadcast", { method: "POST", body: b });
 }
 
 export async function getAdminAuditLogBackend(limit = 50): Promise<ApiResult<{ entries: unknown[] }>> {
@@ -2609,7 +2667,7 @@ export async function appendEventsBackend(events: Array<Record<string, unknown>>
   const { readAnonSidCookie } = await import("@/lib/recommender/anon-session-client");
   const token = await readAnonSidCookie();
   const headers: Record<string, string> = {};
-  if (token) headers.Cookie = `luxe_anon_sid=${token}`;
+  if (token) headers.Cookie = `vestara_anon_sid=${token}`;
   return fetchJson("/api/recommender/track", { method: "POST", body: { events }, headers });
 }
 

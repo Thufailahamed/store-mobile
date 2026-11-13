@@ -15,6 +15,7 @@ export default defineConfig({
       "lib/storefront/**/*.test.ts",
       "lib/ai-studio/**/*.test.ts",
       "lib/payouts/**/*.test.ts",
+      "lib/app-update/**/*.test.ts",
     ],
     setupFiles: ["./vitest.setup.ts"],
   },

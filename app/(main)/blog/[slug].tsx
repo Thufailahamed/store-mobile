@@ -94,7 +94,7 @@ export default function BlogPostDetail() {
     try {
       await Share.share({
         title: post.title,
-        message: `${post.title}\n\nRead the full story on LUXE Journal.`,
+        message: `${post.title}\n\nRead the full story on VESTARA Journal.`,
       });
     } catch {
       // User dismissed share dialog
@@ -329,7 +329,7 @@ export default function BlogPostDetail() {
               end={{ x: 1, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
-            <Text style={styles.shareKicker}>THE LUXE JOURNAL</Text>
+            <Text style={styles.shareKicker}>THE VESTARA JOURNAL</Text>
             <Text style={styles.shareTitle}>Pass the story on.</Text>
             <Text style={styles.shareSubtitle}>
               Share it with fellow horology and fashion connoisseurs.

@@ -15,7 +15,7 @@ export function TrustStrip() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.line} />
-        <Text style={styles.kicker}>THE LUXE STANDARD</Text>
+        <Text style={styles.kicker}>THE VESTARA STANDARD</Text>
         <View style={styles.line} />
       </View>
       <View style={styles.wrap}>

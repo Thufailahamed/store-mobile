@@ -1,3 +1,4 @@
+import { AppState, Platform } from "react-native";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
@@ -14,44 +15,52 @@ if (!URL || !ANON_KEY) {
 }
 
 /**
- * Prefer SecureStore; fall back to AsyncStorage when SecureStore is
- * unavailable (Expo web, simulators with keychain issues).
+ * Robust persistent storage adapter.
+ * Uses AsyncStorage as primary to ensure unbounded payload storage
+ * (SecureStore is capped at 2048 bytes on iOS/Android, which causes token refresh
+ * or sessions with user metadata to fail and silently log the user out).
+ * SecureStore is mirrored for defense-in-depth and read as fallback for migration.
  */
 const storageAdapter = {
   getItem: async (key: string): Promise<string | null> => {
     try {
-      const secure = await SecureStore.getItemAsync(key);
-      if (secure) return secure;
+      const val = await AsyncStorage.getItem(key);
+      if (val) return val;
     } catch {
       // fall through
     }
     try {
-      return await AsyncStorage.getItem(key);
+      const secure = await SecureStore.getItemAsync(key);
+      if (secure) {
+        // Migrate to AsyncStorage so future reads are seamless and never truncated
+        await AsyncStorage.setItem(key, secure).catch(() => {});
+        return secure;
+      }
     } catch {
-      return null;
+      // fall through
     }
+    return null;
   },
   setItem: async (key: string, value: string): Promise<void> => {
     try {
-      await SecureStore.setItemAsync(key, value);
-      return;
-    } catch {
-      // fall through
-    }
-    try {
       await AsyncStorage.setItem(key, value);
     } catch (err) {
-      console.warn("[supabase] failed to persist session:", err);
+      console.warn("[supabase] failed to persist session to AsyncStorage:", err);
+    }
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch {
+      // SecureStore may fail if value exceeds 2048 bytes; AsyncStorage already holds the valid session
     }
   },
   removeItem: async (key: string): Promise<void> => {
     try {
-      await SecureStore.deleteItemAsync(key);
+      await AsyncStorage.removeItem(key);
     } catch {
       // fall through
     }
     try {
-      await AsyncStorage.removeItem(key);
+      await SecureStore.deleteItemAsync(key);
     } catch {
       // fall through
     }
@@ -69,6 +78,30 @@ export const supabase = createClient(URL, ANON_KEY, {
     flowType: "pkce",
   },
 });
+
+/**
+ * Auto-refresh token management based on AppState.
+ * When the app returns from background to active foreground, resume auto-refresh
+ * and refresh the token immediately if it expired or is close to expiry while backgrounded.
+ */
+if (Platform.OS !== "web") {
+  AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      supabase.auth.startAutoRefresh();
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+          const now = Date.now();
+          if (expiresAt > 0 && expiresAt - now < 5 * 60 * 1000) {
+            void refreshSessionOnce();
+          }
+        }
+      }).catch(() => {});
+    } else {
+      supabase.auth.stopAutoRefresh();
+    }
+  });
+}
 
 /**
  * Single-flight refresh.

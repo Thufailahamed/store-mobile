@@ -84,7 +84,7 @@ export function OrderSummary({
           accent={shippingFee === 0 ? theme.olive[600] : undefined}
           italic={shippingFee === 0}
         />
-        <Row label="Platform fee" value={formatPrice(tax)} muted />
+        <Row label="Tax and fees" value={formatPrice(tax)} muted />
       </View>
 
       <View

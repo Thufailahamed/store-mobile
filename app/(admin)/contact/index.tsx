@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Linking, Alert } from "react-native";
+import { View, Text, FlatList, Pressable, RefreshControl, StyleSheet, Linking } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { getAdminContactSubmissions } from "@/lib/api";
 import { Card, EmptyState, Badge, Skeleton } from "@/components/ui";
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 function rel(s: string) {
   const d = new Date(s).getTime();
@@ -55,7 +56,7 @@ export default function AdminContact() {
         refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} />}
         ListEmptyComponent={q.isLoading ? <Skeleton height={80} /> : <EmptyState icon="mail-outline" title="No submissions" />}
         renderItem={({ item, index }: any) => (
-          <Pressable onPress={() => Alert.alert("Reply", `Open email to ${item.email}?`, [{ text: "Cancel" }, { text: "Open", onPress: () => Linking.openURL(`mailto:${item.email}?subject=Re: ${item.subject}`) }])}>
+          <Pressable onPress={() => themedAlert("Reply", `Open email to ${item.email}?`, [{ text: "Cancel" }, { text: "Open", onPress: () => Linking.openURL(`mailto:${item.email}?subject=Re: ${item.subject}`) }])}>
             <Card style={styles.card}>
               <View style={styles.row}>
                 <Text style={styles.index}>{String(index + 1).padStart(2, "0")}</Text>

@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/lib/supabase/client";
 import { acceptDriverInvite, hasStoreApi } from "@/lib/api/delivery-company-api";
 import { colors, typography, radii } from "@/lib/theme/tokens";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function AcceptInviteScreen() {
   const params = useLocalSearchParams<{ token?: string }>();
@@ -43,7 +44,7 @@ export default function AcceptInviteScreen() {
   const accept = async () => {
     if (status === "accepting" || status === "ok") return; // double-tap guard
     if (!hasStoreApi()) {
-      Alert.alert("Not configured", "EXPO_PUBLIC_STORE_API_URL is required.");
+      themedAlert("Not configured", "EXPO_PUBLIC_STORE_API_URL is required.");
       return;
     }
     setStatus("accepting");

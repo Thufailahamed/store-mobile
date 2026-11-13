@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -23,6 +22,7 @@ import { runPaymentsLkCheckout } from "@/lib/paymentslk-checkout";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
 
 const AMOUNTS = [2500, 5000, 10000, 20000, 50000, 100000];
 const MIN_AMOUNT = AMOUNTS[0];
@@ -70,14 +70,14 @@ export default function GiftCardsScreen() {
       return;
     }
     if (!isAmountValid) {
-      Alert.alert(
+      themedAlert(
         "Invalid amount",
         `Enter an amount of at least ${formatPrice(MIN_AMOUNT)}.`
       );
       return;
     }
     if (!recipient.email.includes("@")) {
-      Alert.alert("Recipient Email Required", "Please enter a valid recipient email address.");
+      themedAlert("Recipient Email Required", "Please enter a valid recipient email address.");
       return;
     }
 
@@ -85,7 +85,7 @@ export default function GiftCardsScreen() {
     if (scheduled) {
       const hours = Number(scheduledHours);
       if (!Number.isFinite(hours) || hours <= 0) {
-        Alert.alert("Invalid Schedule", "Please enter scheduled hours greater than 0.");
+        themedAlert("Invalid Schedule", "Please enter scheduled hours greater than 0.");
         return;
       }
       scheduled_for = new Date(Date.now() + hours * 3_600_000).toISOString();
@@ -103,7 +103,7 @@ export default function GiftCardsScreen() {
       });
 
       if (!res.ok) {
-        Alert.alert("Payment Initiation Failed", res.error);
+        themedAlert("Payment Initiation Failed", res.error);
         return;
       }
 
@@ -180,7 +180,7 @@ export default function GiftCardsScreen() {
               Send a <Text style={styles.pageTitleAccent}>gift.</Text>
             </Text>
             <Text style={styles.pageSub}>
-              Store credit for someone special — valid across every boutique on LUXE.
+              Store credit for someone special — valid across every boutique on VESTARA.
             </Text>
           </View>
 
@@ -216,7 +216,7 @@ export default function GiftCardsScreen() {
 
               <View style={styles.previewTop}>
                 <View>
-                  <Text style={styles.previewWordmark}>LUXE</Text>
+                  <Text style={styles.previewWordmark}>VESTARA</Text>
                   <Text style={styles.previewTag}>Gift card · Live preview</Text>
                 </View>
                 <LinearGradient

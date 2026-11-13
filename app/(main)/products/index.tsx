@@ -329,7 +329,7 @@ function ProductsListHeader({
         </Display>
         {!hasActiveContext ? (
           <Body muted size="sm" style={styles.heroSub}>
-            The full collection, from every atelier on LUXE.
+            The full collection, from every atelier on VESTARA.
           </Body>
         ) : null}
       </View>

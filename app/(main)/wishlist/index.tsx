@@ -173,7 +173,7 @@ export default function WishlistScreen() {
     }
     const url = shareUrl(res.data.link.token);
     try {
-      await Share.share({ message: `My LUXE wishlist: ${url}`, url });
+      await Share.share({ message: `My VESTARA wishlist: ${url}`, url });
     } catch {
       toast("Could not open share sheet", "error");
     }

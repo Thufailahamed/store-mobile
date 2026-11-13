@@ -70,6 +70,16 @@ export const ORDER_TONE: Record<OrderStatus, Tone> = {
     italic: "prepared.",
     copy: "Your pieces are being authenticated and packed for dispatch.",
   },
+  picked_up: {
+    label: "Picked up",
+    icon: "archive-outline",
+    accent: LUX.lime,
+    chipBg: "rgba(83,94,44,0.10)",
+    chipFg: "#353c1f",
+    lead: "Parcel",
+    italic: "collected.",
+    copy: "The courier has collected your parcel from the store.",
+  },
   shipped: {
     label: "In transit",
     icon: "paper-plane-outline",

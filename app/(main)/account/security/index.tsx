@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -35,6 +34,7 @@ import {
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface DeviceInfo {
   os: string;
@@ -314,7 +314,7 @@ export default function SecurityScreen() {
   };
 
   const signOutAll = () => {
-    Alert.alert(
+    themedAlert(
       "Sign out everywhere",
       "End every active session on all devices, including this one.",
       [
@@ -343,7 +343,7 @@ export default function SecurityScreen() {
       return [
         {
           id: "this",
-          label: `${device.os} · LUXE Mobile`,
+          label: `${device.os} · VESTARA Mobile`,
           meta: `${device.osVersion} · Primary device`,
           current: true,
           icon: "phone-portrait-outline" as const,

@@ -160,7 +160,32 @@ function toResult<T>(status: number, json: Record<string, unknown> | unknown[]):
   return { ok: true, data: json as T };
 }
 
+// Successful writes to seller-owned data notify listeners (the seller read
+// cache in lib/api/index.ts) so cached lists never outlive a mutation.
+// Telemetry/tracking posts are excluded so they don't wipe the cache.
+const SELLER_WRITE_PATH =
+  /^\/?api\/(seller|orders|products|inventory|stores|returns|coupons|payouts|kyc|storefront|catalog\/stores)\b/;
+const mutationListeners = new Set<() => void>();
+export function onSellerDataMutation(cb: () => void): () => void {
+  mutationListeners.add(cb);
+  return () => mutationListeners.delete(cb);
+}
+function notifyMutation(path: string, opts: FetchOpts, ok: boolean) {
+  const method = (opts.method ?? "GET").toUpperCase();
+  if (!ok || method === "GET" || !SELLER_WRITE_PATH.test(path)) return;
+  mutationListeners.forEach((cb) => cb());
+}
+
 export async function fetchJson<T = unknown>(
+  path: string,
+  opts: FetchOpts = {},
+): Promise<ApiResult<T>> {
+  const result = await fetchJsonInner<T>(path, opts);
+  notifyMutation(path, opts, result.ok);
+  return result;
+}
+
+async function fetchJsonInner<T = unknown>(
   path: string,
   opts: FetchOpts = {},
 ): Promise<ApiResult<T>> {

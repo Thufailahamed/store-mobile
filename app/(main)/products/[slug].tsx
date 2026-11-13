@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share, Platform } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share, Platform, BackHandler, NativeSyntheticEvent, NativeScrollEvent } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { PaperBackground } from "@/components/layout";
 import { C } from "@/components/orders/parcel-track";
 import { SectionHeader } from "@/components/layout";
-import { ProductImageGallery } from "@/components/product/ProductImageGallery";
-import { ProductInfo } from "@/components/product/ProductInfo";
+import { ProductTopBar } from "@/components/product/pdp/ProductTopBar";
+import { ProductHeroGallery } from "@/components/product/pdp/ProductHeroGallery";
+import { ProductTitleBlock } from "@/components/product/pdp/ProductTitleBlock";
 import { VariantSelector } from "@/components/product/VariantSelector";
 import { SizeGuideModal } from "@/components/product/SizeGuideModal";
 import { TrustHighlights } from "@/components/product/TrustHighlights";
@@ -17,14 +17,14 @@ import { ProductStoreCard } from "@/components/product/ProductStoreCard";
 import { ProductDetails } from "@/components/product/ProductDetails";
 import { ProductQA } from "@/components/product/ProductQA";
 import { ProductCard } from "@/components/product/ProductCard";
+import { InfiniteRecommendedFeed } from "@/components/product/pdp/InfiniteRecommendedFeed";
 import { ReviewForm } from "@/components/product/ReviewForm";
-import { PriceAlertPill } from "@/components/product/PriceAlertPill";
 import { OverlapWarningBanner } from "@/components/wardrobe/OverlapWarningBanner";
 import { buildCartLineKeyFromItem } from "@/lib/cart-line-key";
 import { useCart, useWishlist, useUI } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
 import { useToast, Button, Skeleton } from "@/components/ui";
-import { Display, Body, Price, Label } from "@/components/ui/Typography";
+import { Display, Body, Label } from "@/components/ui/Typography";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -48,7 +48,31 @@ export default function ProductDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { slug, from } = useLocalSearchParams<{ slug: string; from?: string }>();
+  const { height: SCREEN_HEIGHT } = useWindowDimensions();
+  // Photo height that leaves the quick actions, brand, name and price visible
+  // above the Buy/Add bar without scrolling: top bar ≈ 60, bottom bar ≈ 62,
+  // pager ≈ 14, title block ≈ 150.
+  const heroMaxHeight =
+    SCREEN_HEIGHT - (insets.top + 60) - (Math.max(insets.bottom, 10) + 62) - 14 - 150;
+
+  // Tabs don't keep a cross-tab back stack, so a product opened from search
+  // would otherwise fall back to Home. Return to the (still-mounted) search
+  // tab, which keeps its query and results.
+  const goBack = useCallback(() => {
+    if (from === "search") router.navigate("/(main)/search" as never);
+    else if (router.canGoBack()) router.back();
+    else navigateHome(router);
+  }, [from, router]);
+
+  useEffect(() => {
+    if (from !== "search") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      goBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [from, goBack]);
   const { addItem, items: cartItems } = useCart();
   const { items: wishlistItems } = useWishlist();
   const toggleWishlist = useWishlistToggle();
@@ -73,6 +97,18 @@ export default function ProductDetailScreen() {
   const tracker = useTrackEvent();
 
   const scrollY = useRef(new Animated.Value(0)).current;
+  const feedLoadMoreRef = useRef<(() => void) | null>(null);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollY.setValue(e.nativeEvent.contentOffset.y);
+      const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+      if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 850) {
+        feedLoadMoreRef.current?.();
+      }
+    },
+    [scrollY],
+  );
 
   const fetchProduct = useCallback(async () => {
     if (!slug) return;
@@ -201,10 +237,16 @@ export default function ProductDetailScreen() {
   const handleShare = async () => {
     if (!product) return;
     try {
-      await Share.share({
-        message: `Check out ${product.name} on LUXE! Only ${formatPrice(unitPrice, product.currency || "LKR")}.`,
-        url: `luxe://product/${product.slug}`,
-      });
+      // Real https link: opens this page in the app when installed (App
+      // Links / Universal Links), otherwise the web page sends phones to the
+      // Play Store / App Store (`src=app`, see store ProductAppRedirect).
+      const web = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "").replace(/\/$/, "") || "https://synapstore.shop";
+      const link = `${web}/products/${encodeURIComponent(product.slug)}?src=app`;
+      const text = `Check out ${product.name} on VESTARA! Only ${formatPrice(unitPrice, product.currency || "LKR")}.`;
+      // Android ignores `url`, so the link goes in the message there.
+      await Share.share(
+        Platform.OS === "ios" ? { message: text, url: link } : { message: `${text}\n${link}` },
+      );
     } catch (error) {
       console.log("Error sharing:", error);
     }
@@ -221,18 +263,6 @@ export default function ProductDetailScreen() {
     () => Object.values(cartItems).reduce((sum, item) => sum + (item.is_unavailable ? 0 : item.quantity), 0),
     [cartItems]
   );
-
-  const headerBorder = scrollY.interpolate({
-    inputRange: [50, 150],
-    outputRange: ["transparent", "rgba(83, 94, 44, 0.15)"],
-    extrapolate: "clamp",
-  });
-
-  const headerTitleOpacity = scrollY.interpolate({
-    inputRange: [140, 200],
-    outputRange: [0, 1],
-    extrapolate: "clamp",
-  });
 
   if (loading) {
     return (
@@ -262,124 +292,36 @@ export default function ProductDetailScreen() {
   return (
     <>
     <View style={styles.root}>
-      <LinearGradient
-        pointerEvents="none"
-        colors={[C.glow, C.glowSoft, C.paper]}
-        locations={[0, 0.5, 1]}
-        style={styles.glow}
-      />
-      {/* Sticky Top Navigation Bar */}
-      <Animated.View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: insets.top + 8,
-            borderBottomColor: headerBorder,
-          },
-        ]}
-      >
-        {Platform.OS === "ios" ? (
-          <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
-        ) : null}
-        <View style={[StyleSheet.absoluteFill, styles.topBarTint]} pointerEvents="none" />
-        <TouchableOpacity
-          style={styles.topBtn}
-          onPress={() => {
-            if (router.canGoBack()) router.back();
-            else navigateHome(router);
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.light.foreground} />
-        </TouchableOpacity>
-
-        <Animated.View style={[styles.headerCenter, { opacity: headerTitleOpacity }]}>
-          <Display size="xs" style={styles.headerTitleText} numberOfLines={1} ellipsizeMode="tail">
-            {product.name}
-          </Display>
-          <Price size="xs" style={styles.headerPriceText}>
-            {formatPrice(unitPrice, product.currency)}
-          </Price>
-        </Animated.View>
-
-        <View style={styles.topRight}>
-          <TouchableOpacity
-            style={styles.topBtn}
-            onPress={handleShare}
-            activeOpacity={0.8}
-            accessibilityLabel="Share product"
-          >
-            <Ionicons name="share-outline" size={17} color={colors.light.foreground} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.topBtn}
-            onPress={() => {
-              if (product) {
-                tracker.wishlist(product, isWishlisted ? "remove" : "add");
-                toggleWishlist(product);
-              }
-            }}
-            activeOpacity={0.8}
-            accessibilityLabel="Wishlist"
-          >
-            <Ionicons
-              name={isWishlisted ? "heart" : "heart-outline"}
-              size={18}
-              color={isWishlisted ? colors.light.destructive : colors.light.foreground}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.topBtn, styles.cartBtn]}
-            onPress={() => router.push("/(main)/cart" as never)}
-            activeOpacity={0.8}
-            accessibilityLabel="Bag"
-          >
-            <Ionicons name="bag-outline" size={18} color={colors.light.foreground} />
-            {totalCartCount > 0 && (
-              <View style={styles.headerBadge}>
-                <Label style={styles.headerBadgeText}>
-                  {totalCartCount > 9 ? "9+" : totalCartCount}
-                </Label>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
+      <ProductTopBar topInset={insets.top} cartCount={totalCartCount} onBack={goBack} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
       >
         {/* Spacer for background header overlap */}
         <View style={{ height: 0 }} />
 
         {/* Image gallery */}
-        <ProductImageGallery
+        <ProductHeroGallery
+          maxHeight={heroMaxHeight}
           images={images}
-          mrp={product.mrp}
-          price={unitPrice}
+          rating={product.rating ?? 0}
+          reviewCount={product.total_reviews ?? 0}
         />
 
-        {/* Product info */}
-        <View style={styles.section}>
-          <ProductInfo
+        {/* Product info — sits tight under the photo pager */}
+        <View>
+          <ProductTitleBlock
             product={product}
             unitPrice={unitPrice}
+            isWishlisted={isWishlisted}
+            onToggleWishlist={() => {
+              tracker.wishlist(product, isWishlisted ? "remove" : "add");
+              toggleWishlist(product);
+            }}
+            onShare={handleShare}
           />
-          {!soldOut && (
-            <View style={styles.priceAlertWrap}>
-              <PriceAlertPill
-                productId={product.id}
-                variantId={selectedVariant?.id ?? null}
-                currency={product.currency || "LKR"}
-                currentPrice={unitPrice}
-              />
-            </View>
-          )}
         </View>
 
         {/* Variant selectors */}
@@ -552,6 +494,15 @@ export default function ProductDetailScreen() {
           </View>
         )}
 
+        {/* ── Myntra-style Infinite Recommendations Feed ─────────────────── */}
+        <InfiniteRecommendedFeed
+          currentProduct={product}
+          userId={user?.id}
+          onRegisterLoadMore={(fn) => {
+            feedLoadMoreRef.current = fn;
+          }}
+        />
+
         {/* Pairs well with — co-occurrence / complementary. */}
         {pairsWellWith.length > 0 && (
           <View style={styles.relatedSection}>
@@ -602,63 +553,31 @@ export default function ProductDetailScreen() {
         )}
 
         {/* Bottom spacer for sticky bar & insets */}
-        <View style={{ height: Math.max(insets.bottom, 12) + 150 }} />
+        <View style={{ height: Math.max(insets.bottom, 10) + 90 }} />
       </ScrollView>
 
-      {/* Fixed bottom purchase bar */}
-      <View style={[styles.stickyBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {Platform.OS === "ios" ? (
-          <BlurView intensity={70} tint="light" style={StyleSheet.absoluteFill} />
-        ) : null}
-        <View style={[StyleSheet.absoluteFill, styles.stickyTint]} pointerEvents="none" />
-        <View style={styles.stickySummary}>
-          <View style={styles.stickySummaryLeft}>
-            <Label style={styles.stickyEyebrow}>YOUR SELECTION</Label>
-            <Body size="xs" numberOfLines={1} style={styles.stickyVariant}>
-              {[selectedSize && `Size ${selectedSize}`, selectedColor, quantity > 1 && `Qty ${quantity}`]
-                .filter(Boolean)
-                .join("  ·  ") || "Select your options"}
-            </Body>
-          </View>
-          <View style={styles.stickySummaryRight}>
-            <Label style={styles.stickyEyebrow}>TOTAL</Label>
-            <Price size="sm" style={styles.stickyTotal}>
-              {formatPrice(unitPrice * quantity, product.currency)}
-            </Price>
-          </View>
-        </View>
-        <View style={styles.stickyBottomInner}>
-          <TouchableOpacity
-            onPress={handleAddToCart}
-            disabled={!isInCart && soldOut}
-            style={[styles.stickyBtn, styles.stickyAddBtn, !isInCart && soldOut && styles.stickyBtnDisabled]}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-          >
-            <View style={styles.stickyAddIcon}>
-              <Ionicons
-                name={isInCart ? "bag-check-outline" : "bag-add-outline"}
-                size={16}
-                color={C.text}
-              />
-            </View>
-            <Body style={styles.stickyAddText}>
-              {isInCart ? "Go to basket" : soldOut ? "Sold out" : "Add to basket"}
-            </Body>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleBuyNow}
-            disabled={soldOut}
-            style={[styles.stickyBtn, styles.stickyBuyBtn, soldOut && styles.stickyBtnDisabled]}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Body style={styles.stickyBuyText}>Buy now</Body>
-            <View style={styles.stickyBuyArrow}>
-              <Ionicons name="arrow-forward" size={15} color={C.ink} />
-            </View>
-          </TouchableOpacity>
-        </View>
+      {/* Fixed bottom purchase bar — Buy Now (outline) · Add to Bag (filled) */}
+      <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        <TouchableOpacity
+          onPress={handleBuyNow}
+          disabled={soldOut}
+          style={[styles.buyBtn, styles.buyNowBtn, soldOut && styles.stickyBtnDisabled]}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+        >
+          <Ionicons name="flash-outline" size={19} color={C.ink} />
+          <Body style={styles.buyNowText}>Buy Now</Body>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleAddToCart}
+          disabled={!isInCart && soldOut}
+          style={[styles.buyBtn, styles.addBagBtn, !isInCart && soldOut && styles.stickyBtnDisabled]}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
+          <Ionicons name={isInCart ? "bag-check-outline" : "bag-outline"} size={19} color={C.ink} />
+          <Body style={styles.addBagText}>{isInCart ? "Go to Bag" : soldOut ? "Sold out" : "Add to Bag"}</Body>
+        </TouchableOpacity>
       </View>
     </View>
 
@@ -680,6 +599,8 @@ export default function ProductDetailScreen() {
       category={product.category?.name}
       brandId={product.brand_id}
       categoryId={product.category_id}
+      productId={product.id}
+      productName={product.name}
     />
     </>
   );
@@ -688,8 +609,35 @@ export default function ProductDetailScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: C.paper,
+    backgroundColor: "#ffffff",
   },
+  buyBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    gap: 12,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#ffffff",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#e6e4de",
+  },
+  buyBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  // Lime system colour: dark ink text on lime keeps contrast readable.
+  buyNowBtn: { borderWidth: 2, borderColor: C.lime, backgroundColor: "#f6fae9" },
+  addBagBtn: { backgroundColor: C.lime },
+  buyNowText: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.ink },
+  addBagText: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.ink },
   glow: {
     position: "absolute",
     top: 0,

@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, Switch, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Text, Switch, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { updateSellerStore } from "@/lib/api";
 import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Store } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const WINDOWS = [7, 14, 30, 45, 60];
 
@@ -22,7 +23,7 @@ export function ReturnsSettingsCard({ store, onSaved }: { store: Store; onSaved:
     const res = await updateSellerStore(store.id, patch);
     setSaving(false);
     if (!res.ok) {
-      Alert.alert("Couldn’t save returns policy", res.error);
+      themedAlert("Couldn’t save returns policy", res.error);
       return;
     }
     onSaved({ ...store, ...res.data, ...patch });

@@ -43,7 +43,7 @@ export default function SharedWishlistScreen() {
         setError(res.error ?? "This wishlist is unavailable");
         return;
       }
-      setTitle(res.data.link.title || "A LUXE wishlist");
+      setTitle(res.data.link.title || "A VESTARA wishlist");
       setItems(res.data.items ?? []);
     })();
     return () => {

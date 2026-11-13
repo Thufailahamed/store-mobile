@@ -22,7 +22,7 @@ export default function BrandStorefront() {
   });
 
   const slug = (q.data as { slug?: string } | null)?.slug;
-  const url = slug ? `https://luxe.example/brands/${slug}` : null;
+  const url = slug ? `https://vestara.example/brands/${slug}` : null;
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>

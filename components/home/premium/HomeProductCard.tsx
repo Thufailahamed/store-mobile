@@ -11,6 +11,8 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
+import { useQuery } from "@tanstack/react-query";
+import { loadProductSeller } from "@/lib/api/product-seller-loader";
 
 export const HOME_PRODUCT_CARD_WIDTH = 148;
 export const HOME_PRODUCT_CARD_WIDTH_LARGE = 178;
@@ -43,12 +45,21 @@ function HomeProductCardInner({
   const toggleWishlist = useWishlistToggle();
   const tracker = useTrackEvent();
   const primaryImage = product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-  const onSale = product.mrp > product.price;
-  const storeOrBrandName = product.store?.name || product.brand?.name;
-  const discount =
-    product.mrp > product.price
-      ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
-      : 0;
+  // Flat feed/RPC rows carry no store/brand; fetch them (batched) so every
+  // card shows its seller line.
+  const needsSeller = !product.store?.name && !product.brand?.name && !!product.id;
+  const sellerQuery = useQuery({
+    queryKey: ["product-seller", product.id],
+    queryFn: () => loadProductSeller(product.id),
+    enabled: needsSeller,
+    staleTime: 10 * 60_000,
+  });
+  const store = product.store ?? sellerQuery.data?.store ?? undefined;
+  const brand = product.brand ?? sellerQuery.data?.brand ?? undefined;
+  const mrp = product.mrp > 0 ? product.mrp : sellerQuery.data?.mrp ?? 0;
+  const onSale = mrp > product.price;
+  const storeOrBrandName = store?.name || brand?.name;
+  const discount = onSale ? Math.round(((mrp - product.price) / mrp) * 100) : 0;
   const isLarge = size === "large";
   const cardWidth = isLarge ? HOME_PRODUCT_CARD_WIDTH_LARGE : HOME_PRODUCT_CARD_WIDTH;
   const imageWidth = cardWidth - CARD_PAD * 2;
@@ -109,9 +120,9 @@ function HomeProductCardInner({
 
       {storeOrBrandName ? (
         <View style={styles.storeRow}>
-          {product.store?.logo_url || product.brand?.logo_url ? (
+          {store?.logo_url || brand?.logo_url ? (
             <Image
-              source={{ uri: product.store?.logo_url || product.brand?.logo_url }}
+              source={{ uri: store?.logo_url || brand?.logo_url }}
               style={styles.storeLogo}
               contentFit="cover"
               cachePolicy="memory-disk"
@@ -122,8 +133,8 @@ function HomeProductCardInner({
               <Text style={styles.storeInitial}>{storeOrBrandName.charAt(0)}</Text>
             </View>
           )}
-          {product.brand?.slug ? (
-            <Link href={`/(main)/brands/${product.brand.slug}` as never} asChild>
+          {brand?.slug ? (
+            <Link href={`/(main)/brands/${brand.slug}` as never} asChild>
               <TouchableOpacity onPress={(e) => e.stopPropagation()} hitSlop={4} style={{ flex: 1 }}>
                 <Text style={styles.storeName} numberOfLines={1}>
                   {storeOrBrandName}
@@ -148,7 +159,11 @@ function HomeProductCardInner({
         <Text style={[styles.sellingPrice, isLarge && styles.sellingPriceLarge]}>
           {product.price ? formatPrice(product.price) : "Price on request"}
         </Text>
-        {discount > 0 ? <Text style={styles.originalPrice}>{formatPrice(product.mrp)}</Text> : null}
+        {discount > 0 ? (
+          <Text style={styles.originalPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+            {formatPrice(mrp)}
+          </Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
@@ -287,7 +302,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    flexWrap: "wrap",
     paddingHorizontal: 3,
   },
   sellingPrice: {
@@ -299,6 +313,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   originalPrice: {
+    flexShrink: 1,
     fontFamily: fontFamilies.sans.regular,
     fontSize: 11,
     textDecorationLine: "line-through",

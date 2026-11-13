@@ -6,6 +6,8 @@ import { Ionicons } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui";
 import { getReturnByGroupId } from "@/lib/api";
 import { listReturnPickupsBackend } from "@/lib/api/backend";
+import { getReturnCourier, type CourierShipment } from "@/lib/api/courier-api";
+import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
 import { useAuth } from "@/lib/supabase/auth";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { C, DottedRail, ParcelArt, routeStyles, shortDate } from "@/components/orders/parcel-track";
@@ -18,11 +20,36 @@ const PICKUP_COPY: Record<string, { label: string; copy: string; icon: McIcon; s
   out_for_pickup: { label: "Rider on the way", copy: "Keep the items packed and ready at the door.", icon: "moped", stage: 1 },
   picked_up: { label: "Items collected", copy: "The rider has your return. Refund processing follows inspection.", icon: "package-variant-closed", stage: 2 },
   completed: { label: "Pickup completed", copy: "This return pickup is finished.", icon: "check-all", stage: 3 },
+  // Courier return parcel (Domex) states, mapped from the shipment status.
+  courier_scheduled: { label: "Courier pickup booked", copy: "The courier will collect your parcel from your delivery address. Keep it packed and ready.", icon: "calendar-clock", stage: 0 },
+  courier_picked_up: { label: "Return collected", copy: "The courier has your return and is taking it to the seller.", icon: "package-variant-closed", stage: 1 },
+  courier_in_transit: { label: "On its way to the seller", copy: "Your return is moving through the courier network.", icon: "truck-delivery-outline", stage: 2 },
+  courier_delivered: { label: "Seller received your return", copy: "The seller will inspect it and process your refund.", icon: "check-all", stage: 3 },
   failed: { label: "Pickup failed", copy: "We could not collect the parcel. Contact support to reschedule.", icon: "alert-circle-outline", stage: 1 },
   cancelled: { label: "Pickup cancelled", copy: "This pickup was cancelled.", icon: "close-circle-outline", stage: 0 },
 };
 
 const PICKUP_ICONS: McIcon[] = ["calendar-clock", "moped", "package-variant-closed", "check-all"];
+
+/** Courier return parcel status -> pickup screen state. */
+function courierPickupStatus(status: CourierShipment["status"]): string {
+  switch (status) {
+    case "picked_up":
+      return "courier_picked_up";
+    case "in_transit":
+    case "out_for_delivery":
+      return "courier_in_transit";
+    case "delivered":
+      return "courier_delivered";
+    case "failed_delivery":
+    case "returned_to_origin":
+      return "failed";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "courier_scheduled";
+  }
+}
 
 export default function ReturnPickupScreen() {
   const router = useRouter();
@@ -31,6 +58,7 @@ export default function ReturnPickupScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [returnNumber, setReturnNumber] = useState<string | null>(null);
+  const [courier, setCourier] = useState<CourierShipment | null>(null);
   const [pickups, setPickups] = useState<Array<{
     id: string;
     return_id: string;
@@ -43,10 +71,12 @@ export default function ReturnPickupScreen() {
     if (!user?.id || !id) return;
     setLoading(true);
     setError(null);
-    const [retRes, pickupRes] = await Promise.all([
+    const [retRes, pickupRes, courierRes] = await Promise.all([
       getReturnByGroupId(user.id, id),
       listReturnPickupsBackend(),
+      isExternalCourierEnabledMobile() ? getReturnCourier(id) : Promise.resolve(null),
     ]);
+    setCourier(courierRes?.ok ? courierRes.data.shipment : null);
     if (!retRes.ok) {
       setError(retRes.error ?? "Could not load return");
       setLoading(false);
@@ -58,7 +88,7 @@ export default function ReturnPickupScreen() {
     setPickups(
       all.filter((p) => p.return_id === id || itemIds.has(p.return_id)),
     );
-    if (!pickupRes.ok && all.length === 0) setError(pickupRes.error);
+    if (!pickupRes.ok && all.length === 0 && !(courierRes?.ok && courierRes.data.shipment)) setError(pickupRes.error);
     setLoading(false);
   }, [user?.id, id]);
 
@@ -66,9 +96,21 @@ export default function ReturnPickupScreen() {
     void load();
   }, [load]);
 
-  const active = pickups.find((p) => !["completed", "cancelled", "failed"].includes(p.status)) ?? pickups[0];
+  // A courier return parcel (Domex) replaces the internal rider pickup.
+  const courierActive = courier
+    ? {
+        id: courier.id,
+        return_id: id ?? "",
+        scheduled_for: null,
+        status: courierPickupStatus(courier.status),
+        address: null,
+      }
+    : null;
+  const active =
+    courierActive ?? pickups.find((p) => !["completed", "cancelled", "failed"].includes(p.status)) ?? pickups[0];
   const tone = active ? PICKUP_COPY[active.status] ?? PICKUP_COPY.scheduled : null;
   const closed = active?.status === "failed" || active?.status === "cancelled";
+  const finished = active?.status === "completed" || active?.status === "courier_delivered";
 
   const openSupport = () =>
     router.push({
@@ -102,8 +144,9 @@ export default function ReturnPickupScreen() {
           </View>
           <Text style={styles.emptyTitle}>Pickup not scheduled yet</Text>
           <Text style={styles.emptySub}>
-            Once a rider is assigned you’ll see the window here. You can drop off with the prepaid label in the
-            meantime.
+            {isExternalCourierEnabledMobile()
+              ? "Once the seller approves your return, our courier partner is booked to collect it from your delivery address. You’ll see the tracking number here."
+              : "Once a rider is assigned you’ll see the window here. You can drop off with the prepaid label in the meantime."}
           </Text>
           <TouchableOpacity
             style={styles.darkBtn}
@@ -134,22 +177,34 @@ export default function ReturnPickupScreen() {
               <DottedRail
                 stage={tone.stage}
                 icons={PICKUP_ICONS}
-                finished={active.status === "completed"}
+                finished={finished}
                 closed={closed}
                 label={closed ? (active.status === "failed" ? "Failed" : "Cancelled") : tone.stage === 1 ? "On the way" : null}
               />
               <View style={routeStyles.route}>
-                <View style={routeStyles.routeCol}>
-                  <Text style={routeStyles.routeLabel}>WINDOW</Text>
-                  <Text style={routeStyles.routeValue} numberOfLines={1}>
-                    {active.scheduled_for ? shortDate(active.scheduled_for) : "To be confirmed"}
-                  </Text>
-                  <Text style={routeStyles.routeSub} numberOfLines={1}>
-                    {active.scheduled_for
-                      ? new Date(active.scheduled_for).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-                      : "We’ll notify you"}
-                  </Text>
-                </View>
+                {courier ? (
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>{courier.provider_name.toUpperCase()}</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1} selectable>
+                      {courier.external_tracking_id ?? "—"}
+                    </Text>
+                    <Text style={routeStyles.routeSub} numberOfLines={1}>
+                      {courier.last_event_at ? `Updated ${shortDate(courier.last_event_at)}` : "Tracking no."}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={routeStyles.routeCol}>
+                    <Text style={routeStyles.routeLabel}>WINDOW</Text>
+                    <Text style={routeStyles.routeValue} numberOfLines={1}>
+                      {active.scheduled_for ? shortDate(active.scheduled_for) : "To be confirmed"}
+                    </Text>
+                    <Text style={routeStyles.routeSub} numberOfLines={1}>
+                      {active.scheduled_for
+                        ? new Date(active.scheduled_for).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+                        : "We’ll notify you"}
+                    </Text>
+                  </View>
+                )}
                 <View style={routeStyles.routeCol}>
                   <Text style={routeStyles.routeLabel}>COLLECT FROM</Text>
                   <Text style={routeStyles.routeValue} numberOfLines={2}>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet, Switch, Alert } from "react-native";
+import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet, Switch } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Modal } from "@/components/ui/Modal";
@@ -11,6 +11,7 @@ import { AdminMasthead, StatBand, Segmented, SectionLabel, premiumCard, RUST } f
 import type { Banner } from "@/lib/types";
 import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 function rel(s?: string) {
   if (!s) return null;
@@ -58,7 +59,7 @@ export default function AdminBanners() {
   }, [visible]);
 
   const confirmDelete = (b: BannerRow) =>
-    Alert.alert("Delete banner?", `“${b.title}” will be removed from the storefront. This can't be undone.`, [
+    themedAlert("Delete banner?", `“${b.title}” will be removed from the storefront. This can't be undone.`, [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => remove.mutate(b.id) },
     ]);

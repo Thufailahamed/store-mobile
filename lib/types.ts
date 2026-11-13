@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  LUXE Mobile — shared types (mirrors web/src/types/index.ts)       */
+/*  VESTARA Mobile — shared types (mirrors web/src/types/index.ts)       */
 /* ------------------------------------------------------------------ */
 
 export type UserRole = "customer" | "store_owner" | "brand_owner" | "admin" | "influencer" | "delivery" | "delivery_company";
@@ -7,7 +7,7 @@ export type ApprovalStatus = "draft" | "pending" | "approved" | "rejected" | "ac
 export type ProductStatus = "draft" | "pending" | "active" | "archived" | "rejected";
 export type ProductType = "simple" | "variable";
 export type Gender = "men" | "women" | "kids" | "unisex";
-export type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded" | "failed_attempt";
+export type OrderStatus = "pending" | "confirmed" | "processing" | "picked_up" | "shipped" | "out_for_delivery" | "delivered" | "cancelled" | "returned" | "refunded" | "failed_attempt";
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "partially_refunded";
 export type PaymentMethod = "stripe" | "paypal" | "cod" | "wallet" | "gift_card" | "koko" | "paymentslk";
 export type CouponType = "percentage" | "fixed" | "free_shipping" | "bxgy";
@@ -61,11 +61,14 @@ export interface Store {
   account_name?: string | null;
   account_number_last4?: string | null;
   is_online?: boolean;
+  is_suspended?: boolean;
   contact_phone?: string | null;
   contact_email?: string | null;
   /** Courier pickup point (never shown to shoppers). */
   delivery_address_line1?: string | null;
   delivery_address_line2?: string | null;
+  /** Pickup contact the courier calls. Null = owner's login phone. */
+  delivery_phone?: string | null;
   delivery_city?: string | null;
   delivery_state?: string | null;
   delivery_postal_code?: string | null;
@@ -252,6 +255,11 @@ export interface Order {
   delivered_at?: string | null;
   placed_at: string;
   updated_at?: string | null;
+  /** Seller acknowledged the order (orders.metadata.seller_processed_at). Status is unaffected. */
+  seller_processed_at?: string | null;
+  courier_status?: string | null;
+  courier_shipment_id?: string | null;
+  metadata?: Record<string, unknown> | null;
   items?: OrderItem[];
   address?: Address;
   route_id?: string | null;

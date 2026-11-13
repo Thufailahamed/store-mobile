@@ -180,9 +180,21 @@ const ACCOUNT_GROUPS: AccountGroup[] = [
       },
       {
         icon: "headset-outline",
-        label: "Luxe Concierge",
+        label: "Vestara Concierge",
         sub: "Connect with personal care",
         route: "/(main)/contact",
+      },
+      {
+        icon: "lock-closed-outline",
+        label: "Privacy Policy",
+        sub: "How we handle your data",
+        route: "/legal/privacy",
+      },
+      {
+        icon: "document-text-outline",
+        label: "Terms of Service",
+        sub: "The rules of the marketplace",
+        route: "/legal/terms",
       },
     ],
   },
@@ -606,7 +618,7 @@ export default function AccountScreen() {
                       </TouchableOpacity>
                     </View>
                     <Text style={styles.recentBrand} numberOfLines={1}>
-                      {(p.brand?.name || p.store?.name || "LUXE").toUpperCase()}
+                      {(p.brand?.name || p.store?.name || "VESTARA").toUpperCase()}
                     </Text>
                     <Text style={styles.recentName} numberOfLines={1}>
                       {p.name.split(" - ")[0] || p.name}
@@ -731,7 +743,7 @@ export default function AccountScreen() {
           <View style={styles.footerMark}>
             <MaterialCommunityIcons name="hanger" size={16} color={C.goldSoft} />
           </View>
-          <Text style={styles.footerWord}>LUXE</Text>
+          <Text style={styles.footerWord}>VESTARA</Text>
           <Text style={styles.footerCaption}>Curated boutiques · v1.0</Text>
         </View>
       </AnimatedScrollView>

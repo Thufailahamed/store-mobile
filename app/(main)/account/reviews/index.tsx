@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -29,6 +28,7 @@ import {
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 type Tab = "all" | "published";
 
@@ -153,7 +153,7 @@ export default function ReviewsScreen() {
 
   const removeReview = async (id: string, productName?: string) => {
     if (!user?.id) return;
-    Alert.alert(
+    themedAlert(
       "Delete review",
       `Delete your review of "${productName ?? "this piece"}"?`,
       [

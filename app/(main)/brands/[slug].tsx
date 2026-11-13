@@ -100,7 +100,7 @@ export default function BrandDetailScreen() {
   const onShare = useCallback(async () => {
     if (!brand) return;
     try {
-      await Share.share({ message: `Check out ${brand.name} on LUXE` });
+      await Share.share({ message: `Check out ${brand.name} on VESTARA` });
     } catch {
       // ignore user-cancel
     }

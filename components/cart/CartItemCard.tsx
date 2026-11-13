@@ -107,7 +107,7 @@ export function CartItemCard({
     product?.images?.[0]?.url ||
     item.image;
 
-  const storeName = product?.store?.name || "Luxe Boutique";
+  const storeName = product?.store?.name || "Vestara Boutique";
   const isFlashSale = discount >= 30;
   const lowStock = availableStock > 0 && availableStock <= 10;
   const socialProof =

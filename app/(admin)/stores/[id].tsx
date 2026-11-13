@@ -5,17 +5,21 @@ import {
   ScrollView,
   StyleSheet,
   Pressable,
-  Alert,
   RefreshControl,
   Linking,
+  TextInput,
+  Switch,
+  TouchableOpacity,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@/components/ui/Icon";
+import { Modal } from "@/components/ui/Modal";
 import {
   getAdminStoreDetail,
   approveStore,
   updateStoreStatus,
+  updateAdminStore,
   reviewComplianceDocument,
 } from "@/lib/api";
 import { REQUIRED_COMPLIANCE_DOC_TYPES, isComplianceDocumentApproved } from "@/lib/seller-access";
@@ -24,6 +28,7 @@ import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { getComplianceDocumentSignedUrl } from "@/lib/upload";
+import { themedAlert } from "@/lib/themed-alert";
 
 function rel(s: string) {
   const d = new Date(s).getTime();
@@ -71,11 +76,11 @@ export default function AdminStoreDetail() {
     mutationFn: () => approveStore(id!, "approved"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Cannot approve", res.error);
+        themedAlert("Cannot approve", res.error);
         return;
       }
       invalidate();
-      Alert.alert("Approved", "Store is now active.");
+      themedAlert("Approved", "Store is now active.");
     },
   });
 
@@ -83,7 +88,7 @@ export default function AdminStoreDetail() {
     mutationFn: () => approveStore(id!, "rejected"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Failed", res.error);
+        themedAlert("Failed", res.error);
         return;
       }
       invalidate();
@@ -94,11 +99,11 @@ export default function AdminStoreDetail() {
     mutationFn: () => updateStoreStatus(id!, "suspended"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Failed", res.error);
+        themedAlert("Failed", res.error);
         return;
       }
       invalidate();
-      Alert.alert("Suspended", "Seller tools are now locked.");
+      themedAlert("Suspended", "Seller tools are now locked.");
     },
   });
 
@@ -106,11 +111,11 @@ export default function AdminStoreDetail() {
     mutationFn: () => updateStoreStatus(id!, "approved"),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Cannot reactivate", res.error);
+        themedAlert("Cannot reactivate", res.error);
         return;
       }
       invalidate();
-      Alert.alert("Reactivated", "Store is active again.");
+      themedAlert("Reactivated", "Store is active again.");
     },
   });
 
@@ -121,7 +126,7 @@ export default function AdminStoreDetail() {
     onSuccess: (res) => {
       setReviewingDocId(null);
       if (!res.ok) {
-        Alert.alert("Review failed", res.error);
+        themedAlert("Review failed", res.error);
         return;
       }
       invalidate();
@@ -130,7 +135,7 @@ export default function AdminStoreDetail() {
   });
 
   const confirm = (title: string, message: string, onConfirm: () => void) => {
-    Alert.alert(title, message, [
+    themedAlert(title, message, [
       { text: "Cancel", style: "cancel" },
       { text: "Confirm", onPress: onConfirm },
     ]);
@@ -140,6 +145,79 @@ export default function AdminStoreDetail() {
   const payout = q.data?.payout ?? null;
   const documents = q.data?.documents ?? [];
   const complianceGaps = q.data?.complianceGaps ?? [];
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [formName, setFormName] = useState("");
+  const [formStatus, setFormStatus] = useState("approved");
+  const [formIsVerified, setFormIsVerified] = useState(false);
+  const [formEmail, setFormEmail] = useState("");
+  const [formPhone, setFormPhone] = useState("");
+  const [formLegalName, setFormLegalName] = useState("");
+  const [formTaxId, setFormTaxId] = useState("");
+  const [formPickupLine1, setFormPickupLine1] = useState("");
+  const [formPickupLine2, setFormPickupLine2] = useState("");
+  const [formPickupCity, setFormPickupCity] = useState("");
+  const [formPickupState, setFormPickupState] = useState("");
+  const [formPickupPostal, setFormPickupPostal] = useState("");
+  const [formBankName, setFormBankName] = useState("");
+  const [formAccountName, setFormAccountName] = useState("");
+  const [formAccountNumber, setFormAccountNumber] = useState("");
+  const [formBranchName, setFormBranchName] = useState("");
+
+  const openEditModal = () => {
+    if (!s) return;
+    setFormName(s.name ?? "");
+    setFormStatus(s.status ?? "approved");
+    setFormIsVerified(!!(s as any).is_verified);
+    setFormEmail((s as any).email ?? (s as any).contact_email ?? "");
+    setFormPhone((s as any).phone ?? (s as any).contact_phone ?? "");
+    setFormLegalName(s.legal_name ?? "");
+    setFormTaxId(s.tax_id ?? "");
+    setFormPickupLine1(s.delivery_address_line1 ?? "");
+    setFormPickupLine2(s.delivery_address_line2 ?? "");
+    setFormPickupCity(s.delivery_city ?? "");
+    setFormPickupState(s.delivery_state ?? "");
+    setFormPickupPostal(s.delivery_postal_code ?? "");
+    setFormBankName(payout?.bank_name ?? "");
+    setFormAccountName(payout?.account_name ?? "");
+    setFormAccountNumber((payout as any)?.account_number ?? payout?.account_number_last4 ?? "");
+    setFormBranchName((payout as any)?.ifsc ?? "");
+    setEditOpen(true);
+  };
+
+  const updateStoreM = useMutation({
+    mutationFn: async () => {
+      const patch = {
+        name: formName.trim(),
+        status: formStatus,
+        is_verified: formIsVerified,
+        email: formEmail.trim() || null,
+        phone: formPhone.trim() || null,
+        legal_name: formLegalName.trim() || null,
+        tax_id: formTaxId.trim() || null,
+        delivery_address_line1: formPickupLine1.trim() || null,
+        delivery_address_line2: formPickupLine2.trim() || null,
+        delivery_city: formPickupCity.trim() || null,
+        delivery_state: formPickupState.trim() || null,
+        delivery_postal_code: formPickupPostal.trim() || null,
+        bank_name: formBankName.trim() || null,
+        account_name: formAccountName.trim() || null,
+        account_number: formAccountNumber.trim() || null,
+        branch_name: formBranchName.trim() || null,
+      };
+      const res = await updateAdminStore(id!, patch);
+      if (!res.ok) throw new Error(res.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      setEditOpen(false);
+      invalidate();
+      themedAlert("Store Updated", "Store details, pickup address and bank account updated successfully.");
+    },
+    onError: (err: any) => {
+      themedAlert("Update Failed", err?.message || "Could not update store.");
+    },
+  });
 
   if (q.isLoading) {
     return (
@@ -155,7 +233,7 @@ export default function AdminStoreDetail() {
     if (!storagePath) return;
     const url = await getComplianceDocumentSignedUrl(storagePath);
     if (!url) {
-      Alert.alert("Unable to open document", "Could not generate a secure download link.");
+      themedAlert("Unable to open document", "Could not generate a secure download link.");
       return;
     }
     await Linking.openURL(url);
@@ -219,6 +297,14 @@ export default function AdminStoreDetail() {
           <Text style={styles.title} numberOfLines={2}>{s.name}</Text>
           <Text style={styles.slug}>@{s.slug}</Text>
         </View>
+        <TouchableOpacity
+          onPress={openEditModal}
+          style={styles.headerEditBtn}
+          accessibilityLabel="Edit Store"
+        >
+          <Ionicons name="pencil" size={15} color={colors.paper.cream} />
+          <Text style={styles.headerEditText}>Edit</Text>
+        </TouchableOpacity>
       </View>
 
       <Card style={styles.heroCard}>
@@ -227,6 +313,51 @@ export default function AdminStoreDetail() {
           <Text style={styles.since}>{s.created_at ? rel(s.created_at) : "Recently"} ago</Text>
         </View>
         <Text style={styles.subtitle}>{s.description ?? "No description"}</Text>
+      </Card>
+
+      {/* Courier Pickup Address Card */}
+      <Card style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Pickup Address (Domex)</Text>
+          <TouchableOpacity onPress={openEditModal}>
+            <Text style={{ fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] }}>Edit</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtitle}>
+          {s.delivery_address_line1
+            ? [s.delivery_address_line1, s.delivery_address_line2, s.delivery_city, s.delivery_state, s.delivery_postal_code].filter(Boolean).join(", ")
+            : "No courier pickup address set. Couriers cannot collect parcels until this is added."}
+        </Text>
+      </Card>
+
+      {/* Bank Account / Payout Details Card */}
+      <Card style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Bank Account / Payouts</Text>
+          <TouchableOpacity onPress={openEditModal}>
+            <Text style={{ fontFamily: fontFamilies.sans.semibold, fontSize: 12, color: colors.olive[800] }}>Edit</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ marginTop: 8, gap: 6 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={styles.muted}>Bank</Text>
+            <Text style={styles.contact}>{payout?.bank_name || "Not configured"}</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={styles.muted}>Account Name</Text>
+            <Text style={styles.contact}>{payout?.account_name || "Not configured"}</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={styles.muted}>Account Number</Text>
+            <Text style={styles.contact}>
+              {payout?.account_number_last4 ? `•••• ${payout.account_number_last4}` : (payout as any)?.account_number || "Not configured"}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={styles.muted}>Branch Code</Text>
+            <Text style={styles.contact}>{(payout as any)?.ifsc || "Not configured"}</Text>
+          </View>
+        </View>
       </Card>
 
       <Card style={styles.section}>
@@ -297,8 +428,29 @@ export default function AdminStoreDetail() {
       </Card>
 
       <Card style={styles.section}>
-        <Text style={styles.sectionTitle}>Actions</Text>
+        <Text style={styles.sectionTitle}>Actions & Concierge</Text>
         <View style={styles.actions}>
+          <Button
+            variant="brand"
+            size="sm"
+            onPress={openEditModal}
+          >
+            Edit All Details
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => router.push(`/(admin)/products/new?storeId=${id}` as any)}
+          >
+            Upload Product
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => router.push(`/(admin)/products?storeId=${id}` as any)}
+          >
+            Catalogue
+          </Button>
           {isPending ? (
             <>
               <Button
@@ -413,6 +565,113 @@ export default function AdminStoreDetail() {
           ))}
         </Card>
       ) : null}
+
+      {/* Edit Store Modal */}
+      <Modal visible={editOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditOpen(false)}>
+        <View style={styles.editModalContent}>
+          <Text style={styles.editModalTitle}>Edit Store & Bank Details</Text>
+          <Text style={styles.editModalSub}>
+            Concierge updates: fill in WhatsApp onboarding data, approve or suspend.
+          </Text>
+
+          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            <Text style={styles.formHeader}>STORE PROFILE</Text>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Store Name</Text>
+              <TextInput value={formName} onChangeText={setFormName} style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Status (approved / pending / suspended / rejected)</Text>
+              <TextInput value={formStatus} onChangeText={setFormStatus} autoCapitalize="none" style={styles.formInput} />
+            </View>
+
+            <View style={styles.formToggleRow}>
+              <Text style={styles.formToggleLabel}>Verified Seller Badge</Text>
+              <Switch value={formIsVerified} onValueChange={setFormIsVerified} />
+            </View>
+
+            <Text style={styles.formHeader}>CONTACT & BUSINESS</Text>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Email</Text>
+              <TextInput value={formEmail} onChangeText={setFormEmail} keyboardType="email-address" autoCapitalize="none" style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Phone</Text>
+              <TextInput value={formPhone} onChangeText={setFormPhone} keyboardType="phone-pad" style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Legal Business Name</Text>
+              <TextInput value={formLegalName} onChangeText={setFormLegalName} style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Tax ID / Business Reg No</Text>
+              <TextInput value={formTaxId} onChangeText={setFormTaxId} style={styles.formInput} />
+            </View>
+
+            <Text style={styles.formHeader}>PICKUP ADDRESS (COURIER DOMEX)</Text>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Address Line 1</Text>
+              <TextInput value={formPickupLine1} onChangeText={setFormPickupLine1} placeholder="Shop / Warehouse street address" style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Address Line 2 (Optional)</Text>
+              <TextInput value={formPickupLine2} onChangeText={setFormPickupLine2} style={styles.formInput} />
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={[styles.formField, { flex: 1 }]}>
+                <Text style={styles.formLabel}>City</Text>
+                <TextInput value={formPickupCity} onChangeText={setFormPickupCity} placeholder="e.g. Colombo" style={styles.formInput} />
+              </View>
+              <View style={[styles.formField, { flex: 1 }]}>
+                <Text style={styles.formLabel}>Postal Code</Text>
+                <TextInput value={formPickupPostal} onChangeText={setFormPickupPostal} placeholder="00100" style={styles.formInput} />
+              </View>
+            </View>
+
+            <Text style={styles.formHeader}>BANK ACCOUNT / PAYOUTS</Text>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Bank Name</Text>
+              <TextInput value={formBankName} onChangeText={setFormBankName} placeholder="Commercial Bank, BOC, etc." style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Account Holder Name</Text>
+              <TextInput value={formAccountName} onChangeText={setFormAccountName} style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Account Number</Text>
+              <TextInput value={formAccountNumber} onChangeText={setFormAccountNumber} keyboardType="number-pad" style={styles.formInput} />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Branch Name / Code</Text>
+              <TextInput value={formBranchName} onChangeText={setFormBranchName} placeholder="e.g. Kollupitiya" style={styles.formInput} />
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalBtnRow}>
+            <TouchableOpacity onPress={() => setEditOpen(false)} style={styles.modalCancelBtn}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => updateStoreM.mutate()}
+              disabled={updateStoreM.isPending}
+              style={[styles.modalSaveBtn, updateStoreM.isPending && { opacity: 0.6 }]}
+            >
+              <Text style={styles.modalSaveText}>
+                {updateStoreM.isPending ? "Saving..." : "Save details"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -468,4 +727,114 @@ const styles = StyleSheet.create({
   muted: { fontFamily: fontFamilies.sans.regular, fontSize: 12, color: colors.light.mutedForeground },
   productRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 },
   productName: { flex: 1, fontFamily: fontFamilies.sans.regular, fontSize: 13, color: colors.light.foreground },
+  headerEditBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.olive[800],
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 18,
+  },
+  headerEditText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 13,
+    color: colors.paper.cream,
+  },
+  editModalContent: {
+    padding: 20,
+    backgroundColor: colors.light.card,
+    borderRadius: 16,
+    maxHeight: "90%",
+  },
+  editModalTitle: {
+    fontFamily: fontFamilies.display.regular,
+    fontSize: 18,
+    color: colors.light.foreground,
+    marginBottom: 4,
+  },
+  editModalSub: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    color: colors.light.mutedForeground,
+    marginBottom: 16,
+    lineHeight: 16,
+  },
+  formHeader: {
+    fontFamily: fontFamilies.mono.semibold,
+    fontSize: 11,
+    color: colors.olive[700],
+    letterSpacing: 1,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  formField: {
+    marginBottom: 10,
+  },
+  formLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    color: colors.light.foreground,
+    marginBottom: 4,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: colors.light.foreground,
+    backgroundColor: colors.light.background,
+    fontFamily: fontFamilies.sans.regular,
+  },
+  formToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
+    marginBottom: 6,
+  },
+  formToggleLabel: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.light.foreground,
+  },
+  modalBtnRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.light.muted,
+  },
+  modalCancelText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    color: colors.light.foreground,
+  },
+  modalSaveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.olive[800],
+  },
+  modalSaveText: {
+    fontFamily: fontFamilies.sans.semibold,
+    fontSize: 14,
+    color: colors.paper.cream,
+  },
 });

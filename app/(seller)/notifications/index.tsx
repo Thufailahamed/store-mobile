@@ -7,7 +7,6 @@ import {
   StyleSheet,
   RefreshControl,
   StatusBar,
-  Alert,
   ScrollView,
   ActivityIndicator,
 } from "react-native";
@@ -33,6 +32,7 @@ import {
   type SellerNotifBucket,
 } from "@/lib/notifications/seller-inbox";
 import type { Notification } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const RUST = colors.accent2.rust;
 const CREAM = colors.paper.cream;
@@ -219,7 +219,7 @@ export default function SellerNotifications() {
   const handleMarkRead = async (id: string) => {
     const res = await markSellerNotificationRead(id);
     if (!res.ok) {
-      Alert.alert("Couldn’t mark as read", res.error);
+      themedAlert("Couldn’t mark as read", res.error);
       return;
     }
     setNotifications((prev) => prev.map((n) => (n.id === id ? markInboxItemRead(n) : n)));
@@ -231,7 +231,7 @@ export default function SellerNotifications() {
     const res = await markAllSellerNotificationsRead();
     setMarkingAll(false);
     if (!res.ok) {
-      Alert.alert("Couldn’t mark all as read", res.error);
+      themedAlert("Couldn’t mark all as read", res.error);
       return;
     }
     setNotifications((prev) => prev.map((n) => markInboxItemRead(n)));

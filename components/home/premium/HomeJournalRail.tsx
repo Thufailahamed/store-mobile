@@ -88,7 +88,7 @@ export function HomeJournalRail({
                 <Image source={{ uri: post.cover_image }} style={styles.image} contentFit="cover" />
               ) : (
                 <View style={styles.imagePlaceholder}>
-                  <Text style={styles.placeholderText}>LUXE</Text>
+                  <Text style={styles.placeholderText}>VESTARA</Text>
                 </View>
               )}
             </View>

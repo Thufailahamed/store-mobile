@@ -18,3 +18,4 @@ export { FlashSaleSection } from "./FlashSaleSection";
 export { OffersRail } from "./OffersRail";
 export { ShopByPrice } from "./ShopByPrice";
 export { ShopByOccasion } from "./ShopByOccasion";
+export { FestiveHero } from "./FestiveHero";

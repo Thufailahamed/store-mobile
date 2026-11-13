@@ -1,17 +1,17 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { RefreshControl, StyleSheet, TouchableOpacity, View, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSharedValue } from "react-native-reanimated";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { AppHeader } from "@/components/layout";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
+import { CrossfadeGradient } from "@/components/ui/CrossfadeGradient";
+import { DEPT_THEMES, type Dept } from "@/components/home/premium/FestiveHero";
 import {
-  CategoryScroller,
-  PromoCarousel,
+  FestiveHero,
   ProductRail,
   MasonryProductRail,
   FeaturedStoresRow,
@@ -62,6 +62,7 @@ const MIN_RAIL_ITEMS = 3;
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [dept, setDept] = useState<Dept>("all");
   const scrollY = useSharedValue(0);
   const tabBarScrollHandler = useHideTabBarOnScroll(scrollY);
   const { user } = useAuth();
@@ -166,16 +167,19 @@ export default function HomeScreen() {
     </View>
   ); */
 
+  const deptTheme = DEPT_THEMES[dept];
+
   return (
     <View style={styles.root}>
-      {/* Same warm glow as Account, fading into paper below the fold. */}
-      <LinearGradient
-        pointerEvents="none"
-        colors={[C.glow, C.glowSoft, C.paper]}
-        locations={[0, 0.5, 1]}
+      {/* Festive sale glow behind the header and department tabs, fading into paper. */}
+      <CrossfadeGradient
+        colors={[deptTheme.bg[2], deptTheme.bg[2], deptTheme.bg[2] + "66", C.paper]}
+        locations={[0, 0.55, 0.8, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
         style={styles.glow}
       />
-      <AppHeader showSearch scrollY={scrollY} tone="atelier" />
+      <AppHeader showSearch showTicker={false} scrollY={scrollY} tone="festive" festiveColors={deptTheme.bg} />
       <AnimatedScrollView
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
@@ -189,10 +193,13 @@ export default function HomeScreen() {
         ]}
       >
         {/* Zone 1 — discovery: browse entry points + the personalised feed */}
-        <HomeSectionHeader kicker="Browse" title="Shop by category" onPress={() => router.push("/(main)/categories")} />
-        <CategoryScroller categories={catalogData?.categories ?? []} />
-
-        <PromoCarousel banners={catalogData?.banners ?? []} />
+        <FestiveHero
+          dept={dept}
+          onDeptChange={setDept}
+          categories={catalogData?.categories ?? []}
+          banners={catalogData?.banners ?? []}
+          brands={catalogData?.brands ?? []}
+        />
 
         <OffersRail offers={offers.data ?? []} />
 
@@ -379,10 +386,10 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 520,
+    height: 680,
   },
   scroll: {
-    paddingTop: 16,
+    paddingTop: 8,
   },
   zone: {
     paddingTop: spacing[2],

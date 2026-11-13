@@ -11,30 +11,33 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Pressable,
 } from "react-native";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Image } from "expo-image";
 import { router, Stack } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { SellerGlow } from "@/components/seller/chrome";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system/legacy";
 import { pickImage, takePhoto } from "@/lib/upload";
 import { quickAnalyzeProduct } from "@/lib/api";
-
-export const QUICK_AI_DRAFT_STORAGE_KEY = "luxe:mobile-quick-ai-draft";
-/** Mirrors the backend vision download cap (glm-vision.ts). */
-const VISION_MAX_BYTES = 4 * 1024 * 1024;
+import { QUICK_AI_DRAFT_STORAGE_KEY, clearProductDrafts } from "@/lib/product-draft";
+import { useAuth } from "@/lib/supabase/auth";
+import { themedAlert } from "@/lib/themed-alert";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { formatPrice } from "@/lib/utils";
 import { fontFamilies } from "@/lib/theme/fonts";
 
+/** Mirrors the backend vision download cap (glm-vision.ts). */
+const VISION_MAX_BYTES = 4 * 1024 * 1024;
+
 const INK = colors.olive[950];
+const STAGE_RADIUS = 28;
 const CREAM = colors.paper.cream;
 const GOLD = colors.accent2.ochre;
 const RUST = colors.accent2.rust;
@@ -58,31 +61,84 @@ export default function QuickCreateScreen() {
   const mrpRef = useRef<TextInput>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
+  const [pickingSource, setPickingSource] = useState<"camera" | "library" | null>(null);
   const [price, setPrice] = useState("");
   const [mrp, setMrp] = useState("");
   const [nameOverride, setNameOverride] = useState("");
   const [busy, setBusy] = useState(false);
+  const { user } = useAuth();
+  const hasDraft = Boolean(preview || price || mrp || nameOverride);
+
+  const clearDraft = () => {
+    themedAlert(
+      "Clear draft?",
+      "Removes the photo, price and AI draft for this product from this device. This can't be undone.",
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            setPreview(null);
+            setMimeType(null);
+            setPrice("");
+            setMrp("");
+            setNameOverride("");
+            clearProductDrafts(user?.id).catch(() => {});
+          },
+        },
+      ],
+    );
+  };
 
   const pick = useCallback(async (source: "camera" | "library") => {
-    const picker = source === "camera" ? takePhoto : pickImage;
-    // 0.7 keeps high-MP camera shots under the backend vision 4 MB cap.
-    const result = await picker({ allowsEditing: true, aspect: [3, 4], quality: 0.7 });
-    if (!result || result.canceled) return;
-    const asset = result.assets?.[0];
-    if (!asset) return;
-    if (asset.fileSize && asset.fileSize > VISION_MAX_BYTES) {
-      Alert.alert("Photo too large", "The AI can read photos up to 4 MB. Crop tighter or pick a smaller photo.");
-      return;
+    try {
+      setPickingSource(source);
+      const picker = source === "camera" ? takePhoto : pickImage;
+      // allowsEditing: false avoids the slow/stalling native cropper on Android, returning instantly.
+      // quality: 0.8 keeps photo crisp while keeping file size small (<2MB) well under backend vision 4MB cap.
+      const result = await picker({ allowsEditing: false, quality: 0.8 });
+      if (!result || result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset) return;
+      if (asset.fileSize && asset.fileSize > VISION_MAX_BYTES) {
+        themedAlert("Photo too large", "The AI can read photos up to 4 MB. Please pick a smaller photo.");
+        return;
+      }
+
+      setImageLoading(true);
+      let localUri = asset.uri;
+      // On Android, content:// URIs can cause slow/hanging reads in expo-image.
+      // Copying to local app cache immediately makes Glide decode it in milliseconds.
+      if (localUri.startsWith("content://")) {
+        const ext = asset.mimeType?.includes("png") ? "png" : asset.mimeType?.includes("webp") ? "webp" : "jpg";
+        const dest = `${FileSystem.cacheDirectory}preview_${Date.now()}.${ext}`;
+        try {
+          await FileSystem.copyAsync({ from: localUri, to: dest });
+          localUri = dest;
+        } catch (copyErr) {
+          console.warn("Failed to copy content URI to cache:", copyErr);
+        }
+      }
+
+      setPreviewError(false);
+      setPreview(localUri);
+      setMimeType(asset.mimeType ?? null);
+    } catch (err) {
+      console.error("Failed to pick image:", err);
+      themedAlert("Error", "Could not load selected photo. Please try again.");
+    } finally {
+      setPickingSource(null);
     }
-    setPreview(asset.uri);
-    setMimeType(asset.mimeType ?? null);
   }, []);
 
   const submit = useCallback(async () => {
     const priceNum = Number(price);
-    if (!preview) { Alert.alert("Add a photo", "The AI reads everything from the image."); return; }
-    if (!priceNum || priceNum <= 0) { Alert.alert("Add a price", "Selling price is required."); return; }
-    if (mrp && Number(mrp) < priceNum) { Alert.alert("MRP below price", "MRP must be greater than or equal to the price."); return; }
+    if (!preview) { themedAlert("Add a photo", "The AI reads everything from the image."); return; }
+    if (!priceNum || priceNum <= 0) { themedAlert("Add a price", "Selling price is required."); return; }
+    if (mrp && Number(mrp) < priceNum) { themedAlert("MRP below price", "MRP must be greater than or equal to the price."); return; }
 
     setBusy(true);
     try {
@@ -94,6 +150,9 @@ export default function QuickCreateScreen() {
         ...(mrp ? { mrp: Math.round(Number(mrp)) } : {}),
         ...(nameOverride.trim() ? { name: nameOverride.trim() } : {}),
         mimeType,
+        // Return as soon as attributes are tagged (~1s); the editor opens
+        // right away and fetches name / descriptions in the background.
+        stage: "attrs",
       });
       if (!res.ok) throw new Error(res.error);
       const payload = {
@@ -106,26 +165,23 @@ export default function QuickCreateScreen() {
         mrp: res.data.draft.mrp ?? (mrp ? Math.round(Number(mrp)) : null),
         name: nameOverride.trim() || res.data.draft.name,
         extraction: res.data.extraction,
+        // Progressive: the editor calls quickAnalyzeCopy with these.
+        copyPending: Boolean(res.data.extraction.copy_pending),
+        imageUrl: res.data.imageUrl,
         createdAt: new Date().toISOString(),
       };
       await AsyncStorage.setItem(QUICK_AI_DRAFT_STORAGE_KEY, JSON.stringify(payload));
       const f = res.data.extraction;
-      const filled = [
-        f.name_source === "ai" || nameOverride.trim() ? "Name" : null,
-        f.description_source === "ai" ? "Description" : null,
-        f.category_match && f.category_match !== "none" ? "Category" : null,
-        "Tags",
-      ].filter(Boolean).join(", ");
       if (f.vision_error === "unconfigured") {
-        Alert.alert("AI vision is not configured", "The server is missing its AI keys, so nothing was extracted. Your photo and price are carried over — fill the rest manually.");
+        themedAlert("AI vision is not configured", "The server is missing its AI keys, so nothing was extracted. Your photo and price are carried over — fill the rest manually.");
       } else if (f.vision_error) {
-        Alert.alert("AI couldn't read this photo", `Reason: ${f.vision_error}. Your photo and price are carried over — use a clear JPG/PNG under 4 MB.`);
-      } else {
-        Alert.alert("AI draft ready", filled ? `AI filled: ${filled}. Review and publish.` : "Review the details and publish.");
+        themedAlert("AI couldn't read this photo", `Reason: ${f.vision_error}. Your photo and price are carried over — use a clear JPG/PNG under 4 MB.`);
       }
+      // Success: the editor shows its own "AI draft ready" dialog on arrival,
+      // so no alert here (two stacked dialogs otherwise).
       router.push("/(seller)/products/create" as never);
     } catch (e) {
-      Alert.alert("Analyze failed", e instanceof Error ? e.message : "Something went wrong");
+      themedAlert("Analyze failed", e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
@@ -167,6 +223,16 @@ export default function QuickCreateScreen() {
             <Ionicons name="sparkles" size={11} color={GOLD} />
             <Text style={styles.aiBadgeText}>AI</Text>
           </View>
+          {hasDraft ? (
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={clearDraft}
+              accessibilityRole="button"
+              accessibilityLabel="Clear draft"
+            >
+              <Ionicons name="trash-outline" size={19} color={INK} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <ScrollView
@@ -206,7 +272,38 @@ export default function QuickCreateScreen() {
           <StepLabel n="01" label="Photo" done={Boolean(preview)} />
           {preview ? (
             <View style={styles.stage}>
-              <Image source={{ uri: preview }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+              {previewError ? (
+                <View style={styles.stageError}>
+                  <Ionicons name="image-outline" size={34} color={colors.olive[700]} />
+                  <Text style={styles.stageErrorTitle}>Preview not available</Text>
+                  <Text style={styles.stageErrorText}>
+                    This photo can't be shown on this phone. The AI can still read it.
+                  </Text>
+                </View>
+              ) : (
+                <Image
+                  source={{ uri: preview }}
+                  style={styles.stageImage}
+                  contentFit="cover"
+                  transition={200}
+                  onLoadStart={() => setImageLoading(true)}
+                  onLoad={() => {
+                    setImageLoading(false);
+                    setPreviewError(false);
+                  }}
+                  onError={(e) => {
+                    console.warn("[quick-upload] preview failed", preview, e?.error);
+                    setImageLoading(false);
+                    setPreviewError(true);
+                  }}
+                />
+              )}
+              {imageLoading && !previewError ? (
+                <View style={styles.stageLoadingOverlay}>
+                  <ActivityIndicator size="small" color={GOLD} />
+                  <Text style={styles.stageLoadingText}>Loading preview…</Text>
+                </View>
+              ) : null}
               <LinearGradient
                 pointerEvents="none"
                 colors={["rgba(22,26,10,0)", "rgba(22,26,10,0.65)"]}
@@ -214,7 +311,10 @@ export default function QuickCreateScreen() {
               />
               <TouchableOpacity
                 style={styles.stageClose}
-                onPress={() => setPreview(null)}
+                onPress={() => {
+                  setPreview(null);
+                  setImageLoading(false);
+                }}
                 disabled={busy}
                 accessibilityRole="button"
                 accessibilityLabel="Remove photo"
@@ -264,22 +364,36 @@ export default function QuickCreateScreen() {
               <Text style={styles.dropHint}>Plain background, soft light, the whole piece in frame.</Text>
               <View style={styles.pickerRow}>
                 <TouchableOpacity
-                  style={[styles.pickBtn, styles.pickPrimary]}
+                  style={[styles.pickBtn, styles.pickPrimary, pickingSource === "camera" && styles.pickBtnActive]}
                   onPress={() => void pick("camera")}
                   activeOpacity={0.85}
+                  disabled={Boolean(pickingSource)}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="camera-outline" size={18} color={CREAM} />
-                  <Text style={styles.pickPrimaryText}>Camera</Text>
+                  {pickingSource === "camera" ? (
+                    <ActivityIndicator size="small" color={CREAM} />
+                  ) : (
+                    <>
+                      <Ionicons name="camera-outline" size={18} color={CREAM} />
+                      <Text style={styles.pickPrimaryText}>Camera</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.pickBtn}
+                  style={[styles.pickBtn, pickingSource === "library" && styles.pickBtnActive]}
                   onPress={() => void pick("library")}
                   activeOpacity={0.85}
+                  disabled={Boolean(pickingSource)}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="images-outline" size={18} color={INK} />
-                  <Text style={styles.pickBtnText}>Gallery</Text>
+                  {pickingSource === "library" ? (
+                    <ActivityIndicator size="small" color={INK} />
+                  ) : (
+                    <>
+                      <Ionicons name="images-outline" size={18} color={INK} />
+                      <Text style={styles.pickBtnText}>Gallery</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -586,14 +700,64 @@ const styles = StyleSheet.create({
   pickBtnText: { color: INK, fontFamily: fontFamilies.sans.bold, fontSize: 14 },
 
   // Photo — preview
+  // No `overflow: "hidden"` here: on Android (new arch) this card clipped
+  // every child away and painted only its background (blank card, seen on
+  // SM-S928B). Each full-bleed layer rounds its own corners instead.
   stage: {
     width: "100%",
     aspectRatio: 4 / 5,
-    borderRadius: 28,
-    overflow: "hidden",
+    borderRadius: STAGE_RADIUS,
     backgroundColor: colors.paper.warm,
   },
-  stageShade: { position: "absolute", left: 0, right: 0, bottom: 0, height: "40%" },
+  stageImage: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: STAGE_RADIUS,
+  },
+  stageError: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: STAGE_RADIUS,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 8,
+    backgroundColor: colors.paper.warm,
+  },
+  stageErrorTitle: {
+    fontFamily: fontFamilies.sans.bold,
+    fontSize: 15,
+    color: INK,
+  },
+  stageErrorText: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+    color: colors.olive[800],
+  },
+  stageLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: STAGE_RADIUS,
+    backgroundColor: "rgba(239,236,226,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    zIndex: 5,
+  },
+  stageLoadingText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 13,
+    color: colors.olive[800],
+  },
+  stageShade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "40%",
+    borderBottomLeftRadius: STAGE_RADIUS,
+    borderBottomRightRadius: STAGE_RADIUS,
+    zIndex: 2,
+  },
   stageClose: {
     position: "absolute",
     top: 12,
@@ -604,6 +768,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(250,248,241,0.92)",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 10,
   },
   stageFooter: {
     position: "absolute",
@@ -613,6 +778,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    zIndex: 10,
   },
   stageReady: {
     flexDirection: "row",
@@ -638,9 +804,14 @@ const styles = StyleSheet.create({
   },
   stageBusy: {
     ...StyleSheet.absoluteFillObject,
+    borderRadius: STAGE_RADIUS,
     backgroundColor: "rgba(22,26,10,0.35)",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 12,
+  },
+  pickBtnActive: {
+    opacity: 0.7,
   },
 
   // Cards + fields

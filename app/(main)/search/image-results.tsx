@@ -4,7 +4,6 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Image as RNImage,
   Text,
   TouchableOpacity,
@@ -20,6 +19,7 @@ import * as api from "@/lib/api";
 import type { Product } from "@/lib/types";
 import { colors, radii, spacing, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function ImageSearchResults() {
   const insets = useSafeAreaInsets();
@@ -78,7 +78,7 @@ export default function ImageSearchResults() {
       setPreview(uri);
       const upload = await api.uploadScanImage(uri, source);
       if (!upload.ok) {
-        Alert.alert("Upload failed", upload.error);
+        themedAlert("Upload failed", upload.error);
         return;
       }
       setImageUrl(upload.data.url);

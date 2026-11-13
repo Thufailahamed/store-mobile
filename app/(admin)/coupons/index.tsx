@@ -7,7 +7,6 @@ import {
   RefreshControl,
   StyleSheet,
   Switch,
-  Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -23,6 +22,7 @@ import { colors, radii, shadows } from "@/lib/theme/tokens";
 import { AdminMasthead, StatBand, SearchField, Segmented, premiumCard, GOLD, CREAM, RUST } from "@/components/admin/premium-kit";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
 
 const TYPE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; label: string }> = {
   percentage: { icon: "pricetag-outline", label: "Percent" },
@@ -90,7 +90,7 @@ export default function AdminCoupons() {
   const toggleM = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) => toggleCoupon(id, is_active),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-coupons"] }),
-    onError: (e: any) => Alert.alert("Couldn't update coupon", e?.message ?? "Try again"),
+    onError: (e: any) => themedAlert("Couldn't update coupon", e?.message ?? "Try again"),
   });
 
   const coupons = q.data?.list ?? [];
@@ -290,8 +290,8 @@ function CreateModal({ visible, onClose, onCreated }: { visible: boolean; onClos
 
   const create = async () => {
     const needsValue = type !== "free_shipping";
-    if (!code.trim()) return Alert.alert("Missing code", "Give this coupon a code shoppers will enter.");
-    if (needsValue && (!value.trim() || Number(value) <= 0)) return Alert.alert("Missing value", "Enter a discount value greater than zero.");
+    if (!code.trim()) return themedAlert("Missing code", "Give this coupon a code shoppers will enter.");
+    if (needsValue && (!value.trim() || Number(value) <= 0)) return themedAlert("Missing value", "Enter a discount value greater than zero.");
     setLoading(true);
     const r = await createCoupon({
       code: code.toUpperCase().trim(),
@@ -304,7 +304,7 @@ function CreateModal({ visible, onClose, onCreated }: { visible: boolean; onClos
     } as Partial<AdminCoupon>);
     setLoading(false);
     if (r.ok) { reset(); onCreated(); }
-    else Alert.alert("Error", r.error);
+    else themedAlert("Error", r.error);
   };
 
   // Live preview stub — mirrors the ticket the coupon becomes once created.

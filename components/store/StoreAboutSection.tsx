@@ -37,7 +37,7 @@ const promisesFor = (store: Store) => [
   {
     icon: "ribbon-outline",
     title: "Premium packaging",
-    body: "LUXE signature wrap, dust bag & care card included.",
+    body: "VESTARA signature wrap, dust bag & care card included.",
   },
 ];
 

@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@/components/ui/Icon";
 import { router } from "expo-router";
@@ -18,6 +17,7 @@ import {
 } from "@/lib/api/courier-api";
 import { colors, radii, typography } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 export default function AdminCourierWebhooksScreen() {
   const [events, setEvents] = useState<CourierWebhookEvent[]>([]);
@@ -46,10 +46,10 @@ export default function AdminCourierWebhooksScreen() {
     const r = await replayCourierWebhook(eventId, false);
     setReplayingId(null);
     if (!r.ok) {
-      Alert.alert("Replay failed", r.error);
+      themedAlert("Replay failed", r.error);
       return;
     }
-    Alert.alert(
+    themedAlert(
       r.data.replayed ? "Replayed" : "Skipped",
       r.data.mapped ?? r.data.reason,
     );

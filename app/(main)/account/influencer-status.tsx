@@ -260,7 +260,7 @@ export default function InfluencerStatusScreen() {
               <View style={styles.heroTopRow}>
                 <View style={styles.heroTagBadge}>
                   <Ionicons name="sparkles" size={10} color="#C8A44A" />
-                  <Text style={styles.heroTagText}>LUXE CREATOR PROGRAMME</Text>
+                  <Text style={styles.heroTagText}>VESTARA CREATOR PROGRAMME</Text>
                 </View>
                 <View style={styles.heroSyncBadge}>
                   <View
@@ -280,7 +280,7 @@ export default function InfluencerStatusScreen() {
               </View>
               <Text style={styles.heroTitle}>Partner with the Atelier.</Text>
               <Text style={styles.heroCopy}>
-                Share LUXE with your audience. Every attributed sale pays
+                Share VESTARA with your audience. Every attributed sale pays
                 commission weekly, in LKR, straight to your wallet.
               </Text>
               <View style={styles.heroStatusStrip}>
@@ -305,7 +305,7 @@ export default function InfluencerStatusScreen() {
               <NoticeCard
                 icon="lock-closed-outline"
                 title="Sign in to continue"
-                body="Your influencer application is linked directly to your LUXE account."
+                body="Your influencer application is linked directly to your VESTARA account."
               />
             ) : q.isLoading ? (
               <View style={styles.loadingWrap}>

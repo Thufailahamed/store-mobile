@@ -6,7 +6,6 @@ import {
   RefreshControl,
   StyleSheet,
   Pressable,
-  Alert,
   TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -15,6 +14,7 @@ import { getAdminDeliveryCompanies, updateAdminDeliveryCompanyStatus } from "@/l
 import { Card, EmptyState, Badge, Skeleton, Button } from "@/components/ui";
 import { colors, typography, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 const STATUS_TABS = ["all", "pending", "active", "suspended", "rejected"] as const;
 
@@ -56,10 +56,10 @@ export default function AdminDelivery() {
       updateAdminDeliveryCompanyStatus(id, nextStatus),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Action failed", res.error);
+        themedAlert("Action failed", res.error);
         return;
       }
-      Alert.alert("Updated", `Company marked as ${res.data.status}.`);
+      themedAlert("Updated", `Company marked as ${res.data.status}.`);
       queryClient.invalidateQueries({ queryKey: ["admin-delivery-companies"] });
     },
   });
@@ -69,7 +69,7 @@ export default function AdminDelivery() {
       nextStatus === "suspended" || nextStatus === "rejected"
         ? " Linked stores will be unlinked."
         : "";
-    Alert.alert(
+    themedAlert(
       `Mark ${nextStatus}?`,
       `${name} will be marked as ${nextStatus}.${unlinkNote}`,
       [

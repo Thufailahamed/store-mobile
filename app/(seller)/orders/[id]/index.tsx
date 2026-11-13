@@ -5,12 +5,10 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   TextInput,
   RefreshControl,
-  Linking,
 } from "react-native";
 import { Modal } from "@/components/ui/Modal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,10 +19,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@/components/ui/Icon";
-import { getSellerStore, getSellerOrderById, transitionOrderStatus, cancelOrder } from "@/lib/api";
+import { getSellerStore, getSellerOrderById, markSellerOrderProcessed, transitionOrderStatus, cancelOrder } from "@/lib/api";
 import { useAuth } from "@/lib/supabase/auth";
 import { canSellerCancelOrder, getSellerAdvanceStatus } from "@/lib/order-lifecycle";
-import { isExternalCourierEnabledMobile } from "@/lib/feature-flags";
 import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -33,6 +30,8 @@ import {
   formatOrderStatusLabel,
   formatPaymentStatus,
   readShippingAddress,
+  isNewOrder,
+  isOrderReceivedBySeller,
 } from "@/lib/orders/seller-list";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
@@ -48,6 +47,7 @@ import {
 import { DetailTopBar, MenuSheet, type MenuItem } from "@/components/orders/detail-chrome";
 import { LUX } from "@/components/orders/luxe-order";
 import type { Order, OrderStatus } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 function formatDateTime(dateStr: string) {
   const d = new Date(dateStr);
@@ -116,33 +116,22 @@ export default function SellerOrderDetail() {
     else router.replace("/(seller)/orders" as never);
   };
 
-  const handleTransition = async (nextStatus: OrderStatus) => {
-    if (!order) return;
-    Alert.alert(
-      "Update status?",
-      `Mark order as "${formatOrderStatusLabel(nextStatus)}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Confirm",
-          onPress: async () => {
-            setUpdating(true);
-            const res = await transitionOrderStatus(order.id, nextStatus);
-            setUpdating(false);
-            if (res.ok) {
-              setOrder({ ...order, status: res.data.status as OrderStatus });
-            } else {
-              Alert.alert("Error", res.error);
-            }
-          },
-        },
-      ]
-    );
+  /** Acknowledge the order. Only a seller-side flag — status stays as the courier set it. */
+  const handleProcessed = async () => {
+    if (!order || updating) return;
+    setUpdating(true);
+    const res = await markSellerOrderProcessed(order.id);
+    setUpdating(false);
+    if (res.ok) {
+      setOrder({ ...order, seller_processed_at: res.data.seller_processed_at ?? new Date().toISOString() });
+    } else {
+      themedAlert("Error", res.error);
+    }
   };
 
   const handleCancel = useCallback(() => {
     if (!order || updating) return;
-    Alert.alert("Cancel order?", `Cancel ${order.order_number}? Stock will be restored.`, [
+    themedAlert("Cancel order?", `Cancel ${order.order_number}? Stock will be restored.`, [
       { text: "Keep", style: "cancel" },
       { text: "Cancel order", style: "destructive", onPress: async () => {
         setUpdating(true);
@@ -151,7 +140,7 @@ export default function SellerOrderDetail() {
         if (res.ok) {
           setOrder({ ...order, status: "cancelled" });
         } else {
-          Alert.alert("Error", res.error);
+          themedAlert("Error", res.error);
         }
       } },
     ]);
@@ -179,9 +168,9 @@ export default function SellerOrderDetail() {
     closeRefundDialog();
     if (res.ok) {
       setOrder({ ...order, status: res.data.status as OrderStatus });
-      Alert.alert("Refunded", "The order has been marked as refunded.");
+      themedAlert("Refunded", "The order has been marked as refunded.");
     } else {
-      Alert.alert("Refund failed", res.error);
+      themedAlert("Refund failed", res.error);
     }
   };
 
@@ -228,9 +217,11 @@ export default function SellerOrderDetail() {
   const items = order.items ?? [];
   const ribbon = RIBBON[order.status] ?? RIBBON.pending;
   const closed = CLOSED.includes(order.status);
-  const canRefund = order.status === "delivered" || order.status === "processing";
+  const canRefund = false; // sellers cannot change order state
   const canCancel = canSellerCancelOrder(order.status);
   const nextStatus = getSellerAdvanceStatus(order.status);
+  const isNew = isNewOrder(order);
+  const isReceived = isOrderReceivedBySeller(order);
   const itemsCount = items.reduce((s, i) => s + i.quantity, 0);
   // Sellers see their products only — buyer-side fees and delivery stay off this screen.
   const itemsTotal = items.reduce((s, i) => s + i.total, 0);
@@ -240,14 +231,13 @@ export default function SellerOrderDetail() {
   const customer = ship?.name || "Customer";
   const to = ship ? [ship.city, ship.region].filter(Boolean).join(", ") || ship.line1 || customer : customer;
   const eta = etaFor(order).eta;
-  const showActionBar = !!nextStatus || canRefund;
+  const showActionBar = isNew || !!nextStatus || canRefund;
 
   let statusLine: string;
   if (order.status === "delivered") statusLine = `Delivered ${shortDate(order.delivered_at ?? order.placed_at)}`;
   else if (closed) statusLine = formatOrderStatusLabel(order.status);
   else if (nextStatus) statusLine = `Next: mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`;
-  else if (isExternalCourierEnabledMobile()) statusLine = `${formatOrderStatusLabel(order.status)} · updates from courier`;
-  else statusLine = formatOrderStatusLabel(order.status);
+  else statusLine = `${formatOrderStatusLabel(order.status)} · updates from delivery company`;
   const statusRight = closed || order.status === "delivered" ? `${itemsCount} item${itemsCount === 1 ? "" : "s"}` : `Est. ${shortDate(eta)}`;
 
   const copyOrderNumber = async () => {
@@ -258,12 +248,10 @@ export default function SellerOrderDetail() {
   };
 
   const openInvoice = () => router.push(`/(seller)/orders/${order.id}/invoice` as never);
-  const callCustomer = ship?.phone ? () => void Linking.openURL(`tel:${ship.phone}`) : null;
 
   const menu: MenuItem[] = [
     { icon: "copy-outline", label: "Copy order number", onPress: () => void copyOrderNumber() },
     { icon: "document-text-outline", label: "Customer invoice", onPress: openInvoice },
-    ...(callCustomer ? [{ icon: "call-outline" as const, label: "Call customer", onPress: callCustomer }] : []),
     ...(canRefund && nextStatus
       ? [{ icon: "return-down-back-outline" as const, label: "Refund order", onPress: openRefundDialog, danger: true }]
       : []),
@@ -351,16 +339,6 @@ export default function SellerOrderDetail() {
               >
                 <Ionicons name="document-text-outline" size={18} color={C.cream} />
               </TouchableOpacity>
-              {callCustomer ? (
-                <TouchableOpacity
-                  style={styles.roundDark}
-                  onPress={callCustomer}
-                  activeOpacity={0.85}
-                  accessibilityLabel="Call customer"
-                >
-                  <Ionicons name="call" size={17} color={C.cream} />
-                </TouchableOpacity>
-              ) : null}
             </View>
 
             <View style={styles.statusBar}>
@@ -425,6 +403,18 @@ export default function SellerOrderDetail() {
                 </View>
               </View>
             </View>
+
+            {isReceived ? (
+              <View style={styles.receivedBanner}>
+                <Ionicons name="checkmark-circle" size={18} color="#2e7d32" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.receivedBannerTitle}>Order marked received</Text>
+                  <Text style={styles.receivedBannerBody}>
+                    Marked for seller reference · {shortDate(order.seller_processed_at || ((order as unknown as { metadata?: Record<string, unknown> }).metadata?.seller_processed_at as string) || order.placed_at)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {codUnpaid ? (
               <View style={styles.codBanner}>
@@ -522,12 +512,6 @@ export default function SellerOrderDetail() {
                     <Text style={styles.addrText}>
                       {[ship.city, ship.region, ship.postalCode].filter(Boolean).join(", ")}
                     </Text>
-                    {ship.phone ? (
-                      <TouchableOpacity style={styles.phoneChip} onPress={callCustomer ?? undefined} activeOpacity={0.8}>
-                        <Ionicons name="call-outline" size={11} color={C.accent} />
-                        <Text style={styles.phoneChipText}>{ship.phone}</Text>
-                      </TouchableOpacity>
-                    ) : null}
                   </View>
                 </View>
               ) : (
@@ -551,23 +535,21 @@ export default function SellerOrderDetail() {
         <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
           <View style={styles.actionBarTint} />
-          {nextStatus ? (
+          {isNew ? (
             <TouchableOpacity
               style={[styles.primaryAction, updating && styles.actionDisabled]}
-              onPress={() => handleTransition(nextStatus)}
+              onPress={() => void handleProcessed()}
               disabled={updating}
               accessibilityRole="button"
-              accessibilityLabel={`Mark as ${formatOrderStatusLabel(nextStatus)}`}
+              accessibilityLabel="Mark order as processed"
             >
               <View>
-                <Text style={styles.primaryActionKicker}>NEXT STEP</Text>
-                <Text style={styles.primaryActionText}>
-                  {updating ? "Working…" : `Mark as ${formatOrderStatusLabel(nextStatus).toLowerCase()}`}
-                </Text>
+                <Text style={styles.primaryActionKicker}>NEW ORDER</Text>
+                <Text style={styles.primaryActionText}>{updating ? "Updating…" : "Mark as order received"}</Text>
               </View>
               {updating ? null : (
                 <View style={styles.primaryActionArrow}>
-                  <Ionicons name="arrow-forward" size={18} color={C.ink} />
+                  <Ionicons name="checkmark" size={18} color={C.ink} />
                 </View>
               )}
             </TouchableOpacity>
@@ -798,6 +780,20 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
     color: C.text,
   },
+
+  receivedBanner: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(46, 125, 50, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(46, 125, 50, 0.24)",
+    borderRadius: 20,
+    padding: 14,
+  },
+  receivedBannerTitle: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: "#2e7d32" },
+  receivedBannerBody: { fontFamily: fontFamilies.sans.regular, fontSize: 12.5, color: "#388e3c", marginTop: 3, lineHeight: 17 },
 
   codBanner: {
     marginTop: 14,

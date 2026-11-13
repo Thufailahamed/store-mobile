@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { BrandScreenHeader } from "@/components/brand/BrandScreenHeader";
@@ -15,6 +15,7 @@ import type { BrandTeamMember, BrandTeamInvite } from "@/lib/api/backend";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { isValidEmail } from "@/lib/contact-validation";
+import { themedAlert } from "@/lib/themed-alert";
 
 const ROLES = ["manager", "staff", "viewer"] as const;
 type Role = (typeof ROLES)[number];
@@ -38,9 +39,9 @@ export default function BrandTeam() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["brand-team-invites"] });
       setEmail("");
-      Alert.alert("Invite sent", `An email was sent to ${email}.`);
+      themedAlert("Invite sent", `An email was sent to ${email}.`);
     },
-    onError: (e) => Alert.alert("Invite failed", String(e)),
+    onError: (e) => themedAlert("Invite failed", String(e)),
   });
 
   const remove = useMutation({
@@ -53,7 +54,7 @@ export default function BrandTeam() {
   });
   const resend = useMutation({
     mutationFn: (id: string) => resendBrandInvite(id),
-    onSuccess: () => Alert.alert("Resent", "Invite email re-sent."),
+    onSuccess: () => themedAlert("Resent", "Invite email re-sent."),
   });
   const updateMember = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: { role?: Role; status?: "active" | "suspended" } }) => updateBrandMember(id, patch),
@@ -98,13 +99,13 @@ export default function BrandTeam() {
                 const isLead = m.role === "manager" || m.role === "owner";
                 const managerCount = (membersQ.data ?? []).filter((mm) => mm.role === "manager" || mm.role === "owner").length;
                 if (isLead && managerCount <= 1) {
-                  Alert.alert(
+                  themedAlert(
                     "Can't remove the only manager",
                     "This brand needs at least one manager or owner. Promote another member to manager before removing this one."
                   );
                   return;
                 }
-                Alert.alert("Remove member?", m.user?.email ?? m.user_id, [
+                themedAlert("Remove member?", m.user?.email ?? m.user_id, [
                   { text: "Cancel", style: "cancel" },
                   { text: "Remove", style: "destructive", onPress: () => remove.mutate(m.id) },
                 ]);
@@ -114,7 +115,7 @@ export default function BrandTeam() {
                 const demoting = r !== "manager";
                 const managerCount = (membersQ.data ?? []).filter((mm) => mm.role === "manager" || mm.role === "owner").length;
                 if (isLead && demoting && managerCount <= 1) {
-                  Alert.alert(
+                  themedAlert(
                     "Can't demote the only manager",
                     "This brand needs at least one manager or owner. Promote another member first."
                   );

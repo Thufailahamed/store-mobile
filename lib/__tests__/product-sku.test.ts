@@ -41,7 +41,7 @@ beforeEach(() => {
 
 describe("product-sku", () => {
   it("normalizes SKU for comparison", () => {
-    expect(normalizeSku("  luxe-001 ")).toBe("LUXE-001");
+    expect(normalizeSku("  vestara-001 ")).toBe("VESTARA-001");
   });
 
   it("detects duplicate SKUs within a product draft", () => {

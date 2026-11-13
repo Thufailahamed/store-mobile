@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -32,6 +31,7 @@ import {
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { UserPageFrame, withUserTheme } from "@/components/user/user-page";
+import { themedAlert } from "@/lib/themed-alert";
 
 const BRAND_STYLES: Record<
   PaymentBrand,
@@ -318,7 +318,7 @@ export default function AddPaymentMethodScreen() {
                     error={errorFor("cvv")}
                     focused={focused === "cvv"}
                     onLabelHelp={() =>
-                      Alert.alert(
+                      themedAlert(
                         "Where's the CVV?",
                         brand === "amex"
                           ? "The 4-digit code printed on the front of your card, above the number."

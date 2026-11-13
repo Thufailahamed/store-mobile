@@ -12,7 +12,7 @@ export default function BrandShippingInfo() {
       <BrandScreenHeader
         eyebrow="Brand HQ"
         title="Shipping"
-        subtitle="How brands ship with LUXE"
+        subtitle="How brands ship with VESTARA"
         back={{ onPress: () => require("expo-router").router.back(), label: "More" }}
       />
       <Text style={styles.intro}>

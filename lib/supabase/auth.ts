@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { supabase } from "./client";
+import { supabase, refreshSessionOnce } from "./client";
 import type { Session, User } from "@supabase/supabase-js";
 import { releaseCartReservations } from "@/lib/inventory-reservations";
 import { useCart, useWishlist } from "@/lib/stores";
@@ -105,10 +105,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const sessionTimeout = setTimeout(() => {
-      // Only give up if bootstrap hasn't completed — don't wipe a session
-      // that onAuthStateChange already delivered.
+      // If bootstrap hasn't completed, mark loading done without destroying any session
       if (!bootstrapDone) {
-        applySession(null);
+        setLoading(false);
       }
     }, 15000);
 
@@ -117,16 +116,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(({ data: { session: initialSession } }) => {
         clearTimeout(sessionTimeout);
         applySession(initialSession);
+        if (initialSession) {
+          const expiresAt = initialSession.expires_at ? initialSession.expires_at * 1000 : 0;
+          if (expiresAt > 0 && expiresAt - Date.now() < 5 * 60 * 1000) {
+            void refreshSessionOnce();
+          }
+        }
       })
       .catch(() => {
         clearTimeout(sessionTimeout);
-        applySession(null);
+        setLoading(false);
       });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (cancelled) return;
+      if (event === "SIGNED_OUT") {
+        setSession(null);
+        setUser(null);
+        setRole("customer");
+        setLoading(false);
+        setRoleLoading(false);
+        return;
+      }
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
       setLoading(false);

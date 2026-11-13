@@ -1,13 +1,14 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import { Alert } from "react-native";
+
 import { supabase } from "@/lib/supabase/client";
 import Constants from "expo-constants";
 import { assertSellerCanOperate } from "@/lib/api";
 import { addProductImageBackend } from "@/lib/api/backend";
 import type { ComplianceDocType } from "@/lib/seller-access";
 import { uuidv4 } from "@/lib/utils";
+import { themedAlert } from "@/lib/themed-alert";
 
 export interface UploadResult {
   url: string;
@@ -255,7 +256,7 @@ export async function pickComplianceFile(): Promise<{
   if (status !== "granted") return null;
 
   return new Promise((resolve) => {
-    Alert.alert("Upload document", "Choose a file type", [
+    themedAlert("Upload document", "Choose a file type", [
       {
         text: "Photo",
         onPress: async () => {
@@ -291,7 +292,7 @@ export async function pickComplianceFile(): Promise<{
               fileName: asset.name,
             });
           } catch {
-            Alert.alert("Document picker unavailable", "Restart the Expo app after installing dependencies.");
+            themedAlert("Document picker unavailable", "Restart the Expo app after installing dependencies.");
             resolve(null);
           }
         },
@@ -444,6 +445,19 @@ export async function uploadSellerProductPhoto(
   return uploadImageToBucket("product-images", path, uri, {
     mimeType: options?.mimeType,
     prefix: "storefront",
+  });
+}
+
+/** Upload size chart photo — presigns into size-charts directory. */
+export async function uploadSizeChartImage(
+  uri: string,
+  options?: { mimeType?: string | null },
+): Promise<UploadResult> {
+  const ext = normalizeExtension(uri.split(".").pop(), options?.mimeType);
+  const path = `size-charts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  return uploadImageToBucket("product-images", path, uri, {
+    mimeType: options?.mimeType,
+    prefix: "size-charts",
   });
 }
 

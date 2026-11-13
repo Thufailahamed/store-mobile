@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,6 +16,7 @@ import { useTrackEvent } from "@/lib/recommender";
 import { radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { Body, Display, Label } from "@/components/ui/Typography";
+import { themedAlert } from "@/lib/themed-alert";
 
 const INK = "#1b1c1c";
 
@@ -48,7 +48,7 @@ export default function ScanScreen() {
 
         const upload = await api.uploadScanImage(uri, source);
         if (!upload.ok) {
-          Alert.alert("Upload failed", upload.error);
+          themedAlert("Upload failed", upload.error);
           setBusy(false);
           return;
         }
@@ -57,7 +57,7 @@ export default function ScanScreen() {
           params: { url: upload.data.url, preview: uri },
         });
       } catch (e: any) {
-        Alert.alert("Scan error", e?.message ?? "Something went wrong");
+        themedAlert("Scan error", e?.message ?? "Something went wrong");
       } finally {
         setBusy(false);
       }

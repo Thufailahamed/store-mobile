@@ -6,12 +6,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  */
 
 export type LocalSettingsPrefs = {
-  biometricLock: boolean;
+  biometricLock?: boolean;
 };
 
-export const DEFAULT_LOCAL_PREFS: LocalSettingsPrefs = {
-  biometricLock: false,
-};
+export const DEFAULT_LOCAL_PREFS: LocalSettingsPrefs = {};
 
 const KEY = "luxe:local:settings";
 

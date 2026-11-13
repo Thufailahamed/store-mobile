@@ -54,9 +54,8 @@ import {
 
 const STEPS = [
   { key: 1, label: "Address" },
-  { key: 2, label: "Shipping" },
-  { key: 3, label: "Payment" },
-  { key: 4, label: "Review" },
+  { key: 2, label: "Payment" },
+  { key: 3, label: "Review" },
 ];
 
 const PAYMENTS_LK_ENABLED = process.env.EXPO_PUBLIC_PAYMENTS_LK_ENABLED === "true";
@@ -200,27 +199,27 @@ export default function CheckoutScreen() {
     ? Math.floor(
         Math.min(
           loyalty.state.points,
-          Math.floor(Math.max(0, subtotal() - couponDiscount)),
-        ) / 100,
-      ) * 100
+          Math.floor(Math.max(0, subtotal() - couponDiscount) * 50),
+        ) / 50,
+      ) * 50
     : 0;
+  const pointsValue = Math.floor(pointsToUse / 50);
   const checkoutTotals = useMemo(
     () =>
       computeCartTotals({
         lines: pricingLines,
         shippingKey,
         couponDiscount,
-        pointsValue: pointsToUse,
+        pointsValue,
         freeShippingCoupon,
         giftCardCredit: giftCardBalance,
         pricing,
       }),
-    [pricingLines, shippingKey, couponDiscount, pointsToUse, freeShippingCoupon, giftCardBalance, cartItems, pricing],
+    [pricingLines, shippingKey, couponDiscount, pointsValue, freeShippingCoupon, giftCardBalance, cartItems, pricing],
   );
   const sub = checkoutTotals.sub;
   const shippingFee = checkoutTotals.shipping;
   const afterCoupon = checkoutTotals.afterCoupon;
-  const pointsValue = pointsToUse;
   const tax = checkoutTotals.tax;
   const total = checkoutTotals.total;
   const giftApplied = checkoutTotals.giftApplied;
@@ -254,9 +253,9 @@ export default function CheckoutScreen() {
     };
   }, [missingThumbIds]);
   const earnEstimate = Math.floor(afterCoupon * 0.05);
-  // Max redeemable points: capped at balance and post-coupon subtotal (100-pt blocks).
+  // Max redeemable points: capped at balance and post-coupon subtotal (50-pt blocks, 50 pts = LKR 1).
   const maxRedeemablePts =
-    Math.floor(Math.min(loyalty.state.points, Math.floor(Math.max(0, sub - couponDiscount))) / 100) * 100;
+    Math.floor(Math.min(loyalty.state.points, Math.floor(Math.max(0, sub - couponDiscount) * 50)) / 50) * 50;
   const shippingOption = SHIPPING_OPTIONS.find((o) => o.key === shippingKey) ?? SHIPPING_OPTIONS[0];
 
   useEffect(() => {
@@ -625,7 +624,7 @@ export default function CheckoutScreen() {
 
     if (paymentMethod === "cod" && codAllowed === false) {
       toast("Cash on delivery is not available for this bag", "error");
-      setStep(3);
+      setStep(2);
       return;
     }
     if (paymentMethod === "cod" && codAllowed === null) {
@@ -685,10 +684,11 @@ export default function CheckoutScreen() {
       ? Math.floor(
           Math.min(
             loyalty.state.points,
-            Math.floor(Math.max(0, useCart.getState().subtotal() - couponDiscount)),
-          ) / 100,
-        ) * 100
+            Math.floor(Math.max(0, useCart.getState().subtotal() - couponDiscount) * 50),
+          ) / 50,
+        ) * 50
       : 0;
+    const freshPointsDiscount = Math.floor(freshPointsToUse / 50);
 
 
     setLoading(true);
@@ -751,7 +751,7 @@ export default function CheckoutScreen() {
         // Each store pays its own delivery fee; the platform fee is charged
         // on the store's discounted subtotal. The backend re-prices both.
         const shippingFee = freeShippingCoupon ? 0 : shippingFeeFor(shippingKey, pricing);
-        const discount = Math.min(g.totals.sub, round2((couponDiscount + freshPointsToUse) * share));
+        const discount = Math.min(g.totals.sub, round2((couponDiscount + freshPointsDiscount) * share));
         const tax = round2(platformFeeFor(g.totals.sub - discount, pricing));
         const total = Math.max(0, g.totals.sub + shippingFee + tax - discount);
         return {
@@ -1296,7 +1296,7 @@ export default function CheckoutScreen() {
               <View style={styles.addAddressCopy}>
                 <Text style={styles.addAddressTitle}>Add a new address</Text>
                 <Text style={styles.addAddressSubtitle}>
-                  Auto-detect location or drop a pin on map
+                  Enter your address or drop a pin on map
                 </Text>
               </View>
               <View style={styles.addAddressChevronWrap}>
@@ -1307,193 +1307,6 @@ export default function CheckoutScreen() {
         )}
 
         {step === 2 && (
-          <View style={styles.panel}>
-            <StepTitle kicker="Shipping" title="How fast do you want it?" subtitle="Arrival dates are estimates from today." />
-
-            <View style={styles.deliverToCard}>
-              <View style={styles.deliverToLeft}>
-                <View style={styles.deliverToIcon}>
-                  <Ionicons name="location-sharp" size={16} color={colors.accent2.ochre} />
-                </View>
-                <View style={styles.deliverToInfo}>
-                  <Text style={styles.deliverToKicker}>DELIVERING TO</Text>
-                  <Text style={styles.deliverToAddress} numberOfLines={1}>
-                    {addressSummary || "Select an address"}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={styles.deliverToChangeBtn}
-                onPress={() => setStep(1)}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel="Change delivery address"
-              >
-                <Ionicons name="pencil-outline" size={12} color={colors.olive[800]} />
-                <Text style={styles.deliverToChangeText}>Change</Text>
-              </TouchableOpacity>
-            </View>
-
-            {SHIPPING_OPTIONS.map((opt) => {
-              const selected = shippingKey === opt.key;
-              const icon =
-                opt.key === "overnight"
-                  ? "rocket-outline"
-                  : opt.key === "express"
-                    ? "flash-outline"
-                    : "cube-outline";
-              const cost = computeOrderShipping(pricingLines, opt.key, {
-                freeShippingCoupon,
-                pricing,
-              });
-              const arrivalFmt = (d: Date) =>
-                d.toLocaleDateString("en-LK", { month: "short", day: "numeric" });
-              const minArrival = new Date();
-              minArrival.setDate(minArrival.getDate() + opt.minDays);
-              const maxArrival = new Date();
-              maxArrival.setDate(maxArrival.getDate() + opt.maxDays);
-              const arrival =
-                opt.minDays === opt.maxDays
-                  ? arrivalFmt(minArrival)
-                  : `${arrivalFmt(minArrival)} – ${arrivalFmt(maxArrival)}`;
-              return (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.shippingCard, selected && styles.shippingCardActive]}
-                  onPress={() => setShippingKey(opt.key)}
-                  activeOpacity={0.88}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                >
-                  <View style={[styles.shippingIconTile, selected && styles.shippingIconTileActive]}>
-                    <Ionicons
-                      name={icon}
-                      size={18}
-                      color={selected ? colors.paper.cream : colors.olive[800]}
-                    />
-                  </View>
-                  <View style={styles.shippingInfo}>
-                    <View style={styles.shippingHeaderRow}>
-                      <Text style={styles.shippingTitle}>{opt.label}</Text>
-                      {opt.key === "overnight" && (
-                        <View style={styles.fastestBadge}>
-                          <Text style={styles.fastestBadgeText}>FASTEST</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.shippingDesc}>{opt.desc}</Text>
-                    <View style={[styles.shippingArrivalPill, selected && styles.shippingArrivalPillActive]}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={11}
-                        color={selected ? colors.olive[800] : colors.olive[700]}
-                      />
-                      <Text style={[styles.shippingArrivalText, selected && styles.shippingArrivalTextActive]}>
-                        Arrives {arrival}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.shippingRight}>
-                    {cost === 0 ? (
-                      <View style={styles.shippingFreeBadge}>
-                        <Text style={styles.shippingFreeBadgeText}>FREE</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.shippingFeeText}>+{formatPrice(cost)}</Text>
-                    )}
-                    <View style={[styles.shippingRadio, selected && styles.shippingRadioActive]}>
-                      {selected && (
-                        <Ionicons name="checkmark" size={13} color={colors.paper.cream} />
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-            {(() => {
-              if (freeShippingCoupon) {
-                return (
-                  <View style={[styles.shippingBanner, styles.shippingBannerUnlocked]}>
-                    <View style={[styles.shippingBannerIcon, styles.shippingBannerIconUnlocked]}>
-                      <Ionicons name="pricetag" size={13} color={colors.olive[800]} />
-                    </View>
-                    <Text style={styles.shippingBannerTextUnlocked}>
-                      Free-shipping coupon applied — every option is on us.
-                    </Text>
-                  </View>
-                );
-              }
-              const storeCount = new Set(pricingLines.map((l) => l.storeId)).size;
-              return (
-                <View style={styles.shippingBanner}>
-                  <View style={styles.shippingBannerIcon}>
-                    <Ionicons name="cube-outline" size={13} color={colors.accent2.ochre} />
-                  </View>
-                  <Text style={styles.shippingBannerText}>
-                    Delivery is charged per store
-                    {storeCount > 1 ? <> — your bag ships from <Text style={styles.shippingBannerHighlight}>{storeCount} stores</Text></> : null}.
-                  </Text>
-                </View>
-              );
-            })()}
-
-            <View style={styles.deliveryDateSection}>
-              <StepTitle kicker="Optional" title="Preferred delivery date" small />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.dateScrollContent}
-              >
-                <TouchableOpacity
-                  onPress={() => setDeliveryDate(null)}
-                  style={[styles.dateChipNew, deliveryDate === null && styles.dateChipNewActive]}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel="Flexible delivery date"
-                >
-                  <Text style={[styles.dateChipKicker, deliveryDate === null && styles.dateChipKickerActive]}>
-                    ANY
-                  </Text>
-                  <Text
-                    style={[styles.dateChipMain, deliveryDate === null && styles.dateChipMainActive]}
-                  >
-                    Flexible
-                  </Text>
-                </TouchableOpacity>
-                {[1, 2, 3, 5].map((offset) => {
-                  const d = new Date();
-                  d.setDate(d.getDate() + offset);
-                  const iso = d.toISOString().slice(0, 10);
-                  const weekday = d.toLocaleDateString("en-LK", { weekday: "short" }).toUpperCase();
-                  const dayMonth = d.toLocaleDateString("en-LK", { month: "short", day: "numeric" });
-                  const active = deliveryDate === iso;
-                  return (
-                    <TouchableOpacity
-                      key={iso}
-                      onPress={() => setDeliveryDate(active ? null : iso)}
-                      style={[styles.dateChipNew, active && styles.dateChipNewActive]}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delivery date ${weekday} ${dayMonth}`}
-                    >
-                      <Text style={[styles.dateChipKicker, active && styles.dateChipKickerActive]}>
-                        {weekday}
-                      </Text>
-                      <Text
-                        style={[styles.dateChipMain, active && styles.dateChipMainActive]}
-                      >
-                        {dayMonth}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          </View>
-        )}
-
-        {step === 3 && (
           <View style={styles.panel}>
             <StepTitle kicker="Payment" title="How will you pay?" subtitle="Pay at your door, or securely by card." />
 
@@ -1511,10 +1324,10 @@ export default function CheckoutScreen() {
               </View>
               <TouchableOpacity
                 style={styles.deliverToChangeBtn}
-                onPress={() => setStep(2)}
+                onPress={() => setStep(1)}
                 activeOpacity={0.75}
                 accessibilityRole="button"
-                accessibilityLabel="Change shipping or address"
+                accessibilityLabel="Change address"
               >
                 <Ionicons name="pencil-outline" size={12} color={colors.olive[800]} />
                 <Text style={styles.deliverToChangeText}>Change</Text>
@@ -1625,7 +1438,7 @@ export default function CheckoutScreen() {
           </View>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <View style={styles.panel}>
             <StepTitle kicker="Review" title="Almost there" subtitle="Check everything before you place your order." />
 
@@ -1654,34 +1467,11 @@ export default function CheckoutScreen() {
 
               <View style={styles.orderConfigDivider} />
 
-              <TouchableOpacity
-                style={styles.orderConfigRow}
-                onPress={() => setStep(2)}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel="Change shipping method"
-              >
-                <View style={styles.orderConfigIcon}>
-                  <Ionicons name="cube-outline" size={15} color={colors.olive[800]} />
-                </View>
-                <View style={styles.orderConfigInfo}>
-                  <Text style={styles.orderConfigKicker}>SHIPPING METHOD</Text>
-                  <Text style={styles.orderConfigValue} numberOfLines={1}>
-                    {shippingOption.label}
-                    {deliveryDate ? ` · ${new Date(deliveryDate).toLocaleDateString("en-LK", { month: "short", day: "numeric" })}` : ""}
-                  </Text>
-                </View>
-                <View style={styles.orderConfigAction}>
-                  <Text style={styles.orderConfigActionText}>Edit</Text>
-                  <Ionicons name="chevron-forward" size={12} color={colors.olive[800]} />
-                </View>
-              </TouchableOpacity>
-
               <View style={styles.orderConfigDivider} />
 
               <TouchableOpacity
                 style={styles.orderConfigRow}
-                onPress={() => setStep(3)}
+                onPress={() => setStep(2)}
                 activeOpacity={0.75}
                 accessibilityRole="button"
                 accessibilityLabel="Change payment method"
@@ -1863,7 +1653,7 @@ export default function CheckoutScreen() {
                 value={shippingFee === 0 ? "Complimentary" : formatPrice(shippingFee)}
                 accent={shippingFee === 0}
               />
-              <SummaryLine label={`Platform fee · ${pricing.platform_fee_pct}%`} value={formatPrice(tax)} muted />
+              <SummaryLine label={`Tax and fees · ${pricing.platform_fee_pct}%`} value={formatPrice(tax)} muted />
               <View style={styles.receiptRule} />
               <View style={styles.totalRow}>
                 <View>
@@ -1874,7 +1664,7 @@ export default function CheckoutScreen() {
               </View>
             </View>
 
-            {loyalty.state.points >= 100 && maxRedeemablePts >= 100 && (
+            {loyalty.state.points >= 50 && maxRedeemablePts >= 50 && (
               <View style={styles.loyaltyCard}>
                 <View style={styles.loyaltyIcon}>
                   <Ionicons name="diamond-outline" size={18} color={colors.olive[800]} />
@@ -1884,7 +1674,7 @@ export default function CheckoutScreen() {
                   <Text style={styles.loyaltySubtitle}>
                     {usePoints
                       ? `Redeeming ${pointsToUse.toLocaleString()} pts (-${formatPrice(pointsValue)})`
-                      : `Up to ${maxRedeemablePts.toLocaleString()} pts available`}
+                      : `Up to ${maxRedeemablePts.toLocaleString()} pts available (50 pts = ${formatPrice(1)})`}
                   </Text>
                 </View>
                 <Switch
@@ -1917,11 +1707,11 @@ export default function CheckoutScreen() {
           pointerEvents="box-none"
         >
           <View style={styles.reviewFooterTotal}>
-            <Text style={styles.reviewFooterLabel}>{step === 4 ? "Total payable" : "Order total"}</Text>
+            <Text style={styles.reviewFooterLabel}>{step === 3 ? "Total payable" : "Order total"}</Text>
             <Text style={styles.reviewFooterPrice}>{formatPrice(total)}</Text>
             <Text style={styles.reviewFooterSub}>
-              {step === 4
-                ? "Platform fee & delivery included"
+              {step === 3
+                ? "Tax and fees & delivery included"
                 : `${cartItems.length} item${cartItems.length === 1 ? "" : "s"} · ${shippingFee === 0 ? "free delivery" : `${formatPrice(shippingFee)} delivery`}`}
             </Text>
           </View>
@@ -1933,9 +1723,7 @@ export default function CheckoutScreen() {
                 ? handleAddressContinue
                 : step === 2
                   ? () => setStep(3)
-                  : step === 3
-                    ? () => setStep(4)
-                    : () => {
+                  : () => {
                         // The glow rises from the button the buyer pressed.
                         placeOrderBtnRef.current?.measureInWindow((x, y, w, h) =>
                           setOverlayOrigin({ x: x + w / 2, y: y + h / 2 }),
@@ -1946,16 +1734,16 @@ export default function CheckoutScreen() {
             disabled={loading}
             activeOpacity={0.88}
             accessibilityRole="button"
-            accessibilityLabel={step === 4 ? "Place order" : "Continue"}
+            accessibilityLabel={step === 3 ? "Place order" : "Continue"}
           >
             {loading ? <ActivityIndicator size="small" color={colors.paper.cream} /> : null}
             <Text style={styles.placeOrderText}>
-              {step === 4 ? (loading ? "Placing…" : "Place order") : step === 3 ? "Review order" : "Continue"}
+              {step === 3 ? (loading ? "Placing…" : "Place order") : step === 2 ? "Review order" : "Continue"}
             </Text>
             {!loading ? (
               <Ionicons
-                name={step === 4 ? "lock-closed" : "arrow-forward"}
-                size={step === 4 ? 14 : 16}
+                name={step === 3 ? "lock-closed" : "arrow-forward"}
+                size={step === 3 ? 14 : 16}
                 color={colors.paper.cream}
               />
             ) : null}
@@ -1981,7 +1769,7 @@ export default function CheckoutScreen() {
         }}
         onSubmit={handleAddressSheetSubmit}
         title={editingAddress ? "Edit delivery address" : "Delivery address"}
-        subtitle="Auto-detect location or drop a pin"
+        subtitle="Enter your address or drop a pin"
         primaryLabel={editingAddress ? "Save changes" : "Use this address"}
         hideDefault
         defaultName={user?.user_metadata?.full_name ?? ""}

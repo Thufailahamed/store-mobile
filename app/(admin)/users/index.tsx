@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, Alert, RefreshControl, ScrollView, Platform } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ScrollView, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
@@ -12,6 +12,7 @@ import { AdminMasthead, StatBand, SearchField, ChipRail, GOLD, CREAM } from "@/c
 import { fontFamilies } from "@/lib/theme/fonts";
 import { resolveImageUrl } from "@/lib/utils";
 import type { User } from "@/lib/types";
+import { themedAlert } from "@/lib/themed-alert";
 
 const ROLES = ["all", "customer", "store_owner", "brand_owner", "influencer", "admin"] as const;
 
@@ -28,7 +29,7 @@ function roleLabel(role: string) {
 }
 
 const ROLE_INFO: Record<string, { label: string; desc: string }> = {
-  customer: { label: "Customer", desc: "Shops and buys on LUXE" },
+  customer: { label: "Customer", desc: "Shops and buys on VESTARA" },
   store_owner: { label: "Store owner", desc: "Runs a storefront" },
   brand_owner: { label: "Brand owner", desc: "Manages a brand catalogue" },
   influencer: { label: "Influencer", desc: "Creates content, earns commission" },
@@ -76,7 +77,7 @@ export default function AdminUsers() {
       updateUserRole(userId, newRole),
     onSuccess: (res) => {
       if (!res.ok) {
-        Alert.alert("Couldn't change role", res.error);
+        themedAlert("Couldn't change role", res.error);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
@@ -84,7 +85,7 @@ export default function AdminUsers() {
       setSheetUser(null);
     },
     onError: (e) => {
-      Alert.alert("Couldn't change role", e instanceof Error ? e.message : "Try again.");
+      themedAlert("Couldn't change role", e instanceof Error ? e.message : "Try again.");
     },
   });
 
@@ -113,7 +114,7 @@ export default function AdminUsers() {
               eyebrow="People"
               title="Member"
               italic="Directory"
-              subtitle="Every account on LUXE — shoppers, ateliers, brands and staff."
+              subtitle="Every account on VESTARA — shoppers, ateliers, brands and staff."
             />
             <StatBand
               items={[

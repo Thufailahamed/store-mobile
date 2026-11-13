@@ -110,6 +110,21 @@ export async function replayCourierWebhook(eventId: number, force = false): Prom
 // Authed reads: shipment by order
 // =========================================================================
 
+export interface CourierTrackingEvent {
+  created_at: string;
+  status: string;
+  event_status: string | null;
+  description: string | null;
+}
+
+/** The courier return parcel (customer -> store) for a return group, if booked. */
+export async function getReturnCourier(
+  returnGroupId: string,
+): Promise<ApiResult<{ shipment: CourierShipment | null; events: CourierTrackingEvent[] }>> {
+  if (!hasStoreApi()) return { ok: false, error: "Store API not configured" };
+  return fetchJson(`/api/returns/${returnGroupId}/courier`, { requireAuth: true });
+}
+
 export async function getShipmentByOrder(orderId: string): Promise<ApiResult<{ shipment: CourierShipment | null }>> {
   if (!hasStoreApi()) return { ok: false, error: "Store API not configured" };
   return fetchJson(`/api/courier/shipments/by-order/${orderId}`, {

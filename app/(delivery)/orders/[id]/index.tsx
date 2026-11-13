@@ -6,10 +6,8 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Linking,
   KeyboardAvoidingView,
-
   Platform,
   Pressable,
 } from "react-native";
@@ -67,6 +65,7 @@ import {
   ISSUE_REASON_BY_VALUE,
   type IssueReason,
 } from "@/lib/utils/delivery-format";
+import { themedAlert } from "@/lib/themed-alert";
 
 const ISSUE_REASON_LABEL_LOOKUP = (r: IssueReason) =>
   ISSUE_REASON_BY_VALUE[r].label;
@@ -139,7 +138,7 @@ export default function DeliveryDetail() {
     if (!order) return;
     // Workflow guard: can only start from "shipped".
     if (!canStartDelivery(order.status)) {
-      Alert.alert(
+      themedAlert(
         "Cannot start",
         `Order must be shipped before delivery can start (current: ${order.status}).`,
       );
@@ -151,9 +150,9 @@ export default function DeliveryDetail() {
     if (res.ok) {
       // Refetch from server to get the canonical post-transition state.
       await refetchOrder();
-      Alert.alert("Out for delivery", `OTP: ${res.data.otp}`);
+      themedAlert("Out for delivery", `OTP: ${res.data.otp}`);
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -166,7 +165,7 @@ export default function DeliveryDetail() {
     const uploaded = await uploadDeliveryProof(user.id, order.id, pick.assets[0].uri);
     if (uploaded.error || !uploaded.url) {
       setCapturingProof(false);
-      Alert.alert("Upload failed", uploaded.error ?? "Could not upload proof");
+      themedAlert("Upload failed", uploaded.error ?? "Could not upload proof");
       return;
     }
     setProofUrl(uploaded.url);
@@ -177,7 +176,7 @@ export default function DeliveryDetail() {
       const res = await deliveryProofUpload(order.id, uploaded.url, "Delivery proof photo");
       setCapturingProof(false);
       if (!res.ok) {
-        Alert.alert(
+        themedAlert(
           "Proof record sync failed",
           `${res.error}\n\nYou can retry the photo or contact support.`,
         );
@@ -196,7 +195,7 @@ export default function DeliveryDetail() {
     const uploaded = await uploadDeliverySignature(user.id, order.id, dataUrl);
     setUploadingSignature(false);
     if (uploaded.error || !uploaded.url) {
-      Alert.alert("Signature upload failed", uploaded.error ?? "Try again");
+      themedAlert("Signature upload failed", uploaded.error ?? "Try again");
       return;
     }
     setSignatureUrl(uploaded.url);
@@ -207,18 +206,18 @@ export default function DeliveryDetail() {
   const handleVerify = async () => {
     if (!order) return;
     if (!isValidOtp(otp)) {
-      Alert.alert("OTP required", "Enter the 6-digit code from the customer.");
+      themedAlert("OTP required", "Enter the 6-digit code from the customer.");
       return;
     }
     if (!proofUrl) {
-      Alert.alert(
+      themedAlert(
         "Proof required",
         "Upload a delivery proof photo before verifying delivery.",
       );
       return;
     }
     if (!canVerifyDelivery(order.status)) {
-      Alert.alert(
+      themedAlert(
         "Cannot verify",
         `Order must be out_for_delivery before verify (current: ${order.status}).`,
       );
@@ -230,11 +229,11 @@ export default function DeliveryDetail() {
     if (res.ok) {
       // Refetch so local state matches the canonical post-transition state.
       await refetchOrder();
-      Alert.alert("Delivered!", `${order.order_number} marked as delivered`, [
+      themedAlert("Delivered!", `${order.order_number} marked as delivered`, [
         { text: "OK", onPress: () => router.back() },
       ]);
     } else {
-      Alert.alert("Verification failed", res.error);
+      themedAlert("Verification failed", res.error);
     }
   };
 
@@ -280,9 +279,9 @@ export default function DeliveryDetail() {
       });
       await refetchOrder();
       setShowReport(false);
-      Alert.alert("Issue reported", reasonText);
+      themedAlert("Issue reported", reasonText);
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -293,12 +292,12 @@ export default function DeliveryDetail() {
     setRescheduling(false);
     if (res.ok) {
       await refetchOrder();
-      Alert.alert(
+      themedAlert(
         "Rescheduled",
         "Order moved back to out_for_delivery for another attempt.",
       );
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -318,7 +317,7 @@ export default function DeliveryDetail() {
     if (!order) return;
     const toRiderId = reassignRiderId.trim();
     if (!toRiderId) {
-      Alert.alert("Rider id required", "Enter the rider id to hand off to.");
+      themedAlert("Rider id required", "Enter the rider id to hand off to.");
       return;
     }
     setReassigning(true);
@@ -328,14 +327,14 @@ export default function DeliveryDetail() {
       setReassignModalOpen(false);
       setReassignRiderId("");
       await refetchOrder();
-      Alert.alert("Reassigned", `Package handed off to ${toRiderId}.`);
+      themedAlert("Reassigned", `Package handed off to ${toRiderId}.`);
     } else if (res.error === "reassign-not-supported") {
-      Alert.alert(
+      themedAlert(
         "Reassign unavailable",
         "The server doesn't expose the reassign endpoint yet. Contact admin.",
       );
     } else {
-      Alert.alert("Error", res.error);
+      themedAlert("Error", res.error);
     }
   };
 
@@ -363,7 +362,7 @@ export default function DeliveryDetail() {
     const uploaded = await uploadDeliveryProof(user.id, order.id, pick.assets[0].uri);
     if (uploaded.error || !uploaded.url) {
       setUploadingProof(false);
-      Alert.alert("Upload failed", uploaded.error ?? "Could not upload photo");
+      themedAlert("Upload failed", uploaded.error ?? "Could not upload photo");
       return;
     }
 
@@ -371,15 +370,15 @@ export default function DeliveryDetail() {
       const res = await deliveryProofUpload(order.id, uploaded.url, "Delivery proof photo");
       setUploadingProof(false);
       if (res.ok) {
-        Alert.alert("Proof saved", "Delivery photo uploaded successfully.");
+        themedAlert("Proof saved", "Delivery photo uploaded successfully.");
       } else {
-        Alert.alert("Error", res.error);
+        themedAlert("Error", res.error);
       }
       return;
     }
 
     setUploadingProof(false);
-    Alert.alert("Proof saved locally", "Configure EXPO_PUBLIC_STORE_API_URL to sync proof to the server.");
+    themedAlert("Proof saved locally", "Configure EXPO_PUBLIC_STORE_API_URL to sync proof to the server.");
   };
 
   if (loading) {
@@ -495,7 +494,7 @@ export default function DeliveryDetail() {
                   onPress={() => {
                     if (ship.phone) {
                       const cleaned = ship.phone.replace(/[^0-9+]/g, "");
-                      const text = encodeURIComponent(`Hi ${ship.full_name?.split(" ")[0] ?? ""}, I'm your LUXE delivery rider.`);
+                      const text = encodeURIComponent(`Hi ${ship.full_name?.split(" ")[0] ?? ""}, I'm your VESTARA delivery rider.`);
                       safeOpenUrl(`https://wa.me/${cleaned.replace(/^\+/, "")}?text=${text}`);
                     }
                   }}
@@ -535,7 +534,7 @@ export default function DeliveryDetail() {
             <SummaryRow label="Subtotal" value={formatPrice(order.subtotal)} />
             {order.discount > 0 && <SummaryRow label="Discount" value={`-${formatPrice(order.discount)}`} />}
             <SummaryRow label="Shipping" value={formatPrice(order.shipping_fee)} />
-            {order.tax > 0 && <SummaryRow label="Platform fee" value={formatPrice(order.tax)} />}
+            {order.tax > 0 && <SummaryRow label="Tax and fees" value={formatPrice(order.tax)} />}
             <View style={styles.summaryDivider} />
             <SummaryRow label="Total" value={formatPrice(order.total)} bold />
           </View>
@@ -741,7 +740,7 @@ export default function DeliveryDetail() {
         visible={signatureModalOpen}
         onClose={() => setSignatureModalOpen(false)}
         onCapture={handleCaptureSignature}
-        onEmpty={() => Alert.alert("Signature empty", "Please sign before saving.")}
+        onEmpty={() => themedAlert("Signature empty", "Please sign before saving.")}
         descriptionText="Customer signature"
       />
 

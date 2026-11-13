@@ -12,7 +12,7 @@ interface Props {
 
 /**
  * Replaces the rider / delivery-company / admin delivery screens once
- * LUXE deliveries are handled by an external courier partner.
+ * VESTARA deliveries are handled by an external courier partner.
  */
 export function CourierManagedExternally({ role, onClose }: Props) {
   const heading =
@@ -24,9 +24,9 @@ export function CourierManagedExternally({ role, onClose }: Props) {
 
   const body =
     role === "rider"
-      ? "LUXE deliveries are now handled by an external delivery partner. There is no internal rider assignment — your services are no longer required."
+      ? "VESTARA deliveries are now handled by an external delivery partner. There is no internal rider assignment — your services are no longer required."
       : role === "delivery_company"
-        ? "LUXE deliveries are now fulfilled by an external delivery partner. The internal logistics portal is read-only."
+        ? "VESTARA deliveries are now fulfilled by an external delivery partner. The internal logistics portal is read-only."
         : "The internal rider / delivery-company pipeline has been retired. Use Courier Providers to manage external integrations.";
 
   return (

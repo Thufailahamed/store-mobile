@@ -5,12 +5,13 @@
  */
 
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   getBrandPayoutSettingsBackend,
   updateBrandPayoutSettingsBackend,
   type BrandPayoutSettings,
 } from "@/lib/api/backend";
+import { themedAlert } from "@/lib/themed-alert";
 
 interface Props {
   initial: BrandPayoutSettings | null;
@@ -33,10 +34,10 @@ export function PayoutSettingsForm({ initial, onSaved }: Props) {
         : { method, paypal };
       const res = await updateBrandPayoutSettingsBackend(body);
       if (!res.ok) {
-        Alert.alert("Save failed", typeof res.error === "string" ? res.error : "Try again");
+        themedAlert("Save failed", typeof res.error === "string" ? res.error : "Try again");
         return;
       }
-      Alert.alert("Saved");
+      themedAlert("Saved");
       onSaved?.(res.data.payout);
     } finally {
       setSaving(false);

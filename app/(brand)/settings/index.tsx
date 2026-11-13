@@ -11,6 +11,7 @@ import { getBrandByOwner, updateBrand, getBrandSettings, updateBrandSettings } f
 import { useAuth } from "@/lib/supabase/auth";
 import { colors, typography, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { themedAlert } from "@/lib/themed-alert";
 
 type Tab = "profile" | "socials" | "notifications" | "developer";
 const TABS: ReadonlyArray<{ value: Tab; label: string }> = [
@@ -55,7 +56,7 @@ export default function BrandSettings() {
         {tab === "developer" ? <DeveloperTab brandId={brandId} /> : null}
 
         <View style={styles.signOutWrap}>
-          <Button variant="outline" onPress={() => Alert.alert("Sign out?", "", [
+          <Button variant="outline" onPress={() => themedAlert("Sign out?", "", [
             { text: "Cancel", style: "cancel" },
             { text: "Sign out", style: "destructive", onPress: () => signOut() },
           ])}>Sign out</Button>
@@ -85,8 +86,8 @@ function ProfileTab({ brandId, initial, loading }: { brandId?: string; initial: 
 
   const mut = useMutation({
     mutationFn: () => updateBrand(brandId ?? "_", { name, tagline, website, description, country } as never),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["brand-owner"] }); Alert.alert("Saved", "Profile updated."); },
-    onError: (e) => Alert.alert("Error", String(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["brand-owner"] }); themedAlert("Saved", "Profile updated."); },
+    onError: (e) => themedAlert("Error", String(e)),
   });
 
   if (loading) return <Skeleton style={styles.skelCard} />;
@@ -126,8 +127,8 @@ function SocialsTab({ brandId, initial, loading }: { brandId?: string; initial: 
 
   const mut = useMutation({
     mutationFn: () => updateBrand(brandId ?? "_", { social_links: { instagram, twitter, facebook, tiktok } } as never),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["brand-owner"] }); Alert.alert("Saved", "Social links updated."); },
-    onError: (e) => Alert.alert("Error", String(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["brand-owner"] }); themedAlert("Saved", "Social links updated."); },
+    onError: (e) => themedAlert("Error", String(e)),
   });
 
   if (loading) return <Skeleton style={styles.skelCard} />;
@@ -171,8 +172,8 @@ function NotificationsTab({ initial, loading }: { initial: unknown; loading: boo
 
   const mut = useMutation({
     mutationFn: () => updateBrandSettings(flags),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["brand-settings"] }); Alert.alert("Saved", "Alert preferences updated."); },
-    onError: (e) => Alert.alert("Error", String(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["brand-settings"] }); themedAlert("Saved", "Alert preferences updated."); },
+    onError: (e) => themedAlert("Error", String(e)),
   });
 
   if (loading) return <Skeleton style={styles.skelCard} />;
@@ -190,7 +191,7 @@ function NotificationsTab({ initial, loading }: { initial: unknown; loading: boo
 }
 
 function DeveloperTab({ brandId }: { brandId?: string }) {
-  const url = brandId ? `https://api.luxe.example/webhooks/brand/${brandId}` : null;
+  const url = brandId ? `https://api.vestara.example/webhooks/brand/${brandId}` : null;
   return (
     <Card style={styles.formCard}>
       <FieldLabel>Webhook URL</FieldLabel>
