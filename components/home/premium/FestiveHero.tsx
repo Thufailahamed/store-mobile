@@ -4,15 +4,14 @@
  * Top to bottom:
  *   1. Department tabs (All / Men / Women / Kids) with a folder-style active tab.
  *   2. Category icon row — filtered by the active department.
- *   3. Full-bleed sale carousel: each slide is a saturated festive scene
- *      (royal blue, magenta, sunset, emerald) with sparkles, hanging lights,
- *      an arched photograph, a gold sale lockup, offer seal and Shop Now pill.
- *      Pages by swipe, auto-advances every 5s (paused while the user drags).
+ *   3. Peek image carousel: portrait 3:4 banner images in coloured frames,
+ *      next card peeking in. Images come from `heroBanners.ts` (local) or
+ *      the CMS banners. Snaps per card, auto-advances every 5s (paused
+ *      while the user drags).
  *   4. Pager dots.
- *   5. "Powered by" board — featured brands as white wordmark cards with a
- *      gold frame on a purple sale board.
+ *   5. "Powered by" promo video — muted, looping, full-bleed.
  *
- * CMS `bg_color` on a banner overrides its scene colour.
+ * CMS `accent_color` / `bg_color` on a banner sets its frame colour.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -24,6 +23,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type ImageSourcePropType,
 } from "react-native";
 import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
@@ -36,13 +36,16 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Ionicons } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
 import type { Banner, Brand, Category } from "@/lib/types";
-import { formatPrice } from "@/lib/utils";
+import { HERO_BANNERS } from "./heroBanners";
+import { PoweredByVideo } from "./PoweredByVideo";
+import { POSTS_ENABLED, publicPostsApi } from "@/lib/posts/api";
 
 const SLIDE_MS = 5000;
+/** Category icon circle diameter (Myntra-style small round icons). */
+const CAT_SIZE = 58;
 
 export type Dept = "all" | "men" | "women" | "kids";
 const DEPTS: { key: Dept; label: string }[] = [
@@ -50,38 +53,6 @@ const DEPTS: { key: Dept; label: string }[] = [
   { key: "men", label: "MEN" },
   { key: "women", label: "WOMEN" },
   { key: "kids", label: "KIDS" },
-];
-
-type Theme = {
-  bg: [string, string, string];
-  accent: string;
-  ink: string;
-  glow: string;
-};
-
-const THEMES: Theme[] = [
-  { bg: ["#05124f", "#1546d8", "#0a2a8f"], accent: "#ffd66b", ink: "#0a1f73", glow: "#6fb6ff" },
-  { bg: ["#ff5fa2", "#a3157a", "#2a0b63"], accent: "#ffd25e", ink: "#4a0d6b", glow: "#ff9bd2" },
-  { bg: ["#ff8a00", "#ff4d4d", "#b3125f"], accent: "#fff1b8", ink: "#7a0b3a", glow: "#ffd08a" },
-  { bg: ["#003b34", "#00876b", "#14b8a6"], accent: "#ffe08a", ink: "#003d33", glow: "#7cf5d9" },
-];
-
-function themeFor(b: Banner, i: number): Theme {
-  const t = THEMES[i % THEMES.length];
-  if (!b.bg_color) return t;
-  return { ...t, bg: [b.bg_color, b.bg_color, "#000000"], accent: b.accent_color || t.accent };
-}
-
-function discountOf(b: Banner): number | null {
-  const m = /(\d{1,2})\s*%/.exec(`${b.title} ${b.subtitle ?? ""}`);
-  return m ? Number(m[1]) : null;
-}
-
-/** Sparkle positions as fractions of the slide. */
-const SPARKLES: [number, number, number][] = [
-  [0.06, 0.08, 14], [0.3, 0.05, 10], [0.55, 0.12, 16], [0.9, 0.06, 12],
-  [0.78, 0.3, 9], [0.95, 0.5, 13], [0.62, 0.62, 10], [0.08, 0.92, 12],
-  [0.45, 0.9, 9], [0.88, 0.88, 14],
 ];
 
 /** Twinkle dots over the department tabs + category row (x%, y px, size). */
@@ -130,7 +101,7 @@ export function FestiveHero({
       <DeptTabs value={dept} onChange={setDept} />
       <CategoryIcons categories={categories} dept={dept} />
       {banners.length > 0 && <SaleCarousel banners={banners} />}
-      {brands.length > 0 && <PoweredBy brands={brands} />}
+      <PoweredByVideo />
       <OfferStrip />
       <FreeDeliveryBanner />
     </View>
@@ -143,10 +114,12 @@ export function FestiveHero({
 
 /** Per-department colour theme: outline/ink colour + header gradient. */
 export const DEPT_THEMES: Record<Dept, { line: string; bg: readonly [string, string, string] }> = {
-  all: { line: "#6b0f4f", bg: ["#f7a6cf", "#efb3e3", "#e9bdf2"] },
-  men: { line: "#0b3d91", bg: ["#9ec2ff", "#b4d0ff", "#cfe0ff"] },
-  women: { line: "#a3124f", bg: ["#ff9fbd", "#ffb8cf", "#ffd0e0"] },
-  kids: { line: "#8a4b00", bg: ["#ffd36b", "#ffe08f", "#ffedb8"] },
+  // Soft, muted wash (top → bottom) like a marketplace sale header:
+  // sage for All, dusty blue / blush / butter for the departments.
+  all: { line: "#7a1340", bg: ["#c3d8a0", "#d4e3b9", "#e7eed6"] },
+  men: { line: "#0b3d91", bg: ["#b7cbe6", "#cbd9ee", "#e3eaf5"] },
+  women: { line: "#a3124f", bg: ["#f1c2d2", "#f6d4df", "#fae7ed"] },
+  kids: { line: "#8a4b00", bg: ["#f3d98f", "#f7e4ae", "#fbf0d2"] },
 };
 const DEPT_ORDER: Dept[] = ["all", "men", "women", "kids"];
 const LINE_COLORS = DEPT_ORDER.map((d) => DEPT_THEMES[d].line);
@@ -304,6 +277,7 @@ function CategoryIcons({ categories, dept }: { categories: Category[]; dept: Dep
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.catScroll}
     >
+      {POSTS_ENABLED ? <RunwayTile /> : null}
       {list.map((c, i) => (
         <Pressable
           key={c.id}
@@ -312,9 +286,9 @@ function CategoryIcons({ categories, dept }: { categories: Category[]; dept: Dep
         >
           <View style={[styles.catImgWrap, i === 0 && { borderColor: DEPT_THEMES[dept].line }]}>
             {c.image_url ? (
-              <Image source={{ uri: c.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+              <Image source={{ uri: c.image_url }} style={styles.catImg} contentFit="cover" transition={200} />
             ) : (
-              <LinearGradient colors={["#fde7f3", "#e9d5ff"]} style={[StyleSheet.absoluteFill, styles.center]}>
+              <LinearGradient colors={["#fde7f3", "#e9d5ff"]} style={[styles.catImg, styles.center]}>
                 <Text style={styles.catInitial}>{c.name.charAt(0)}</Text>
               </LinearGradient>
             )}
@@ -328,24 +302,105 @@ function CategoryIcons({ categories, dept }: { categories: Category[]; dept: Dep
   );
 }
 
+/**
+ * Story-style entry to the Runway (shoppable videos from boutiques): a
+ * gradient ring around the latest video's cover, or a dark tile with a play
+ * mark when there's no video yet. Each layer is rounded on its own (Android).
+ */
+function RunwayTile() {
+  const router = useRouter();
+  const [cover, setCover] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    publicPostsApi.feed({ limit: 1 })
+      .then((d) => {
+        const m = d.items[0]?.media[0];
+        if (alive) setCover((m?.type === "video" ? m.poster_url : m?.url) ?? null);
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+  return (
+    <Pressable
+      onPress={() => router.push("/reels" as never)}
+      accessibilityRole="button"
+      accessibilityLabel="Runway — shoppable videos from boutiques"
+      style={({ pressed }) => [styles.catItem, pressed && { transform: [{ scale: 0.95 }] }]}
+    >
+      <LinearGradient colors={["#f9a826", "#ee2a7b", "#6228d7"]} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={styles.runwayRing}>
+        <View style={styles.runwayGap}>
+          {cover ? (
+            <Image source={{ uri: cover }} style={styles.runwayInner} contentFit="cover" transition={200} />
+          ) : (
+            <LinearGradient colors={["#2a1747", "#120b1f"]} style={styles.runwayInner} />
+          )}
+          <View style={[styles.runwayInner, styles.runwayShade]} />
+          <View style={styles.runwayPlay}>
+            <Ionicons name="play" size={13} color="#fff" style={{ marginLeft: 2 }} />
+          </View>
+        </View>
+      </LinearGradient>
+      <Text numberOfLines={1} style={[styles.catLabel, styles.runwayLabel]}>Runway</Text>
+    </Pressable>
+  );
+}
+
 /* -------------------------------------------------------------------- */
 /* Sale carousel                                                         */
 /* -------------------------------------------------------------------- */
 
+/** Rotating frame colours for the image cards (maroon, marigold, royal, emerald). */
+const FRAME_COLORS = ["#8a1538", "#f0a020", "#1546d8", "#00876b"];
+
+type Slide = { key: string; source: ImageSourcePropType; link: string; frame: string; label: string };
+
+/** Local HERO_BANNERS win; otherwise CMS banners that have an image. */
+function useSlides(banners: Banner[]): Slide[] {
+  return useMemo(() => {
+    if (HERO_BANNERS.length > 0) {
+      return HERO_BANNERS.map((b, i) => ({
+        key: `local-${i}`,
+        source: typeof b.image === "string" ? { uri: b.image } : b.image,
+        link: b.link || "/(main)/products",
+        frame: b.frame || FRAME_COLORS[i % FRAME_COLORS.length],
+        label: b.label || `Banner ${i + 1}`,
+      }));
+    }
+    return banners
+      .filter((b) => !!b.image_url)
+      .map((b, i) => ({
+        key: String(b.id ?? i),
+        source: { uri: b.image_url as string },
+        link: b.link || "/(main)/products",
+        frame: b.accent_color || b.bg_color || FRAME_COLORS[i % FRAME_COLORS.length],
+        label: b.title || `Banner ${i + 1}`,
+      }));
+  }, [banners]);
+}
+
+/**
+ * Peek carousel: portrait (3:4) image cards with a coloured frame, the next
+ * card peeking in from the right. Snaps card-by-card and auto-advances every
+ * 5s while the user is not dragging.
+ */
 function SaleCarousel({ banners }: { banners: Banner[] }) {
+  const slides = useSlides(banners);
+  const router = useRouter();
   const { width } = useWindowDimensions();
-  const height = Math.round(width * 0.78);
+  const cardW = Math.round(width * 0.74);
+  const cardH = Math.round(cardW * (4 / 3));
+  const step = cardW + CARD_GAP;
   const ref = useRef<ScrollView>(null);
   const [idx, setIdx] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const n = banners.length;
+  const n = slides.length;
 
   const goTo = useCallback(
     (i: number) => {
-      ref.current?.scrollTo({ x: i * width, animated: true });
+      ref.current?.scrollTo({ x: i * step, animated: true });
       setIdx(i);
     },
-    [width],
+    [step],
   );
 
   useEffect(() => {
@@ -354,32 +409,56 @@ function SaleCarousel({ banners }: { banners: Banner[] }) {
     return () => clearTimeout(t);
   }, [idx, n, dragging, goTo]);
 
+  if (n === 0) return null;
+
   const onMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setIdx(Math.round(e.nativeEvent.contentOffset.x / width));
+    setIdx(Math.min(n - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.x / step))));
     setDragging(false);
   };
 
   return (
-    <View>
+    <View style={styles.heroWrap}>
       <ScrollView
         ref={ref}
         horizontal
-        pagingEnabled
         showsHorizontalScrollIndicator={false}
+        snapToInterval={step}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
+        contentContainerStyle={{ paddingHorizontal: CARD_SIDE, gap: CARD_GAP }}
         onScrollBeginDrag={() => setDragging(true)}
         onScrollEndDrag={() => setDragging(false)}
         onMomentumScrollEnd={onMomentumEnd}
         accessibilityLabel="Sale campaigns"
       >
-        {banners.map((b, i) => (
-          <SaleSlide key={b.id ?? i} banner={b} index={i} width={width} height={height} />
+        {slides.map((s) => (
+          <Pressable
+            key={s.key}
+            onPress={() => router.push(s.link as never)}
+            accessibilityRole="link"
+            accessibilityLabel={s.label}
+            style={({ pressed }) => [
+              styles.heroCard,
+              { width: cardW, height: cardH, borderColor: s.frame, transform: [{ scale: pressed ? 0.985 : 1 }] },
+            ]}
+          >
+            {/* Radius on the image itself — overflow:hidden + radius can leave
+                children unpainted on some Android devices. */}
+            <Image
+              source={s.source}
+              style={[StyleSheet.absoluteFill, { borderRadius: CARD_RADIUS - CARD_BORDER }]}
+              contentFit="cover"
+              transition={250}
+            />
+          </Pressable>
         ))}
       </ScrollView>
 
       {n > 1 && (
         <View style={styles.dots}>
-          {banners.map((b, i) => (
-            <Pressable key={b.id ?? i} onPress={() => goTo(i)} hitSlop={6} accessibilityLabel={`Campaign ${i + 1}`}>
+          {slides.map((s, i) => (
+            <Pressable key={s.key} onPress={() => goTo(i)} hitSlop={6} accessibilityLabel={`Banner ${i + 1}`}>
               <View style={[styles.dot, i === idx && styles.dotActive]} />
             </Pressable>
           ))}
@@ -389,204 +468,29 @@ function SaleCarousel({ banners }: { banners: Banner[] }) {
   );
 }
 
-function SaleSlide({
-  banner,
-  index,
-  width,
-  height,
-}: {
-  banner: Banner;
-  index: number;
-  width: number;
-  height: number;
-}) {
-  const router = useRouter();
-  const t = themeFor(banner, index);
-  const off = discountOf(banner);
-  const title = (banner.title || "The Big Sale").replace(/[.,!]$/, "").toUpperCase();
-  const subtitle = banner.subtitle?.replace(/[.,!]$/, "");
-  const archW = width * 0.54;
-  const archH = height * 0.8;
-  // Size the title so its longest word fits on one line (no mid-word breaks).
-  const lockupW = width * 0.43;
-  const longest = Math.max(...title.split(/\s+/).map((w) => w.length), 1);
-  const titleSize = Math.min(36, Math.floor(lockupW / (longest * 0.72)));
-
-  const open = () => router.push((banner.link || "/(main)/products") as never);
-
-  return (
-    <Pressable onPress={open} style={{ width, height }} accessibilityRole="link" accessibilityLabel={banner.title}>
-      <LinearGradient colors={t.bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-
-      {/* Glows */}
-      <View style={[styles.glowBlob, { backgroundColor: t.glow, left: -width * 0.25, top: height * 0.25, width: width * 0.8, height: width * 0.8 }]} />
-      <View style={[styles.glowBlob, { backgroundColor: t.accent, right: -width * 0.2, bottom: -width * 0.3, width: width * 0.9, height: width * 0.9, opacity: 0.18 }]} />
-
-      {/* Hanging lights */}
-      {[0, 1, 2, 3, 4].map((k) => (
-        <View key={k} style={[styles.light, { left: width * (0.1 + k * 0.2), height: [18, 34, 14, 28, 22][k] }]}>
-          <View style={styles.lightWire} />
-          <View style={[styles.lightBulb, { backgroundColor: t.accent, shadowColor: t.accent }]} />
-        </View>
-      ))}
-
-      {/* Sparkles */}
-      {SPARKLES.map(([x, y, s], k) => (
-        <Ionicons
-          key={k}
-          name="sparkles"
-          size={s}
-          color={k % 3 === 0 ? t.accent : "#ffffff"}
-          style={{ position: "absolute", left: x * width, top: y * height, opacity: 0.85 }}
-        />
-      ))}
-
-      {/* Arched photograph — bottom left */}
-      <View
-        style={[
-          styles.arch,
-          { width: archW, height: archH, left: width * 0.02, borderTopLeftRadius: archW / 2, borderTopRightRadius: archW / 2, borderColor: t.accent, shadowColor: t.accent },
-        ]}
-      >
-        <View style={[styles.archInner, { borderTopLeftRadius: archW / 2, borderTopRightRadius: archW / 2 }]}>
-          {banner.image_url ? (
-            <Image source={{ uri: banner.image_url }} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition="top" transition={250} />
-          ) : null}
-          <LinearGradient colors={["transparent", "rgba(0,0,0,0.35)"]} locations={[0.6, 1]} style={StyleSheet.absoluteFill} />
-        </View>
-      </View>
-
-      {/* Sale lockup — right */}
-      <View style={[styles.lockup, { left: width * 0.56, width: lockupW, top: height * 0.1 }]}>
-        <View style={styles.livePill}>
-          <View style={[styles.liveDot, { backgroundColor: t.accent }]} />
-          <Text style={styles.liveText}>VESTARA · LIVE NOW</Text>
-        </View>
-        <Text
-          numberOfLines={3}
-          style={[
-            styles.saleTitle,
-            { fontSize: titleSize, lineHeight: Math.round(titleSize * 1.02), color: t.accent, textShadowColor: "rgba(0,0,0,0.45)" },
-          ]}
-        >
-          {title}
-        </Text>
-        {subtitle ? (
-          <View style={[styles.ribbon, { backgroundColor: t.accent }]}>
-            <Text numberOfLines={2} style={[styles.ribbonText, { color: t.ink }]}>
-              {subtitle.toUpperCase()}
-            </Text>
-          </View>
-        ) : null}
-        <View style={[styles.shopBtn, { borderColor: t.accent }]}>
-          <Text style={[styles.shopBtnText, { color: t.ink }]}>{banner.cta_text || "Shop Now"}</Text>
-          <View style={[styles.shopBtnIcon, { backgroundColor: t.ink }]}>
-            <Ionicons name="chevron-forward" size={12} color="#fff" />
-          </View>
-        </View>
-      </View>
-
-      {/* Offer seal */}
-      {off !== null && (
-        <View style={[styles.seal, { left: width * 0.42, top: height * 0.2, borderColor: t.ink }]}>
-          <LinearGradient colors={["#ffffff", "#fff3c4", t.accent]} style={[StyleSheet.absoluteFill, { borderRadius: 999 }]} />
-          <Text style={[styles.sealSmall, { color: t.ink }]}>UP TO</Text>
-          <Text style={[styles.sealBig, { color: t.ink }]}>{off}%</Text>
-          <Text style={[styles.sealSmall, { color: t.ink }]}>OFF</Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-/* -------------------------------------------------------------------- */
-/* Powered-by board                                                      */
-/* -------------------------------------------------------------------- */
-
-const WORDMARK_STYLES = [
-  { fontFamily: fontFamilies.display.semibold, fontStyle: "italic" as const, fontSize: 19, letterSpacing: -0.3 },
-  { fontFamily: fontFamilies.sans.bold, fontSize: 12, letterSpacing: 3.2 },
-  { fontFamily: fontFamilies.display.semibold, fontSize: 17, letterSpacing: 0.2 },
-  { fontFamily: fontFamilies.sans.regular, fontSize: 12, letterSpacing: 4.5 },
-];
-
-function PoweredBy({ brands }: { brands: Brand[] }) {
-  const router = useRouter();
-  const list = brands.slice(0, 4);
-
-  const card = (b: Brand, i: number) => (
-    <Pressable
-      key={b.id}
-      onPress={() => router.push(`/(main)/products?brand=${b.slug}` as never)}
-      style={({ pressed }) => [styles.brandCard, pressed && { transform: [{ scale: 0.96 }] }]}
-    >
-      <View style={styles.brandCardInner}>
-        {b.logo_url ? (
-          <Image source={{ uri: b.logo_url }} style={styles.brandLogo} contentFit="contain" />
-        ) : (
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.6}
-            style={[styles.brandName, WORDMARK_STYLES[i % WORDMARK_STYLES.length]]}
-          >
-            {i % 2 === 1 ? b.name.toUpperCase() : b.name}
-          </Text>
-        )}
-      </View>
-    </Pressable>
-  );
-
-  return (
-    <LinearGradient colors={["#c4b5fd", "#a78bfa", "#c4b5fd"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.board}>
-      <View style={styles.boardRow}>
-        <LinearGradient colors={["#7c3aed", "#4c1d95"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.ribbonTag}>
-          <Text style={styles.ribbonTagText}>POWERED BY</Text>
-        </LinearGradient>
-        {list.slice(0, 2).map((b, i) => card(b, i))}
-      </View>
-      {list.length > 2 && (
-        <View style={styles.boardRow}>
-          {list.slice(2, 4).map((b, i) => card(b, i + 2))}
-          <LinearGradient colors={["#7c3aed", "#4c1d95"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ribbonTag, styles.ribbonTagRight]}>
-            <Text style={styles.ribbonTagText}>CO-POWERED BY</Text>
-          </LinearGradient>
-        </View>
-      )}
-    </LinearGradient>
-  );
-}
+const CARD_GAP = 12;
+const CARD_SIDE = 16;
+const CARD_RADIUS = 20;
+const CARD_BORDER = 3;
 
 /* -------------------------------------------------------------------- */
 /* Offer strip                                                           */
 /* -------------------------------------------------------------------- */
+
+/** VESTARA Rewards 2× promo — artwork carries all copy. Source artwork is 1500×300. */
+const REWARDS_ART = require("@/assets/home-banners/vestara-rewards-2x.webp");
+const REWARDS_RATIO = 5;
 
 function OfferStrip() {
   const router = useRouter();
   return (
     <Pressable
       onPress={() => router.push("/(main)/account/loyalty" as never)}
-      style={({ pressed }) => [styles.offer, pressed && { opacity: 0.85 }]}
+      style={({ pressed }) => [styles.offer, pressed && { opacity: 0.9 }]}
       accessibilityRole="link"
-      accessibilityLabel="Members earn 2x rewards this week"
+      accessibilityLabel="VESTARA Rewards. Earn 2x rewards on every order this week. View loyalty"
     >
-      <View style={styles.offerIcons}>
-        <LinearGradient colors={["#f6b821", "#f0a224"]} style={styles.offerChip}>
-          <Ionicons name="gift" size={15} color="#fff" />
-        </LinearGradient>
-        <LinearGradient colors={["#7c3aed", "#4c1d95"]} style={[styles.offerChip, { marginLeft: -6 }]}>
-          <Text style={styles.offerChipText}>2×</Text>
-        </LinearGradient>
-      </View>
-      <View style={styles.offerDivider} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.offerTitle}>
-          Earn 2× Rewards <Text style={styles.offerStar}>*</Text>
-        </Text>
-        <Text numberOfLines={1} style={styles.offerSub}>On every order this week · VESTARA Rewards</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={16} color="#6d28d9" />
-      <Text style={styles.offerTc}>*T&C Apply</Text>
+      <Image source={REWARDS_ART} style={styles.offerImg} contentFit="cover" transition={200} />
     </Pressable>
   );
 }
@@ -595,79 +499,21 @@ function OfferStrip() {
 /* Free delivery banner                                                  */
 /* -------------------------------------------------------------------- */
 
-/** Order value above which the banner promises free delivery. */
-const FREE_DELIVERY_MIN = 10000;
+/** Free island-wide delivery promo — artwork carries all copy and the CTA. */
+const FREE_DELIVERY_ART = require("@/assets/home-banners/free-delivery.webp");
+/** Source artwork is 1440×480. */
+const FREE_DELIVERY_RATIO = 3;
 
-/** Bokeh circles: x%, y%, size, opacity. */
-const BOKEH: [number, number, number, number][] = [
-  [2, 10, 70, 0.18], [18, 70, 50, 0.12], [34, 0, 90, 0.1], [52, 75, 60, 0.14],
-  [66, 5, 80, 0.1], [80, 60, 70, 0.14], [94, 15, 60, 0.16],
-];
-
-function FreeDeliveryBanner({ min = FREE_DELIVERY_MIN }: { min?: number }) {
+function FreeDeliveryBanner() {
   const router = useRouter();
   return (
     <Pressable
       onPress={() => router.push("/(main)/products" as never)}
-      style={({ pressed }) => [styles.fd, pressed && { transform: [{ scale: 0.98 }] }]}
+      style={({ pressed }) => [styles.fd, pressed && { opacity: 0.9 }]}
       accessibilityRole="link"
-      accessibilityLabel={`Free delivery on orders above ${formatPrice(min)}`}
+      accessibilityLabel="Good style, on the house. Free island-wide delivery on orders above LKR 10,000. Explore now"
     >
-      <LinearGradient
-        colors={["#c8162a", "#8a0d18", "#5c0812"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      {BOKEH.map(([x, y, sz, o], k) => (
-        <View
-          key={k}
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: `${x}%`,
-            top: `${y}%`,
-            width: sz,
-            height: sz,
-            borderRadius: sz / 2,
-            backgroundColor: "#ff6b7a",
-            opacity: o,
-          }}
-        />
-      ))}
-
-      {/* Illustration: truck badge, FREE stamp, parcel, road */}
-      <View style={styles.fdArt}>
-        <View style={styles.fdRoad} />
-        <View style={styles.fdParcel}>
-          <View style={styles.fdParcelTape} />
-          <Ionicons name="cube-outline" size={14} color="#7a4a1a" />
-        </View>
-        <View style={styles.fdSpeed}>
-          <View style={[styles.fdSpeedLine, { width: 14 }]} />
-          <View style={[styles.fdSpeedLine, { width: 9, marginLeft: 5 }]} />
-          <View style={[styles.fdSpeedLine, { width: 12 }]} />
-        </View>
-        <LinearGradient colors={["#ffffff", "#ffe4e6"]} style={styles.fdTruck}>
-          <MaterialCommunityIcons name="truck-fast" size={32} color="#a50f1c" />
-        </LinearGradient>
-        <LinearGradient colors={["#fff6d8", "#ffd66b", "#f0a224"]} style={styles.fdStamp}>
-          <Text style={styles.fdStampText}>FREE</Text>
-        </LinearGradient>
-      </View>
-
-      <View style={styles.fdDivider} />
-
-      <View style={styles.fdCopy}>
-        <Text style={styles.fdTitle}>
-          FREE DELIVERY<Text style={styles.fdStar}>*</Text>
-        </Text>
-        <Text style={styles.fdSub}>On orders above {formatPrice(min)}</Text>
-        <Text style={styles.fdNote}>Island-wide · Tracked end to end</Text>
-        <Text style={styles.fdCta}>SHOP NOW ›</Text>
-      </View>
-
-      <Text style={styles.fdTc}>*T&C APPLY</Text>
+      <Image source={FREE_DELIVERY_ART} style={styles.fdImg} contentFit="cover" transition={200} />
     </Pressable>
   );
 }
@@ -675,143 +521,18 @@ function FreeDeliveryBanner({ min = FREE_DELIVERY_MIN }: { min?: number }) {
 /* -------------------------------------------------------------------- */
 
 const styles = StyleSheet.create({
+  // Full-bleed: edge to edge, no side margin or rounding.
   fd: {
     marginTop: 12,
-    marginHorizontal: 10,
-    minHeight: 124,
-    borderRadius: 16,
-    overflow: "hidden",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    shadowColor: "#78000f",
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    width: "100%",
+    aspectRatio: FREE_DELIVERY_RATIO,
+    backgroundColor: "#efeee6",
   },
-  fdArt: {
-    width: 112,
-    height: 96,
-    alignItems: "center",
-    justifyContent: "center",
+  fdImg: {
+    width: "100%",
+    height: "100%",
   },
-  fdRoad: {
-    position: "absolute",
-    left: 4,
-    right: 4,
-    bottom: 10,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: "rgba(255,255,255,0.45)",
-  },
-  fdParcel: {
-    position: "absolute",
-    left: 4,
-    bottom: 13,
-    width: 26,
-    height: 24,
-    borderRadius: 4,
-    backgroundColor: "#d9a35f",
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ rotate: "-8deg" }],
-  },
-  fdParcelTape: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 10,
-    height: 3,
-    backgroundColor: "#f6dcae",
-  },
-  fdSpeed: {
-    position: "absolute",
-    left: 24,
-    top: 34,
-    gap: 4,
-  },
-  fdSpeedLine: {
-    height: 2.5,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.7)",
-  },
-  fdTruck: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.25)",
-    marginLeft: 18,
-  },
-  fdStamp: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ rotate: "12deg" }],
-  },
-  fdStampText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: "#7a0b14",
-  },
-  fdDivider: {
-    width: 1.5,
-    alignSelf: "stretch",
-    marginVertical: 8,
-    marginHorizontal: 10,
-    backgroundColor: "rgba(255,255,255,0.8)",
-  },
-  fdCopy: {
-    flex: 1,
-    alignItems: "center",
-  },
-  fdTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 21,
-    letterSpacing: -0.3,
-    color: "#ffffff",
-    textShadowColor: "rgba(0,0,0,0.25)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 0,
-  },
-  fdStar: { fontSize: 13 },
-  fdSub: {
-    marginTop: 3,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    color: "#ffffff",
-  },
-  fdNote: {
-    marginTop: 2,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.8)",
-  },
-  fdCta: {
-    marginTop: 7,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
-    letterSpacing: 0.6,
-    color: "#ffffff",
-    textDecorationLine: "underline",
-  },
-  fdTc: {
-    position: "absolute",
-    right: 10,
-    bottom: 5,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 7,
-    color: "rgba(255,255,255,0.6)",
-  },
+
   topSparkles: {
     ...StyleSheet.absoluteFillObject,
     height: 230,
@@ -826,54 +547,13 @@ const styles = StyleSheet.create({
   },
   offer: {
     marginTop: 12,
-    marginHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: "#ffffff",
-    shadowColor: "#4c1d95",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    width: "100%",
+    aspectRatio: REWARDS_RATIO,
+    backgroundColor: "#1b1040",
   },
-  offerIcons: { flexDirection: "row", alignItems: "center" },
-  offerChip: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#ffffff",
-  },
-  offerChipText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
-    color: "#ffffff",
-  },
-  offerDivider: { width: 1.5, height: 30, backgroundColor: "#1f1235", opacity: 0.6 },
-  offerTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 16,
-    color: "#111111",
-  },
-  offerStar: { fontSize: 12 },
-  offerSub: {
-    marginTop: 1,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11.5,
-    color: "#4b4458",
-  },
-  offerTc: {
-    position: "absolute",
-    right: 10,
-    bottom: 4,
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 7,
-    color: "#8a8296",
+  offerImg: {
+    width: "100%",
+    height: "100%",
   },
   root: {
     paddingBottom: 6,
@@ -937,39 +617,78 @@ const styles = StyleSheet.create({
   /* Categories */
   catScroll: {
     paddingHorizontal: 12,
-    paddingTop: 14,
-    paddingBottom: 14,
-    gap: 12,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 8,
   },
   catItem: {
-    width: 74,
+    width: 66,
     alignItems: "center",
   },
   catImgWrap: {
-    width: 70,
-    height: 70,
-    borderRadius: 16,
-    overflow: "hidden",
-    backgroundColor: "#ffffff",
+    width: CAT_SIZE,
+    height: CAT_SIZE,
+    borderRadius: CAT_SIZE / 2,
+    backgroundColor: "rgba(255,255,255,0.4)",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.9)",
-    shadowColor: "#7c3aed",
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    borderColor: "transparent",
+  },
+  catImg: {
+    position: "absolute",
+    left: 2,
+    top: 2,
+    right: 2,
+    bottom: 2,
+    borderRadius: CAT_SIZE / 2,
+  },
+  runwayRing: {
+    width: CAT_SIZE,
+    height: CAT_SIZE,
+    borderRadius: CAT_SIZE / 2,
+    padding: 2,
+  },
+  runwayGap: {
+    flex: 1,
+    borderRadius: CAT_SIZE / 2,
+    backgroundColor: "#ffffff",
+    padding: 2,
+  },
+  runwayInner: {
+    position: "absolute",
+    left: 2,
+    top: 2,
+    right: 2,
+    bottom: 2,
+    borderRadius: CAT_SIZE / 2,
+  },
+  runwayShade: {
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  runwayPlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  runwayLabel: {
+    fontFamily: fontFamilies.sans.bold,
+    color: "#be185d",
   },
   catImgWrapFirst: {
     borderColor: "#7c3aed",
   },
   catInitial: {
     fontFamily: fontFamilies.display.semibold,
-    fontSize: 26,
+    fontSize: 20,
     color: "#6d28d9",
   },
   catLabel: {
-    marginTop: 6,
+    marginTop: 5,
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 12.5,
+    fontSize: 11.5,
     color: "#1f1235",
   },
   catLabelFirst: {
@@ -1105,6 +824,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 24,
   },
+  heroWrap: {
+    marginTop: 4,
+  },
+  heroCard: {
+    borderRadius: CARD_RADIUS,
+    borderWidth: CARD_BORDER,
+    backgroundColor: "#f3ece4",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
   dots: {
     flexDirection: "row",
     justifyContent: "center",
@@ -1120,63 +852,5 @@ const styles = StyleSheet.create({
   dotActive: {
     width: 18,
     backgroundColor: "#1e0b3a",
-  },
-
-  /* Powered by */
-  board: {
-    marginHorizontal: 10,
-    borderRadius: 16,
-    padding: 8,
-    gap: 8,
-  },
-  boardRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  ribbonTag: {
-    width: 104,
-    justifyContent: "center",
-    alignItems: "center",
-    borderTopLeftRadius: 10,
-    borderBottomLeftRadius: 10,
-    borderTopRightRadius: 22,
-    borderBottomRightRadius: 22,
-    paddingHorizontal: 8,
-  },
-  ribbonTagRight: {
-    borderTopLeftRadius: 22,
-    borderBottomLeftRadius: 22,
-    borderTopRightRadius: 10,
-    borderBottomRightRadius: 10,
-  },
-  ribbonTagText: {
-    textAlign: "center",
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    color: "#ffffff",
-  },
-  brandCard: {
-    flex: 1,
-    height: 54,
-    borderRadius: 10,
-    padding: 2,
-    backgroundColor: "#f5c451",
-    shadowColor: "#4c1d95",
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  brandCardInner: {
-    flex: 1,
-    borderRadius: 8,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  brandLogo: { width: "80%", height: "60%" },
-  brandName: {
-    color: "#111111",
   },
 });

@@ -38,6 +38,7 @@ export default function SellerLayout() {
   const [payout, setPayout] = useState<SellerPayoutCompliance | null>(null);
   const [documents, setDocuments] = useState<SellerComplianceDocument[]>([]);
   const [storeLoading, setStoreLoading] = useState(true);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState<number | null>(null);
   // New sellers (fresh store, onboarding not finished/skipped) go through
   // onboarding once. null = flag not read yet.
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
@@ -66,7 +67,11 @@ export default function SellerLayout() {
         setDocuments(snapDocs ?? []);
         setStoreLoading(false);
         // Warm the dashboard's own reads in parallel with ours.
-        void getSellerKPIs(snapStore.id);
+        void getSellerKPIs(snapStore.id).then((kpiRes) => {
+          if (!cancelled && kpiRes.ok && kpiRes.data) {
+            setPendingOrdersCount(kpiRes.data.pendingOrders ?? 0);
+          }
+        });
         void getSellerNotifications(20);
       } else {
         setStoreLoading(true);
@@ -81,8 +86,12 @@ export default function SellerLayout() {
       ]);
       if (cancelled) return;
       const nextStore = res.ok ? res.data : null;
-      if (nextStore && nextStore.id !== snapStore?.id) {
-        void getSellerKPIs(nextStore.id);
+      if (nextStore) {
+        void getSellerKPIs(nextStore.id).then((kpiRes) => {
+          if (!cancelled && kpiRes.ok && kpiRes.data) {
+            setPendingOrdersCount(kpiRes.data.pendingOrders ?? 0);
+          }
+        });
         void getSellerNotifications(20);
       }
       setStore(nextStore);
@@ -250,31 +259,32 @@ export default function SellerLayout() {
     return null;
   })();
 
-  const tabBarHeight = 62 + Math.max(insets.bottom, 10);
+  const tabBarHeight = 50 + Math.max(insets.bottom, 12);
+  const showOrdersBadge = pendingOrdersCount === null || pendingOrdersCount > 0;
 
   return (
     <View style={styles.root}>
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.olive[900],
-        tabBarInactiveTintColor: colors.ink.mute,
+        tabBarActiveTintColor: "#111114",
+        tabBarInactiveTintColor: "#8e8a86",
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: colors.paper.cream,
-          borderTopColor: "rgba(83,94,44,0.12)",
+          backgroundColor: "#FAF7F2",
+          borderTopColor: "rgba(22,23,15,0.08)",
           borderTopWidth: StyleSheet.hairlineWidth,
           height: tabBarHeight,
-          paddingTop: 8,
-          paddingBottom: Math.max(insets.bottom, 10),
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
           elevation: 0,
           shadowOpacity: 0,
         },
         tabBarLabelStyle: {
           fontSize: 10,
-          fontFamily: fontFamilies.sans.semibold,
-          letterSpacing: 0.35,
-          marginTop: 3,
+          fontFamily: fontFamilies.sans.regular,
+          letterSpacing: 0.15,
+          marginTop: 2,
         },
         tabBarItemStyle: {
           paddingTop: 2,
@@ -287,7 +297,7 @@ export default function SellerLayout() {
           title: "Home",
           href: locked ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
+            <View style={styles.tabIconWrap}>
               <Ionicons name={focused ? "home" : "home-outline"} size={22} color={color} />
             </View>
           ),
@@ -299,8 +309,9 @@ export default function SellerLayout() {
           title: "Orders",
           href: locked ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
-              <Ionicons name={focused ? "receipt" : "receipt-outline"} size={22} color={color} />
+            <View style={styles.tabIconWrap}>
+              <Ionicons name={focused ? "bag-handle" : "bag-handle-outline"} size={22} color={color} />
+              {showOrdersBadge ? <View style={styles.orderBadgeDot} /> : null}
             </View>
           ),
         }}
@@ -311,20 +322,20 @@ export default function SellerLayout() {
           title: "Products",
           href: locked ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
-              <Ionicons name={focused ? "cube" : "cube-outline"} size={22} color={color} />
+            <View style={styles.tabIconWrap}>
+              <Ionicons name={focused ? "grid" : "grid-outline"} size={21} color={color} />
             </View>
           ),
         }}
       />
       <Tabs.Screen
-        name="inventory/index"
+        name="posts/index"
         options={{
-          title: "Stock",
+          title: "Studio",
           href: locked ? null : undefined,
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
-              <Ionicons name={focused ? "layers" : "layers-outline"} size={22} color={color} />
+            <View style={styles.tabIconWrap}>
+              <Ionicons name={focused ? "play" : "play-outline"} size={19} color={color} />
             </View>
           ),
         }}
@@ -334,9 +345,9 @@ export default function SellerLayout() {
         options={{
           title: "More",
           tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.tabIconWrap, focused && styles.tabIconWrapActive]}>
+            <View style={styles.tabIconWrap}>
               <Ionicons
-                name={focused ? "grid" : "grid-outline"}
+                name={focused ? "ellipsis-horizontal" : "ellipsis-horizontal-outline"}
                 size={22}
                 color={color}
               />
@@ -345,6 +356,7 @@ export default function SellerLayout() {
         }}
       />
 
+      <Tabs.Screen name="inventory/index" options={{ href: null }} />
       <Tabs.Screen name="onboarding" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="analytics" options={{ href: null }} />
       <Tabs.Screen name="settings/index" options={{ href: null }} />
@@ -365,6 +377,8 @@ export default function SellerLayout() {
       <Tabs.Screen name="payouts/[payoutId]" options={{ href: null }} />
       <Tabs.Screen name="payouts/verify" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]/invoice" options={{ href: null }} />
+      <Tabs.Screen name="posts/new" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="posts/[id]" options={{ href: null, tabBarStyle: { display: "none" } }} />
     </Tabs>
       {blockedView ? <View style={styles.blockedOverlay}>{blockedView}</View> : null}
     </View>
@@ -415,13 +429,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
   tabIconWrap: {
-    width: 44,
-    height: 28,
+    width: 28,
+    height: 24,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 14,
   },
-  tabIconWrapActive: {
-    backgroundColor: "rgba(83,94,44,0.1)",
+  orderBadgeDot: {
+    position: "absolute",
+    top: 0,
+    right: 1,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#b85c3a",
   },
 });

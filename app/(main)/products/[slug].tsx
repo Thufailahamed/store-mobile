@@ -43,6 +43,7 @@ import {
 import type { Product, ProductVariant, Review } from "@/lib/types";
 import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
+import { StyledInRail } from "@/components/posts/StyledInRail";
 
 export default function ProductDetailScreen() {
   const router = useRouter();
@@ -448,6 +449,9 @@ export default function ProductDetailScreen() {
         <View style={styles.section}>
           <ProductQA productId={product.id} />
         </View>
+
+        {/* Styled in — seller posts / reels tagging this product */}
+        <StyledInRail productId={product.id} />
 
         {/* Related products — content-similar (always shown) */}
         {relatedProducts.length > 0 && (

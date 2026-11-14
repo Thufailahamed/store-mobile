@@ -20,6 +20,7 @@ import { ProductCard } from "@/components/product/ProductCard";
 import { HeroCard } from "@/components/product/HeroCard";
 import { ProductsEmptyState } from "@/components/product/ProductsEmptyState";
 import { TodaysEdit } from "@/components/products/TodaysEdit";
+import { SeenOnRunway } from "@/components/posts/SeenOnRunway";
 import { Label, Body, Display } from "@/components/ui/Typography";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { SORTS, EMPTY_FILTERS, activeFilterCount, type ProductFilters, type ViewMode } from "@/lib/api/facets";
@@ -187,6 +188,7 @@ export default function ProductsScreen() {
         onEndReachedThreshold={0.5}
         {...viewable}
         ListHeaderComponent={
+          <>
           <ProductsListHeader
             loading={loading}
             pageTitle={pageTitle}
@@ -204,6 +206,10 @@ export default function ProductsScreen() {
             hasActiveContext={hasActiveContext}
             clearAll={handleClearAll}
           />
+          {hasActiveContext && products.length > 0 ? (
+            <SeenOnRunway productIds={products.slice(0, 40).map((p) => p.id)} />
+          ) : null}
+          </>
         }
         ListFooterComponent={
           <View>

@@ -27,6 +27,7 @@ import { describePayoutProfile } from "@/lib/seller-access";
 import { isNotificationUnread } from "@/lib/notifications/seller-inbox";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { POSTS_ENABLED } from "@/lib/posts/api";
 import { formatPrice } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
@@ -124,6 +125,10 @@ export default function SellerMoreScreen() {
   const go = (route: string) => router.push(route as any);
 
   const tools: MenuItem[] = [
+    { label: "Inventory & Stock", subtitle: "Variant quantities & low stock", icon: "layers-outline", route: "/(seller)/inventory", tone: "olive" },
+    ...(POSTS_ENABLED
+      ? [{ label: "Posts & Runway", subtitle: "Shoppable posters and Runway videos", icon: "film-outline", route: "/(seller)/posts", tone: "olive" } as MenuItem]
+      : []),
     { label: "Reviews", subtitle: "Ratings & replies", icon: "star-outline", route: "/(seller)/reviews", tone: "ochre" },
     { label: "Coupons", subtitle: "Discounts & BXGY offers", icon: "pricetag-outline", route: "/(seller)/coupons", tone: "rust" },
     { label: "Payout settings", subtitle: payoutLabel, icon: "card-outline", route: "/(seller)/payouts/settings", tone: "olive" },

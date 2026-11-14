@@ -13,6 +13,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { StorePostsSection } from "@/components/posts/StorePostsSection";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { PaperBackground } from "@/components/layout";
@@ -317,6 +318,9 @@ export default function StoreScreen() {
             </View>
           ) : null}
         </View>
+
+        {/* 2b — Seller posters & reels (shoppable). Renders nothing when there are none. */}
+        {slug ? <StorePostsSection storeSlug={slug} /> : null}
 
         {/* 3 — Tabs */}
         <View style={styles.tabsWrap} onLayout={(e) => (shopY.current = e.nativeEvent.layout.y)}>

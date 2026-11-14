@@ -118,7 +118,14 @@
           "color": "#FF2E7E"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

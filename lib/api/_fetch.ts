@@ -65,6 +65,8 @@ export interface FetchOpts {
   query?: Record<string, string | number | boolean | undefined | null>;
   /** Default true — set false for public reads. */
   requireAuth?: boolean;
+  /** Public read that still benefits from personalization when signed in. */
+  optionalAuth?: boolean;
   /** Custom timeout in ms. */
   timeoutMs?: number;
   /** Extra request headers (e.g. Idempotency-Key). */
@@ -194,7 +196,7 @@ async function fetchJsonInner<T = unknown>(
     return { ok: false, error: "EXPO_PUBLIC_STORE_API_URL is not configured" };
   }
   const requireAuth = opts.requireAuth ?? true;
-  const token = requireAuth ? await getAccessToken() : null;
+  const token = requireAuth || opts.optionalAuth ? await getAccessToken() : null;
   if (requireAuth && !token) {
     return { ok: false, error: "Not signed in" };
   }

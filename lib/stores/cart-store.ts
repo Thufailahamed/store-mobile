@@ -8,6 +8,7 @@ import { buildCartLineKeyFromItem, migrateCartItemRecord, mergeCartItemRecords, 
 import { clearCheckoutSession } from "@/lib/cart-checkout-session";
 import { planCartSync, type CartSyncResult } from "@/lib/cart-sync";
 import { suppressRemoteSyncPull, beginPushInFlight, endPushInFlight } from "@/lib/remote-sync-guard";
+import { notePostCartAdd } from "@/lib/posts/attribution";
 
 /** Notice payload when a cart mutation was clamped to available stock. */
 export type CartClampNotice = {
@@ -85,6 +86,7 @@ export const useCart = create<CartStore>()(
       hydrated: false,
 
       addItem: (item) => {
+        notePostCartAdd(item.productId);
         const key = buildCartLineKeyFromItem(item);
         const requestedQty = item.quantity ?? 1;
         set((state) => {

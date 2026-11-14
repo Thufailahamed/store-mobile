@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { HomeReelPip } from "@/components/posts/HomeReelPip";
 import { RefreshControl, StyleSheet, TouchableOpacity, View, Text } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -22,12 +23,13 @@ import {
   ContinueBrowsingRow,
   ShopTheLookSection,
   TrustStrip,
-  FlashSaleSection,
+  StylistsPicks,
   OffersRail,
   ShopByPrice,
   ShopByOccasion,
   HomeSectionHeader,
 } from "@/components/home/premium";
+import { FooterVideo } from "@/components/home/premium/FooterVideo";
 import { C } from "@/components/orders/parcel-track";
 import { createSeenSet } from "@/components/home/premium/dedupe";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
@@ -112,7 +114,7 @@ export default function HomeScreen() {
 
   // De-duplicate the generic catalog rails top-to-bottom so the same piece
   // doesn't appear in four rails on a small catalog. Purpose-specific rails
-  // (flash sale, personalised feed) keep their full list
+  // (personalised feed) keep their full list
   // but still count as "seen" so later generic rails skip those pieces.
   // Sponsored is paid placement and is never filtered.
   const rails = useMemo(() => {
@@ -120,15 +122,12 @@ export default function HomeScreen() {
     const take = (list: Product[] | undefined) => seen.take(list, MIN_RAIL_ITEMS);
 
     seen.mark(forYou.data?.products ?? []);
-    const flash = catalogData?.saleProducts ?? [];
-    seen.mark(flash);
     const newArrivals = take(catalogData?.newArrivals);
     const trending = take(catalogData?.trending);
     const editorsPicks = take(catalogData?.editorsPicks);
     const todaysEdit = take(catalogData?.todaysEdit);
     const mostLoved = take(catalogData?.mostLoved);
     return {
-      flash,
       newArrivals,
       trending,
       editorsPicks,
@@ -173,13 +172,13 @@ export default function HomeScreen() {
     <View style={styles.root}>
       {/* Festive sale glow behind the header and department tabs, fading into paper. */}
       <CrossfadeGradient
-        colors={[deptTheme.bg[2], deptTheme.bg[2], deptTheme.bg[2] + "66", C.paper]}
-        locations={[0, 0.55, 0.8, 1]}
+        colors={[deptTheme.bg[1], deptTheme.bg[1], deptTheme.bg[2], deptTheme.bg[2] + "80", C.paper]}
+        locations={[0, 0.22, 0.5, 0.78, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={styles.glow}
       />
-      <AppHeader showSearch showTicker={false} scrollY={scrollY} tone="festive" festiveColors={deptTheme.bg} />
+      <AppHeader showSearch showTicker={false} scrollY={scrollY} tone="festive" festiveColors={[deptTheme.bg[0], deptTheme.bg[1]]} />
       <AnimatedScrollView
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
@@ -241,19 +240,14 @@ export default function HomeScreen() {
             </>
           ) : null}
 
-          <FlashSaleSection
-            products={rails.flash}
-            endsAt={catalogData?.flashEndsAt}
-            onExpired={() => {
-              void refreshAll();
-            }}
-          />
+          {/* Stylists' Picks replaces the flash-sale card + sale rail. */}
+          <StylistsPicks />
           <ProductRail
             title="New arrivals"
             products={rails.newArrivals}
             onSeeAll={() => router.push("/(main)/products?sort=newest")}
           />
-          <ShopByPrice bands={shortcuts.data?.priceBands ?? []} />
+          <ShopByPrice />
           {(recentlyViewed.data?.length ?? 0) > 0 ? (
             <ProductRail
               kicker="Pick up where you left off"
@@ -264,7 +258,7 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-        <ShopByOccasion occasions={shortcuts.data?.occasions ?? []} />
+        <ShopByOccasion />
 
         {/* Lookbook Feature */}
         <ShopTheLookSection products={[...(catalogData?.newArrivals ?? []), ...(catalogData?.saleProducts ?? [])]} />
@@ -335,14 +329,7 @@ export default function HomeScreen() {
         <View style={styles.endCap}>
           <Text style={styles.endKicker}>You've seen the edit</Text>
           <Text style={styles.endTitle}>Still looking for something?</Text>
-          <TouchableOpacity
-            style={styles.endBtn}
-            onPress={() => router.push("/(main)/products")}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.endBtnText}>Browse all pieces</Text>
-            <Ionicons name="arrow-forward" size={15} color={C.lime} />
-          </TouchableOpacity>
+          <FooterVideo onPress={() => router.push("/(main)/products")} />
         </View>
 
         {/* --- Shop grid section (disabled for now) ---
@@ -372,6 +359,8 @@ export default function HomeScreen() {
         onSortChange={setSort}
         resultCount={refined.length}
       /> */}
+
+      <HomeReelPip bottom={expandableTabBarInset(insets.bottom) + 12} />
     </View>
   );
 }
@@ -396,24 +385,26 @@ const styles = StyleSheet.create({
   },
   endCap: {
     alignItems: "center",
-    gap: spacing[1.5],
+    gap: spacing[2],
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
-    paddingBottom: spacing[6],
+    paddingTop: spacing[2],
+    paddingBottom: spacing[4],
   },
   endKicker: {
-    fontFamily: fontFamilies.mono.medium,
+    fontFamily: fontFamilies.mono.semibold,
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 2,
     textTransform: "uppercase",
-    color: colors.light.primary,
+    color: colors.olive[600],
   },
   endTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 20,
-    letterSpacing: -0.4,
+    fontFamily: fontFamilies.display.semibold,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -0.6,
     color: colors.light.foreground,
     textAlign: "center",
+    marginBottom: spacing[2],
   },
   endBtn: {
     flexDirection: "row",
