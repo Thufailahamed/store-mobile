@@ -62,7 +62,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#414a23"
       },
       "package": "com.vestara.marketplace",
       "googleServicesFile": "./google-services.json",

@@ -9,6 +9,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { C } from "@/components/orders/parcel-track";
 import { OutlineButton, PrimaryButton } from "@/components/auth/auth-ui";
+import { completeOnboarding } from "@/lib/onboarding";
 
 const HERO =
   "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80";
@@ -45,7 +46,11 @@ export default function WelcomeScreen() {
           <PrimaryButton label="Login" onPress={() => router.push("/(auth)/login")} />
           <OutlineButton label="Register" onPress={() => router.push("/(auth)/register")} />
           <Pressable
-            onPress={() => router.replace("/(main)")}
+            onPress={() => {
+              // Remember the choice so later launches open the catalogue directly.
+              void completeOnboarding();
+              router.replace("/(main)");
+            }}
             hitSlop={10}
             style={styles.guest}
             accessibilityRole="button"

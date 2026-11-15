@@ -3,11 +3,11 @@
  *
  * Beats (one shared UI-thread clock drives every layer, ≈6s):
  *   0.08s  cream canvas, Vestara app icon centred — the camera dives into it
- *          and its ink floods the screen black
+ *          and its ink floods the screen dark olive
  *   0.38s  the first look pops in at the top; its save badge pulses
  *   1.15s  more looks land one after another, cascading down the screen;
  *          older ones recede into depth (shrink, drift up, dim)
- *   2.80s  the white hanger mark pops in at the bottom
+ *   2.80s  the white stitched-V mark pops in at the bottom
  *   3.25s  warp: the front look drops into the mark, then neon light-streaks
  *          fan out and the pile + a stream of further looks rush down
  *          straight radial lines into it — shrinking with perspective,
@@ -31,12 +31,14 @@ import Animated, {
 } from "react-native-reanimated";
 import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
+import { V_ASPECT, V_PATH, V_STITCHES, V_VIEWBOX } from "@/components/brand/BrandMark";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 
 /** Cream the screen starts on — matches the native splash background. */
 export const LAUNCH_BG = "#fff7f1";
-const INK = "#050307";
+// Dark olive (web olive-950): the app icon's ink floods into this night, so they must match.
+const INK = "#161a0a";
 
 /* ─── Photos (require + average colour for the streak trails) ───────────── */
 /* src = sharp, soft = gaussian-blurred (in flight), smear = baked vertical
@@ -254,9 +256,8 @@ const TOTAL = T.minShow;
 const CARD_START: number[] = STACK.map((_, i) => (i === 0 ? T.first[0] : T.cardStart + (i - 1) * T.cardStep));
 const CARD_DUR: number[] = STACK.map((_, i) => (i === 0 ? T.first[1] : T.cardDur));
 
-/* Hanger mark (120 × 100 grid) */
-const MARK =
-  "M51.5 20.5 A9 9 0 1 1 66 26 C62.5 28 60 29.5 60 33 V38 M60 38 L15.5 61.5 C7 66 5.5 70 7.5 73.5 C9 76.2 12.5 77 18 77 H102 C107.5 77 111 76.2 112.5 73.5 C114.5 70 113 66 104.5 61.5 Z M60 77 V70.5 C53 64.5 47.5 60 47.5 54.5 C47.5 50.6 50.4 48 53.8 48 C56.6 48 58.6 49.8 60 52.4 C61.4 49.8 63.4 48 66.2 48 C69.6 48 72.5 50.6 72.5 54.5 C72.5 60 67 64.5 60 70.5";
+/* Stitched-V mark, shared with BrandMark (viewBox V_VIEWBOX, aspect V_ASPECT) */
+const MARK = V_PATH;
 
 function rand(seed: number) {
   const x = Math.sin(seed * 9301 + 49297) * 233280;
@@ -463,8 +464,8 @@ function SaveBadge({ clock }: { clock: SharedValue<number> }) {
   return (
     <Animated.View style={[styles.badge, style]}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.badgeFill, fill]} />
-      <Svg width={14} height={12} viewBox="0 0 120 100">
-        <Path d={MARK} stroke="#ffffff" strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <Svg width={14} height={14 * V_ASPECT} viewBox={V_VIEWBOX}>
+        <Path d={MARK} fill="#ffffff" />
       </Svg>
     </Animated.View>
   );
@@ -587,7 +588,7 @@ export function CascadeLaunch({ ready, onFinish }: { ready: boolean; onFinish: (
 
   const iconSize = Math.round(width * 0.27);
   const markW = 44;
-  const markH = markW * (100 / 120);
+  const markH = markW * V_ASPECT;
   const restY = height * 0.47;
 
   useEffect(() => {
@@ -675,8 +676,11 @@ export function CascadeLaunch({ ready, onFinish }: { ready: boolean; onFinish: (
 
       {/* The mark sits above everything so the stream vanishes into it */}
       <Animated.View pointerEvents="none" style={[styles.mark, { left: width / 2 - markW / 2, width: markW, height: markH }, markStyle]}>
-        <Svg width={markW} height={markH} viewBox="0 0 120 100">
-          <Path d={MARK} stroke="#ffffff" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <Svg width={markW} height={markH} viewBox={V_VIEWBOX}>
+          <Path d={MARK} fill="#ffffff" />
+          {V_STITCHES.map((d) => (
+            <Path key={d} d={d} fill="none" stroke={INK} strokeWidth={2.5} strokeDasharray="7 5" strokeLinecap="round" strokeLinejoin="round" />
+          ))}
         </Svg>
       </Animated.View>
 
@@ -684,8 +688,11 @@ export function CascadeLaunch({ ready, onFinish }: { ready: boolean; onFinish: (
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.cream, creamStyle]}>
         <Animated.View style={[styles.icon, { width: iconSize, height: iconSize, borderRadius: iconSize * 0.23 }, iconStyle]}>
           <Animated.View style={iconMarkStyle}>
-            <Svg width={iconSize * 0.6} height={iconSize * 0.5} viewBox="0 0 120 100">
-              <Path d={MARK} stroke="#ffffff" strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <Svg width={iconSize * 0.5} height={iconSize * 0.5 * V_ASPECT} viewBox={V_VIEWBOX}>
+              <Path d={MARK} fill="#ffffff" />
+              {V_STITCHES.map((d) => (
+                <Path key={d} d={d} fill="none" stroke={INK} strokeWidth={2.5} strokeDasharray="7 5" strokeLinecap="round" strokeLinejoin="round" />
+              ))}
             </Svg>
           </Animated.View>
         </Animated.View>

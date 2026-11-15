@@ -15,7 +15,7 @@ import { fontFamilies } from "@/lib/theme/fonts";
 import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { useCart } from "@/lib/stores/cart-store";
 import { useWishlist } from "@/lib/stores/wishlist-store";
-import { BrandMark, BRAND_PINK } from "@/components/brand/BrandMark";
+import { BrandMark, BRAND_OLIVE } from "@/components/brand/BrandMark";
 
 const INK = "#1b1c1c";
 const MUTED = "#5e5e5d";
@@ -252,9 +252,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: "#fff0f6",
+    // Light olive tile to frame the olive stitched-V mark.
+    backgroundColor: "#f3f3ea",
     borderWidth: 1,
-    borderColor: "#ffd9e8",
+    borderColor: "#e6e6d0",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -284,7 +285,7 @@ const styles = StyleSheet.create({
     height: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: BRAND_PINK,
+    backgroundColor: BRAND_OLIVE,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,

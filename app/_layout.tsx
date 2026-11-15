@@ -94,14 +94,14 @@ function RootLayoutNav() {
   const segments = useSegments();
   const notifListenerRef = useRef<ReturnType<typeof addNotificationResponseListener> | null>(null);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
-  const [onboardingComplete, setOnboardingComplete] = useState(false);
   const redirectHeld = useAuthRedirectHeld();
 
   useEffect(() => {
-    hasCompletedOnboarding().then((complete) => {
-      setOnboardingComplete(complete);
-      setOnboardingChecked(true);
-    });
+    // Read once so the launch overlay waits for storage; app/index.tsx uses
+    // the flag to pick the welcome screen or the catalogue.
+    hasCompletedOnboarding()
+      .catch(() => false)
+      .finally(() => setOnboardingChecked(true));
   }, []);
 
   // Auth routing
@@ -112,12 +112,11 @@ function RootLayoutNav() {
     if (redirectHeld) return;
 
     const inAuthGroup = segments[0] === "(auth)";
-    const inOnboardingGroup = segments[0] === "(onboarding)";
     const inPrivateGroup = SESSION_REQUIRED_GROUPS.some((group) => segments[0] === group);
 
-    // If logged in: redirect away from onboarding and auth pages to role-based screens
+    // If logged in: redirect away from auth pages to role-based screens
     if (session) {
-      if (inAuthGroup || inOnboardingGroup) {
+      if (inAuthGroup) {
         switch (role) {
           case "store_owner":
             router.replace("/(seller)");
@@ -158,13 +157,9 @@ function RootLayoutNav() {
         router.replace("/(auth)/welcome");
         return;
       }
-      // Returning guests skip the intro carousel and land on the catalogue.
-      if (inOnboardingGroup && onboardingComplete) {
-        router.replace("/(main)");
-      }
       return;
     }
-  }, [session, user?.id, loading, role, roleLoading, segments, onboardingChecked, onboardingComplete, redirectHeld]);
+  }, [session, user?.id, loading, role, roleLoading, segments, onboardingChecked, redirectHeld]);
 
   // The animated Vestara launch screen covers the app from the first JS
   // frame, so the native splash can go straight away; the overlay itself

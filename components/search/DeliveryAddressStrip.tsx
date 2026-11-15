@@ -8,7 +8,7 @@ import type { Address } from "@/lib/types";
 
 const INK = "#1b1c1c";
 const MUTED = "#6b6a66";
-const PINK = "#ff2e85";
+const ACCENT = "#414a23"; // brand dark olive
 const LINE = "#ece9e3";
 /** Map pins save plus codes ("7JWV+4C"); show "Pinned location" instead. */
 const PLUS_CODE = /^[23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{0,3}$/i;
@@ -45,7 +45,7 @@ export function DeliveryAddressStrip() {
           addr ? `Delivering to ${name ?? ""}, ${fullAddress(addr)}. Change address` : "Set delivery address"
         }
       >
-        <Ionicons name="location" size={16} color={PINK} />
+        <Ionicons name="location" size={16} color={ACCENT} />
         <Text style={styles.text} numberOfLines={1}>
           {addr ? (
             <>
@@ -70,11 +70,11 @@ const styles = StyleSheet.create({
     gap: 8,
     height: 42,
     paddingHorizontal: 16,
-    backgroundColor: "#fdf6f9",
+    backgroundColor: "#f3f3ea", // light olive
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: LINE,
   },
   text: { flex: 1, minWidth: 0, fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: MUTED },
   name: { fontFamily: fontFamilies.sans.bold, color: INK },
-  cta: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: PINK, letterSpacing: 0.2 },
+  cta: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: ACCENT, letterSpacing: 0.2 },
 });
