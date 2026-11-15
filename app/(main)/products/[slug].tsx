@@ -453,51 +453,6 @@ export default function ProductDetailScreen() {
         {/* Styled in — seller posts / reels tagging this product */}
         <StyledInRail productId={product.id} />
 
-        {/* Related products — content-similar (always shown) */}
-        {relatedProducts.length > 0 && (
-          <View style={styles.relatedSection}>
-            <View style={styles.sectionHeaderWrap}>
-              <SectionHeader
-                kicker="You might also love"
-                title="Similar Pieces"
-                actionLabel="View all"
-                onAction={() => router.push("/(main)/products")}
-              />
-            </View>
-            <FlatList
-              data={relatedProducts}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.relatedList}
-              renderItem={({ item }) => <ProductCard product={item} horizontal />}
-            />
-          </View>
-        )}
-
-        {/* Personalized "You may also like" — only when we have a non-empty
-            recommendation set distinct from the content-similar rail. */}
-        {youMayAlsoLike.length > 0 && (
-          <View style={styles.relatedSection}>
-            <View style={styles.sectionHeaderWrap}>
-              <SectionHeader
-                kicker="Picked for you"
-                title="You May Also Like"
-                actionLabel="View all"
-                onAction={() => router.push("/(main)/products?sort=newest")}
-              />
-            </View>
-            <FlatList
-              data={youMayAlsoLike}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.relatedList}
-              renderItem={({ item }) => <ProductCard product={item} horizontal />}
-            />
-          </View>
-        )}
-
         {/* ── Myntra-style Infinite Recommendations Feed ─────────────────── */}
         <InfiniteRecommendedFeed
           currentProduct={product}

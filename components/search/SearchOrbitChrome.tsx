@@ -33,6 +33,8 @@ interface SearchOrbitChromeProps {
   totalCount?: number;
   onImageSearch?: () => void;
   onCameraSearch?: () => void;
+  /** Overrides the default router.back() (e.g. return to the search page). */
+  onBack?: () => void;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -54,9 +56,11 @@ export function SearchOrbitChrome({
   totalCount,
   onImageSearch,
   onCameraSearch,
+  onBack,
   style,
 }: SearchOrbitChromeProps) {
   const router = useRouter();
+  const handleBack = onBack ?? (() => router.back());
   const isTyping = draft.trim().length > 0 && !searched;
   const cartCount = useCart((s) => s.itemCount());
   const wishlistCount = useWishlist((s) => s.count());
@@ -75,7 +79,7 @@ export function SearchOrbitChrome({
         <View style={styles.bar}>
           <TouchableOpacity
             style={styles.barCircle}
-            onPress={() => router.back()}
+            onPress={handleBack}
             hitSlop={8}
             activeOpacity={0.7}
             accessibilityLabel="Go back"
@@ -149,7 +153,7 @@ export function SearchOrbitChrome({
       <View style={styles.topRow}>
         <TouchableOpacity
           style={styles.iconBtn}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
           hitSlop={8}
         >

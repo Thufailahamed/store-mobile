@@ -353,10 +353,6 @@ function RecommendedProductCard({
       ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
       : (product.discount_pct ?? 0);
 
-  // Best Price with offer (extra 8% coupon promo)
-  const bestPrice =
-    product.price > 0 ? Math.round(product.price * 0.92) : product.price;
-
   const handlePress = () => {
     router.push(`/(main)/products/${product.slug}`);
   };
@@ -424,19 +420,15 @@ function RecommendedProductCard({
           <Text style={styles.priceText} numberOfLines={1}>
             {formatPrice(product.price, product.currency || "LKR")}
           </Text>
-          {discount > 0 ? (
-            <Text style={styles.discountText} numberOfLines={1}>
-              {discount}% OFF
-            </Text>
-          ) : null}
         </View>
 
-        {/* Row 4: Best Price with offer */}
-        {product.price > 0 ? (
-          <Text style={styles.offerText} numberOfLines={1}>
-            Best Price {formatPrice(bestPrice, product.currency || "LKR")} with offer
+        {/* Row 4: discount — only when there is one */}
+        {discount > 0 ? (
+          <Text style={styles.discountText} numberOfLines={1}>
+            {discount}% OFF
           </Text>
         ) : null}
+
       </View>
     </TouchableOpacity>
   );

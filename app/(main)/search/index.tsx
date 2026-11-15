@@ -489,6 +489,7 @@ export default function SearchScreen() {
         query={query}
         onImageSearch={() => runScan("library")}
         onCameraSearch={() => runScan("camera")}
+        onBack={() => (searched ? resetSearch() : router.back())}
       />
 
       {showSuggestions ? (

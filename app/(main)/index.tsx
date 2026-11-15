@@ -29,7 +29,6 @@ import {
   ShopByOccasion,
   HomeSectionHeader,
 } from "@/components/home/premium";
-import { FooterVideo } from "@/components/home/premium/FooterVideo";
 import { C } from "@/components/orders/parcel-track";
 import { createSeenSet } from "@/components/home/premium/dedupe";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
@@ -329,7 +328,14 @@ export default function HomeScreen() {
         <View style={styles.endCap}>
           <Text style={styles.endKicker}>You've seen the edit</Text>
           <Text style={styles.endTitle}>Still looking for something?</Text>
-          <FooterVideo onPress={() => router.push("/(main)/products")} />
+          <TouchableOpacity
+            style={styles.endBtn}
+            onPress={() => router.push("/(main)/products")}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.endBtnText}>Browse all pieces</Text>
+            <Ionicons name="arrow-forward" size={15} color={C.lime} />
+          </TouchableOpacity>
         </View>
 
         {/* --- Shop grid section (disabled for now) ---

@@ -1,29 +1,19 @@
 import React, { useState, useMemo } from "react";
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  useWindowDimensions,
-} from "react-native";
+import { View, ActivityIndicator, useWindowDimensions } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@/components/ui/Icon";
-import { LinearGradient } from "expo-linear-gradient";
-import { AppHeader } from "@/components/layout";
-import { C } from "@/components/orders/parcel-track";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedFlatList, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
 import { FilterSheet } from "@/components/search/FilterSheet";
-import { ProductGridControls } from "@/components/products/ProductGridControls";
-import { ProductCard } from "@/components/product/ProductCard";
-import { HeroCard } from "@/components/product/HeroCard";
+import { SearchOrbitChrome } from "@/components/search/SearchOrbitChrome";
+import { SearchResultTile } from "@/components/search/SearchResultTile";
+import { SearchQuickBar } from "@/components/search/SearchQuickBar";
+import { DeliveryAddressStrip } from "@/components/search/DeliveryAddressStrip";
 import { ProductsEmptyState } from "@/components/product/ProductsEmptyState";
 import { TodaysEdit } from "@/components/products/TodaysEdit";
 import { SeenOnRunway } from "@/components/posts/SeenOnRunway";
-import { Label, Body, Display } from "@/components/ui/Typography";
-import { colors, radii, shadows, spacing } from "@/lib/theme/tokens";
-import { SORTS, EMPTY_FILTERS, activeFilterCount, type ProductFilters, type ViewMode } from "@/lib/api/facets";
+import { colors, spacing } from "@/lib/theme/tokens";
+import { EMPTY_FILTERS, activeFilterCount, type ProductFilters } from "@/lib/api/facets";
 import type { Product } from "@/lib/types";
 import { useProductGrid } from "@/lib/hooks/useProductGrid";
 import {
@@ -32,14 +22,15 @@ import {
   CategoryViewTracker,
 } from "@/lib/recommender";
 
-const GRID_PADDING = 16;
-const GRID_COL_GAP = 12;
+/* Same grid metrics as the search results page. */
+const GRID_PADDING = 12;
+const TILE_GAP = 10;
 
 export default function ProductsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const cardWidth = (screenWidth - GRID_PADDING * 2 - GRID_COL_GAP) / 2;
+  const tileWidth = (screenWidth - GRID_PADDING * 2 - TILE_GAP) / 2;
   const tabBarScrollHandler = useHideTabBarOnScroll();
   const params = useLocalSearchParams<{
     category?: string;
@@ -71,8 +62,6 @@ export default function ProductsScreen() {
     setSort,
     filters,
     setFilters,
-    view,
-    setView,
     loadMore,
   } = useProductGrid({
     category: params.category,
@@ -94,7 +83,6 @@ export default function ProductsScreen() {
   const hasActiveContext =
     !!params.category || !!params.brand || !!params.search || !!params.occasion ||
     minPriceParam != null || maxPriceParam != null || params.sort === "sale";
-  const showHero = view === "editorial" && !hasActiveContext;
 
   const titleCase = (v: string) => v.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const pageTitle = params.title
@@ -110,19 +98,19 @@ export default function ProductsScreen() {
     : params.sort === "sale" && !params.search && !params.brand && !params.category
     ? "The Sale"
     : params.search
-    ? `Search · "${params.search}"`
+    ? params.search
     : params.brand
       ? params.brand.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
       : params.category
         ? params.category.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-        : "The Atelier";
-
-  const handleClearAll = () => {
-    router.replace("/(main)/products");
-  };
+        : "All pieces";
 
   const handleClearFilters = () => {
     setFilters({ ...EMPTY_FILTERS });
+  };
+
+  const handleClearAll = () => {
+    router.replace("/(main)/products");
   };
 
   const handleSortChange = (next: string) => {
@@ -148,39 +136,39 @@ export default function ProductsScreen() {
     [refined]
   );
 
-  const heroProduct = showHero ? refined[0] : null;
-  const restProducts = showHero ? refined.slice(1) : refined;
+  const handleResultPress = (p: Product) => {
+    router.push(`/(main)/products/${p.slug}?from=search` as never);
+  };
 
-  const renderGridItem = ({ item }: { item: Product }) => (
-    <View style={[styles.gridItem, { width: cardWidth }]}>
-      <ProductCard product={item} tone="atelier" />
-    </View>
-  );
-
-  const renderListItem = ({ item }: { item: Product }) => (
-    <View style={styles.listItemWrap}>
-      <ProductCard product={item} listMode tone="atelier" />
+  const renderItem = ({ item }: { item: Product }) => (
+    <View style={{ width: tileWidth, marginBottom: 22 }}>
+      <SearchResultTile product={item} width={tileWidth} onPress={handleResultPress} />
     </View>
   );
 
   return (
-    <View style={styles.root}>
-      <LinearGradient
-        pointerEvents="none"
-        colors={[C.glow, C.glowSoft, C.paper]}
-        locations={[0, 0.5, 1]}
-        style={styles.glow}
+    <View style={{ flex: 1, backgroundColor: colors.paper.cream }}>
+      <SearchOrbitChrome
+        topInset={insets.top}
+        draft={pageTitle}
+        onDraftChange={() => {}}
+        onSubmit={() => router.push("/(main)/search" as never)}
+        onClear={() => {}}
+        searched
+        query={pageTitle}
+        totalCount={total}
       />
-      <AppHeader compact showTicker={false} showBackToHome tone="atelier" />
       <CategoryViewTracker id={categoryId} />
       <AnimatedFlatList
-        key={view}
-        data={view === "list" ? restProducts : restProducts}
+        data={refined}
         keyExtractor={(item: Product) => item.id}
-        renderItem={view === "list" ? renderListItem : renderGridItem}
-        numColumns={view === "list" ? 1 : 2}
-        columnWrapperStyle={view === "list" ? undefined : styles.gridRow}
-        contentContainerStyle={[styles.listContent, { paddingBottom: expandableTabBarInset(insets.bottom) + spacing[4] }]}
+        renderItem={renderItem}
+        numColumns={2}
+        columnWrapperStyle={{ gap: TILE_GAP }}
+        contentContainerStyle={{
+          paddingHorizontal: GRID_PADDING,
+          paddingBottom: expandableTabBarInset(insets.bottom) + 104,
+        }}
         showsVerticalScrollIndicator={false}
         onScroll={tabBarScrollHandler}
         scrollEventThrottle={16}
@@ -188,28 +176,12 @@ export default function ProductsScreen() {
         onEndReachedThreshold={0.5}
         {...viewable}
         ListHeaderComponent={
-          <>
-          <ProductsListHeader
-            loading={loading}
-            pageTitle={pageTitle}
-            total={total}
-            refinedCount={refined.length}
-            sort={sort}
-            setSort={handleSortChange}
-            view={view}
-            setView={setView}
-            filterCount={filterCount}
-            openFilter={() => setFilterOpen(true)}
-            filters={filters}
-            setFilters={handleFilterChange}
-            heroProduct={heroProduct}
-            hasActiveContext={hasActiveContext}
-            clearAll={handleClearAll}
-          />
-          {hasActiveContext && products.length > 0 ? (
-            <SeenOnRunway productIds={products.slice(0, 40).map((p) => p.id)} />
-          ) : null}
-          </>
+          <View>
+            <DeliveryAddressStrip />
+            {hasActiveContext && products.length > 0 ? (
+              <SeenOnRunway productIds={products.slice(0, 40).map((p) => p.id)} />
+            ) : null}
+          </View>
         }
         ListFooterComponent={
           <View>
@@ -217,7 +189,7 @@ export default function ProductsScreen() {
               <ActivityIndicator color={colors.light.primary} style={{ padding: spacing[5] }} />
             ) : null}
             {!hasActiveContext && filterCount === 0 && todaysPicks.length > 0 ? (
-              <View style={styles.editRailWrap}>
+              <View style={{ marginTop: spacing[4] }}>
                 <TodaysEdit products={todaysPicks} />
               </View>
             ) : null}
@@ -235,6 +207,18 @@ export default function ProductsScreen() {
           )
         }
       />
+
+      {refined.length > 0 ? (
+        <SearchQuickBar
+          sort={sort}
+          filters={filters}
+          products={refined}
+          filterCount={filterCount}
+          onSortChange={handleSortChange}
+          onFiltersChange={handleFilterChange}
+          onOpenFilters={() => setFilterOpen(true)}
+        />
+      ) : null}
 
       <FilterSheet
         visible={filterOpen}
@@ -275,160 +259,3 @@ function pickAddedFacet(
   }
   return null;
 }
-
-/* -------------------------------------------------------------------------- */
-/*  ListHeader — hero, breadcrumb, toolbar, quick refine, hero card           */
-/* -------------------------------------------------------------------------- */
-
-interface HeaderProps {
-  loading: boolean;
-  pageTitle: string;
-  total: number;
-  refinedCount: number;
-  sort: string;
-  setSort: (s: string) => void;
-  view: ViewMode;
-  setView: (v: ViewMode) => void;
-  filterCount: number;
-  openFilter: () => void;
-  filters: ProductFilters;
-  setFilters: (f: ProductFilters) => void;
-  heroProduct: Product | null;
-  hasActiveContext: boolean;
-  clearAll: () => void;
-}
-
-function ProductsListHeader({
-  loading,
-  pageTitle,
-  total,
-  refinedCount,
-  sort,
-  setSort,
-  view,
-  setView,
-  filterCount,
-  openFilter,
-  filters,
-  setFilters,
-  heroProduct,
-  hasActiveContext,
-  clearAll,
-}: HeaderProps) {
-  return (
-    <View>
-      <View style={styles.heroBlock}>
-        {hasActiveContext ? (
-          <TouchableOpacity onPress={clearAll} style={styles.breadcrumb} activeOpacity={0.7}>
-            <Ionicons name="chevron-back" size={12} color={colors.light.mutedForeground} />
-            <Label style={styles.breadcrumbText}>Shop</Label>
-            <Label style={styles.breadcrumbSep}>·</Label>
-            <Label style={styles.breadcrumbText} numberOfLines={1}>
-              {pageTitle}
-            </Label>
-          </TouchableOpacity>
-        ) : (
-          <Label style={styles.eyebrow}>Shop · All pieces</Label>
-        )}
-        <Display size="4xl" style={styles.heroTitle} numberOfLines={2}>
-          {pageTitle}
-        </Display>
-        {!hasActiveContext ? (
-          <Body muted size="sm" style={styles.heroSub}>
-            The full collection, from every atelier on VESTARA.
-          </Body>
-        ) : null}
-      </View>
-
-      <ProductGridControls
-        sort={sort}
-        setSort={setSort}
-        sorts={SORTS}
-        view={view}
-        setView={setView}
-        filterCount={filterCount}
-        openFilter={openFilter}
-        filters={filters}
-        setFilters={setFilters}
-        summary={
-          loading
-            ? "Loading…"
-            : filterCount > 0
-              ? `${refinedCount} of ${total} piece${total === 1 ? "" : "s"}`
-              : `${total} piece${total === 1 ? "" : "s"}`
-        }
-      />
-
-      {heroProduct ? (
-        <View style={styles.heroCardWrap}>
-          <HeroCard product={heroProduct} />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: C.paper,
-  },
-  glow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 460,
-  },
-  listContent: {
-    paddingBottom: spacing[24],
-  },
-  heroBlock: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[5],
-    paddingBottom: spacing[4],
-  },
-  eyebrow: {
-    color: C.accent,
-    fontSize: 10,
-    letterSpacing: 1.8,
-    marginBottom: spacing[1.5],
-  },
-  heroSub: {
-    marginTop: spacing[1.5],
-  },
-  breadcrumb: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: spacing[2],
-  },
-  breadcrumbText: {
-    color: colors.light.mutedForeground,
-    fontSize: 10,
-  },
-  breadcrumbSep: {
-    color: colors.light.mutedForeground,
-    fontSize: 10,
-  },
-  heroTitle: {
-    letterSpacing: -0.8,
-  },
-  heroCardWrap: {
-    paddingHorizontal: GRID_PADDING,
-    paddingTop: spacing[2],
-  },
-  gridRow: {
-    justifyContent: "space-between",
-    paddingHorizontal: GRID_PADDING,
-  },
-  gridItem: {
-    marginBottom: 0,
-  },
-  listItemWrap: {
-    paddingHorizontal: GRID_PADDING,
-  },
-  editRailWrap: {
-    paddingHorizontal: 0,
-  },
-});
