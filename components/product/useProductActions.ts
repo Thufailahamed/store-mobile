@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { router } from "expo-router";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useTrackEvent } from "@/lib/recommender";
 import { getVariantAvailableStock } from "@/lib/inventory";
@@ -39,10 +40,19 @@ export function useProductActions(product: Product) {
     (sum, v) => sum + getVariantAvailableStock(v, v.stock ?? 0),
     0,
   );
-  const isSoldOut = (product.variants?.length ?? 0) > 0 && aggregateStock <= 0;
+  const isSoldOut = product.order_channel !== "whatsapp" && (product.variants?.length ?? 0) > 0 && aggregateStock <= 0;
   const sizeVariants = (product.variants ?? []).filter((v) => v.is_active && v.size);
 
+  // Foreign-sourced dresses are ordered on WhatsApp from the product page.
+  const whatsappOnly = product.order_channel === "whatsapp";
+  const openProductPage = () =>
+    router.push({ pathname: "/(main)/products/[slug]", params: { slug: product.slug || product.id } });
+
   const addVariantToCart = (variant: ProductVariant) => {
+    if (whatsappOnly) {
+      openProductPage();
+      return;
+    }
     const stock = getVariantAvailableStock(variant, variant.stock ?? 0);
     if (stock <= 0) {
       toast("Out of stock", "error");
@@ -64,6 +74,10 @@ export function useProductActions(product: Product) {
   };
 
   const handleAdd = () => {
+    if (whatsappOnly) {
+      openProductPage();
+      return;
+    }
     if (isSoldOut) {
       toast("Out of stock", "error");
       return;

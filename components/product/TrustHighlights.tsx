@@ -17,13 +17,20 @@ type TrustItem = { icon: React.ComponentProps<typeof Ionicons>["name"]; label: s
 export function TrustHighlights({
   acceptsReturns = true,
   returnWindowDays,
+  whatsappOrder = false,
 }: {
   acceptsReturns?: boolean;
   returnWindowDays?: number | null;
+  /** Foreign-sourced dress ordered on WhatsApp: delivered by the team, no card checkout. */
+  whatsappOrder?: boolean;
 } = {}) {
   const items: TrustItem[] = [
-    { icon: "car-outline", label: "Free Shipping", sub: "Islandwide" },
-    { icon: "shield-checkmark-outline", label: "Secure Pay", sub: "256-bit SSL" },
+    whatsappOrder
+      ? { icon: "car-outline", label: "Delivered by us", sub: "Checked first" }
+      : { icon: "car-outline", label: "Free Shipping", sub: "Islandwide" },
+    whatsappOrder
+      ? { icon: "logo-whatsapp", label: "Order on WhatsApp", sub: "No COD" }
+      : { icon: "shield-checkmark-outline", label: "Secure Pay", sub: "256-bit SSL" },
     acceptsReturns
       ? { icon: "refresh-outline", label: "Returns available", sub: `Within ${returnWindowDays ?? 30} days` }
       : { icon: "ban-outline", label: "Returns not available", sub: "Final sale" },

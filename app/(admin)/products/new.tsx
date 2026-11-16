@@ -23,13 +23,18 @@ import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
 import { themedAlert } from "@/lib/themed-alert";
+import { Image } from "expo-image";
+import { pickImage, uploadSellerProductPhoto } from "@/lib/upload";
+import { adminQuickAnalyze } from "@/lib/api/admin-whatsapp";
+
+const WA_GREEN = "#25D366";
 
 const INK = colors.olive[950];
 const RUST = "#7a2f1a";
 const CREAM = colors.paper.cream;
 
 export default function AdminNewProductScreen() {
-  const params = useLocalSearchParams<{ storeId?: string }>();
+  const params = useLocalSearchParams<{ storeId?: string; whatsapp?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
@@ -41,8 +46,61 @@ export default function AdminNewProductScreen() {
   const [stock, setStock] = useState("10");
   const [categoryId, setCategoryId] = useState("");
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const [sizes, setSizes] = useState("");
   const [isActive, setIsActive] = useState(true);
+  // Sourced dress sold through WhatsApp (no bag checkout, no courier, no COD).
+  const [waMode, setWaMode] = useState(params.whatsapp === "1");
+
+  const addPhoto = async () => {
+    const picked = await pickImage({ allowsEditing: false, quality: 0.85 });
+    const asset = picked && !picked.canceled ? picked.assets?.[0] : null;
+    if (!asset?.uri) return;
+    setUploading(true);
+    try {
+      const res = await uploadSellerProductPhoto(asset.uri, { mimeType: asset.mimeType ?? null });
+      if (!res.url) throw new Error(res.error || "Upload failed");
+      setImages((prev) => [...prev, res.url].slice(0, 8));
+    } catch (e: any) {
+      themedAlert("Photo upload failed", e?.message ?? "Try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /** Read the cover photo with AI and prefill name, description and category. */
+  const fillWithAi = async () => {
+    if (!storeId) return themedAlert("Pick a store first", "AI fill needs the target store.");
+    if (!images[0]) return themedAlert("Add a photo first", "AI reads the first (cover) photo.");
+    setAiBusy(true);
+    setAiNote(null);
+    try {
+      const res = await adminQuickAnalyze(storeId, {
+        image_url: images[0],
+        extra_images: images.slice(1),
+        price: Number(price) > 0 ? Number(price) : undefined,
+        name: name.trim() || undefined,
+      });
+      if (!res.ok) throw new Error(res.error);
+      const d = res.data.draft;
+      if (!name.trim() && d.name) setName(d.name);
+      if (d.description || d.short_description) setDescription(d.description || d.short_description);
+      if (d.category_id) setCategoryId(d.category_id);
+      const vErr = res.data.extraction.vision_error;
+      setAiNote(
+        vErr
+          ? "AI couldn't read this photo well — check the details."
+          : `Filled by AI${d.category_name ? ` · ${d.category_name}` : ""}. Review before publishing.`,
+      );
+    } catch (e: any) {
+      themedAlert("AI fill failed", e?.message ?? "Try again or fill manually.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
@@ -99,9 +157,17 @@ export default function AdminNewProductScreen() {
         category_id: categoryId || undefined,
       };
 
-      if (imageUrl.trim()) {
-        payload.images = [imageUrl.trim()];
+      if (images.length) payload.images = images;
+      const sizeList = sizes
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      if (sizeList.length) {
+        const perSize = isNaN(numStock) ? 10 : numStock;
+        payload.variants = sizeList.map((size) => ({ size, price: numPrice, mrp: numMrp, quantity: perSize }));
       }
+      if (waMode) payload.order_channel = "whatsapp";
 
       const res = await createAdminProduct(payload);
       if (!res.ok) throw new Error(res.error);
@@ -111,9 +177,12 @@ export default function AdminNewProductScreen() {
       qc.invalidateQueries({ queryKey: ["admin-store", storeId] });
       qc.invalidateQueries({ queryKey: ["cat-products"] });
       qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["admin-wa-products"] });
       themedAlert(
         "Product Uploaded",
-        `"${name}" has been published for ${selectedStore?.name || "the store"}.`,
+        waMode
+          ? `"${name}" is listed as a WhatsApp-order dress.`
+          : `"${name}" has been published for ${selectedStore?.name || "the store"}.`,
         [{ text: "OK", onPress: () => router.back() }]
       );
     },
@@ -140,7 +209,7 @@ export default function AdminNewProductScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>Admin concierge</Text>
-          <Text style={styles.title}>Upload for store</Text>
+          <Text style={styles.title}>{waMode ? "Add sourced dress" : "Upload for store"}</Text>
         </View>
       </View>
 
@@ -168,9 +237,57 @@ export default function AdminNewProductScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* WhatsApp order mode */}
+        <View style={[styles.card, waMode && { borderColor: WA_GREEN }]}>
+          <View style={styles.toggleRow}>
+            <Ionicons name="logo-whatsapp" size={22} color={WA_GREEN} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleTitle}>WhatsApp order (sourced dress)</Text>
+              <Text style={styles.toggleSub}>
+                Shows “Order via WhatsApp” instead of Add to bag. No courier, no cash on delivery.
+              </Text>
+            </View>
+            <Switch value={waMode} onValueChange={setWaMode} accessibilityLabel="WhatsApp order" />
+          </View>
+        </View>
+
+        {/* Photos + AI */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>2. Photos</Text>
+          <Text style={styles.hint}>The first photo is the cover. AI reads it to fill the details.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 8 }}>
+            {images.map((u, i) => (
+              <View key={u}>
+                <Image source={{ uri: u }} style={styles.photo} contentFit="cover" />
+                <TouchableOpacity
+                  onPress={() => setImages((prev) => prev.filter((x) => x !== u))}
+                  style={styles.photoRemove}
+                  accessibilityLabel={`Remove photo ${i + 1}`}
+                >
+                  <Ionicons name="close" size={14} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity onPress={addPhoto} disabled={uploading} style={styles.photoAdd} accessibilityLabel="Add photo">
+              {uploading ? <ActivityIndicator /> : <Ionicons name="add" size={26} color={INK} />}
+            </TouchableOpacity>
+          </ScrollView>
+          <TouchableOpacity
+            onPress={fillWithAi}
+            disabled={aiBusy || !images.length || !storeId}
+            style={[styles.aiBtn, (aiBusy || !images.length || !storeId) && { opacity: 0.45 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Fill with AI"
+          >
+            {aiBusy ? <ActivityIndicator color={CREAM} /> : <Ionicons name="sparkles" size={16} color={CREAM} />}
+            <Text style={styles.aiBtnText}>{aiBusy ? "Reading photo…" : "Fill with AI"}</Text>
+          </TouchableOpacity>
+          {aiNote ? <Text style={[styles.hint, { marginTop: 8 }]}>{aiNote}</Text> : null}
+        </View>
+
         {/* Product Details */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>2. Product Details</Text>
+          <Text style={styles.cardTitle}>3. Product Details</Text>
 
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>TITLE / NAME *</Text>
@@ -248,14 +365,13 @@ export default function AdminNewProductScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>IMAGE URL</Text>
+            <Text style={styles.fieldLabel}>SIZES (COMMA SEPARATED)</Text>
             <TextInput
-              value={imageUrl}
-              onChangeText={setImageUrl}
-              placeholder="https://... image link"
+              value={sizes}
+              onChangeText={setSizes}
+              placeholder="e.g. S, M, L, XL"
               placeholderTextColor="rgba(101,104,77,0.55)"
-              autoCapitalize="none"
-              keyboardType="url"
+              autoCapitalize="characters"
               style={styles.input}
             />
           </View>
@@ -281,7 +397,7 @@ export default function AdminNewProductScreen() {
           {createM.isPending ? (
             <ActivityIndicator color={CREAM} />
           ) : (
-            <Text style={styles.submitText}>Upload & Publish</Text>
+            <Text style={styles.submitText}>{waMode ? "Publish WhatsApp dress" : "Upload & Publish"}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -338,6 +454,20 @@ export default function AdminNewProductScreen() {
 }
 
 const styles = StyleSheet.create({
+  photo: { width: 84, height: 104, borderRadius: radii.md, backgroundColor: colors.paper.cream },
+  photoRemove: {
+    position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center",
+  },
+  photoAdd: {
+    width: 84, height: 104, borderRadius: radii.md, borderWidth: 1.5, borderStyle: "dashed",
+    borderColor: "rgba(101,104,77,0.45)", alignItems: "center", justifyContent: "center",
+  },
+  aiBtn: {
+    marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: INK, borderRadius: radii.md, minHeight: 46,
+  },
+  aiBtnText: { color: CREAM, fontFamily: fontFamilies.sans.semibold, fontSize: 14 },
   container: { flex: 1, backgroundColor: colors.light.background },
   header: {
     flexDirection: "row",

@@ -67,9 +67,11 @@ export default function AdminLayout() {
         <Tabs.Screen name="notifications/index" options={{ href: null }} />
         <Tabs.Screen name="products/[id]" options={{ href: null }} />
         <Tabs.Screen name="products/edit/[id]" options={{ href: null }} />
+        <Tabs.Screen name="products/new" options={{ href: null }} />
         <Tabs.Screen name="reports/index" options={{ href: null }} />
         <Tabs.Screen name="stores/[id]" options={{ href: null }} />
         <Tabs.Screen name="courier/index" options={{ href: null }} />
+        <Tabs.Screen name="whatsapp-orders/index" options={{ href: null }} />
       </Tabs>
     </View>
   );

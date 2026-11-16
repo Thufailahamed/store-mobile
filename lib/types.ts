@@ -39,6 +39,8 @@ export interface Category {
 }
 
 export interface Store {
+  /** Admin-enabled: this store may list WhatsApp-order-only products. */
+  whatsapp_orders_enabled?: boolean;
   id: string;
   owner_id: string;
   name: string;
@@ -128,6 +130,8 @@ export interface Product {
   attributes?: Record<string, unknown>;
   is_featured: boolean;
   is_active: boolean;
+  /** 'whatsapp' = foreign-sourced dress ordered via WhatsApp chat (no bag checkout, no COD). */
+  order_channel?: "checkout" | "whatsapp";
   risk_score?: number | null;
   is_flagged?: boolean | null;
   auto_approved?: boolean | null;

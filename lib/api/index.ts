@@ -884,7 +884,9 @@ export function getSellerStore(_ownerId: string): Promise<Result<Store | null>> 
 
 async function loadSellerStore(): Promise<Result<Store | null>> {
   const res = await B.getSellerStoreBackend();
-  if (!res.ok) return fail(res.error);
+  // The backend answers 404 not_found while a new seller has no store yet;
+  // that is the "set up your store" state, not a load failure.
+  if (!res.ok) return /^not_found\b/.test(res.error) ? ok(null) : fail(res.error);
   const raw = res.data.store as (Store & Record<string, unknown>) | null;
   if (!raw) return ok(null);
   const mapped = mapStore(raw);

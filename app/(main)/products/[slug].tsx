@@ -43,6 +43,7 @@ import type { Product, ProductVariant, Review } from "@/lib/types";
 import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 import { StyledInRail } from "@/components/posts/StyledInRail";
+import { isWhatsappOrderProduct, openWhatsappOrder, useWhatsappNumber } from "@/lib/whatsapp-order";
 
 export default function ProductDetailScreen() {
   const router = useRouter();
@@ -175,7 +176,9 @@ export default function ProductDetailScreen() {
   const currentStock =
     liveVariantStock?.available ?? selectedVariant?.stock ?? (hasVariants ? 0 : Infinity);
   const isWishlisted = product ? !!wishlistItems[product.id] : false;
-  const soldOut = currentStock <= 0;
+  // Foreign-sourced dress: ordered over WhatsApp, stock is held by the supplier.
+  const whatsappOnly = isWhatsappOrderProduct(product);
+  const soldOut = !whatsappOnly && currentStock <= 0;
   const lowStock = !soldOut && Number.isFinite(currentStock) && currentStock <= 5;
   const cartItemKey = product
     ? buildCartLineKeyFromItem({
@@ -185,6 +188,7 @@ export default function ProductDetailScreen() {
       })
     : "";
   const isInCart = product ? !!cartItems[cartItemKey] : false;
+  const { number: whatsappNumber } = useWhatsappNumber();
 
   const handleAddToCart = (): boolean => {
     if (!product) return false;
@@ -223,6 +227,17 @@ export default function ProductDetailScreen() {
     toast("Added to basket", "success", { image: img, subtitle: product.name });
     useUI.getState().setCartDrawer(true);
     return true;
+  };
+
+  const handleWhatsappOrder = async () => {
+    if (!product) return;
+    const hasSizeDimension = !!product.variants?.some((v) => v.size && v.is_active);
+    if (hasSizeDimension && !selectedSize) {
+      toast("Select a size", "error");
+      return;
+    }
+    const opened = await openWhatsappOrder(whatsappNumber, product, { variant: selectedVariant ?? null, qty: quantity });
+    if (!opened) toast("WhatsApp ordering is not available yet", "error");
   };
 
   const handleBuyNow = () => {
@@ -421,6 +436,7 @@ export default function ProductDetailScreen() {
           <TrustHighlights
             acceptsReturns={product.store?.accepts_returns !== false}
             returnWindowDays={product.store?.return_window_days}
+            whatsappOrder={whatsappOnly}
           />
         </View>
 
@@ -491,6 +507,23 @@ export default function ProductDetailScreen() {
       </ScrollView>
 
       {/* Fixed bottom purchase bar — Buy Now (outline) · Add to Bag (filled) */}
+      {whatsappOnly ? (
+      <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 10), flexDirection: "column", alignItems: "stretch" }]}>
+        <Body style={styles.whatsappNote}>
+          Sourced from our partner boutique abroad. We confirm on WhatsApp, check it at our studio, then deliver. No cash on delivery.
+        </Body>
+        <TouchableOpacity
+          onPress={handleWhatsappOrder}
+          style={[styles.buyBtn, styles.whatsappBtn, { flex: 0 }]}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Order via WhatsApp"
+        >
+          <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+          <Body style={styles.whatsappText}>Order via WhatsApp</Body>
+        </TouchableOpacity>
+      </View>
+      ) : (
       <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TouchableOpacity
           onPress={handleBuyNow}
@@ -513,6 +546,7 @@ export default function ProductDetailScreen() {
           <Body style={styles.addBagText}>{isInCart ? "Go to Bag" : soldOut ? "Sold out" : "Add to Bag"}</Body>
         </TouchableOpacity>
       </View>
+      )}
     </View>
 
     <ReviewForm
@@ -572,6 +606,9 @@ const styles = StyleSheet.create({
   addBagBtn: { backgroundColor: C.lime },
   buyNowText: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.ink },
   addBagText: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: C.ink },
+  whatsappBtn: { backgroundColor: "#25D366" },
+  whatsappText: { fontFamily: fontFamilies.sans.bold, fontSize: 16, color: "#fff" },
+  whatsappNote: { fontSize: 12, lineHeight: 16, color: C.ink, opacity: 0.7, marginBottom: 8 },
   glow: {
     position: "absolute",
     top: 0,

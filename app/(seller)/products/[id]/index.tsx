@@ -218,6 +218,9 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
   const [initialStatus, setInitialStatus] = useState<string>("draft");
   const [tags, setTags] = useState<string[]>([]);
   const [isFeatured, setIsFeatured] = useState(false);
+  // WhatsApp-only ordering; toggle shown only for stores an admin enabled.
+  const [whatsappAllowed, setWhatsappAllowed] = useState(false);
+  const [whatsappOnly, setWhatsappOnly] = useState(false);
   /** Progressive Quick-with-AI: fields whose AI copy is still being written. */
   const [aiGenerating, setAiGenerating] = useState<{ name: boolean; copy: boolean }>({ name: false, copy: false });
   // Retake tips from the quick-upload photo check (blur / dark / cropped).
@@ -316,7 +319,10 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         getAllCategories(),
         getBrands({ limit: 100 }),
       ]);
-      if (storeRes.ok && storeRes.data) setStoreId(storeRes.data.id);
+      if (storeRes.ok && storeRes.data) {
+        setStoreId(storeRes.data.id);
+        setWhatsappAllowed(Boolean(storeRes.data.whatsapp_orders_enabled));
+      }
       if (categoriesRes.ok) setCategories(categoriesRes.data);
       if (brandsRes.ok) setBrands(brandsRes.data);
 
@@ -367,6 +373,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         setInitialStatus(p.status);
         setTags(p.tags ?? []);
         setIsFeatured(Boolean(p.is_featured));
+        setWhatsappOnly(p.order_channel === "whatsapp");
         setExistingImages(p.images ?? []);
 
         const loadedVariants =
@@ -407,14 +414,14 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
       JSON.stringify({
         name, slug: effectiveSlug, sku, description, shortDescription, metaDescription,
         material, pattern, fit, sleeve, occasion, season, careInstructions, atelier,
-        mrp, price, taxRate, gender, categoryId, brandId, status, tags, isFeatured,
+        mrp, price, taxRate, gender, categoryId, brandId, status, tags, isFeatured, whatsappOnly,
         variants: variants.map(({ key: _k, ...rest }) => rest),
         variantColor,
         images: visibleExistingImages.map((i) => i.id),
       }),
     [name, effectiveSlug, sku, description, shortDescription, metaDescription, material, pattern, fit,
       sleeve, occasion, season, careInstructions, atelier, mrp, price, taxRate, gender, categoryId,
-      brandId, status, tags, isFeatured, variants, variantColor, visibleExistingImages],
+      brandId, status, tags, isFeatured, whatsappOnly, variants, variantColor, visibleExistingImages],
   );
 
   useEffect(() => {
@@ -916,6 +923,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         status: nextStatus,
         is_active: statusToIsActive(nextStatus),
         is_featured: isFeatured,
+        ...(whatsappAllowed ? { order_channel: whatsappOnly ? "whatsapp" as const : "checkout" as const } : {}),
         tags,
         store_id: storeId,
         currency: "LKR",
@@ -1803,6 +1811,16 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
               onChange={setIsFeatured}
               tone="gold"
             />
+
+            {whatsappAllowed ? (
+              <ToggleRow
+                icon="logo-whatsapp"
+                title="WhatsApp order only"
+                hint="Buyers order via WhatsApp chat. No bag, no COD, no courier."
+                value={whatsappOnly}
+                onChange={setWhatsappOnly}
+              />
+            ) : null}
 
             <View
               style={[

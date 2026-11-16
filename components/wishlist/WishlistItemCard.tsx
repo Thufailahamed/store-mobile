@@ -64,6 +64,11 @@ export function WishlistItemCard({ product }: WishlistItemCardProps) {
     });
 
   const moveToBag = async () => {
+    // Foreign-sourced dresses are ordered on WhatsApp from the product page.
+    if (product.order_channel === "whatsapp") {
+      open();
+      return;
+    }
     if (adding || isOutOfStock) return;
     setAdding(true);
     try {

@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/Toast";
 import { getVariantStock } from "@/components/cart/variant-utils";
 import * as api from "@/lib/api";
 import { useTrackEvent } from "@/lib/recommender";
+import { openWhatsappOrder, useWhatsappNumber } from "@/lib/whatsapp-order";
 import { useCart } from "@/lib/stores";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
@@ -38,6 +39,7 @@ export function QuickShopSheet({ item, onClose, onViewDetails, onViewBag }: {
 }) {
   const insets = useSafeAreaInsets();
   const { toast } = useToast();
+  const { number: whatsappNumber } = useWhatsappNumber();
   const tracker = useTrackEvent();
   const addItem = useCart((s) => s.addItem);
   const [product, setProduct] = useState<Product | null>(null);
@@ -83,7 +85,8 @@ export function QuickShopSheet({ item, onClose, onViewDetails, onViewBag }: {
 
   const needsSize = sizes.length > 0 && !size;
   const stock = hasVariants ? (variant ? getVariantStock(variant) : 0) : Infinity;
-  const soldOut = !needsSize && stock <= 0;
+  const whatsappOnly = product?.order_channel === "whatsapp";
+  const soldOut = !whatsappOnly && !needsSize && stock <= 0;
   const price = variant?.price ?? product?.price ?? item?.price ?? 0;
   const mrp = variant?.mrp ?? product?.mrp ?? item?.mrp ?? null;
   const cur = product?.currency || item?.currency || "LKR";
@@ -95,6 +98,13 @@ export function QuickShopSheet({ item, onClose, onViewDetails, onViewBag }: {
   const off = mrp && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
 
   function add() {
+    if (product?.order_channel === "whatsapp") {
+      if (needsSize) return;
+      void openWhatsappOrder(whatsappNumber, product, { variant: variant ?? null, qty: 1 }).then((opened) => {
+        if (!opened) toast("WhatsApp ordering is not available yet", "error");
+      });
+      return;
+    }
     if (!product || needsSize || soldOut) return;
     addItem({
       productId: product.id,
@@ -217,7 +227,7 @@ export function QuickShopSheet({ item, onClose, onViewDetails, onViewBag }: {
                 style={({ pressed }) => [styles.addBtn, (!product || needsSize || soldOut) && { opacity: 0.35 }, pressed && { opacity: 0.85 }]}>
                 <Ionicons name="bag-add-outline" size={18} color="#fff" />
                 <Text style={styles.addText}>
-                  {soldOut ? "Sold out" : needsSize ? "Select a size" : `Add to bag · ${formatPrice(price, cur)}`}
+                  {soldOut ? "Sold out" : needsSize ? "Select a size" : whatsappOnly ? `Order via WhatsApp · ${formatPrice(price, cur)}` : `Add to bag · ${formatPrice(price, cur)}`}
                 </Text>
               </Pressable>
             </>

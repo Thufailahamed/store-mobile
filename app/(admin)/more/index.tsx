@@ -75,6 +75,7 @@ export default function AdminMore() {
       { key: "content", label: "Content", description: "Reviews & Q&A", icon: "chatbubbles-outline", route: "/(admin)/content", group: "Engagement" },
       { key: "notifications", label: "Notifications", description: "Broadcasts & pushes", icon: "notifications-outline", route: "/(admin)/notifications", group: "Engagement" },
       { key: "blog", label: "Blog", description: "Editorial posts", icon: "document-text-outline", route: "/(admin)/blog", group: "Engagement" },
+      { key: "whatsapp-orders", label: "WhatsApp Orders", description: "Sourced dresses · manual delivery", icon: "logo-whatsapp", route: "/(admin)/whatsapp-orders", group: "Operations" },
       { key: "courier", label: "Courier Providers", description: "External delivery partners", icon: "bicycle-outline", route: "/(admin)/courier", group: "Operations" },
       { key: "delivery", label: "Delivery", description: "Delivery companies", icon: "car-outline", route: "/(admin)/delivery", group: "Operations" },
       { key: "commissions", label: "Commissions", description: "Tier management", icon: "wallet-outline", route: "/(admin)/commissions", group: "Operations" },

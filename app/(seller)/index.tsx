@@ -251,7 +251,14 @@ export default function SellerDashboard() {
   // so tab switching is instant (0ms delay).
   useFocusEffect(
     useCallback(() => {
-      if (!activeStoreId || !loadedOnce.current) return;
+      // No store yet (or the last load failed): onboarding may have just
+      // created it on another screen, so always refetch on focus.
+      if (!activeStoreId) {
+        invalidateSellerCache();
+        void fetchData({ silent: true });
+        return;
+      }
+      if (!loadedOnce.current) return;
       void fetchData({ silent: true });
     }, [activeStoreId, fetchData]),
   );
