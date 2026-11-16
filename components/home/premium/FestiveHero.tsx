@@ -354,27 +354,51 @@ const FRAME_COLORS = ["#8a1538", "#f0a020", "#1546d8", "#00876b"];
 
 type Slide = { key: string; source: ImageSourcePropType; link: string; frame: string; label: string };
 
-/** Local HERO_BANNERS win; otherwise CMS banners that have an image. */
+/**
+ * Where a CMS banner opens. Product-listing links get the banner id appended,
+ * so the listing shows the admin-tagged products first and related products
+ * after them; any filters already in the link still apply. Other links
+ * (e.g. a store page) are left as they are.
+ */
+function bannerLanding(b: Banner): string {
+  const link = b.link || "/(main)/products";
+  const isListing = /^\/?(\(main\)\/)?products(\?|$)/.test(link);
+  if (!b.id || !isListing) return link;
+  // Plain string handling: RN's URLSearchParams polyfill lacks set()/has().
+  const [path, query = ""] = link.split("?");
+  const parts = query
+    .split("&")
+    .filter((p) => p && !p.startsWith("banner="));
+  parts.push(`banner=${encodeURIComponent(String(b.id))}`);
+  if (b.title && !parts.some((p) => p.startsWith("title="))) {
+    parts.push(`title=${encodeURIComponent(b.title)}`);
+  }
+  return `${path}?${parts.join("&")}`;
+}
+
+/**
+ * CMS banners (admin → Banners, position `home_hero`) are the source of truth.
+ * Bundled HERO_BANNERS are only a fallback when the CMS list is empty.
+ */
 function useSlides(banners: Banner[]): Slide[] {
   return useMemo(() => {
-    if (HERO_BANNERS.length > 0) {
-      return HERO_BANNERS.map((b, i) => ({
-        key: `local-${i}`,
-        source: typeof b.image === "string" ? { uri: b.image } : b.image,
-        link: b.link || "/(main)/products",
-        frame: b.frame || FRAME_COLORS[i % FRAME_COLORS.length],
-        label: b.label || `Banner ${i + 1}`,
-      }));
-    }
-    return banners
-      .filter((b) => !!b.image_url)
-      .map((b, i) => ({
+    const cms = banners.filter((b) => !!b.image_url);
+    if (cms.length > 0) {
+      return cms.map((b, i) => ({
         key: String(b.id ?? i),
         source: { uri: b.image_url as string },
-        link: b.link || "/(main)/products",
+        link: bannerLanding(b),
         frame: b.accent_color || b.bg_color || FRAME_COLORS[i % FRAME_COLORS.length],
         label: b.title || `Banner ${i + 1}`,
       }));
+    }
+    return HERO_BANNERS.map((b, i) => ({
+      key: `local-${i}`,
+      source: typeof b.image === "string" ? { uri: b.image } : b.image,
+      link: b.link || "/(main)/products",
+      frame: b.frame || FRAME_COLORS[i % FRAME_COLORS.length],
+      label: b.label || `Banner ${i + 1}`,
+    }));
   }, [banners]);
 }
 

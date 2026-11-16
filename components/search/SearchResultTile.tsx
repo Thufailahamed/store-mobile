@@ -10,7 +10,6 @@ import type { Product } from "@/lib/types";
 
 const INK = colors.ink.DEFAULT;
 const MUTED = "#6b6b68";
-const OFF = "#d9822b";
 const STAR = "#1f8a5b";
 
 function compactCount(n: number): string {
@@ -31,7 +30,7 @@ interface Props {
  */
 export function SearchResultTile({ product, width, onPress }: Props) {
   const { primaryImage, discount, isSoldOut, isWishlisted, handleWishlist } = useProductActions(product);
-  const brand = product.brand?.name || product.store?.name || "";
+  const brand = product.store?.name || product.brand?.name || "";
   const imageHeight = Math.round(width * 1.33);
   const showMrp = discount > 0 && product.mrp > product.price;
 
@@ -67,33 +66,40 @@ export function SearchResultTile({ product, width, onPress }: Props) {
             <Text style={styles.soldOutText}>SOLD OUT</Text>
           </View>
         ) : null}
+        <TouchableOpacity
+          style={styles.heart}
+          onPress={handleWishlist}
+          hitSlop={10}
+          accessibilityLabel={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
+        >
+          <Ionicons
+            name={isWishlisted ? "heart" : "heart-outline"}
+            size={17}
+            color={isWishlisted ? colors.accent2.rust : INK}
+          />
+        </TouchableOpacity>
       </View>
 
+      {/* Centred metadata, matching the web product card: store eyebrow,
+          uppercase tracked name, price row, red offer line. */}
       <View style={styles.info}>
-        <View style={styles.brandRow}>
+        {brand ? (
           <Text style={styles.brand} numberOfLines={1}>
             {brand.toUpperCase()}
           </Text>
-          <TouchableOpacity
-            onPress={handleWishlist}
-            hitSlop={10}
-            accessibilityLabel={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
-          >
-            <Ionicons
-              name={isWishlisted ? "heart" : "heart-outline"}
-              size={20}
-              color={isWishlisted ? colors.accent2.rust : INK}
-            />
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.name} numberOfLines={1}>
-          {product.name || "Untitled piece"}
+        ) : null}
+        <Text style={styles.name} numberOfLines={2}>
+          {(product.name || "Untitled piece").toUpperCase()}
         </Text>
         <View style={styles.priceRow}>
           {showMrp ? <Text style={styles.mrp}>{formatPrice(product.mrp)}</Text> : null}
           <Text style={styles.price}>{product.price ? formatPrice(product.price) : "On request"}</Text>
-          {showMrp ? <Text style={styles.off}>{discount}% OFF</Text> : null}
         </View>
+        {showMrp ? (
+          <Text style={styles.off}>
+            {discount}% off — you save {formatPrice(product.mrp - product.price)}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -128,17 +134,56 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   soldOutText: { fontFamily: fontFamilies.sans.bold, fontSize: 12, letterSpacing: 1.2, color: INK },
-  info: { paddingTop: 8, paddingHorizontal: 2, gap: 2 },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  brand: { flex: 1, fontFamily: fontFamilies.sans.bold, fontSize: 13.5, letterSpacing: 0.3, color: INK },
-  name: { fontFamily: fontFamilies.sans.regular, fontSize: 13, color: MUTED },
-  priceRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 5, marginTop: 2 },
+  heart: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  info: { paddingTop: 10, paddingHorizontal: 4, alignItems: "center" },
+  brand: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 2,
+    color: "rgba(20,20,20,0.45)",
+    textAlign: "center",
+  },
+  name: {
+    marginTop: 6,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    lineHeight: 17,
+    letterSpacing: 1.6,
+    color: "rgba(20,20,20,0.9)",
+    textAlign: "center",
+  },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    columnGap: 6,
+    marginTop: 6,
+  },
   mrp: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
-    color: "#8d8d88",
+    fontSize: 11,
+    letterSpacing: 1.2,
+    color: "rgba(20,20,20,0.35)",
     textDecorationLine: "line-through",
   },
-  price: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: INK },
-  off: { fontFamily: fontFamilies.sans.semibold, fontSize: 12.5, color: OFF },
+  price: { fontFamily: fontFamilies.sans.medium, fontSize: 11, letterSpacing: 1.2, color: "rgba(20,20,20,0.7)" },
+  off: {
+    marginTop: 6,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: "#e00000",
+    textAlign: "center",
+  },
 });

@@ -11,7 +11,6 @@ import { SearchQuickBar } from "@/components/search/SearchQuickBar";
 import { DeliveryAddressStrip } from "@/components/search/DeliveryAddressStrip";
 import { ProductsEmptyState } from "@/components/product/ProductsEmptyState";
 import { TodaysEdit } from "@/components/products/TodaysEdit";
-import { SeenOnRunway } from "@/components/posts/SeenOnRunway";
 import { colors, spacing } from "@/lib/theme/tokens";
 import { EMPTY_FILTERS, activeFilterCount, type ProductFilters } from "@/lib/api/facets";
 import type { Product } from "@/lib/types";
@@ -43,6 +42,8 @@ export default function ProductsScreen() {
     occasion?: string;
     /** Optional display title supplied by the deep link. */
     title?: string;
+    /** Home banner id — its tagged products lead, related products follow. */
+    banner?: string;
   }>();
   const parsePrice = (v?: string) => {
     const n = v != null && v !== "" ? Number(v) : NaN;
@@ -71,6 +72,7 @@ export default function ProductsScreen() {
     minPrice: minPriceParam,
     maxPrice: maxPriceParam,
     occasion: params.occasion,
+    banner: params.banner,
   });
 
   // Category page → fire category_view once. Search params pass a slug;
@@ -81,7 +83,7 @@ export default function ProductsScreen() {
   const viewable = useTrackViewableItems(refined, "category_grid");
 
   const hasActiveContext =
-    !!params.category || !!params.brand || !!params.search || !!params.occasion ||
+    !!params.category || !!params.brand || !!params.search || !!params.occasion || !!params.banner ||
     minPriceParam != null || maxPriceParam != null || params.sort === "sale";
 
   const titleCase = (v: string) => v.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -177,10 +179,9 @@ export default function ProductsScreen() {
         {...viewable}
         ListHeaderComponent={
           <View>
-            <DeliveryAddressStrip />
-            {hasActiveContext && products.length > 0 ? (
-              <SeenOnRunway productIds={products.slice(0, 40).map((p) => p.id)} />
-            ) : null}
+            <View style={{ marginBottom: spacing[3] }}>
+              <DeliveryAddressStrip />
+            </View>
           </View>
         }
         ListFooterComponent={

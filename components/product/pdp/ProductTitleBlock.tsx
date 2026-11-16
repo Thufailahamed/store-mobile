@@ -7,8 +7,6 @@ import { formatPrice, discountPct } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
 const INK = "#1b1c1c";
-const MUTED = "#6b6a66";
-const OFF = "#d9822b";
 
 /**
  * Three quick actions (similar · wishlist · share), then "**Brand** name" and
@@ -88,7 +86,7 @@ export function ProductTitleBlock({
           <Text style={styles.maker} numberOfLines={1}>
             {maker.name}
           </Text>
-          {maker.href ? <Ionicons name="chevron-forward" size={14} color={MUTED} /> : null}
+          {maker.href ? <Ionicons name="chevron-forward" size={15} color="rgba(20,20,20,0.62)" /> : null}
         </TouchableOpacity>
       ) : null}
       <Text style={[styles.title, !maker && { marginTop: 14 }]} numberOfLines={3}>
@@ -126,12 +124,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   makerRow: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 14, alignSelf: "flex-start", maxWidth: "100%" },
-  maker: { fontFamily: fontFamilies.sans.bold, fontSize: 16.5, color: INK, flexShrink: 1 },
-  title: { marginTop: 3, fontFamily: fontFamilies.sans.regular, fontSize: 15, lineHeight: 21, color: "#55544f" },
-  priceRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 8, marginTop: 10 },
-  price: { fontFamily: fontFamilies.sans.bold, fontSize: 17, color: INK },
-  mrpLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: MUTED },
+  maker: { fontFamily: fontFamilies.sans.semibold, fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: "rgba(20,20,20,0.62)", flexShrink: 1 },
+  title: { fontFamily: fontFamilies.sans.medium, fontSize: 17, lineHeight: 24, letterSpacing: 1.4, textTransform: "uppercase", color: "#141414", marginTop: 6 },
+  priceRow: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 10, rowGap: 4, marginTop: 12 },
+  price: { fontFamily: fontFamilies.sans.semibold, fontSize: 20, letterSpacing: 0.8, color: "#141414" },
+  mrpLabel: { fontFamily: fontFamilies.sans.regular, fontSize: 13, letterSpacing: 1, color: "rgba(20,20,20,0.5)" },
   mrpStruck: { textDecorationLine: "line-through" },
-  mrpPlain: { fontFamily: fontFamilies.sans.medium, fontSize: 14, color: MUTED },
-  off: { fontFamily: fontFamilies.sans.bold, fontSize: 14, color: OFF },
+  mrpPlain: { fontFamily: fontFamilies.sans.regular, fontSize: 13, letterSpacing: 1, color: "rgba(20,20,20,0.5)" },
+  off: { fontFamily: fontFamilies.sans.semibold, fontSize: 13, letterSpacing: 0.6, color: "#d40000" },
 });

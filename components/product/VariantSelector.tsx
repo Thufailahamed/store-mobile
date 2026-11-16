@@ -215,19 +215,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sectionLabel: {
-    color: colors.light.mutedForeground,
-    fontSize: 10,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
     letterSpacing: 2,
-    fontFamily: fontFamilies.sans.bold,
+    color: "rgba(20,20,20,0.45)",
   },
   selectedValue: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 16,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   colorCountInline: {
     fontFamily: fontFamilies.sans.regular,
-    color: colors.light.mutedForeground,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: "rgba(20,20,20,0.45)",
   },
   colorRow: {
     flexDirection: "row",
@@ -240,14 +244,16 @@ const styles = StyleSheet.create({
     gap: spacing[1.5],
   },
   colorItemName: {
-    fontSize: 11.5,
-    color: colors.light.mutedForeground,
     fontFamily: fontFamilies.sans.regular,
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
     textAlign: "center",
   },
   colorItemNameActive: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.medium,
+    color: "rgba(20,20,20,0.9)",
   },
   colorCircle: {
     width: 54,
@@ -298,9 +304,11 @@ const styles = StyleSheet.create({
     borderColor: `${colors.olive[600]}1F`,
   },
   sizeChart: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
     color: colors.olive[800],
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11.5,
   },
   sizeGrid: {
     flexDirection: "row",
@@ -345,14 +353,14 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
   sizeText: {
-    color: colors.light.foreground,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
-    letterSpacing: 0.4,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    letterSpacing: 1.2,
+    color: "rgba(20,20,20,0.9)",
   },
   sizeTextActive: {
+    fontFamily: fontFamilies.sans.medium,
     color: colors.paper.cream,
-    fontFamily: fontFamilies.sans.bold,
   },
   sizeTextSoldOut: {
     textDecorationLine: "line-through",
@@ -387,8 +395,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent2.rust,
   },
   lowStockText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 0.5,
     color: colors.accent2.rust,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 11.5,
   },
 });

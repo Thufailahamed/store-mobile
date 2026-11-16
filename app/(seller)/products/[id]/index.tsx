@@ -22,6 +22,7 @@ import {
   getSellerStore,
   getSellerProductById,
   createSellerProduct,
+  moderateSellerProduct,
   updateSellerProduct,
   deleteSellerProduct,
   deleteSellerProductImage,
@@ -160,12 +161,15 @@ function AiGenerating() {
 }
 
 export default function SellerProductEditRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  // Clearing a draft bumps the epoch, which remounts the editor so every field is empty again.
+  // `n` is a per-open nonce: seller screens live in a <Tabs> navigator, which
+  // keeps this screen mounted, so without it "add product" would reopen the
+  // previous product's filled-in editor.
+  const { id, n } = useLocalSearchParams<{ id: string; n?: string }>();
+  // Clearing a draft (or finishing a new product) bumps the epoch, which remounts the editor so every field is empty again.
   const [epoch, setEpoch] = useState(0);
   return (
     <SellerProductEdit
-      key={`${id ?? "new"}-${epoch}`}
+      key={`${id ?? "new"}-${n ?? ""}-${epoch}`}
       id={id ?? "new"}
       onDraftCleared={() => setEpoch((e) => e + 1)}
     />
@@ -631,8 +635,11 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
   }, [isNew, loading, user]);
 
   useEffect(() => {
-    if (!isNew || !user || !isDirty) return;
+    // Once the product is saved, never re-write the draft: a pending debounce
+    // or the late background AI copy fill would resurrect it otherwise.
+    if (!isNew || !user || !isDirty || allowLeave.current) return;
     const t = setTimeout(() => {
+      if (allowLeave.current) return;
       const parsed = JSON.parse(formSnapshot);
       AsyncStorage.setItem(DRAFT_KEY(user.id), JSON.stringify({ ...parsed, slugEdited }))
         .then(() => setDraftSavedAt(new Date()))
@@ -750,7 +757,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
     });
   };
 
-  const syncImages = async (productId: string) => {
+  const syncImages = async (productId: string, deferModeration = false) => {
     if (!storeId) throw new Error("Store not found");
 
     for (const imageId of removedImageIds) {
@@ -777,7 +784,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         img.uri,
         startPosition + i,
         img.isPrimary,
-        { mimeType: img.mimeType, fileName: img.fileName },
+        { mimeType: img.mimeType, fileName: img.fileName, deferModeration },
       );
       if (res.error) {
         // The product record already exists at this point (created/updated before
@@ -914,8 +921,11 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         currency: "LKR",
       };
 
+      // New product being submitted: skip the per-call scorings (create +
+      // every image) and score once at the end with images + variants.
+      const deferModeration = isNew && mode !== "draft";
       if (isNew) {
-        const res = await createSellerProduct(productData);
+        const res = await createSellerProduct(productData, { deferModeration });
         if (!res.ok) throw new Error(res.error);
         productId = res.data.product.id;
         nextModeration = res.data.moderation;
@@ -930,7 +940,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
 
       if (!productId) throw new Error("Product could not be saved");
 
-      await syncImages(productId);
+      await syncImages(productId, deferModeration);
 
       const removedIds = [
         ...removedVariantIds,
@@ -949,8 +959,17 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
       });
       const guideWarning = guideRes.ok ? null : guideRes.error;
 
-      if (isNew && user) AsyncStorage.removeItem(DRAFT_KEY(user.id)).catch(() => {});
+      if (deferModeration) {
+        // One scoring of the complete product decides live vs review.
+        const modRes = await moderateSellerProduct(productId);
+        if (modRes.ok) {
+          nextModeration = modRes.data;
+          setModeration(nextModeration);
+        }
+      }
+
       allowLeave.current = true;
+      if (isNew) await clearProductDrafts(user?.id).catch(() => {});
 
       let title = mode === "draft" ? "Draft saved" : isNew ? "Submitted for review" : "Changes saved";
       let banner = mode === "draft" ? "You can finish and submit it any time from Products." : "We’ll notify you once it’s reviewed.";
@@ -964,11 +983,24 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
       }
       if (!isNew && mode === "save") banner = nextModeration ? banner : "Your product has been updated.";
       if (guideWarning) banner = `${banner} Size chart not saved: ${guideWarning}`;
-      themedAlert(title, banner, [{ text: "OK", onPress: () => router.back() }]);
+      themedAlert(title, banner, [
+        {
+          text: "OK",
+          onPress: () => {
+            router.back();
+            // Tabs keep this screen mounted; start the next product blank.
+            if (isNew) onDraftCleared();
+          },
+        },
+      ]);
     } catch (e: any) {
       if (e instanceof ImageSyncError && productId) {
         const failedCount = e.totalPending - e.uploadedCount;
         allowLeave.current = true;
+        // The product exists now; a leftover draft would duplicate it.
+        if (isNew) clearProductDrafts(user?.id).catch(() => {});
+        // Deferred scoring never ran; score what was saved so it isn't stuck.
+        if (isNew && mode !== "draft") moderateSellerProduct(productId).catch(() => {});
         themedAlert(
           "Product incomplete",
           `Product ${isNew ? "created" : "updated"}, but ${failedCount} of ${e.totalPending} image${e.totalPending === 1 ? "" : "s"} failed to upload and variants weren't saved. Please edit this product to finish setting it up.`,

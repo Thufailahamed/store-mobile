@@ -27,7 +27,6 @@ import { RelatedCategoryRow } from "@/components/search/RelatedCategoryRow";
 import { Display, Label, Body } from "@/components/ui/Typography";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import { AnimatedScrollView, useHideTabBarOnScroll } from "@/lib/hooks/useTabBarScroll";
-import { SeenOnRunway } from "@/components/posts/SeenOnRunway";
 import { Button } from "@/components/ui";
 import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
@@ -767,10 +766,6 @@ export default function SearchScreen() {
                       <Text style={styles.filteredEmptyCta}>Clear filters</Text>
                     </TouchableOpacity>
                   </View>
-                ) : null}
-
-                {showingProducts && productCount > 0 ? (
-                  <SeenOnRunway productIds={filtered.map((p) => p.id)} />
                 ) : null}
 
                 {showingProducts && productCount > 0 && (

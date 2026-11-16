@@ -467,7 +467,7 @@ export async function uploadProductImage(
   uri: string,
   position: number = 0,
   isPrimary: boolean = false,
-  options?: { mimeType?: string | null; fileName?: string | null }
+  options?: { mimeType?: string | null; fileName?: string | null; deferModeration?: boolean }
 ): Promise<UploadResult> {
   try {
     const guard = await assertSellerCanOperate(storeId);
@@ -489,7 +489,7 @@ export async function uploadProductImage(
       position,
       is_primary: isPrimary,
       media_type: "image",
-    });
+    }, { deferModeration: options?.deferModeration });
     if (!res.ok) return { url: "", error: res.error || "image insert failed" };
 
     return uploaded;

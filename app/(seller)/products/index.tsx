@@ -598,7 +598,7 @@ export default function SellerProducts() {
 
   const openOverflowMenu = () => {
     if (exporting) return;
-    const addManually = () => router.push("/(seller)/products/create" as any);
+    const addManually = () => router.push(`/(seller)/products/create?n=${Date.now()}` as any);
     const opts = ["Add product manually", "Export CSV", "Cancel"];
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(

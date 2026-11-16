@@ -718,6 +718,26 @@ export default function AccountScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Seller dashboard */}
+        {user && role === "store_owner" ? (
+          <TouchableOpacity
+            style={styles.darkCta}
+            activeOpacity={0.88}
+            onPress={() => router.push("/(seller)" as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Open seller dashboard"
+          >
+            <View style={styles.darkCtaIcon}>
+              <Ionicons name="storefront" size={18} color={C.ink} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.darkCtaTitle}>Seller dashboard</Text>
+              <Text style={styles.darkCtaSub}>Products, orders, payouts & your store</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={17} color={C.lime} />
+          </TouchableOpacity>
+        ) : null}
+
         {/* Admin portal */}
         {user && role === "admin" ? (
           <TouchableOpacity style={styles.darkCta} activeOpacity={0.88} onPress={() => router.push("/(admin)")}>

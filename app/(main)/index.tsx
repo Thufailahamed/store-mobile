@@ -15,8 +15,6 @@ import {
   FestiveHero,
   ProductRail,
   MasonryProductRail,
-  FeaturedStoresRow,
-  FeaturedBrandsRow,
   HomeJournalRail,
   EditorialInterlude,
   PersonalisedSection,
@@ -264,15 +262,13 @@ export default function HomeScreen() {
 
         {catalogExtended.isSuccess || catalogExtended.isFetching ? (
           <>
-            {/* Zone 3 — browse by store/brand + live ranking */}
-            <FeaturedStoresRow stores={catalogData?.stores ?? []} />
+            {/* Zone 3 — live ranking */}
             <MasonryProductRail
               kicker="Live right now"
               title="Trending now"
               products={rails.trending}
               onSeeAll={() => router.push("/(main)/products?sort=rating")}
             />
-            <FeaturedBrandsRow brands={catalogData?.brands ?? []} />
 
             <EditorialInterlude
               quote="Sculpted silhouettes and liquid silk mark the season's turn toward evening drama."

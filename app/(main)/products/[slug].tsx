@@ -38,7 +38,6 @@ import {
   getSimilarProducts,
   getYouMayAlsoLike,
   getPairsWellWithRail,
-  getRecentlyViewedRail,
 } from "@/lib/recommender";
 import type { Product, ProductVariant, Review } from "@/lib/types";
 import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
@@ -90,7 +89,6 @@ export default function ProductDetailScreen() {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [youMayAlsoLike, setYouMayAlsoLike] = useState<Product[]>([]);
   const [pairsWellWith, setPairsWellWith] = useState<Product[]>([]);
-  const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
 
   // Track view + impression.
   useTrackView(product);
@@ -140,9 +138,6 @@ export default function ProductDetailScreen() {
         getPairsWellWithRail(user?.id ?? null, productData, 6).then((pairs) => {
           if (pairs.ok) setPairsWellWith(pairs.data);
         }),
-        getRecentlyViewedRail(user?.id ?? null, 8, [productData.id]).then((recent) => {
-          if (recent.ok) setRecentlyViewed(recent.data);
-        })
       ]).catch((err) => {
         console.error("Failed to load auxiliary product details:", err);
       });
@@ -491,26 +486,6 @@ export default function ProductDetailScreen() {
           </View>
         )}
 
-        {/* Recently viewed. */}
-        {recentlyViewed.length > 0 && (
-          <View style={styles.relatedSection}>
-            <View style={styles.sectionHeaderWrap}>
-              <SectionHeader
-                kicker="Pick up where you left off"
-                title="Recently Viewed"
-              />
-            </View>
-            <FlatList
-              data={recentlyViewed}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.relatedList}
-              renderItem={({ item }) => <ProductCard product={item} horizontal />}
-            />
-          </View>
-        )}
-
         {/* Bottom spacer for sticky bar & insets */}
         <View style={{ height: Math.max(insets.bottom, 10) + 90 }} />
       </ScrollView>
@@ -730,22 +705,25 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   purchaseEyebrow: {
-    color: C.accent,
-    fontSize: 10,
-    letterSpacing: 1.8,
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 2,
+    color: "rgba(20,20,20,0.45)",
   },
   purchaseTitle: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 20,
-    lineHeight: 26,
-    letterSpacing: -0.4,
-    color: C.text,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    letterSpacing: 2.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   purchaseTitleItalic: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 20,
-    lineHeight: 26,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    letterSpacing: 2.4,
+    textTransform: "uppercase",
     color: C.accent,
   },
   stockPill: {
@@ -770,10 +748,11 @@ const styles = StyleSheet.create({
     backgroundColor: C.cream,
   },
   stockText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
     color: C.cream,
-    fontSize: 10.5,
-    letterSpacing: 0.6,
-    fontFamily: fontFamilies.sans.bold,
   },
   stockTextSoldOut: {
     color: C.cream,
@@ -803,15 +782,16 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   qtyLabelText: {
-    color: C.accent,
-    fontSize: 10,
-    letterSpacing: 1.8,
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 2,
+    color: "rgba(20,20,20,0.45)",
   },
   qtyHint: {
-    color: colors.light.mutedForeground,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: "rgba(20,20,20,0.45)",
   },
   qtyContainer: {
     flexDirection: "row",
@@ -832,11 +812,12 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   qtyValue: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 14,
+    letterSpacing: 1.2,
+    color: "rgba(20,20,20,0.9)",
     minWidth: 44,
     textAlign: "center",
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 17,
-    color: C.text,
   },
   relatedSection: {
     marginTop: spacing[6],

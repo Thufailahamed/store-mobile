@@ -26,7 +26,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import { pickImage, takePhoto } from "@/lib/upload";
 import { quickAnalyzeProduct } from "@/lib/api";
-import { QUICK_AI_DRAFT_STORAGE_KEY, clearProductDrafts } from "@/lib/product-draft";
+import { QUICK_AI_DRAFT_STORAGE_KEY, clearProductDrafts, productDraftKey } from "@/lib/product-draft";
 import { useAuth } from "@/lib/supabase/auth";
 import { themedAlert } from "@/lib/themed-alert";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
@@ -170,6 +170,9 @@ export default function QuickCreateScreen() {
         imageUrl: res.data.imageUrl,
         createdAt: new Date().toISOString(),
       };
+      // A new quick upload starts a fresh product: drop any older autosaved
+      // editor draft so it doesn't prompt "Continue your draft?" over this one.
+      if (user?.id) await AsyncStorage.removeItem(productDraftKey(user.id)).catch(() => {});
       await AsyncStorage.setItem(QUICK_AI_DRAFT_STORAGE_KEY, JSON.stringify(payload));
       const f = res.data.extraction;
       if (f.vision_error === "unconfigured") {
@@ -179,13 +182,20 @@ export default function QuickCreateScreen() {
       }
       // Success: the editor shows its own "AI draft ready" dialog on arrival,
       // so no alert here (two stacked dialogs otherwise).
-      router.push("/(seller)/products/create" as never);
+      router.push(`/(seller)/products/create?n=${Date.now()}` as never);
+      // Handed off — clear this screen so it's ready for the next product.
+      setPreview(null);
+      setMimeType(null);
+      setPreviewError(false);
+      setPrice("");
+      setMrp("");
+      setNameOverride("");
     } catch (e) {
       themedAlert("Analyze failed", e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
-  }, [preview, price, mrp, nameOverride, mimeType]);
+  }, [preview, price, mrp, nameOverride, mimeType, user?.id]);
 
   const priceNum = Number(price) || 0;
   const mrpNum = Number(mrp) || 0;
@@ -258,7 +268,7 @@ export default function QuickCreateScreen() {
             </View>
             <TouchableOpacity
               style={styles.modeOption}
-              onPress={() => router.replace("/(seller)/products/create" as never)}
+              onPress={() => router.replace(`/(seller)/products/create?n=${Date.now()}` as never)}
               disabled={busy}
               accessibilityRole="button"
               accessibilityLabel="Add product manually with the full editor"

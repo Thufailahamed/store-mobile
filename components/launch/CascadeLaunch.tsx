@@ -230,8 +230,10 @@ const STACK = [
   { img: 10, x: 0.5, y: 0.76, w: 0.3, a: 0.88 },
 ] as const;
 const N_STACK = STACK.length;
-const N_EXTRA = 34;
-const N_RAYS = 40;
+// Kept low on purpose: every layer is an animated view updated each frame,
+// and on Fabric + Reanimated 4 the per-frame prop commits are what drop frames.
+const N_EXTRA = 14;
+const N_RAYS = 14;
 const extraLook = (k: number) => LOOKS[N_STACK + (k % (LOOKS.length - N_STACK))];
 
 /* ─── Timeline (ms) ─────────────────────────────────────────────────────── */
@@ -249,9 +251,12 @@ const T = {
   streamEnd: 5150,
   glide: [5450, 560] as const,
   minShow: 6100,
-  exit: 420,
+  exit: 320,
 };
 const TOTAL = T.minShow;
+/** Real-time playback: the choreography above runs at 1/SPEED of its timeline. */
+const SPEED = 1.65;
+const PLAY_MS = Math.round(TOTAL / SPEED);
 
 const CARD_START: number[] = STACK.map((_, i) => (i === 0 ? T.first[0] : T.cardStart + (i - 1) * T.cardStep));
 const CARD_DUR: number[] = STACK.map((_, i) => (i === 0 ? T.first[1] : T.cardDur));
@@ -555,15 +560,10 @@ function LightRay({ clock, g, ray }: { clock: SharedValue<number>; g: Geometry; 
   });
   return (
     <Animated.View style={[styles.ray, { width: ray.thick * 4, height: ray.len }, style]}>
-      {/* soft glow */}
-      <LinearGradient
-        colors={["transparent", ray.color]}
-        style={[StyleSheet.absoluteFill, { opacity: 0.28, borderRadius: ray.thick * 2 }]}
-      />
       <LinearGradient
         colors={["transparent", ray.color, "#ffffff"]}
         locations={[0, 0.85, 1]}
-        style={{ position: "absolute", top: 0, bottom: 0, left: ray.thick * 1.5, width: ray.thick, borderRadius: ray.thick }}
+        style={{ position: "absolute", top: 0, bottom: 0, left: ray.thick * 1.5, width: ray.thick }}
       />
     </Animated.View>
   );
@@ -593,7 +593,7 @@ export function CascadeLaunch({ ready, onFinish }: { ready: boolean; onFinish: (
 
   useEffect(() => {
     let cancelled = false;
-    clock.value = withTiming(TOTAL, { duration: TOTAL, easing: Easing.linear });
+    clock.value = withTiming(TOTAL, { duration: PLAY_MS, easing: Easing.linear });
     AccessibilityInfo.isReduceMotionEnabled()
       .then((rm) => {
         if (cancelled || !rm) return;
@@ -601,7 +601,7 @@ export function CascadeLaunch({ ready, onFinish }: { ready: boolean; onFinish: (
         clock.value = withTiming(TOTAL, { duration: 200 });
       })
       .catch(() => {});
-    const done = setTimeout(() => setIntroDone(true), TOTAL);
+    const done = setTimeout(() => setIntroDone(true), PLAY_MS);
     return () => {
       cancelled = true;
       clearTimeout(done);
@@ -659,11 +659,10 @@ export function CascadeLaunch({ ready, onFinish }: { ready: boolean; onFinish: (
           {flights.rays.map((r, k) => (
             <LightRay key={`r${k}`} clock={clock} g={g} ray={r} />
           ))}
+          {/* Stream looks fly without smear trails: they're small and fast,
+              and a trail per look doubled the animated layer count. */}
           {flights.extra.map((f, k) => (
-            <React.Fragment key={`e${k}`}>
-              <Trail clock={clock} g={g} flight={f} smear={extraLook(k).smear} />
-              <ExtraCard k={k} clock={clock} g={g} flight={f} />
-            </React.Fragment>
+            <ExtraCard key={`e${k}`} k={k} clock={clock} g={g} flight={f} />
           ))}
           {flights.stack.map((f, i) => (
             <Trail key={`st${i}`} clock={clock} g={g} flight={f} smear={LOOKS[STACK[i].img].smear} />
@@ -722,7 +721,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     top: 0,
-    overflow: "hidden",
   },
   badge: {
     position: "absolute",

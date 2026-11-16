@@ -1,8 +1,8 @@
 /**
  * Stylists' Picks — editorial trend cards on the home screen.
  *
- * Centered 4:5 image cards with the previous and next card peeking in at
- * both edges. Snaps card-by-card and auto-advances every 4.5s while the
+ * 4:5 image cards aligned to the page gutter, with the next card peeking in
+ * at the right edge. Snaps card-by-card and auto-advances every 4.5s while the
  * user isn't touching it. Each card's artwork carries its own title and
  * tagline; tapping opens a search for that trend.
  *
@@ -24,6 +24,7 @@ import {
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { spacing } from "@/lib/theme/tokens";
 
 type Pick = { key: string; image: ImageSourcePropType; title: string; search: string };
 
@@ -40,6 +41,7 @@ const PICKS: Pick[] = [
 
 const AUTO_MS = 4500;
 const GAP = 10;
+const H_PAD = spacing[5];
 
 export function StylistsPicks() {
   const router = useRouter();
@@ -95,7 +97,7 @@ export function StylistsPicks() {
         snapToAlignment="start"
         decelerationRate="fast"
         disableIntervalMomentum
-        contentContainerStyle={{ paddingHorizontal: side, gap: GAP }}
+        contentContainerStyle={{ paddingLeft: H_PAD, paddingRight: side, gap: GAP }}
         onScrollBeginDrag={() => setTouching(true)}
         onScrollEndDrag={() => setTouching(false)}
         onMomentumScrollEnd={onMomentumEnd}

@@ -104,8 +104,10 @@ export async function getProducts(opts: {
   maxPrice?: number;
   /** Occasion key (wedding/office/vacation/party/gym) or free-text term. */
   occasion?: string;
+  /** Banner id — its admin-tagged products lead the list, related ones follow. */
+  banner?: string;
 } = {}): Promise<Result<{ products: Product[]; total: number }>> {
-  const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search, minPrice, maxPrice, occasion } = opts;
+  const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search, minPrice, maxPrice, occasion, banner } = opts;
   let gender = opts.gender;
   // Resolve slug → id via backend list endpoints so callers don't need to
   // hit Supabase directly. The backend's /api/catalog/products expects ids.
@@ -142,6 +144,7 @@ export async function getProducts(opts: {
     min_price: minPrice,
     max_price: maxPrice,
     occasion,
+    banner,
     limit,
     offset,
   });
@@ -1044,13 +1047,22 @@ async function loadSellerProducts(storeId: string, opts: {
   return ok({ products: products ?? [], total: res.data.total ?? products.length, stats });
 }
 
-export async function createSellerProduct(product: Partial<Product>): Promise<Result<{ product: Product; moderation: B.SellerModerationBlock }>> {
+export async function createSellerProduct(
+  product: Partial<Product>,
+  opts: { deferModeration?: boolean } = {},
+): Promise<Result<{ product: Product; moderation: B.SellerModerationBlock }>> {
   if (!product.store_id) return fail("Store is required");
   const guard = await assertSellerCanOperate(product.store_id);
   if (!guard.ok) return guard;
-  const res = await B.createSellerProductBackend(product as Partial<B.CatalogProduct> & { name: string; price: number });
+  const res = await B.createSellerProductBackend(product as Partial<B.CatalogProduct> & { name: string; price: number }, opts);
   if (!res.ok) return fail(res.error);
   return ok({ product: mapProduct(res.data.product), moderation: res.data.moderation ?? null });
+}
+
+export async function moderateSellerProduct(id: string): Promise<Result<B.SellerModerationBlock>> {
+  const res = await B.moderateSellerProductBackend(id);
+  if (!res.ok) return fail(res.error);
+  return ok(res.data.moderation ?? null);
 }
 
 export async function updateSellerProduct(id: string, patch: Partial<Product>): Promise<Result<{ product: Product; moderation: B.SellerModerationBlock }>> {

@@ -841,6 +841,7 @@ const BTN_SHADOW = {
 } as const;
 
 const styles = StyleSheet.create({
+  // Text mirrors SearchResultTile metadata: small, tracked uppercase.
   backdrop: {
     backgroundColor: "rgba(22, 23, 15, 0.5)",
   },
@@ -873,11 +874,11 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   eyebrow: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1.8,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 2,
     textTransform: "uppercase",
-    color: C.accent,
+    color: "rgba(20,20,20,0.45)",
     marginBottom: 3,
   },
   titleRow: {
@@ -886,10 +887,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 31,
-    letterSpacing: -0.8,
-    color: C.text,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 20,
+    letterSpacing: 2.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   countBadge: {
     minWidth: 26,
@@ -901,16 +903,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   countBadgeText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12.5,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
     color: C.ink,
   },
   headerClear: {
     paddingVertical: 6,
   },
   headerClearText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
     color: C.accent,
   },
   closeBtn: {
@@ -956,34 +961,40 @@ const styles = StyleSheet.create({
     backgroundColor: C.ink,
   },
   cardKicker: {
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 9.5,
-    letterSpacing: 1.6,
-    color: C.accent,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   cardTitle: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
     marginTop: 1,
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15.5,
-    letterSpacing: -0.2,
-    color: C.text,
   },
   cardSummary: {
-    marginTop: 1,
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: C.muted,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
+    marginTop: 1,
   },
   cardSummaryActive: {
     color: C.accent,
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.medium,
   },
   clearLink: {
     paddingVertical: 4,
   },
   clearLinkText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
     color: C.accent,
   },
   chevron: {
@@ -1042,10 +1053,12 @@ const styles = StyleSheet.create({
     backgroundColor: C.lime,
   },
   sortTileText: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
     flex: 1,
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
-    color: C.text,
   },
   sortTileTextActive: {
     color: CREAM,
@@ -1067,16 +1080,16 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   priceBoxLabel: {
-    fontFamily: fontFamilies.mono.semibold,
+    fontFamily: fontFamilies.sans.medium,
     fontSize: 9.5,
-    letterSpacing: 1.6,
+    letterSpacing: 2,
     textTransform: "uppercase",
     color: "rgba(250,248,241,0.55)",
   },
   priceBoxValue: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 18,
-    letterSpacing: -0.3,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
+    letterSpacing: 1.6,
     color: C.cream,
     fontVariant: ["tabular-nums"],
   },
@@ -1142,10 +1155,11 @@ const styles = StyleSheet.create({
     marginHorizontal: -THUMB / 2,
   },
   sliderScaleText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 10,
-    letterSpacing: 1,
-    color: C.muted,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   presetRow: {
     flexDirection: "row",
@@ -1168,9 +1182,11 @@ const styles = StyleSheet.create({
     borderColor: INK,
   },
   presetText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: C.text,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   presetTextActive: {
     color: CREAM,
@@ -1203,9 +1219,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   segmentText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 12.5,
-    color: C.muted,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   segmentTextActive: {
     color: CREAM,
@@ -1237,9 +1255,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   ratingValue: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 18,
-    color: C.text,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 16,
+    letterSpacing: 1.2,
+    color: "rgba(20,20,20,0.9)",
     fontVariant: ["tabular-nums"],
   },
   ratingValueActive: {
@@ -1247,8 +1266,10 @@ const styles = StyleSheet.create({
   },
   ratingCaption: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 11.5,
-    color: C.muted,
+    fontSize: 9.5,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   ratingCaptionActive: {
     color: "rgba(250,248,241,0.6)",
@@ -1287,13 +1308,15 @@ const styles = StyleSheet.create({
     borderColor: C.faint,
   },
   colorName: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11.5,
-    color: C.muted,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   colorNameActive: {
-    fontFamily: fontFamilies.sans.bold,
-    color: C.text,
+    fontFamily: fontFamilies.sans.medium,
+    color: "rgba(20,20,20,0.9)",
   },
 
   /* Size */
@@ -1317,9 +1340,10 @@ const styles = StyleSheet.create({
     borderColor: INK,
   },
   sizeText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 12.5,
-    color: C.text,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    color: "rgba(20,20,20,0.9)",
   },
   sizeTextActive: {
     color: C.lime,
@@ -1348,13 +1372,15 @@ const styles = StyleSheet.create({
     borderColor: INK,
   },
   chipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: C.text,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   chipTextActive: {
     color: CREAM,
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.medium,
   },
   moreBtn: {
     flexDirection: "row",
@@ -1365,8 +1391,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   moreText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13.5,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
     color: C.accent,
   },
   searchField: {
@@ -1380,16 +1408,18 @@ const styles = StyleSheet.create({
     backgroundColor: C.accentSoft,
   },
   searchInput: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 12,
+    letterSpacing: 0.8,
+    color: "rgba(20,20,20,0.9)",
     flex: 1,
     height: "100%",
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 14,
-    color: C.text,
   },
   emptyText: {
     fontFamily: fontFamilies.sans.regular,
-    fontSize: 13,
-    color: C.muted,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    color: "rgba(20,20,20,0.45)",
   },
 
   /* Footer */
@@ -1425,10 +1455,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
   },
   applyText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 15.5,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
     color: CREAM,
-    letterSpacing: 0.2,
   },
   applyCount: {
     minWidth: 24,
@@ -1440,8 +1471,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   applyCountText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 12,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
     color: C.ink,
   },
 });

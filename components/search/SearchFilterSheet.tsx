@@ -572,6 +572,7 @@ const INK = colors.ink.DEFAULT;
 const LINE = `${colors.olive[900]}1F`;
 
 const styles = StyleSheet.create({
+  // Text mirrors SearchResultTile metadata: small, tracked uppercase.
   backdrop: {
     flex: 1,
     justifyContent: "flex-end",
@@ -620,18 +621,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.olive[500],
   },
   kicker: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1.6,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 2,
     textTransform: "uppercase",
-    color: colors.ink.mute,
+    color: "rgba(20,20,20,0.45)",
   },
   title: {
-    fontFamily: fontFamilies.display.regular,
-    fontSize: 32,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 20,
+    letterSpacing: 2.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
     lineHeight: 38,
-    letterSpacing: -0.5,
-    color: INK,
   },
   resetBtn: {
     flexDirection: "row",
@@ -643,8 +645,10 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.accent2.rust}14`,
   },
   resetText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
     color: colors.accent2.rust,
   },
   closeBtn: {
@@ -682,15 +686,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sectionIndex: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
-    letterSpacing: 1,
-    color: colors.olive[500],
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.6,
+    color: "rgba(20,20,20,0.45)",
   },
   sectionTitle: {
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 17,
-    color: INK,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   sectionHint: {
     maxWidth: "55%",
@@ -700,8 +706,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.olive[50],
   },
   sectionHintText: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
     color: colors.olive[700],
   },
 
@@ -727,17 +735,20 @@ const styles = StyleSheet.create({
     borderColor: INK,
   },
   chipText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: INK,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
   },
   chipTextActive: {
     color: colors.paper.cream,
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.medium,
   },
   chipCount: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 10,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 9.5,
+    letterSpacing: 1,
     color: colors.ink.mute,
   },
   chipCountActive: {
@@ -779,14 +790,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.olive[200],
   },
   sortText: {
-    flex: 1,
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 13,
-    color: INK,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
+    flex: 1,
   },
   sortTextActive: {
     color: colors.paper.cream,
-    fontFamily: fontFamilies.sans.semibold,
+    fontFamily: fontFamilies.sans.medium,
   },
 
   /* Price range */
@@ -805,18 +818,19 @@ const styles = StyleSheet.create({
     paddingBottom: 7,
   },
   rangeLabel: {
-    fontFamily: fontFamilies.mono.medium,
-    fontSize: 9,
-    letterSpacing: 1.2,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 9.5,
+    letterSpacing: 2,
     textTransform: "uppercase",
-    color: colors.ink.mute,
+    color: "rgba(20,20,20,0.45)",
   },
   rangeInput: {
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 15,
+    letterSpacing: 1.6,
+    color: "rgba(20,20,20,0.9)",
     height: 28,
     paddingVertical: 0,
-    fontFamily: fontFamilies.display.semibold,
-    fontSize: 18,
-    color: INK,
   },
   rangeDivider: {
     width: 30,
@@ -856,12 +870,14 @@ const styles = StyleSheet.create({
   },
   segmentText: {
     fontFamily: fontFamilies.sans.medium,
-    fontSize: 12,
-    color: colors.light.mutedForeground,
+    fontSize: 11,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   segmentTextActive: {
-    fontFamily: fontFamilies.sans.bold,
-    color: INK,
+    fontFamily: fontFamilies.sans.medium,
+    color: "rgba(20,20,20,0.9)",
   },
 
   /* Colour grid */
@@ -900,13 +916,15 @@ const styles = StyleSheet.create({
     borderColor: LINE,
   },
   colorName: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: colors.ink.mute,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 9.5,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
   },
   colorNameActive: {
-    color: INK,
-    fontFamily: fontFamilies.sans.bold,
+    color: "rgba(20,20,20,0.9)",
+    fontFamily: fontFamilies.sans.medium,
   },
 
   /* Size grid */
@@ -929,9 +947,10 @@ const styles = StyleSheet.create({
     borderColor: INK,
   },
   sizeText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 13,
-    color: INK,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    color: "rgba(20,20,20,0.9)",
   },
   sizeTextActive: {
     color: colors.paper.cream,
@@ -960,9 +979,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   clearText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 14,
-    color: INK,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.9)",
     textDecorationLine: "underline",
   },
   applyBtn: {
@@ -988,8 +1009,10 @@ const styles = StyleSheet.create({
     paddingRight: 22,
   },
   applyText: {
-    fontFamily: fontFamilies.sans.semibold,
-    fontSize: 15,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 12,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
     color: colors.paper.cream,
   },
   applyCount: {
@@ -1002,8 +1025,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.olive[200],
   },
   applyCountText: {
-    fontFamily: fontFamilies.mono.semibold,
-    fontSize: 13,
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.2,
     color: colors.olive[950],
   },
 });

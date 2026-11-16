@@ -6,8 +6,6 @@ import { useAuth } from "@/lib/supabase/auth";
 import { useDeliveryAddressPicker } from "@/components/address/DeliveryAddressPicker";
 import type { Address } from "@/lib/types";
 
-const INK = "#1b1c1c";
-const MUTED = "#6b6a66";
 const ACCENT = "#414a23"; // brand dark olive
 const LINE = "#ece9e3";
 /** Map pins save plus codes ("7JWV+4C"); show "Pinned location" instead. */
@@ -50,7 +48,7 @@ export function DeliveryAddressStrip() {
           {addr ? (
             <>
               {name ? <Text style={styles.name}>{name}</Text> : null}
-              {`${name ? "  ·  " : ""}${fullAddress(addr)}`}
+              {`${name ? " · " : ""}${fullAddress(addr)}`}
             </>
           ) : (
             <Text style={styles.name}>{user ? "No delivery address yet" : "Sign in to see delivery options"}</Text>
@@ -74,7 +72,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: LINE,
   },
-  text: { flex: 1, minWidth: 0, fontFamily: fontFamilies.sans.regular, fontSize: 13.5, color: MUTED },
-  name: { fontFamily: fontFamilies.sans.bold, color: INK },
-  cta: { fontFamily: fontFamilies.sans.bold, fontSize: 13, color: ACCENT, letterSpacing: 0.2 },
+  // Typography mirrors SearchResultTile's metadata: small, tracked uppercase.
+  text: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: fontFamilies.sans.regular,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: "rgba(20,20,20,0.45)",
+  },
+  name: { fontFamily: fontFamilies.sans.medium, letterSpacing: 1.6, color: "rgba(20,20,20,0.9)" },
+  cta: {
+    fontFamily: fontFamilies.sans.medium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: ACCENT,
+  },
 });

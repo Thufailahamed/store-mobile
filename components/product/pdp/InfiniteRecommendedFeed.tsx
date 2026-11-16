@@ -1,21 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
   View,
 } from "react-native";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { Ionicons } from "@/components/ui/Icon";
-import { colors } from "@/lib/theme/tokens";
+import { SearchResultTile } from "@/components/search/SearchResultTile";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { formatPrice } from "@/lib/utils";
-import { useWishlist } from "@/lib/stores";
-import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 import { getSimilarProducts, getYouMayAlsoLike } from "@/lib/recommender";
 import { getProducts } from "@/lib/api";
 import type { Product } from "@/lib/types";
@@ -71,6 +65,12 @@ export function InfiniteRecommendedFeed({
 
   const currentItems = itemsByTab[activeTab];
   const currentHasMore = hasMoreByTab[activeTab];
+  // Latest items for loadMore's dedupe. loadMore can be a stale closure held
+  // by the parent, so reading `itemsByTab` directly can miss items already
+  // appended and re-add them, which produces duplicate React keys.
+  const itemsRef = useRef(itemsByTab);
+  itemsRef.current = itemsByTab;
+  const loadingMoreRef = useRef(false);
 
   // Load initial batch for a tab
   const loadTabInitial = useCallback(
@@ -184,11 +184,14 @@ export function InfiniteRecommendedFeed({
 
   // Load more function for infinite scroll
   const loadMore = useCallback(async () => {
-    if (loadingInitial || loadingMore || !hasMoreByTab[activeTab]) return;
+    // Ref guard: the parent may call a stale closure where `loadingMore` is
+    // still false, so two pages could be fetched and appended at once.
+    if (loadingInitial || loadingMore || loadingMoreRef.current || !hasMoreByTab[activeTab]) return;
 
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     const currentOffset = offsetByTab[activeTab];
-    const existing = itemsByTab[activeTab];
+    const existing = itemsRef.current[activeTab];
     const seenIds = new Set<string>([currentProduct.id, ...existing.map((p) => p.id)]);
 
     try {
@@ -217,15 +220,24 @@ export function InfiniteRecommendedFeed({
         if (res.ok && res.data) nextProducts = res.data.products;
       }
 
-      const fresh = nextProducts.filter((p) => !seenIds.has(p.id));
+      // Dedupe within the page too: the API can return the same product twice.
+      const fresh: Product[] = [];
+      for (const p of nextProducts) {
+        if (!seenIds.has(p.id)) {
+          seenIds.add(p.id);
+          fresh.push(p);
+        }
+      }
 
       if (fresh.length === 0) {
         setHasMoreByTab((prev) => ({ ...prev, [activeTab]: false }));
       } else {
-        setItemsByTab((prev) => ({
-          ...prev,
-          [activeTab]: [...prev[activeTab], ...fresh],
-        }));
+        // Dedupe against the latest state, not the snapshot taken before the fetch.
+        setItemsByTab((prev) => {
+          const have = new Set(prev[activeTab].map((p) => p.id));
+          const add = fresh.filter((p) => !have.has(p.id));
+          return add.length ? { ...prev, [activeTab]: [...prev[activeTab], ...add] } : prev;
+        });
         setOffsetByTab((prev) => ({
           ...prev,
           [activeTab]: currentOffset + nextProducts.length,
@@ -234,6 +246,7 @@ export function InfiniteRecommendedFeed({
     } catch (e) {
       console.error("Failed to load more recommendations:", e);
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }, [
@@ -261,11 +274,7 @@ export function InfiniteRecommendedFeed({
       <Text style={styles.sectionTitle}>Products you may like</Text>
 
       {/* ── Filter Pills / Tabs ─────────────────────────────────── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabsContainer}
-      >
+      <View style={styles.tabsContainer}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -276,6 +285,7 @@ export function InfiniteRecommendedFeed({
               style={[styles.tabPill, isActive ? styles.tabPillActive : styles.tabPillInactive]}
             >
               <Text
+                numberOfLines={1}
                 style={[
                   styles.tabPillText,
                   isActive ? styles.tabPillTextActive : styles.tabPillTextInactive,
@@ -286,7 +296,7 @@ export function InfiniteRecommendedFeed({
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       {/* ── 2-Column Product Grid ────────────────────────────────── */}
       {loadingInitial ? (
@@ -327,7 +337,8 @@ export function InfiniteRecommendedFeed({
   );
 }
 
-// ── Myntra-style High Fashion Recommendation Card ────────────────
+// ── Recommendation card: same tile as search results (centred,
+// tracked uppercase metadata + "you save" offer line) ──────────────────
 function RecommendedProductCard({
   product,
   cardWidth,
@@ -336,101 +347,14 @@ function RecommendedProductCard({
   cardWidth: number;
 }) {
   const router = useRouter();
-  const toggleWishlist = useWishlistToggle();
-  const isWishlisted = useWishlist((s) => !!s.items[product.id]);
-
-  const primaryImage =
-    product.images?.find((i) => i.is_primary)?.url || product.images?.[0]?.url;
-  const imageHeight = Math.round(cardWidth * 1.33);
-
-  const brandName =
-    product.brand?.name?.toUpperCase() ||
-    product.store?.name?.toUpperCase() ||
-    "VESTARA";
-
-  const discount =
-    product.mrp && product.mrp > product.price
-      ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
-      : (product.discount_pct ?? 0);
-
-  const handlePress = () => {
-    router.push(`/(main)/products/${product.slug}`);
-  };
-
-  const handleWishlistPress = (e: any) => {
-    e.stopPropagation?.();
-    toggleWishlist(product, primaryImage);
-  };
-
   return (
-    <TouchableOpacity
-      activeOpacity={0.92}
-      onPress={handlePress}
-      style={[styles.card, { width: cardWidth }]}
-    >
-      {/* ── Image with rounded corners ──────────────────────────── */}
-      <View style={[styles.imageContainer, { height: imageHeight }]}>
-        {primaryImage ? (
-          <Image
-            source={{ uri: primaryImage }}
-            style={styles.image}
-            contentFit="cover"
-            transition={200}
-          />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Ionicons name="shirt-outline" size={28} color={colors.light.mutedForeground} />
-          </View>
-        )}
-      </View>
-
-      {/* ── Card Content ────────────────────────────────────────── */}
-      <View style={styles.infoContainer}>
-        {/* Row 1: Brand name bold (left) + Heart outline/filled (right) */}
-        <View style={styles.brandRow}>
-          <Text style={styles.brandName} numberOfLines={1}>
-            {brandName}
-          </Text>
-          <TouchableOpacity
-            onPress={handleWishlistPress}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.heartButton}
-            accessibilityLabel={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-          >
-            <Ionicons
-              name={isWishlisted ? "heart" : "heart-outline"}
-              size={18}
-              color={isWishlisted ? "#e11d48" : "#222222"}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* Row 2: Product Name / Title */}
-        <Text style={styles.productTitle} numberOfLines={1}>
-          {product.name}
-        </Text>
-
-        {/* Row 3: Strikethrough MRP + Bold Price + % OFF in vibrant orange */}
-        <View style={styles.priceRow}>
-          {discount > 0 && product.mrp && product.mrp > product.price ? (
-            <Text style={styles.mrpText} numberOfLines={1}>
-              {formatPrice(product.mrp, product.currency || "LKR")}
-            </Text>
-          ) : null}
-          <Text style={styles.priceText} numberOfLines={1}>
-            {formatPrice(product.price, product.currency || "LKR")}
-          </Text>
-        </View>
-
-        {/* Row 4: discount — only when there is one */}
-        {discount > 0 ? (
-          <Text style={styles.discountText} numberOfLines={1}>
-            {discount}% OFF
-          </Text>
-        ) : null}
-
-      </View>
-    </TouchableOpacity>
+    <View style={styles.card}>
+      <SearchResultTile
+        product={product}
+        width={cardWidth}
+        onPress={(p) => router.push(`/(main)/products/${p.slug}`)}
+      />
+    </View>
   );
 }
 
@@ -448,12 +372,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   tabsContainer: {
+    flexDirection: "row",
     paddingHorizontal: 16,
-    gap: 10,
+    gap: 8,
     paddingBottom: 16,
   },
   tabPill: {
-    paddingHorizontal: 16,
+    // Pills share the full row edge to edge, each sized by its label.
+    flexGrow: 1,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 24,
     alignItems: "center",
@@ -488,78 +415,6 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: 20,
-  },
-  imageContainer: {
-    width: "100%",
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "#f4f3ef",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  imagePlaceholder: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#eceae4",
-  },
-  infoContainer: {
-    paddingTop: 8,
-    paddingHorizontal: 2,
-  },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
-  },
-  brandName: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    color: "#111111",
-    letterSpacing: 0.3,
-    flex: 1,
-  },
-  heartButton: {
-    padding: 2,
-  },
-  productTitle: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 12.5,
-    color: "#555555",
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 6,
-    marginTop: 4,
-    flexWrap: "wrap",
-  },
-  mrpText: {
-    fontFamily: fontFamilies.sans.regular,
-    fontSize: 11.5,
-    color: "#999999",
-    textDecorationLine: "line-through",
-  },
-  priceText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 13.5,
-    color: "#111111",
-  },
-  discountText: {
-    fontFamily: fontFamilies.sans.bold,
-    fontSize: 11.5,
-    color: "#ff5722",
-  },
-  offerText: {
-    fontFamily: fontFamilies.sans.medium,
-    fontSize: 11,
-    color: "#02833a",
-    marginTop: 2,
   },
   loadingMoreWrap: {
     flexDirection: "row",

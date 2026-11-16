@@ -22,6 +22,8 @@ export interface ProductGridScope {
   maxPrice?: number;
   /** Server-side occasion scope (wedding/office/vacation/party/gym). */
   occasion?: string;
+  /** Home banner id — tagged products first, then related products. */
+  banner?: string;
 }
 
 /**
@@ -32,7 +34,7 @@ export interface ProductGridScope {
  * loaded page, mirroring the split used by the Shop screen.
  */
 export function useProductGrid(scope: ProductGridScope = {}) {
-  const { category, brand, search, initialSort = "newest", minPrice, maxPrice, occasion } = scope;
+  const { category, brand, search, initialSort = "newest", minPrice, maxPrice, occasion, banner } = scope;
   const { user } = useAuth();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -145,6 +147,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
         minPrice: serverMinPrice,
         maxPrice: serverMaxPrice,
         occasion,
+        banner,
       });
       if (res.ok) {
         let page = res.data.products;
@@ -170,7 +173,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
       setLoadingMore(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, offset, user?.id]
+    [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, banner, offset, user?.id]
   );
 
   useEffect(() => {
@@ -179,7 +182,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
     setProducts([]);
     fetchProducts(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion]);
+  }, [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, banner]);
 
   const loadMore = () => {
     if (loadingMore || products.length >= total) return;

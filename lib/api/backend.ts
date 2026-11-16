@@ -54,9 +54,11 @@ export async function getProductsBackend(opts: {
   /** Exclusive. */
   max_price?: number;
   occasion?: string;
+  /** Banner landing: the banner's tagged products first, then related ones. */
+  banner?: string;
   limit?: number;
   offset?: number;
-} = {}): Promise<ApiResult<{ count: number; total?: number | null; limit: number; offset: number; products: CatalogProduct[] }>> {
+} = {}): Promise<ApiResult<{ count: number; total?: number | null; limit: number; offset: number; tagged_count?: number; products: CatalogProduct[] }>> {
   return fetchJson("/api/catalog/products", { requireAuth: false, query: { ...opts } });
 }
 
@@ -1309,9 +1311,11 @@ export async function setProductActiveBackend(
 export async function addProductImageBackend(
   productId: string,
   input: { url: string; position?: number; is_primary?: boolean; media_type?: string },
+  opts: { deferModeration?: boolean } = {},
 ): Promise<ApiResult<{ image: Record<string, unknown> }>> {
   return fetchJson(`/api/seller/products/${productId}/images`, {
     method: "POST",
+    query: opts.deferModeration ? { defer_moderation: "1" } : undefined,
     body: {
       url: input.url,
       position: input.position ?? 0,
@@ -1339,8 +1343,22 @@ export type SellerModerationBlock = {
   reasons: ModerationReasonLite[];
 } | null;
 
-export async function createSellerProductBackend(input: Partial<CatalogProduct> & { name: string; price: number }): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
-  return fetchJson("/api/seller/products", { method: "POST", body: input });
+export async function createSellerProductBackend(
+  input: Partial<CatalogProduct> & { name: string; price: number },
+  opts: { deferModeration?: boolean } = {},
+): Promise<ApiResult<{ product: CatalogProduct; moderation: SellerModerationBlock }>> {
+  return fetchJson("/api/seller/products", {
+    method: "POST",
+    body: input,
+    // Deferred: the editor scores once via moderateSellerProductBackend after
+    // images + variants are saved, instead of once per call.
+    query: opts.deferModeration ? { defer_moderation: "1" } : undefined,
+  });
+}
+
+/** Score a finished product once (pairs with deferModeration saves). */
+export async function moderateSellerProductBackend(id: string): Promise<ApiResult<{ moderation: SellerModerationBlock }>> {
+  return fetchJson(`/api/seller/products/${id}/moderation`, { method: "POST" });
 }
 
 /**
