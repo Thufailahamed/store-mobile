@@ -63,6 +63,15 @@ export const SORTS: SortOption[] = [
   { value: "price_desc", label: "Price: High" },
 ];
 
+/**
+ * Search results arrive ranked by the backend, so "Most relevant" (keep that
+ * order) is the default there. "For you" is a browse-only re-rank.
+ */
+export const SEARCH_SORTS: SortOption[] = [
+  { value: "relevance", label: "Most relevant" },
+  ...SORTS.filter((s) => s.value !== "for_you"),
+];
+
 /* ------------------------------------------------------------------------- */
 /*  View modes                                                               */
 /* ------------------------------------------------------------------------- */

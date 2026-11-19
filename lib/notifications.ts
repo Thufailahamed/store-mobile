@@ -191,10 +191,10 @@ export function setupNotificationPresentation(): Promise<void> {
   return presentationReady;
 }
 
-const FIRST_PARTY_HOSTS = new Set(["synapstore.shop", "www.synapstore.shop"]);
+const FIRST_PARTY_HOSTS = new Set(["vestara.lk", "www.vestara.lk"]);
 
 /**
- * "https://synapstore.shop/products/x" → "/products/x" so first-party links
+ * "https://vestara.lk/products/x" → "/products/x" so first-party links
  * open in the app instead of the browser. Anything else returns null.
  */
 export function firstPartyPath(url: string): string | null {

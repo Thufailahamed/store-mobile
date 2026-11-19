@@ -11,6 +11,7 @@ import {
   Share,
   ActivityIndicator,
   StatusBar,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -38,7 +39,7 @@ import {
   SELLER_RUST,
   SELLER_GOLD,
 } from "@/components/seller/chrome";
-import type { Product } from "@/lib/types";
+import type { Product, ProductSource } from "@/lib/types";
 import { themedAlert } from "@/lib/themed-alert";
 const RUST = SELLER_RUST;
 const CREAM = SELLER_CREAM;
@@ -210,6 +211,30 @@ function stockColors(tone: StockTone): { bg: string; text: string } {
   if (tone === "low") return { bg: "#f3efe2", text: "#8a6a2a" };
   if (tone === "ok") return { bg: colors.olive[50], text: colors.olive[800] };
   return { bg: colors.paper.warm, text: colors.ink.mute };
+}
+
+/** Seller-only: real seller name + supplier link. Backfilled rows have no link. */
+function SourceLine({ source }: { source?: ProductSource | null }) {
+  if (!source) return null;
+  const url = source.source_url && /^https?:\/\//i.test(source.source_url) ? source.source_url : null;
+  const content = (
+    <>
+      <Text style={styles.sourceName} numberOfLines={1}>{source.seller_name}</Text>
+      {url ? <Ionicons name="open-outline" size={11} color={colors.ink.mute} /> : null}
+    </>
+  );
+  if (!url) return <View style={styles.sourceRow}>{content}</View>;
+  return (
+    <TouchableOpacity
+      style={styles.sourceRow}
+      onPress={() => Linking.openURL(url).catch(() => undefined)}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      accessibilityRole="link"
+      accessibilityLabel={`Open supplier page for ${source.seller_name}`}
+    >
+      {content}
+    </TouchableOpacity>
+  );
 }
 
 function ProductThumb({ uri, style }: { uri: string | null; style: object }) {
@@ -684,6 +709,7 @@ export default function SellerProducts() {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.productSku} numberOfLines={1}>{item.sku ?? item.slug ?? "—"}</Text>
               <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+              <SourceLine source={item.source} />
             </View>
             {selectMode ? null : (
               <TouchableOpacity
@@ -751,6 +777,7 @@ export default function SellerProducts() {
         <View style={styles.gridBody}>
           <Text style={styles.productSku} numberOfLines={1}>{item.sku ?? "—"}</Text>
           <Text style={styles.gridName} numberOfLines={2}>{item.name}</Text>
+          <SourceLine source={item.source} />
           <Text style={styles.gridPrice}>{productPrice(item)}</Text>
           <View style={styles.gridFooter}>
             <View style={styles.stockInline}>
@@ -1443,6 +1470,14 @@ const styles = StyleSheet.create({
   gridStatusPos: { top: 8, left: 8, bottom: undefined },
   gridCheckboxPos: { top: 8, left: undefined, right: 8 },
   gridBody: { paddingHorizontal: 6, paddingTop: 10, paddingBottom: 6, gap: 2 },
+  sourceRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3, minWidth: 0 },
+  sourceName: {
+    flexShrink: 1,
+    fontSize: 11.5,
+    lineHeight: 15,
+    fontFamily: fontFamilies.sans.regular,
+    color: colors.ink.mute,
+  },
   gridName: {
     fontSize: 14,
     lineHeight: 18,

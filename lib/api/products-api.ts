@@ -89,6 +89,7 @@ export async function getProductsApi(opts: {
   category?: string;
   search?: string;
   sort?: "newest" | "price_asc" | "price_desc" | "rating" | "popularity";
+  channel?: "retail" | "wholesale";
   limit?: number;
   offset?: number;
 } = {}): Promise<ApiResult<CatalogListResponse>> {
@@ -98,6 +99,7 @@ export async function getProductsApi(opts: {
   if (opts.category) params.set("category", opts.category);
   if (opts.search) params.set("search", opts.search);
   if (opts.sort) params.set("sort", opts.sort);
+  if (opts.channel) params.set("channel", opts.channel);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts.offset !== undefined) params.set("offset", String(opts.offset));
   const qs = params.toString();
@@ -112,8 +114,10 @@ export async function getProductApi(id: string): Promise<ApiResult<{ product: Ca
 
 export async function getProductBySlugApi(
   slug: string,
+  channel?: "retail" | "wholesale",
 ): Promise<ApiResult<{ product: CatalogProduct }>> {
-  return fetchJson<{ product: CatalogProduct }>(`/api/catalog/products/slug/${slug}`);
+  const suffix = channel ? `?channel=${channel}` : "";
+  return fetchJson<{ product: CatalogProduct }>(`/api/catalog/products/slug/${slug}${suffix}`);
 }
 
 // ---------------------------------------------------------------------------

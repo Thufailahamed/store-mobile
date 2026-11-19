@@ -217,8 +217,8 @@ export default function OrderSuccessScreen() {
     if (!referralCode) return;
     try {
       await Share.share({
-        message: `Shop VESTARA with my invite ${referralCode} — https://synapstore.shop/r/${referralCode}\nI earn 100 loyalty points when you complete your first paid order!`,
-        url: `https://synapstore.shop/r/${referralCode}`,
+        message: `Shop VESTARA with my invite ${referralCode} — https://vestara.lk/r/${referralCode}\nI earn 100 loyalty points when you complete your first paid order!`,
+        url: `https://vestara.lk/r/${referralCode}`,
       });
     } catch {
       // ignore

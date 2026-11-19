@@ -3,8 +3,10 @@ import { Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-nativ
 import { Image } from "expo-image";
 import { Ionicons } from "@/components/ui/Icon";
 import { useProductActions } from "@/components/product/useProductActions";
+import { ImportedBadge } from "@/components/product/ImportedBadge";
 import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { setDesignsLabel } from "@/lib/set-designs";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
@@ -33,6 +35,7 @@ export function SearchResultTile({ product, width, onPress }: Props) {
   const brand = product.store?.name || product.brand?.name || "";
   const imageHeight = Math.round(width * 1.33);
   const showMrp = discount > 0 && product.mrp > product.price;
+  const setLabel = setDesignsLabel(product.set_design_count);
 
   return (
     <Pressable
@@ -61,6 +64,8 @@ export function SearchResultTile({ product, width, onPress }: Props) {
             ) : null}
           </View>
         ) : null}
+        {/* Bottom of the photo; moves to the right when the rating chip takes bottom-left. */}
+        <ImportedBadge product={product} style={product.rating > 0 ? styles.importedRight : undefined} />
         {isSoldOut ? (
           <View style={styles.soldOut}>
             <Text style={styles.soldOutText}>SOLD OUT</Text>
@@ -100,18 +105,21 @@ export function SearchResultTile({ product, width, onPress }: Props) {
             {discount}% off — you save {formatPrice(product.mrp - product.price)}
           </Text>
         ) : null}
+        {setLabel ? <Text style={styles.setNote}>{setLabel}</Text> : null}
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  setNote: { marginTop: 4, fontSize: 11.5, letterSpacing: 0.3, color: "#3d3d33", textAlign: "center" },
   stage: {
     borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "#ecebe6",
   },
   placeholder: { flex: 1, alignItems: "center", justifyContent: "center" },
+  importedRight: { left: undefined, right: 8 },
   ratingChip: {
     position: "absolute",
     left: 8,

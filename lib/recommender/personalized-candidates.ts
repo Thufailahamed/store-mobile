@@ -66,6 +66,7 @@ async function fetchGeneralPool(limit: number, ctx: RailContext): Promise<Produc
     .select(PRODUCT_SELECT)
     .eq("status", "active")
     .eq("is_active", true)
+    .eq("catalog_channel", "retail")
     .order("total_sales", { ascending: false })
     .limit(Math.min(limit, HARD_CAP));
   if (ctx.categoryId) query = query.eq("category_id", ctx.categoryId);
@@ -91,6 +92,7 @@ async function fetchAffinityPool(
     .select(PRODUCT_SELECT)
     .eq("status", "active")
     .eq("is_active", true)
+    .eq("catalog_channel", "retail")
     .in("category_id", categoryIds)
     .order("total_sales", { ascending: false })
     .limit(Math.min(limit, HARD_CAP));

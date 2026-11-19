@@ -40,7 +40,7 @@
       </intent-filter>
       <intent-filter android:autoVerify="true" data-generated="true">
         <action android:name="android.intent.action.VIEW"/>
-        <data android:scheme="https" android:host="synapstore.shop" android:pathPrefix="/products/"/>
+        <data android:scheme="https" android:host="vestara.lk" android:pathPrefix="/products/"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>

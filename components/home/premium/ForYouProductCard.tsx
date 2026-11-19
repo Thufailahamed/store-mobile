@@ -7,10 +7,12 @@ import { useWishlist } from "@/lib/stores";
 import { useTrackEvent } from "@/lib/recommender";
 import { colors, radii, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { setDesignsLabel } from "@/lib/set-designs";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 import { HOME_PRODUCT_CARD_WIDTH } from "./HomeProductCard";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
+import { ImportedBadge } from "@/components/product/ImportedBadge";
 
 interface ForYouProductCardProps {
   product: Product;
@@ -66,6 +68,7 @@ export function ForYouProductCard({ product, reason }: ForYouProductCardProps) {
             <Text style={styles.saleText}>Sale</Text>
           </View>
         ) : null}
+        <ImportedBadge product={product} style={{ left: undefined, right: 8 }} />
         {reason ? (
           <View style={styles.reasonChip}>
             <Ionicons name="sparkles" size={9} color={colors.olive[600]} />
@@ -95,11 +98,15 @@ export function ForYouProductCard({ product, reason }: ForYouProductCardProps) {
           <Text style={styles.sellingPrice}>{formatPrice(product.price)}</Text>
         )}
       </View>
+      {setDesignsLabel(product.set_design_count) ? (
+        <Text style={styles.setNote} numberOfLines={1}>{setDesignsLabel(product.set_design_count)}</Text>
+      ) : null}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
+  setNote: { marginTop: 2, fontSize: 11, color: colors.ink.mute },
   card: {
     width: HOME_PRODUCT_CARD_WIDTH,
   },

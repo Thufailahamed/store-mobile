@@ -5,9 +5,9 @@
  * copy it here. Rendered natively by app/legal/[doc].tsx (no network needed).
  *
  * Public URLs (used in App Store Connect + Google Play Console):
- *   https://synapstore.shop/legal/privacy
- *   https://synapstore.shop/legal/privacy#delete-account   (data deletion URL)
- *   https://synapstore.shop/legal/terms
+ *   https://vestara.lk/legal/privacy
+ *   https://vestara.lk/legal/privacy#delete-account   (data deletion URL)
+ *   https://vestara.lk/legal/terms
  */
 
 export type LegalBlock =
@@ -43,7 +43,7 @@ export const SUPPORT_EMAIL = "munxhd@gmail.com";
 /** Developer account the apps are published under on Google Play / App Store (publisher only; VESTARA is the data controller). */
 export const APP_PUBLISHER = "CodeworkLab";
 export const APP_PUBLISHER_EMAIL = "info@codeworklab.com";
-export const SITE_ORIGIN = "https://synapstore.shop";
+export const SITE_ORIGIN = "https://vestara.lk";
 
 export const PRIVACY_POLICY: LegalDoc = {
   slug: "privacy",
@@ -76,7 +76,7 @@ export const PRIVACY_POLICY: LegalDoc = {
         },
         {
           type: "p",
-          text: "We are the data controller for personal data processed through the VESTARA website (synapstore.shop) and the VESTARA iOS and Android apps (together, the \"Services\"). We process personal data in line with the Sri Lanka Personal Data Protection Act No. 9 of 2022 and, where they apply to you, other data protection laws such as the GDPR.",
+          text: "We are the data controller for personal data processed through the VESTARA website (vestara.lk) and the VESTARA iOS and Android apps (together, the \"Services\"). We process personal data in line with the Sri Lanka Personal Data Protection Act No. 9 of 2022 and, where they apply to you, other data protection laws such as the GDPR.",
         },
       ],
     },
@@ -234,7 +234,7 @@ export const PRIVACY_POLICY: LegalDoc = {
           type: "list",
           items: [
             { term: "In the app", text: "Open Account → Settings, scroll to Danger zone, tap Delete account and confirm." },
-            { term: "On the web", text: "Sign in at synapstore.shop, go to Account → Settings and choose Delete account at the bottom of the page." },
+            { term: "On the web", text: "Sign in at vestara.lk, go to Account → Settings and choose Delete account at the bottom of the page." },
             { term: "By email", text: "Email munxhd@gmail.com from the address on your account with the subject \"Delete my account\". We will confirm within 48 hours." },
           ],
         },
@@ -297,7 +297,7 @@ export const TERMS_OF_SERVICE: LegalDoc = {
       blocks: [
         {
           type: "p",
-          text: `These Terms of Service ("Terms") form a binding agreement between you and ${LEGAL_ENTITY}, ${LEGAL_ADDRESS} ("VESTARA", "we", "us"). They apply to the VESTARA website (synapstore.shop), the VESTARA iOS and Android apps and related services (the "Services"). By creating an account or using the Services you accept these Terms and our Privacy Policy. If you do not agree, please do not use the Services.`,
+          text: `These Terms of Service ("Terms") form a binding agreement between you and ${LEGAL_ENTITY}, ${LEGAL_ADDRESS} ("VESTARA", "we", "us"). They apply to the VESTARA website (vestara.lk), the VESTARA iOS and Android apps and related services (the "Services"). By creating an account or using the Services you accept these Terms and our Privacy Policy. If you do not agree, please do not use the Services.`,
         },
         {
           type: "p",

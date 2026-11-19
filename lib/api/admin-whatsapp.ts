@@ -14,6 +14,11 @@ export type WaProduct = {
   currency: string;
   status: string;
   order_channel: "checkout" | "whatsapp";
+  catalog_channel?: "retail" | "wholesale";
+  wholesale_moq?: number;
+  wholesale_pack_size?: number;
+  wholesale_lead_time?: string | null;
+  wholesale_notes?: string | null;
   images?: { url: string; is_primary: boolean | null }[];
   variants?: WaVariant[];
   store?: { id: string; name: string } | null;
@@ -54,7 +59,7 @@ export const setWaOrderStage = (
   body: { stage?: string; payment_status?: "paid" | "pending"; note?: string },
 ): Promise<ApiResult<{ order: unknown }>> => fetchJson(`${BASE}/${id}/stage`, { method: "POST", body });
 
-export const listWaProducts = (scope: "whatsapp" | "all", search = ""): Promise<ApiResult<{ products: WaProduct[] }>> =>
+export const listWaProducts = (scope: "whatsapp" | "wholesale" | "orderable" | "all", search = ""): Promise<ApiResult<{ products: WaProduct[] }>> =>
   fetchJson(`${BASE}/products`, { query: { scope, search } });
 
 export const setWaProductChannel = (id: string, order_channel: "checkout" | "whatsapp"): Promise<ApiResult<unknown>> =>

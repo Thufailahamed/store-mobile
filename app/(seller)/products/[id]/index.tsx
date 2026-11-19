@@ -209,6 +209,8 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
   const [mrp, setMrp] = useState("");
   const [price, setPrice] = useState("");
   const [taxRate, setTaxRate] = useState("0");
+  // "Set of N different designs included"; "0" = not a set.
+  const [setDesignCount, setSetDesignCount] = useState("0");
   const [gender, setGender] = useState<string>("unisex");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -366,6 +368,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         setMrp(p.mrp != null ? String(p.mrp) : "");
         setPrice(p.price != null ? String(p.price) : "");
         setTaxRate(String(taxRateToPercent(Number(p.tax_rate ?? 0))));
+        setSetDesignCount(String(p.set_design_count ?? 0));
         setGender(p.gender ?? "unisex");
         setCategoryId(p.category_id ?? null);
         setBrandId(p.brand_id ?? null);
@@ -414,13 +417,13 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
       JSON.stringify({
         name, slug: effectiveSlug, sku, description, shortDescription, metaDescription,
         material, pattern, fit, sleeve, occasion, season, careInstructions, atelier,
-        mrp, price, taxRate, gender, categoryId, brandId, status, tags, isFeatured, whatsappOnly,
+        mrp, price, taxRate, setDesignCount, gender, categoryId, brandId, status, tags, isFeatured, whatsappOnly,
         variants: variants.map(({ key: _k, ...rest }) => rest),
         variantColor,
         images: visibleExistingImages.map((i) => i.id),
       }),
     [name, effectiveSlug, sku, description, shortDescription, metaDescription, material, pattern, fit,
-      sleeve, occasion, season, careInstructions, atelier, mrp, price, taxRate, gender, categoryId,
+      sleeve, occasion, season, careInstructions, atelier, mrp, price, taxRate, setDesignCount, gender, categoryId,
       brandId, status, tags, isFeatured, whatsappOnly, variants, variantColor, visibleExistingImages],
   );
 
@@ -621,6 +624,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
               setMrp(d.mrp ?? "");
               setPrice(d.price ?? "");
               setTaxRate(d.taxRate ?? "0");
+              setSetDesignCount(d.setDesignCount ?? "0");
               setGender(d.gender ?? "unisex");
               setCategoryId(d.categoryId ?? null);
               setBrandId(d.brandId ?? null);
@@ -915,6 +919,7 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
         price: priceNum,
         discount_pct: computeDiscountPct(mrpValue, priceNum),
         tax_rate: percentToTaxRate(Number(taxRate) || 0),
+        set_design_count: Math.min(50, Math.max(0, Math.floor(Number(setDesignCount) || 0))),
         gender: gender as Product["gender"],
         category_id: categoryId ?? undefined,
         brand_id: brandId ?? undefined,
@@ -1487,6 +1492,35 @@ function SellerProductEdit({ id, onDraftCleared }: { id: string; onDraftCleared:
                   </TouchableOpacity>
                 ))}
               </View>
+            </Field>
+
+            <Field label="Designs in set" style={{ marginBottom: 0, marginTop: 14 }}>
+              <View style={styles.taxRow}>
+                <View style={{ width: 110 }}>
+                  <AffixInput
+                    value={setDesignCount}
+                    onChangeText={(t) => setSetDesignCount(t.replace(/[^0-9]/g, "").slice(0, 2))}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                  />
+                </View>
+                {["0", "2", "3", "4"].map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.taxChip, setDesignCount === t && styles.taxChipOn]}
+                    onPress={() => setSetDesignCount(t)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: setDesignCount === t }}
+                  >
+                    <Text style={[styles.taxChipText, setDesignCount === t && styles.taxChipTextOn]}>{t === "0" ? "None" : t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.fieldHint}>
+                {Number(setDesignCount) >= 2
+                  ? `Shows “Set of ${Number(setDesignCount)} different designs included”`
+                  : "0 or 1 = not a set, nothing shown."}
+              </Text>
             </Field>
           </EditorCard>
 

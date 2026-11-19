@@ -154,7 +154,7 @@ function tabPath(x1: number, x2: number, w: number): string {
   ].join(" ");
 }
 
-function DeptTabs({ value, onChange }: { value: Dept; onChange: (d: Dept) => void }) {
+export function DeptTabs({ value, onChange }: { value: Dept; onChange: (d: Dept) => void }) {
   const router = useRouter();
   const [rowW, setRowW] = useState(0);
   const [cells, setCells] = useState<Record<string, { x: number; w: number }>>({});
@@ -235,7 +235,21 @@ function matchesDept(c: Category, dept: Dept): boolean {
   return dept === "men" ? /\bmen|\bmens|\bman\b/.test(s) && !/women/.test(s) : s.includes(dept);
 }
 
-function CategoryIcons({ categories, dept }: { categories: Category[]; dept: Dept }) {
+export function CategoryIcons({
+  categories,
+  dept,
+  onPick,
+  selected,
+  showRunway = POSTS_ENABLED,
+}: {
+  categories: Category[];
+  dept: Dept;
+  /** Override tap (e.g. wholesale filters in place instead of opening the listing). */
+  onPick?: (c: Category) => void;
+  /** Slug of the highlighted tile; defaults to the first tile. */
+  selected?: string | null;
+  showRunway?: boolean;
+}) {
   const router = useRouter();
   const list = useMemo(() => {
     // Men / Women / Kids: show that root's own categories (the live tree).
@@ -277,11 +291,13 @@ function CategoryIcons({ categories, dept }: { categories: Category[]; dept: Dep
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.catScroll}
     >
-      {POSTS_ENABLED ? <RunwayTile /> : null}
-      {list.map((c, i) => (
+      {showRunway ? <RunwayTile /> : null}
+      {list.map((c, idx) => {
+        const i = selected === undefined ? idx : selected === c.slug ? 0 : -1;
+        return (
         <Pressable
           key={c.id}
-          onPress={() => router.push(`/(main)/products?category=${c.slug}` as never)}
+          onPress={() => (onPick ? onPick(c) : router.push(`/(main)/products?category=${c.slug}` as never))}
           style={({ pressed }) => [styles.catItem, pressed && { transform: [{ scale: 0.95 }] }]}
         >
           <View style={[styles.catImgWrap, i === 0 && { borderColor: DEPT_THEMES[dept].line }]}>
@@ -297,7 +313,8 @@ function CategoryIcons({ categories, dept }: { categories: Category[]; dept: Dep
             {c.name}
           </Text>
         </Pressable>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 }
@@ -350,7 +367,7 @@ function RunwayTile() {
 /* -------------------------------------------------------------------- */
 
 /** Rotating frame colours for the image cards (maroon, marigold, royal, emerald). */
-const FRAME_COLORS = ["#8a1538", "#f0a020", "#1546d8", "#00876b"];
+export const FRAME_COLORS = ["#8a1538", "#f0a020", "#1546d8", "#00876b"];
 
 type Slide = { key: string; source: ImageSourcePropType; link: string; frame: string; label: string };
 

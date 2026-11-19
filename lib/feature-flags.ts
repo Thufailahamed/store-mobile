@@ -55,7 +55,13 @@ export const MOBILE_FEATURE_FLAGS = {
   luxeTwoFactor: readBool("EXPO_PUBLIC_LUXE_TWO_FACTOR", true),
   // Brand portal is disabled: admins create brands, sellers attach them.
   brandPortal: readBool("EXPO_PUBLIC_BRAND_PORTAL", false),
+  // Wholesale channel (switch + /wholesale screen). Off for now.
+  wholesale: readBool("EXPO_PUBLIC_WHOLESALE", false),
 } as const;
+
+export function isWholesaleEnabledMobile(): boolean {
+  return MOBILE_FEATURE_FLAGS.wholesale;
+}
 
 export function isInternalDeliveryVisibleMobile(): boolean {
   return MOBILE_FEATURE_FLAGS.internalDeliveryPortalVisible;

@@ -32,7 +32,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /**
  * Native Privacy Policy / Terms screen. Public route (works signed-out) so it
  * can be reached from onboarding, register and settings. Content is bundled,
- * so it renders offline and is identical to synapstore.shop/legal/*.
+ * so it renders offline and is identical to vestara.lk/legal/*.
  *
  *   router.push("/legal/privacy")
  *   router.push({ pathname: "/legal/[doc]", params: { doc: "privacy", section: "delete-account" } })

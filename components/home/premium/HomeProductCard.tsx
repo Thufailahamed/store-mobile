@@ -13,6 +13,7 @@ import type { Product } from "@/lib/types";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 import { useQuery } from "@tanstack/react-query";
 import { loadProductSeller } from "@/lib/api/product-seller-loader";
+import { ImportedBadge } from "@/components/product/ImportedBadge";
 
 export const HOME_PRODUCT_CARD_WIDTH = 148;
 export const HOME_PRODUCT_CARD_WIDTH_LARGE = 178;
@@ -111,6 +112,7 @@ function HomeProductCardInner({
             </Text>
           </View>
         ) : null}
+        <ImportedBadge product={product} />
         {badgeLabel ? (
           <View style={styles.disclosureBadge}>
             <Text style={styles.disclosureText}>{badgeLabel}</Text>

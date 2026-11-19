@@ -24,6 +24,8 @@ export interface ProductGridScope {
   occasion?: string;
   /** Home banner id — tagged products first, then related products. */
   banner?: string;
+  /** Storefront channel; retail is the default. */
+  channel?: "retail" | "wholesale";
 }
 
 /**
@@ -34,7 +36,7 @@ export interface ProductGridScope {
  * loaded page, mirroring the split used by the Shop screen.
  */
 export function useProductGrid(scope: ProductGridScope = {}) {
-  const { category, brand, search, initialSort = "newest", minPrice, maxPrice, occasion, banner } = scope;
+  const { category, brand, search, initialSort = "newest", minPrice, maxPrice, occasion, banner, channel } = scope;
   const { user } = useAuth();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -66,6 +68,9 @@ export function useProductGrid(scope: ProductGridScope = {}) {
   const serverMinPrice = priceMin > PRICE_BOUNDS.min ? priceMin : undefined;
   const serverMaxPrice = priceMax < PRICE_BOUNDS.max ? priceMax : undefined;
   const [view, setView] = useState<ViewMode>("grid");
+  // One shuffle seed per grid mount: every page of this browse session
+  // shares the same checkout-first + shuffled order; a fresh mount reshuffles.
+  const [mixSeed] = useState(() => Math.floor(Math.random() * 2_147_483_647));
 
   // Filtered list — server applies the primary filter (category, brand,
   // gender, search, sort). Refinement facets (price/color/size/rating/
@@ -148,6 +153,12 @@ export function useProductGrid(scope: ProductGridScope = {}) {
         maxPrice: serverMaxPrice,
         occasion,
         banner,
+        channel,
+        // Default browse: cart-checkout products open the grid (~5 rows),
+        // then everything (incl. WhatsApp-only pieces) is shuffled.
+        ...(sort === "newest" && !banner && !search && channel !== "wholesale"
+          ? { mix: "checkout_first" as const, seed: mixSeed }
+          : {}),
       });
       if (res.ok) {
         let page = res.data.products;
@@ -173,7 +184,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
       setLoadingMore(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, banner, offset, user?.id]
+    [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, banner, channel, offset, user?.id]
   );
 
   useEffect(() => {
@@ -182,7 +193,7 @@ export function useProductGrid(scope: ProductGridScope = {}) {
     setProducts([]);
     fetchProducts(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, banner]);
+  }, [sort, category, brand, search, filters.gender, serverMinPrice, serverMaxPrice, occasion, banner, channel]);
 
   const loadMore = () => {
     if (loadingMore || products.length >= total) return;

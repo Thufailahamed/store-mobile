@@ -14,7 +14,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fff7f1"
+      "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
@@ -56,14 +56,15 @@
         "NSPrivacyTracking": false
       },
       "associatedDomains": [
-        "applinks:synapstore.shop"
-      ]
+        "applinks:vestara.lk"
+      ],
+      "buildNumber": "3"
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#414a23"
+        "backgroundColor": "#ffffff"
       },
       "package": "com.vestara.marketplace",
       "googleServicesFile": "./google-services.json",
@@ -79,7 +80,7 @@
           "data": [
             {
               "scheme": "https",
-              "host": "synapstore.shop",
+              "host": "vestara.lk",
               "pathPrefix": "/products/"
             }
           ],
@@ -97,19 +98,24 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Vestara to access your camera for QR scanning and product photos."
+          "cameraPermission": "Allow Vestara to access your camera for QR scanning and product photos.",
+          "microphonePermission": "Vestara uses the microphone to record sound when you film a video for your store posts and reels."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Vestara to access your photos for product images and avatars."
+          "photosPermission": "Allow Vestara to access your photos for product images and avatars.",
+          "cameraPermission": "Allow Vestara to access your camera for QR scanning and product photos.",
+          "microphonePermission": "Vestara uses the microphone to record sound when you film a video for your store posts and reels."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Vestara to share your location for delivery tracking."
+          "locationAlwaysAndWhenInUsePermission": "Vestara uses your location during an active delivery so customers and the store can track their order.",
+          "locationAlwaysPermission": "Vestara uses your location during an active delivery so customers and the store can track their order.",
+          "locationWhenInUsePermission": "Vestara uses your location while you deliver orders so customers and the store can track their delivery."
         }
       ],
       [
@@ -126,6 +132,12 @@
           "supportsBackgroundPlayback": false,
           "supportsPictureInPicture": false
         }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Vestara uses Face ID to confirm it is you before sensitive account actions."
+        }
       ]
     ],
     "experiments": {
@@ -133,7 +145,7 @@
       "tsconfigPaths": true
     },
     "extra": {
-      "storeApiUrl": "https://synapstore.shop",
+      "storeApiUrl": "https://vestara.lk",
       "supabaseUrl": "https://fipjjsbzrugqvobnwewm.supabase.co",
       "router": {
         "origin": false

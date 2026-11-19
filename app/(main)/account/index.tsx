@@ -23,7 +23,7 @@ import {
 } from "@/lib/api/backend";
 import { formatPrice } from "@/lib/utils";
 import { resolveImageUrl } from "@/lib/utils/resolve-image-url";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import type { Order, Product } from "@/lib/types";
 import { mapProducts } from "@/lib/api/product-mapper";
 import { ORDER_TONE } from "@/components/orders/luxe-order";
@@ -406,7 +406,7 @@ export default function AccountScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.circleBtn}
-            onPress={() => navigateHome(router)}
+            onPress={() => goBack(router)}
             activeOpacity={0.8}
             accessibilityLabel="Back to home"
           >

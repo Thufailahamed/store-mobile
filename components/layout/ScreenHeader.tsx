@@ -6,7 +6,7 @@ import { Ionicons } from "@/components/ui/Icon";
 import { Display } from "@/components/ui/Typography";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { radii } from "@/lib/theme/tokens";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 
 interface ScreenHeaderProps {
   title?: string;
@@ -32,11 +32,9 @@ export function ScreenHeader({
       onBack();
       return;
     }
-    if (backToHome) {
-      navigateHome(router);
-      return;
-    }
-    router.back();
+    // backToHome is kept for callers, but every back button now returns to
+    // the previous screen (Home only when there is no history).
+    goBack(router);
   };
 
   return (

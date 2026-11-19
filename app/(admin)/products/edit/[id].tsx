@@ -146,7 +146,12 @@ export default function AdminProductEdit() {
         }
       }
       if (dirtyCount > 0) {
-        const r = await updateAdminCatalogProductBackend(id!, dirty);
+        const patch: Record<string, unknown> = { ...dirty };
+        if (patch.catalog_channel === "wholesale") patch.order_channel = "whatsapp";
+        if (patch.catalog_channel === "retail" && initial?.catalog_channel === "wholesale") {
+          patch.order_channel = "checkout";
+        }
+        const r = await updateAdminCatalogProductBackend(id!, patch);
         if (!r.ok) throw new Error(r.error);
         return r.data.product;
       }
@@ -287,6 +292,54 @@ export default function AdminProductEdit() {
           />
           <ToggleRow label="Visible" sub="Shown in the catalogue" value={form.is_active} onChange={(v) => set("is_active", v)} />
           <ToggleRow label="Featured" sub="Homepage & rails" value={form.is_featured} onChange={(v) => set("is_featured", v)} />
+        </Section>
+
+        <Section title="Wholesale channel" hint="Admin-only B2B catalogue">
+          <ChipRow
+            options={[
+              { value: "retail", label: "Retail" },
+              { value: "wholesale", label: "Wholesale" },
+            ]}
+            value={form.catalog_channel}
+            onChange={(v) => set("catalog_channel", v === "wholesale" ? "wholesale" : "retail")}
+          />
+          {form.catalog_channel === "wholesale" ? (
+            <>
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="MOQ (pcs)"
+                    value={form.wholesale_moq}
+                    onChangeText={(v) => set("wholesale_moq", v)}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Pack size (pcs)"
+                    value={form.wholesale_pack_size}
+                    onChangeText={(v) => set("wholesale_pack_size", v)}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+              <Field
+                label="Lead time"
+                value={form.wholesale_lead_time}
+                onChangeText={(v) => set("wholesale_lead_time", v)}
+                placeholder="7–10 days"
+              />
+              <Field
+                label="Wholesale notes"
+                value={form.wholesale_notes}
+                onChangeText={(v) => set("wholesale_notes", v)}
+                multiline
+              />
+              <Text style={styles.toggleSub}>Hidden from retail search, home and checkout. Saving as wholesale also sets WhatsApp ordering.</Text>
+            </>
+          ) : (
+            <Text style={styles.toggleSub}>Retail products appear in the main Vestara storefront.</Text>
+          )}
         </Section>
 
         <Section title="Style details" hint="Used by filters and search">

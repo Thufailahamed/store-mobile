@@ -9,11 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Text,
+  BackHandler,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SearchFilterSheet } from "@/components/search/SearchFilterSheet";
@@ -32,7 +33,7 @@ import { Avatar } from "@/components/ui";
 import { colors, radii, spacing, typography, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice, discountPct } from "@/lib/utils";
-import { PRICE_BOUNDS, EMPTY_FILTERS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
+import { PRICE_BOUNDS, EMPTY_FILTERS, SEARCH_SORTS, activeFilterCount as computeActiveFilterCount } from "@/lib/api/facets";
 import { applySearchFilters } from "@/lib/search-filters";
 import type { ProductFilters } from "@/lib/api/facets";
 import * as api from "@/lib/api";
@@ -95,7 +96,8 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [tab, setTab] = useState<TabKey>("all");
-  const [sort, setSort] = useState("newest");
+  // Backend ranks search results; keep that order unless the user picks a sort.
+  const [sort, setSort] = useState("relevance");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<V2Suggestion[]>([]);
@@ -444,6 +446,21 @@ export default function SearchScreen() {
     setSearched(false);
     setTab("all");
   };
+
+  // Android back / edge swipe mirrors the on-screen back arrow: clear the
+  // results first, leave the screen on the next press. Focus-scoped so it
+  // never fires while a product opened from here is on top.
+  useFocusEffect(
+    useCallback(() => {
+      if (!searched) return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        resetSearch();
+        return true;
+      });
+      return () => sub.remove();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searched]),
+  );
 
   // Load personalized recs when there's a search with zero results, so the
   // empty state has something useful to suggest.
@@ -875,6 +892,8 @@ export default function SearchScreen() {
             {showingProducts && results.length > 0 ? (
               <SearchQuickBar
                 sort={sort}
+                sorts={SEARCH_SORTS}
+                defaultSort="relevance"
                 filters={filters}
                 products={results}
                 filterCount={activeFilterCount}
@@ -891,6 +910,8 @@ export default function SearchScreen() {
       {/* Filter sheet */}
       <SearchFilterSheet
         visible={filterVisible}
+        sorts={SEARCH_SORTS}
+        defaultSort="relevance"
         onClose={() => setFilterVisible(false)}
         filters={filters}
         onApply={handleSearchFilterChange}

@@ -2,7 +2,7 @@ import React from "react";
 import { TouchableOpacity, StyleSheet, type ViewStyle, type StyleProp } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import { colors, radii } from "@/lib/theme/tokens";
 
 interface HomeBackButtonProps {
@@ -16,7 +16,7 @@ export function HomeBackButton({ style, size = 22 }: HomeBackButtonProps) {
   return (
     <TouchableOpacity
       style={[styles.btn, style]}
-      onPress={() => navigateHome(router)}
+      onPress={() => goBack(router)}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel="Back to home"

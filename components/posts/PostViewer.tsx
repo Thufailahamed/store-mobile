@@ -47,7 +47,7 @@ function ViewerItem({
 
   const share = async () => {
     trackPost({ post_id: post.id, type: "share", surface: "viewer" });
-    const site = getStoreApiUrl() || "https://synapstore.shop";
+    const site = getStoreApiUrl() || "https://vestara.lk";
     await Share.share({ message: `${post.store.name} on LUXE — ${site}/stores/${post.store.slug}` }).catch(() => undefined);
   };
 

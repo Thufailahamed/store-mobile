@@ -6,9 +6,11 @@ import { Ionicons } from "@/components/ui/Icon";
 import { Label, Price, Body } from "@/components/ui/Typography";
 import { colors, typography, radii, shadows, spacing } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { setDesignsLabel } from "@/lib/set-designs";
 import { formatPrice } from "@/lib/utils";
 import { QuickSizeModal } from "./QuickSizeModal";
 import { useProductActions } from "./useProductActions";
+import { ImportedBadge } from "./ImportedBadge";
 import type { Product } from "@/lib/types";
 import { C } from "@/components/orders/parcel-track";
 
@@ -89,6 +91,13 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
       ) : null}
     </View>
   );
+  const setLabel = setDesignsLabel(product.set_design_count);
+  const renderSetNote = () =>
+    setLabel ? (
+      <Text style={styles.setNote} numberOfLines={1}>
+        {setLabel}
+      </Text>
+    ) : null;
 
   const renderMetaRow = () => {
     const hasRating = product.rating > 0;
@@ -164,6 +173,7 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
         <View style={[styles.listImageWrap, atelier && styles.listImageWrapAtelier]}>
           {renderImage(24)}
           {renderDiscountTag()}
+          <ImportedBadge product={product} />
           {renderSoldOut()}
         </View>
         <View style={styles.listInfo}>
@@ -182,7 +192,7 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
             {renderMetaRow()}
           </View>
           <View style={styles.listPriceRow}>
-            <View style={{ flex: 1 }}>{renderPrice("base")}</View>
+            <View style={{ flex: 1 }}>{renderPrice("base")}{renderSetNote()}</View>
             <View style={styles.listActions}>
               <TouchableOpacity
                 style={[styles.listActionBtn, atelier && styles.listActionBtnAtelier]}
@@ -224,6 +234,7 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
         <View style={[styles.imageWrap, { width: w, height: 208 }]}>
           {renderImage(24)}
           {renderDiscountTag()}
+          <ImportedBadge product={product} />
           {renderSoldOut()}
           {renderWishlist(14)}
         </View>
@@ -235,6 +246,7 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
             {product.name || "Untitled Piece"}
           </Text>
           {renderPrice("sm")}
+          {renderSetNote()}
         </View>
       </TouchableOpacity>
     );
@@ -246,6 +258,7 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
       <View style={[styles.imageWrap, atelier && styles.imageWrapAtelier, { height: imageHeight }]}>
         {renderImage()}
         {renderDiscountTag()}
+        <ImportedBadge product={product} />
         {renderSoldOut()}
         {renderWishlist()}
         {!isSoldOut ? (
@@ -268,6 +281,7 @@ export function ProductCard({ product, horizontal, listMode, surface, tone = "de
           {product.name || "Untitled Piece"}
         </Text>
         {renderPrice()}
+        {renderSetNote()}
         {renderMetaRow()}
       </View>
     </TouchableOpacity>
@@ -283,6 +297,7 @@ const IMAGE_BG = "#efede4";
 const ATELIER_PAD = 7;
 
 const styles = StyleSheet.create({
+  setNote: { marginTop: 3, fontSize: 11, color: colors.ink.mute },
   card: {
     width: "100%",
     marginBottom: spacing[6],

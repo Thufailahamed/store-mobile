@@ -36,14 +36,19 @@ export function OccasionVideoTile({
   });
 
   return (
-    <View style={[styles.root, { width, height }]}>
-      <VideoView
-        player={player}
-        style={[StyleSheet.absoluteFill, { borderRadius: RADIUS }]}
-        contentFit="cover"
-        nativeControls={false}
-        allowsPictureInPicture={false}
-      />
+    // box-only: the tile itself is the touch target, never its children. On
+    // Android the native VideoView otherwise swallows taps, so the parent
+    // TouchableOpacity never fires.
+    <View style={[styles.root, { width, height }]} pointerEvents="box-only">
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <VideoView
+          player={player}
+          style={[StyleSheet.absoluteFill, { borderRadius: RADIUS }]}
+          contentFit="cover"
+          nativeControls={false}
+          allowsPictureInPicture={false}
+        />
+      </View>
 
       <LinearGradient
         colors={["rgba(13,14,10,0.55)", "rgba(13,14,10,0)"]}

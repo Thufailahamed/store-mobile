@@ -1,8 +1,12 @@
 import "react-native-gesture-handler";
 import "@/lib/theme/setup-android-text";
 import { initMobileSentry } from "@/lib/sentry";
+import { installFatalErrorGuard } from "@/lib/fatal-error-guard";
 // Activate Sentry before any other module runs. No-op when DSN unset.
 initMobileSentry();
+// Release builds: keep uncaught JS errors off RN's native fatal path, which
+// crashes the app on iOS (see lib/fatal-error-guard.ts).
+installFatalErrorGuard();
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Appearance } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -165,7 +169,9 @@ function RootLayoutNav() {
   // frame, so the native splash can go straight away; the overlay itself
   // waits for onboarding + auth bootstrap before fading out.
   const [showLaunch, setShowLaunch] = useState(true);
-  const launchReady = onboardingChecked && !loading;
+  // Also wait for the role, so a signed-in seller never sees the buyer
+  // catalogue flash before app/index.tsx sends them to the dashboard.
+  const launchReady = onboardingChecked && !loading && !(session && roleLoading);
   const finishLaunch = useCallback(() => setShowLaunch(false), []);
   useEffect(() => {
     SplashScreen.hideAsync().catch(() => {});
@@ -356,10 +362,10 @@ function RootLayoutNav() {
       }
 
       // Shared web product link (Android App Links / iOS Universal Links):
-      // https://synapstore.shop/products/<slug>?src=app — public catalogue.
+      // https://vestara.lk/products/<slug>?src=app — public catalogue.
       if (
         (parsed.scheme === "https" || parsed.scheme === "http") &&
-        /(^|\.)synapstore\.shop$/i.test(parsed.hostname ?? "")
+        /(^|\.)vestara\.lk$/i.test(parsed.hostname ?? "")
       ) {
         const m = (parsed.path ?? "").match(/^\/?products\/([^/?#]+)/);
         const slug = m ? sanitizeSlug(m[1]) : null;
@@ -478,16 +484,20 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <ToastProvider>
-              <StatusBar style="dark" />
-              <RootLayoutNav />
-              <CartDrawer />
-              <ThemedAlertHost />
-            </ToastProvider>
-          </AuthProvider>
-        </QueryClientProvider>
+        {/* Outer boundary: errors in the providers, root hooks or the cart
+            drawer would otherwise unmount the whole app. */}
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <ToastProvider>
+                <StatusBar style="dark" />
+                <RootLayoutNav />
+                <CartDrawer />
+                <ThemedAlertHost />
+              </ToastProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

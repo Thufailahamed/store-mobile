@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import { C } from "@/components/orders/parcel-track";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useCart, useWishlist } from "@/lib/stores";
 import { useAuth } from "@/lib/supabase/auth";
@@ -419,7 +419,7 @@ export default function CartScreen() {
   const header = (
     <BagHeader
       topInset={insets.top}
-      onClose={() => navigateHome(router)}
+      onClose={() => goBack(router)}
       onWishlist={() => router.push("/(main)/wishlist")}
       wishlistCount={wishlistCount}
     />

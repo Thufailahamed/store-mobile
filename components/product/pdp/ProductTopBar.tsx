@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { BrandMark, BRAND_PINK } from "@/components/brand/BrandMark";
 import { fontFamilies } from "@/lib/theme/fonts";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 
 const INK = "#1b1c1c";
 
@@ -16,10 +16,12 @@ export function ProductTopBar({
   topInset,
   cartCount,
   onBack,
+  wholesale = false,
 }: {
   topInset: number;
   cartCount: number;
   onBack?: () => void;
+  wholesale?: boolean;
 }) {
   const router = useRouter();
   return (
@@ -27,7 +29,7 @@ export function ProductTopBar({
       <View style={styles.bar}>
         <TouchableOpacity
           style={styles.iconBtn}
-          onPress={onBack ?? (() => (router.canGoBack() ? router.back() : navigateHome(router)))}
+          onPress={onBack ?? (() => goBack(router))}
           hitSlop={8}
           accessibilityLabel="Go back"
         >
@@ -37,17 +39,19 @@ export function ProductTopBar({
         <TouchableOpacity
           style={styles.search}
           activeOpacity={0.8}
-          onPress={() => router.push("/(main)/search" as never)}
+          onPress={() => router.push((wholesale ? "/(main)/wholesale" : "/(main)/search") as never)}
           accessibilityRole="search"
-          accessibilityLabel="Search in Vestara"
+          accessibilityLabel={wholesale ? "Search Vestara Wholesale" : "Search in Vestara"}
         >
           <BrandMark size={24} />
           <Text style={styles.searchText} numberOfLines={1}>
-            Search in Vestara
+            {wholesale ? "Search Vestara Wholesale" : "Search in Vestara"}
           </Text>
           <Ionicons name="search-outline" size={20} color={INK} />
         </TouchableOpacity>
 
+        {!wholesale ? (
+          <>
         <TouchableOpacity
           style={styles.iconBtn}
           onPress={() => router.push("/(main)/wishlist" as never)}
@@ -69,6 +73,8 @@ export function ProductTopBar({
             </View>
           ) : null}
         </TouchableOpacity>
+          </>
+        ) : null}
       </View>
     </View>
   );

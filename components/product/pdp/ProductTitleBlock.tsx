@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons, type IonIconName } from "@/components/ui/Icon";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { setDesignsLabel } from "@/lib/set-designs";
 import { formatPrice, discountPct } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
@@ -19,12 +20,14 @@ export function ProductTitleBlock({
   isWishlisted,
   onToggleWishlist,
   onShare,
+  showWishlist = true,
 }: {
   product: Product;
   unitPrice: number;
   isWishlisted: boolean;
   onToggleWishlist: () => void;
   onShare: () => void;
+  showWishlist?: boolean;
 }) {
   const router = useRouter();
   const pct = discountPct(product.mrp, unitPrice);
@@ -37,7 +40,7 @@ export function ProductTitleBlock({
       : null;
   const currency = product.currency;
 
-  const actions: { key: string; icon: IonIconName; label: string; on?: boolean; onPress: () => void }[] = [
+  const actionList: { key: string; icon: IonIconName; label: string; on?: boolean; onPress: () => void }[] = [
     {
       key: "similar",
       icon: "copy-outline",
@@ -56,6 +59,7 @@ export function ProductTitleBlock({
     },
     { key: "share", icon: "share-social-outline", label: "Share", onPress: onShare },
   ];
+  const actions = showWishlist ? actionList : actionList.filter((a) => a.key !== "wish");
 
   return (
     <View style={styles.wrap}>
@@ -108,11 +112,15 @@ export function ProductTitleBlock({
           </Text>
         </View>
       )}
+      {setDesignsLabel(product.set_design_count) ? (
+        <Text style={styles.setNote}>{setDesignsLabel(product.set_design_count)}</Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  setNote: { marginTop: 8, fontSize: 14, letterSpacing: 0.3, color: "#2b2b22" },
   wrap: { paddingHorizontal: 16, paddingTop: 10 },
   actions: { flexDirection: "row", gap: 10 },
   action: {

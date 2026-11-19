@@ -70,7 +70,7 @@ export default function ReferralsScreen() {
 
   const code = q.data?.code ?? "";
   const shareUrl =
-    q.data?.shareUrl ?? (code ? `https://synapstore.shop/r/${code}` : "");
+    q.data?.shareUrl ?? (code ? `https://vestara.lk/r/${code}` : "");
   const invitesSent =
     q.data?.invites_sent ?? q.data?.totalReferrals ?? q.data?.uses ?? 0;
   const invitesCompleted = q.data?.invites_completed ?? 0;

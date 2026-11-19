@@ -22,8 +22,9 @@ import { colors, radii, typography } from "@/lib/theme/tokens";
 import { useAuth } from "@/lib/supabase/auth";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { useDeliveryAddressPicker } from "@/components/address/DeliveryAddressPicker";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import { C } from "@/components/orders/parcel-track";
+import { ChannelSwitch } from "@/components/wholesale/ChannelSwitch";
 
 interface AppHeaderProps {
   showTicker?: boolean;
@@ -45,6 +46,8 @@ interface AppHeaderProps {
   tone?: "default" | "atelier" | "festive";
   /** Gradient for the festive tone; crossfades when it changes. */
   festiveColors?: readonly [string, string, ...string[]];
+  /** Overrides the search pill tap (default opens the retail search screen). */
+  onSearchPress?: () => void;
 }
 
 /** Scroll-up distance needed to unfold the header; scroll-down folds it. */
@@ -63,11 +66,13 @@ export function AppHeader({
   scrollY,
   tone = "default",
   festiveColors = FESTIVE_DEFAULT,
+  onSearchPress,
 }: AppHeaderProps) {
   const atelier = tone === "atelier" || tone === "festive";
   const festive = tone === "festive";
   const router = useRouter();
   const pathname = usePathname();
+  const wholesale = pathname.includes("/wholesale");
   const isWishlistScreen = pathname.includes("/wishlist");
   const isCartScreen = pathname.includes("/cart");
   const isNotificationsScreen = pathname.includes("/notifications");
@@ -179,7 +184,7 @@ export function AppHeader({
             {showBackToHome ? (
               <TouchableOpacity
                 style={[styles.backBtn, atelier && styles.circleAtelier, atelier && styles.backBtnAtelier]}
-                onPress={() => navigateHome(router)}
+                onPress={() => goBack(router)}
                 activeOpacity={0.7}
                 accessibilityLabel="Back to home"
               >
@@ -218,7 +223,7 @@ export function AppHeader({
                   onPress={handleNotificationsPress}
                 />
               )}
-              {!isWishlistScreen && (
+              {!isWishlistScreen && !wholesale && (
                 <HeaderIcon
                   atelier={atelier}
                   icon="heart-outline"
@@ -226,7 +231,7 @@ export function AppHeader({
                   onPress={handleWishlistPress}
                 />
               )}
-              {!isCartScreen && (
+              {!isCartScreen && !wholesale && (
                 <HeaderIcon
                   atelier={atelier}
                   icon="bag-outline"
@@ -239,12 +244,14 @@ export function AppHeader({
         </View>
       </Animated.View>
 
+      <ChannelSwitch />
+
       {showSearch ? (
         <View style={[styles.searchRow, atelier && styles.searchRowAtelier]}>
           <TouchableOpacity
             style={[styles.searchBar, atelier && styles.searchBarAtelier]}
             activeOpacity={0.85}
-            onPress={() => router.push("/(main)/search")}
+            onPress={onSearchPress ?? (() => router.push("/(main)/search"))}
           >
             <Ionicons
               name="search"
@@ -253,7 +260,7 @@ export function AppHeader({
               style={styles.searchIcon}
             />
             <Text style={[styles.searchPlaceholder, atelier && styles.searchPlaceholderAtelier]}>
-              {atelier ? "Search pieces, stores, brands" : "Search VESTARA"}
+              {wholesale ? "Search Vestara Wholesale" : atelier ? "Search pieces, stores, brands" : "Search VESTARA"}
             </Text>
             {atelier ? (
               <View style={styles.searchSpark}>

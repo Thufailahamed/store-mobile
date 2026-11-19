@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { mapProducts } from "./product-mapper";
 import { getBrowsableStoreIds, isPublicCatalogProduct } from "@/lib/catalog-visibility";
 import type { Product } from "@/lib/types";
+import { onlyListable } from "@/lib/listable";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
@@ -45,7 +46,8 @@ export async function getProductCards(opts: {
       .from("products")
       .select(PRODUCT_CARD_SELECT)
       .eq("status", "active")
-      .eq("is_active", true);
+      .eq("is_active", true)
+      .eq("catalog_channel", "retail");
 
     if (featuredOnly) query = query.eq("is_featured", true);
 
@@ -127,7 +129,7 @@ export async function getProductCards(opts: {
     const rows = ((data as unknown as Product[]) ?? []).filter((row) =>
       isPublicCatalogProduct(row as Parameters<typeof isPublicCatalogProduct>[0], browsableStoreIds)
     );
-    return ok(mapProducts(rows));
+    return ok(onlyListable(mapProducts(rows)));
   } catch (e: any) {
     return fail(e?.message ?? "Failed to fetch products");
   }

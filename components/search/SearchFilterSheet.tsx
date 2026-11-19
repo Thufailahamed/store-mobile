@@ -24,7 +24,7 @@ import {
   EMPTY_FILTERS,
   activeFilterCount,
 } from "@/lib/api/facets";
-import type { ProductFilters } from "@/lib/api/facets";
+import type { ProductFilters, SortOption } from "@/lib/api/facets";
 import { productColorFamilies, productOccasion, productMaterial } from "@/lib/facet-vocab";
 import { OCCASIONS as OCCASION_CHIPS, MATERIALS as MATERIAL_CHIPS } from "@/lib/api/facets";
 import { applySearchFilters } from "@/lib/search-filters";
@@ -50,9 +50,13 @@ interface SearchFilterSheetProps {
   onSortChange: (sort: string) => void;
   /** Unfiltered search results — facets and the live count are derived from these. */
   products: Product[];
+  /** Sort choices (default: browse SORTS) and the one Reset returns to. */
+  sorts?: SortOption[];
+  defaultSort?: string;
 }
 
 const SORT_ICONS: Record<string, IonIconName> = {
+  relevance: "sparkles-outline",
   newest: "time-outline",
   for_you: "sparkles",
   rating: "star-outline",
@@ -129,6 +133,8 @@ export function SearchFilterSheet({
   sort,
   onSortChange,
   products,
+  sorts = SORTS,
+  defaultSort = "newest",
 }: SearchFilterSheetProps) {
   const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -194,7 +200,7 @@ export function SearchFilterSheet({
 
   const handleClear = () => {
     setDraft({ ...EMPTY_FILTERS });
-    setDraftSort("newest");
+    setDraftSort(defaultSort);
     priceToInputs(undefined);
   };
 
@@ -204,7 +210,7 @@ export function SearchFilterSheet({
     onClose();
   };
 
-  const sortLabel = SORTS.find((s) => s.value === draftSort)?.label;
+  const sortLabel = sorts.find((s) => s.value === draftSort)?.label;
   const priceActive = priceMin > PRICE_BOUNDS.min || priceMax < PRICE_BOUNDS.max;
   // Canonical facet keys present in these results (AI attrs + colour families).
   const presentOccasions = new Set(products.map(productOccasion).filter(Boolean));
@@ -238,7 +244,7 @@ export function SearchFilterSheet({
                 </View>
                 <Text style={styles.title}>Filters</Text>
               </View>
-              {activeCount > 0 || draftSort !== "newest" ? (
+              {activeCount > 0 || draftSort !== defaultSort ? (
                 <TouchableOpacity onPress={handleClear} hitSlop={8} style={styles.resetBtn} activeOpacity={0.8}>
                   <Ionicons name="refresh" size={13} color={colors.accent2.rust} />
                   <Text style={styles.resetText}>Reset</Text>
@@ -259,7 +265,7 @@ export function SearchFilterSheet({
             {/* Sort — icon tiles, two per row */}
             <Section index={next()} title="Sort by" hint={sortLabel}>
               <View style={styles.sortGrid}>
-                {SORTS.map((s) => {
+                {sorts.map((s) => {
                   const on = draftSort === s.value;
                   return (
                     <TouchableOpacity

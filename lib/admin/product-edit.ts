@@ -12,6 +12,7 @@ export const GENDERS = ["women", "men", "kids", "unisex"] as const;
 export const TEXT_KEYS = [
   "name", "sku", "short_description", "description",
   "material", "pattern", "fit", "sleeve", "occasion", "season", "care_instructions",
+  "wholesale_lead_time", "wholesale_notes",
 ] as const;
 export const STYLE_FIELDS: Array<[(typeof TEXT_KEYS)[number], string]> = [
   ["material", "Material"], ["pattern", "Pattern"], ["fit", "Fit"],
@@ -30,6 +31,9 @@ export type ProductEditForm = {
   tags: string[];
   is_active: boolean;
   is_featured: boolean;
+  catalog_channel: "retail" | "wholesale";
+  wholesale_moq: string;
+  wholesale_pack_size: string;
 };
 
 export function fromProduct(p: AdminEditableProduct): ProductEditForm {
@@ -44,12 +48,19 @@ export function fromProduct(p: AdminEditableProduct): ProductEditForm {
   f.tags = Array.isArray(p.tags) ? [...p.tags] : [];
   f.is_active = p.is_active !== false;
   f.is_featured = p.is_featured === true;
+  f.catalog_channel = p.catalog_channel === "wholesale" ? "wholesale" : "retail";
+  f.wholesale_moq = p.wholesale_moq != null ? String(p.wholesale_moq) : "1";
+  f.wholesale_pack_size = p.wholesale_pack_size != null ? String(p.wholesale_pack_size) : "1";
   return f;
 }
 
 /** Same value shapes the web admin editor sends to PATCH /api/admin/catalog/products/:id. */
 export function toPatchValue(k: keyof ProductEditForm, v: ProductEditForm[keyof ProductEditForm]): unknown {
   if (k === "mrp" || k === "price") return v === "" ? 0 : Number(v);
+  if (k === "wholesale_moq" || k === "wholesale_pack_size") {
+    return v === "" ? 1 : Math.max(1, Math.floor(Number(v) || 1));
+  }
+  if (k === "catalog_channel") return v === "wholesale" ? "wholesale" : "retail";
   if (k === "gender" || k === "category_id" || k === "brand_id") return v === NONE ? null : v;
   if (k === "name") return String(v).trim();
   if (typeof v === "string") return v.trim() === "" ? null : v.trim();

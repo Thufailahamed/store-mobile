@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { View, StyleSheet, Text, Share, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import { expandableTabBarInset } from "@/components/layout/ExpandableTabBar";
 import {
   AnimatedFlatList,
@@ -157,7 +157,7 @@ export default function WishlistScreen() {
   const shareUrl = (token: string) => {
     const web =
       (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "").replace(/\/$/, "") ||
-      "https://synapstore.shop";
+      "https://vestara.lk";
     return `${web}/wishlist/shared/${token}`;
   };
 
@@ -183,14 +183,14 @@ export default function WishlistScreen() {
 
   if (!loading && productIds.length === 0) {
     return (
-      <UserPageFrame title="Wishlist" onBack={() => navigateHome(router)}>
+      <UserPageFrame title="Wishlist" onBack={() => goBack(router)}>
         <WishlistEmptyState hasBagItems={cart.itemCount() > 0} />
       </UserPageFrame>
     );
   }
 
   return (
-    <UserPageFrame title="Wishlist" onBack={() => navigateHome(router)}>
+    <UserPageFrame title="Wishlist" onBack={() => goBack(router)}>
       <AnimatedFlatList
         data={visibleProducts}
         keyExtractor={(item) => item.id}

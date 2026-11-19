@@ -8,7 +8,7 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
-import { navigateHome } from "@/lib/navigation";
+import { goBack } from "@/lib/navigation";
 import { Linking } from "react-native";
 import { firstPartyPath } from "@/lib/notifications";
 import { mapWebPathToMobileRoute, safeRoutePush } from "@/lib/utils/safe-route";
@@ -389,7 +389,7 @@ export default function NotificationsScreen() {
         return;
       }
       // Broadcasts / rich pushes carry a deep link ("/products/x" or a
-      // synapstore.shop URL). Same rules as tapping the push itself.
+      // vestara.lk URL). Same rules as tapping the push itself.
       const rawLink = data?.link ?? data?.url;
       if (typeof rawLink === "string" && rawLink) {
         const path = rawLink.startsWith("/") ? rawLink : firstPartyPath(rawLink);
@@ -439,7 +439,7 @@ export default function NotificationsScreen() {
   return (
     <UserPageFrame
       title="Notifications"
-      onBack={() => navigateHome(router)}
+      onBack={() => goBack(router)}
       right={
         <HeaderButton
           icon="trash-outline"

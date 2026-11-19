@@ -6,7 +6,7 @@ import { Ionicons, type IonIconName } from "@/components/ui/Icon";
 import { colors } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { COLORS, SIZES, SORTS } from "@/lib/api/facets";
-import type { ProductFilters } from "@/lib/api/facets";
+import type { ProductFilters, SortOption } from "@/lib/api/facets";
 import { productColorFamilies } from "@/lib/facet-vocab";
 import { applySearchFilters } from "@/lib/search-filters";
 import type { Product } from "@/lib/types";
@@ -25,6 +25,9 @@ interface BarProps {
   onSortChange: (sort: string) => void;
   onFiltersChange: (filters: ProductFilters) => void;
   onOpenFilters: () => void;
+  /** Sort choices (default: browse SORTS) and the one that counts as "not sorted". */
+  sorts?: SortOption[];
+  defaultSort?: string;
 }
 
 /**
@@ -40,12 +43,14 @@ export function SearchQuickBar({
   onSortChange,
   onFiltersChange,
   onOpenFilters,
+  sorts = SORTS,
+  defaultSort = "newest",
 }: BarProps) {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<QuickMode | null>(null);
 
   const items: { key: QuickMode; label: string; icon: IonIconName; active: boolean }[] = [
-    { key: "sort", label: "Sort", icon: "swap-vertical", active: sort !== "newest" },
+    { key: "sort", label: "Sort", icon: "swap-vertical", active: sort !== defaultSort },
     { key: "brand", label: "Brand", icon: "pricetag-outline", active: !!filters.brands?.length },
     { key: "size", label: "Size", icon: "resize-outline", active: !!filters.sizes?.length },
     { key: "color", label: "Color", icon: "color-palette-outline", active: !!filters.colors?.length },
@@ -97,6 +102,7 @@ export function SearchQuickBar({
         mode={mode}
         onClose={() => setMode(null)}
         sort={sort}
+        sorts={sorts}
         filters={filters}
         products={products}
         onSortChange={onSortChange}
@@ -112,6 +118,7 @@ function QuickSheet({
   mode,
   onClose,
   sort,
+  sorts,
   filters,
   products,
   onSortChange,
@@ -120,6 +127,7 @@ function QuickSheet({
   mode: QuickMode | null;
   onClose: () => void;
   sort: string;
+  sorts: SortOption[];
   filters: ProductFilters;
   products: Product[];
   onSortChange: (s: string) => void;
@@ -190,7 +198,7 @@ function QuickSheet({
 
           {mode === "sort" ? (
             <View>
-              {SORTS.map((s) => {
+              {sorts.map((s) => {
                 const on = s.value === sort;
                 return (
                   <TouchableOpacity

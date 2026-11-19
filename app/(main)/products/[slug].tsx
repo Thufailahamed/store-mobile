@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share, Platform, BackHandler, NativeSyntheticEvent, NativeScrollEvent } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, FlatList, useWindowDimensions, Animated, Share, Platform, NativeSyntheticEvent, NativeScrollEvent } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@/components/ui/Icon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,6 +10,7 @@ import { SectionHeader } from "@/components/layout";
 import { ProductTopBar } from "@/components/product/pdp/ProductTopBar";
 import { ProductHeroGallery } from "@/components/product/pdp/ProductHeroGallery";
 import { ProductTitleBlock } from "@/components/product/pdp/ProductTitleBlock";
+import { DeliveryEstimate } from "@/components/product/pdp/DeliveryEstimate";
 import { VariantSelector } from "@/components/product/VariantSelector";
 import { SizeGuideModal } from "@/components/product/SizeGuideModal";
 import { TrustHighlights } from "@/components/product/TrustHighlights";
@@ -28,7 +29,7 @@ import { Display, Body, Label } from "@/components/ui/Typography";
 import { colors, spacing, radii, shadows } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
 import { formatPrice } from "@/lib/utils";
-import { navigateHome } from "@/lib/navigation";
+import { navigateHome, goBack as goBackOrHome } from "@/lib/navigation";
 import { recordRecentlyViewed } from "@/lib/account-local";
 import * as api from "@/lib/api";
 import {
@@ -43,7 +44,7 @@ import type { Product, ProductVariant, Review } from "@/lib/types";
 import { useInventoryRealtime, getVariantStock } from "@/lib/hooks/useInventoryRealtime";
 import { useWishlistToggle } from "@/lib/hooks/useWishlistToggle";
 import { StyledInRail } from "@/components/posts/StyledInRail";
-import { isWhatsappOrderProduct, openWhatsappOrder, useWhatsappNumber } from "@/lib/whatsapp-order";
+import { isWhatsappOrderProduct, openWhatsappOrder, useWhatsappNumber, isWholesaleProduct, openWholesaleOrder, wholesaleQty, wholesaleQtyBounds } from "@/lib/whatsapp-order";
 
 export default function ProductDetailScreen() {
   const router = useRouter();
@@ -57,23 +58,9 @@ export default function ProductDetailScreen() {
   const heroMaxHeight =
     SCREEN_HEIGHT - (insets.top + 60) - (Math.max(insets.bottom, 10) + 62) - 14 - 150;
 
-  // Tabs don't keep a cross-tab back stack, so a product opened from search
-  // would otherwise fall back to Home. Return to the (still-mounted) search
-  // tab, which keeps its query and results.
-  const goBack = useCallback(() => {
-    if (from === "search") router.navigate("/(main)/search" as never);
-    else if (router.canGoBack()) router.back();
-    else navigateHome(router);
-  }, [from, router]);
-
-  useEffect(() => {
-    if (from !== "search") return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      goBack();
-      return true;
-    });
-    return () => sub.remove();
-  }, [from, goBack]);
+  // (main) is a stack, so back returns to whichever page opened this
+  // product (results, search, store, another product...).
+  const goBack = useCallback(() => goBackOrHome(router), [router]);
   const { addItem, items: cartItems } = useCart();
   const { items: wishlistItems } = useWishlist();
   const toggleWishlist = useWishlistToggle();
@@ -90,10 +77,11 @@ export default function ProductDetailScreen() {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [youMayAlsoLike, setYouMayAlsoLike] = useState<Product[]>([]);
   const [pairsWellWith, setPairsWellWith] = useState<Product[]>([]);
+  const wholesaleProduct = isWholesaleProduct(product);
 
-  // Track view + impression.
-  useTrackView(product);
-  useTrackImpression(product, "pdp");
+  // Track view + impression. Wholesale views stay out of retail recommenders.
+  useTrackView(wholesaleProduct ? null : product);
+  useTrackImpression(wholesaleProduct ? null : product, "pdp");
   const tracker = useTrackEvent();
 
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -113,10 +101,16 @@ export default function ProductDetailScreen() {
   const fetchProduct = useCallback(async () => {
     if (!slug) return;
     setLoading(true);
-    const res = await api.getProductBySlug(slug);
+    const res = await api.getProductBySlug(
+      slug,
+      from === "wholesale" ? "wholesale" : undefined,
+    );
     if (res.ok && res.data) {
       const productData = res.data;
       setProduct(productData);
+      if (isWholesaleProduct(productData)) {
+        setQuantity(wholesaleQtyBounds(productData).moq);
+      }
       const first = productData.variants?.[0];
       if (first) {
         setSelectedVariant(first);
@@ -145,7 +139,7 @@ export default function ProductDetailScreen() {
     } else {
       setLoading(false);
     }
-  }, [slug, user?.id]);
+  }, [slug, from, user?.id]);
 
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
 
@@ -157,9 +151,9 @@ export default function ProductDetailScreen() {
 
   const viewedProductId = product?.id;
   useEffect(() => {
-    if (!viewedProductId) return;
+    if (!viewedProductId || wholesaleProduct) return;
     recordRecentlyViewed(user?.id, viewedProductId);
-  }, [viewedProductId, user?.id]);
+  }, [viewedProductId, user?.id, wholesaleProduct]);
 
   const images = useMemo(
     () => product?.images?.sort((a, b) => a.position - b.position) || [],
@@ -176,10 +170,15 @@ export default function ProductDetailScreen() {
   const currentStock =
     liveVariantStock?.available ?? selectedVariant?.stock ?? (hasVariants ? 0 : Infinity);
   const isWishlisted = product ? !!wishlistItems[product.id] : false;
-  // Foreign-sourced dress: ordered over WhatsApp, stock is held by the supplier.
+  // Foreign-sourced dress: ordered over WhatsApp, stock held by the supplier.
   const whatsappOnly = isWhatsappOrderProduct(product);
+  const wholesale = wholesaleProduct;
+  const { moq: wholesaleMoq, pack: wholesalePack } = wholesaleQtyBounds(product);
+  const minQty = wholesale ? wholesaleMoq : 1;
+  const qtyStep = wholesale ? wholesalePack : 1;
+  const maxQty = wholesale ? 999 : (currentStock || 99);
   const soldOut = !whatsappOnly && currentStock <= 0;
-  const lowStock = !soldOut && Number.isFinite(currentStock) && currentStock <= 5;
+  const lowStock = !soldOut && !wholesale && Number.isFinite(currentStock) && currentStock <= 5;
   const cartItemKey = product
     ? buildCartLineKeyFromItem({
         storeId: product.store_id,
@@ -236,7 +235,9 @@ export default function ProductDetailScreen() {
       toast("Select a size", "error");
       return;
     }
-    const opened = await openWhatsappOrder(whatsappNumber, product, { variant: selectedVariant ?? null, qty: quantity });
+    const opened = wholesale
+      ? await openWholesaleOrder(whatsappNumber, product, { variant: selectedVariant ?? null, qty: quantity })
+      : await openWhatsappOrder(whatsappNumber, product, { variant: selectedVariant ?? null, qty: quantity });
     if (!opened) toast("WhatsApp ordering is not available yet", "error");
   };
 
@@ -251,7 +252,7 @@ export default function ProductDetailScreen() {
       // Real https link: opens this page in the app when installed (App
       // Links / Universal Links), otherwise the web page sends phones to the
       // Play Store / App Store (`src=app`, see store ProductAppRedirect).
-      const web = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "").replace(/\/$/, "") || "https://synapstore.shop";
+      const web = (process.env.EXPO_PUBLIC_WEB_APP_URL ?? "").replace(/\/$/, "") || "https://vestara.lk";
       const link = `${web}/products/${encodeURIComponent(product.slug)}?src=app`;
       const text = `Check out ${product.name} on VESTARA! Only ${formatPrice(unitPrice, product.currency || "LKR")}.`;
       // Android ignores `url`, so the link goes in the message there.
@@ -303,7 +304,7 @@ export default function ProductDetailScreen() {
   return (
     <>
     <View style={styles.root}>
-      <ProductTopBar topInset={insets.top} cartCount={totalCartCount} onBack={goBack} />
+      <ProductTopBar topInset={insets.top} cartCount={totalCartCount} onBack={goBack} wholesale={wholesale} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -332,6 +333,7 @@ export default function ProductDetailScreen() {
               toggleWishlist(product);
             }}
             onShare={handleShare}
+            showWishlist={!wholesale}
           />
         </View>
 
@@ -354,7 +356,7 @@ export default function ProductDetailScreen() {
             <View style={[styles.stockPill, (soldOut || lowStock) && styles.stockPillSoldOut]}>
               <View style={[styles.stockDot, (soldOut || lowStock) && styles.stockDotSoldOut]} />
               <Label style={[styles.stockText, (soldOut || lowStock) && styles.stockTextSoldOut]}>
-                {soldOut ? "Sold out" : lowStock ? `Only ${currentStock} left` : "In stock"}
+                {wholesale ? `MOQ ${wholesaleMoq}` : soldOut ? "Sold out" : lowStock ? `Only ${currentStock} left` : "In stock"}
               </Label>
             </View>
           </View>
@@ -400,18 +402,20 @@ export default function ProductDetailScreen() {
             <View style={styles.qtyLabelWrap}>
               <Label style={styles.qtyLabelText}>QUANTITY</Label>
               <Body size="xs" style={styles.qtyHint}>
-                {soldOut
-                  ? "Currently unavailable"
-                  : lowStock
-                    ? `Only ${currentStock} left — order soon`
-                    : "Ships in 1–3 business days"}
+                {wholesale
+                  ? `MOQ ${wholesaleMoq}${wholesalePack > 1 ? ` · pack of ${wholesalePack}` : ""}${product.wholesale_lead_time ? ` · ${product.wholesale_lead_time}` : ""}`
+                  : soldOut
+                    ? "Currently unavailable"
+                    : lowStock
+                      ? `Only ${currentStock} left — order soon`
+                      : "Ships in 1–3 business days"}
               </Body>
             </View>
             <View style={styles.qtyContainer}>
               <TouchableOpacity
-                style={[styles.qtyPillBtn, quantity <= 1 && styles.qtyPillBtnDisabled]}
-                disabled={quantity <= 1}
-                onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                style={[styles.qtyPillBtn, quantity <= minQty && styles.qtyPillBtnDisabled]}
+                disabled={quantity <= minQty}
+                onPress={() => setQuantity(wholesale ? Math.max(minQty, quantity - qtyStep) : Math.max(1, quantity - 1))}
                 activeOpacity={0.7}
                 accessibilityLabel="Decrease quantity"
               >
@@ -420,7 +424,13 @@ export default function ProductDetailScreen() {
               <Display size="sm" style={styles.qtyValue}>{quantity}</Display>
               <TouchableOpacity
                 style={styles.qtyPillBtn}
-                onPress={() => setQuantity(Math.min(currentStock || 99, quantity + 1))}
+                onPress={() =>
+                  setQuantity(
+                    wholesale
+                      ? wholesaleQty(quantity + qtyStep, product)
+                      : Math.min(maxQty, quantity + 1),
+                  )
+                }
                 activeOpacity={0.7}
                 accessibilityLabel="Increase quantity"
               >
@@ -431,8 +441,14 @@ export default function ProductDetailScreen() {
           </View>
         </View>
 
-        {/* Trust & highlights */}
+        {/* Trust & highlights, led by the estimated delivery date
+            (wholesale has its own lead time) */}
         <View style={styles.section}>
+          {!wholesale ? (
+            <View style={styles.deliveryEstimateWrap}>
+              <DeliveryEstimate whatsapp={whatsappOnly} />
+            </View>
+          ) : null}
           <TrustHighlights
             acceptsReturns={product.store?.accepts_returns !== false}
             returnWindowDays={product.store?.return_window_days}
@@ -510,17 +526,19 @@ export default function ProductDetailScreen() {
       {whatsappOnly ? (
       <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 10), flexDirection: "column", alignItems: "stretch" }]}>
         <Body style={styles.whatsappNote}>
-          Sourced from our partner boutique abroad. We confirm on WhatsApp, check it at our studio, then deliver. No cash on delivery.
+          {wholesale
+            ? `Wholesale · MOQ ${wholesaleMoq}${wholesalePack > 1 ? ` · pack of ${wholesalePack}` : ""}${product.wholesale_lead_time ? ` · ${product.wholesale_lead_time}` : ""}. We confirm stock, total and dispatch on WhatsApp.`
+            : "Sourced from our partner boutique abroad. We confirm on WhatsApp, check it at our studio, then deliver. No cash on delivery."}
         </Body>
         <TouchableOpacity
           onPress={handleWhatsappOrder}
           style={[styles.buyBtn, styles.whatsappBtn, { flex: 0 }]}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Order via WhatsApp"
+          accessibilityLabel={wholesale ? "Order wholesale on WhatsApp" : "Order via WhatsApp"}
         >
           <Ionicons name="logo-whatsapp" size={20} color="#fff" />
-          <Body style={styles.whatsappText}>Order via WhatsApp</Body>
+          <Body style={styles.whatsappText}>{wholesale ? "Order wholesale on WhatsApp" : "Order via WhatsApp"}</Body>
         </TouchableOpacity>
       </View>
       ) : (
@@ -702,6 +720,10 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: spacing[5],
+  },
+  deliveryEstimateWrap: {
+    marginHorizontal: spacing[4],
+    marginBottom: spacing[3],
   },
   priceAlertWrap: {
     paddingHorizontal: spacing[5],

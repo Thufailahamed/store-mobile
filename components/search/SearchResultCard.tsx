@@ -8,6 +8,7 @@ import { QuickSizeModal } from "@/components/product/QuickSizeModal";
 import { useProductActions } from "@/components/product/useProductActions";
 import { colors, radii } from "@/lib/theme/tokens";
 import { fontFamilies } from "@/lib/theme/fonts";
+import { setDesignsLabel } from "@/lib/set-designs";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
@@ -160,6 +161,9 @@ export function SearchResultCard({ product, width, index, onPress }: SearchResul
                 </Text>
               ) : null}
             </View>
+            {setDesignsLabel(product.set_design_count) ? (
+              <Text style={styles.setNote} numberOfLines={1}>{setDesignsLabel(product.set_design_count)}</Text>
+            ) : null}
             {reason ? (
               <View style={styles.reason}>
                 <Ionicons name="sparkles" size={9} color={colors.olive[600]} />
@@ -294,6 +298,7 @@ export function SearchResultRow({ product, index, onPress }: Omit<SearchResultCa
 }
 
 const styles = StyleSheet.create({
+  setNote: { marginTop: 3, fontSize: 11, color: colors.ink.mute },
   /* Grid */
   card: {
     backgroundColor: "#ffffff",

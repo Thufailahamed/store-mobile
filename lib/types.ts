@@ -99,6 +99,12 @@ export interface Brand {
   homepage_order?: number;
 }
 
+/** Who a product was really sourced from. Seller-only; never on buyer responses. */
+export interface ProductSource {
+  seller_name: string;
+  source_url: string | null;
+}
+
 export interface Product {
   id: string;
   store_id: string;
@@ -132,10 +138,24 @@ export interface Product {
   is_active: boolean;
   /** 'whatsapp' = foreign-sourced dress ordered via WhatsApp chat (no bag checkout, no COD). */
   order_channel?: "checkout" | "whatsapp";
+  /** "Set of N different designs included"; 0 = not a set. */
+  set_design_count?: number;
+  /** Storefront channel: retail = main Vestara catalogue, wholesale = admin-curated B2B catalogue. */
+  catalog_channel?: "retail" | "wholesale";
+  /** Wholesale minimum order quantity. */
+  wholesale_moq?: number;
+  /** Wholesale quantity increment (pack/carton size). */
+  wholesale_pack_size?: number;
+  /** Display copy, e.g. "7–10 days". */
+  wholesale_lead_time?: string | null;
+  /** Fabric / packing / assortment notes. */
+  wholesale_notes?: string | null;
   risk_score?: number | null;
   is_flagged?: boolean | null;
   auto_approved?: boolean | null;
   suspicious_reasons?: { rule_id: string; message: string; weight: number; blocking: boolean }[] | null;
+  /** Seller-only sourcing info (store owner + admin). Only set on the seller products list. */
+  source?: ProductSource | null;
   rating: number;
   total_reviews: number;
   total_sales: number;

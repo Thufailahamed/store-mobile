@@ -59,6 +59,7 @@ import {
   deleteCategoryWithOptions,
   type AdminCategory,
 } from "@/lib/api/category-admin";
+import { onlyListable } from "@/lib/listable";
 
 // ============================================================================
 // Local Result / ok / fail — preserved for consumer compatibility.
@@ -106,8 +107,13 @@ export async function getProducts(opts: {
   occasion?: string;
   /** Banner id — its admin-tagged products lead the list, related ones follow. */
   banner?: string;
+  /** Storefront channel; retail is the default. */
+  channel?: "retail" | "wholesale";
+  /** Checkout products lead, then a `seed`-stable shuffle (sort=newest only). */
+  mix?: "checkout_first";
+  seed?: number;
 } = {}): Promise<Result<{ products: Product[]; total: number }>> {
-  const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search, minPrice, maxPrice, occasion, banner } = opts;
+  const { limit = 20, offset = 0, sort = "newest", categorySlug, brandSlug, storeSlug, search, minPrice, maxPrice, occasion, banner, channel, mix, seed } = opts;
   let gender = opts.gender;
   // Resolve slug → id via backend list endpoints so callers don't need to
   // hit Supabase directly. The backend's /api/catalog/products expects ids.
@@ -145,8 +151,11 @@ export async function getProducts(opts: {
     max_price: maxPrice,
     occasion,
     banner,
+    channel,
     limit,
     offset,
+    mix,
+    seed,
   });
   if (!res.ok) return fail(res.error);
   // `total` is the real catalogue count (backend ≥ facet-vocab release). Older
@@ -154,7 +163,7 @@ export async function getProducts(opts: {
   // while pages come back full, so infinite scroll keeps going.
   const page = res.data.count;
   const total = res.data.total ?? (page >= limit ? offset + page + 1 : offset + page);
-  return ok({ products: mapProducts(res.data.products as unknown[]) ?? [], total });
+  return ok({ products: onlyListable(mapProducts(res.data.products as unknown[])), total });
 }
 
 export async function getBrands(opts: { limit?: number; search?: string; offset?: number } = {}): Promise<Result<Brand[]>> {
@@ -211,8 +220,11 @@ export async function getAdminBrandById(id: string): Promise<Result<{
   return ok((res.data.brand ?? null) as never);
 }
 
-export async function getProductBySlug(slug: string): Promise<Result<Product | null>> {
-  const res = await B.getProductBySlugBackend(slug);
+export async function getProductBySlug(
+  slug: string,
+  channel?: "retail" | "wholesale",
+): Promise<Result<Product | null>> {
+  const res = await B.getProductBySlugBackend(slug, channel);
   if (!res.ok) return fail(res.error);
   if (!res.data.product) return ok(null);
   return ok(mapProduct(res.data.product));
@@ -227,7 +239,7 @@ export async function getRelatedProducts(productId: string, _categoryId?: string
   const res = await B.getProductsBackend({ category, limit });
   if (!res.ok) return fail(res.error);
   const rows = (res.data.products as unknown[]).filter((p) => (p as { id?: string }).id !== productId);
-  return ok(mapProducts(rows) ?? []);
+  return ok(onlyListable(mapProducts(rows)));
 }
 
 export async function getReviews(productId: string, limit = 20): Promise<Result<Review[]>> {
@@ -477,7 +489,7 @@ export async function searchProductsWithMeta(
     // Backend search down: plain text match so the screen is not empty.
     const fallback = await B.getProductsBackend({ search: term, limit: Math.min(limit, CATALOG_MAX_LIMIT) });
     if (!fallback.ok) return fail(res.error);
-    return ok({ ...empty, products: mapProducts(fallback.data.products) ?? [] });
+    return ok({ ...empty, products: onlyListable(mapProducts(fallback.data.products)) });
   }
 
   const rows = res.data.products ?? [];
@@ -487,7 +499,7 @@ export async function searchProductsWithMeta(
     const detailsRes = await B.getProductsByIdsBackend(rows.map((p) => p.id));
     if (!detailsRes.ok) return fail(detailsRes.error);
     const browsableStoreIds = await getBrowsableStoreIds();
-    const byId = new Map((mapProducts(detailsRes.data.products) ?? []).map((p) => [p.id, p]));
+    const byId = new Map(onlyListable(mapProducts(detailsRes.data.products)).map((p) => [p.id, p]));
     products = rows
       .map((r) => byId.get(r.id))
       .filter((p): p is Product => !!p && isPublicCatalogProduct(p, browsableStoreIds))

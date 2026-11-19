@@ -398,8 +398,14 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
                 <Pressable onPress={() => update(l.key, { quantity: Math.max(1, l.quantity - 1) })} style={styles.stepBtn}>
                   <Ionicons name="remove" size={16} color={FG} />
                 </Pressable>
-                <Text style={styles.body14}>{l.quantity}</Text>
-                <Pressable onPress={() => update(l.key, { quantity: Math.min(100, l.quantity + 1) })} style={styles.stepBtn}>
+                <TextInput
+                  value={String(l.quantity)}
+                  onChangeText={(v) => update(l.key, { quantity: Math.max(1, Math.min(10000, parseInt(v || "1", 10) || 1)) })}
+                  keyboardType="number-pad"
+                  style={[styles.input, { width: 64, textAlign: "center", paddingVertical: 6 }]}
+                  accessibilityLabel="Quantity"
+                />
+                <Pressable onPress={() => update(l.key, { quantity: Math.min(10000, l.quantity + 1) })} style={styles.stepBtn}>
                   <Ionicons name="add" size={16} color={FG} />
                 </Pressable>
                 <Text style={[styles.small, { marginLeft: 8 }]}>Price</Text>
@@ -487,6 +493,10 @@ function Dresses() {
     return () => clearTimeout(t);
   }, [search]);
   const sourced = useQuery({ queryKey: ["admin-wa-products", "whatsapp", ""], queryFn: () => unwrap(listWaProducts("whatsapp")) });
+  const wholesale = useQuery({
+    queryKey: ["admin-wa-products", "wholesale", ""],
+    queryFn: () => unwrap(listWaProducts("wholesale")),
+  });
   const found = useQuery({
     queryKey: ["admin-wa-products", "all", debounced],
     queryFn: () => unwrap(listWaProducts("all", debounced)),
@@ -536,6 +546,39 @@ function Dresses() {
         <Ionicons name="sparkles" size={16} color="#fff" />
         <Text style={styles.btnDarkText}>Add sourced dress with AI</Text>
       </Pressable>
+      <Pressable
+        onPress={() => router.push({ pathname: "/(admin)/products/new", params: { wholesale: "1" } })}
+        style={[styles.btn, styles.btnOutline, styles.btnBlock, { marginTop: 0 }]}
+        accessibilityLabel="Add wholesale product"
+      >
+        <Ionicons name="business-outline" size={16} color={colors.ink.DEFAULT} />
+        <Text style={styles.btnOutlineText}>Add wholesale product</Text>
+      </Pressable>
+      <View style={styles.card}>
+        <Text style={styles.section}>Vestara Wholesale ({wholesale.data?.products.length ?? 0})</Text>
+        <Text style={styles.small}>
+          Admin-only B2B line at /wholesale on web and in the app. WhatsApp-only; hidden from retail.
+        </Text>
+        {(wholesale.data?.products ?? []).map((p) => (
+          <View key={p.id} style={[styles.row, styles.listRow]}>
+            {primaryImage(p) ? <Image source={{ uri: primaryImage(p) }} style={styles.thumb} contentFit="cover" /> : <View style={styles.thumb} />}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.body14} numberOfLines={2}>{p.name}</Text>
+              <Text style={styles.small}>
+                {formatPrice(p.price, p.currency)} / pc · MOQ {p.wholesale_moq ?? 1} · Pack {p.wholesale_pack_size ?? 1}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => router.push({ pathname: "/(admin)/products/edit/[id]", params: { id: p.id } })}
+              style={[styles.btn, styles.btnOutline]}
+              accessibilityLabel={`Edit ${p.name}`}
+            >
+              <Text style={styles.btnOutlineText}>Edit</Text>
+            </Pressable>
+          </View>
+        ))}
+        {wholesale.isLoading ? <ActivityIndicator style={{ marginTop: 8 }} /> : null}
+      </View>
       <View style={styles.card}>
         <Text style={styles.section}>WhatsApp-order dresses ({sourced.data?.products.length ?? 0})</Text>
         <Text style={styles.small}>Shown with “Order via WhatsApp” instead of Add to bag. Never sent to the courier.</Text>

@@ -34,7 +34,7 @@ const RUST = "#7a2f1a";
 const CREAM = colors.paper.cream;
 
 export default function AdminNewProductScreen() {
-  const params = useLocalSearchParams<{ storeId?: string; whatsapp?: string }>();
+  const params = useLocalSearchParams<{ storeId?: string; whatsapp?: string; wholesale?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
@@ -51,9 +51,17 @@ export default function AdminNewProductScreen() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [sizes, setSizes] = useState("");
+  // "Set of N different designs included"; "" / 0 = not a set.
+  const [setDesignCount, setSetDesignCount] = useState("");
   const [isActive, setIsActive] = useState(true);
   // Sourced dress sold through WhatsApp (no bag checkout, no courier, no COD).
   const [waMode, setWaMode] = useState(params.whatsapp === "1");
+  // Admin-curated B2B catalogue. WhatsApp-only, hidden from retail.
+  const [wholesaleMode, setWholesaleMode] = useState(params.wholesale === "1");
+  const [wholesaleMoq, setWholesaleMoq] = useState("12");
+  const [wholesalePack, setWholesalePack] = useState("6");
+  const [wholesaleLead, setWholesaleLead] = useState("7–10 days");
+  const [wholesaleNotes, setWholesaleNotes] = useState("");
 
   const addPhoto = async () => {
     const picked = await pickImage({ allowsEditing: false, quality: 0.85 });
@@ -113,6 +121,13 @@ export default function AdminNewProductScreen() {
     },
   });
 
+  // Wholesale is our own line: default to the in-house Vestara store.
+  useEffect(() => {
+    if (!wholesaleMode || storeId) return;
+    const house = (storesQ.data ?? []).find((s: any) => /vestara/i.test(String(s.name ?? "")));
+    if (house?.id) setStoreId(house.id);
+  }, [wholesaleMode, storeId, storesQ.data]);
+
   const categoriesQ = useQuery({
     queryKey: ["admin-categories-picker"],
     queryFn: async () => {
@@ -155,6 +170,7 @@ export default function AdminNewProductScreen() {
         is_active: isActive,
         description: description.trim() || undefined,
         category_id: categoryId || undefined,
+        set_design_count: Math.min(50, Math.max(0, Math.floor(Number(setDesignCount) || 0))),
       };
 
       if (images.length) payload.images = images;
@@ -167,7 +183,17 @@ export default function AdminNewProductScreen() {
         const perSize = isNaN(numStock) ? 10 : numStock;
         payload.variants = sizeList.map((size) => ({ size, price: numPrice, mrp: numMrp, quantity: perSize }));
       }
-      if (waMode) payload.order_channel = "whatsapp";
+      if (wholesaleMode) {
+        payload.catalog_channel = "wholesale";
+        payload.order_channel = "whatsapp";
+        payload.wholesale_moq = Math.max(1, Math.floor(Number(wholesaleMoq) || 1));
+        payload.wholesale_pack_size = Math.max(1, Math.floor(Number(wholesalePack) || 1));
+        payload.wholesale_lead_time = wholesaleLead.trim() || null;
+        payload.wholesale_notes = wholesaleNotes.trim() || null;
+      } else if (waMode) {
+        payload.order_channel = "whatsapp";
+        payload.catalog_channel = "retail";
+      }
 
       const res = await createAdminProduct(payload);
       if (!res.ok) throw new Error(res.error);
@@ -180,9 +206,11 @@ export default function AdminNewProductScreen() {
       qc.invalidateQueries({ queryKey: ["admin-wa-products"] });
       themedAlert(
         "Product Uploaded",
-        waMode
-          ? `"${name}" is listed as a WhatsApp-order dress.`
-          : `"${name}" has been published for ${selectedStore?.name || "the store"}.`,
+        wholesaleMode
+          ? `"${name}" is live in Vestara Wholesale.`
+          : waMode
+            ? `"${name}" is listed as a WhatsApp-order dress.`
+            : `"${name}" has been published for ${selectedStore?.name || "the store"}.`,
         [{ text: "OK", onPress: () => router.back() }]
       );
     },
@@ -209,7 +237,7 @@ export default function AdminNewProductScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>Admin concierge</Text>
-          <Text style={styles.title}>{waMode ? "Add sourced dress" : "Upload for store"}</Text>
+          <Text style={styles.title}>{wholesaleMode ? "Add wholesale product" : waMode ? "Add sourced dress" : "Upload for store"}</Text>
         </View>
       </View>
 
@@ -247,8 +275,84 @@ export default function AdminNewProductScreen() {
                 Shows “Order via WhatsApp” instead of Add to bag. No courier, no cash on delivery.
               </Text>
             </View>
-            <Switch value={waMode} onValueChange={setWaMode} accessibilityLabel="WhatsApp order" />
+            <Switch
+              value={waMode}
+              onValueChange={(v) => {
+                setWaMode(v);
+                if (v) setWholesaleMode(false);
+              }}
+              accessibilityLabel="WhatsApp order"
+            />
           </View>
+        </View>
+
+        {/* Wholesale mode */}
+        <View style={[styles.card, wholesaleMode && { borderColor: "#c9b27a" }]}>
+          <View style={styles.toggleRow}>
+            <Ionicons name="business-outline" size={22} color="#a58d52" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleTitle}>Wholesale product</Text>
+              <Text style={styles.toggleSub}>
+                Admin-only B2B catalogue. WhatsApp-only, with MOQ and pack pricing. Hidden from retail.
+              </Text>
+            </View>
+            <Switch
+              value={wholesaleMode}
+              onValueChange={(v) => {
+                setWholesaleMode(v);
+                if (v) setWaMode(false);
+              }}
+              accessibilityLabel="Wholesale product"
+            />
+          </View>
+
+          {wholesaleMode ? (
+            <View style={{ marginTop: 14, gap: 10 }}>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>MOQ (PCS)</Text>
+                <TextInput
+                  value={wholesaleMoq}
+                  onChangeText={setWholesaleMoq}
+                  keyboardType="number-pad"
+                  style={styles.input}
+                  placeholder="12"
+                  placeholderTextColor="rgba(101,104,77,0.55)"
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>PACK SIZE (PCS)</Text>
+                <TextInput
+                  value={wholesalePack}
+                  onChangeText={setWholesalePack}
+                  keyboardType="number-pad"
+                  style={styles.input}
+                  placeholder="6"
+                  placeholderTextColor="rgba(101,104,77,0.55)"
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>LEAD TIME</Text>
+                <TextInput
+                  value={wholesaleLead}
+                  onChangeText={setWholesaleLead}
+                  style={styles.input}
+                  placeholder="7–10 days"
+                  placeholderTextColor="rgba(101,104,77,0.55)"
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>WHOLESALE NOTES</Text>
+                <TextInput
+                  value={wholesaleNotes}
+                  onChangeText={setWholesaleNotes}
+                  style={[styles.input, { minHeight: 72, textAlignVertical: "top" }]}
+                  placeholder="Fabric, packing, size ratio / assortment details…"
+                  placeholderTextColor="rgba(101,104,77,0.55)"
+                  multiline
+                />
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {/* Photos + AI */}
@@ -376,6 +480,18 @@ export default function AdminNewProductScreen() {
             />
           </View>
 
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>DESIGNS IN SET (2+ SHOWS SET LINE)</Text>
+            <TextInput
+              value={setDesignCount}
+              onChangeText={(t) => setSetDesignCount(t.replace(/[^0-9]/g, "").slice(0, 2))}
+              placeholder="e.g. 2 → “Set of 2 different designs included”"
+              placeholderTextColor="rgba(101,104,77,0.55)"
+              keyboardType="number-pad"
+              style={styles.input}
+            />
+          </View>
+
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.toggleTitle}>Publish immediately</Text>
@@ -397,7 +513,7 @@ export default function AdminNewProductScreen() {
           {createM.isPending ? (
             <ActivityIndicator color={CREAM} />
           ) : (
-            <Text style={styles.submitText}>{waMode ? "Publish WhatsApp dress" : "Upload & Publish"}</Text>
+            <Text style={styles.submitText}>{wholesaleMode ? "Publish wholesale product" : waMode ? "Publish WhatsApp dress" : "Upload & Publish"}</Text>
           )}
         </TouchableOpacity>
       </View>

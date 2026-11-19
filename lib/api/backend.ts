@@ -56,8 +56,13 @@ export async function getProductsBackend(opts: {
   occasion?: string;
   /** Banner landing: the banner's tagged products first, then related ones. */
   banner?: string;
+  /** Storefront channel; retail is the default. */
+  channel?: "retail" | "wholesale";
   limit?: number;
   offset?: number;
+  /** Checkout products lead, then a `seed`-stable shuffle (sort=newest only). */
+  mix?: "checkout_first";
+  seed?: number;
 } = {}): Promise<ApiResult<{ count: number; total?: number | null; limit: number; offset: number; tagged_count?: number; products: CatalogProduct[] }>> {
   return fetchJson("/api/catalog/products", { requireAuth: false, query: { ...opts } });
 }
@@ -89,9 +94,10 @@ export async function getProductByIdBackend(id: string): Promise<ApiResult<{ pro
   return fetchJson(`/api/catalog/products/${id}`, { requireAuth: false });
 }
 
-export async function getProductBySlugBackend(slug: string): Promise<ApiResult<{ product: CatalogProduct }>> {
+export async function getProductBySlugBackend(slug: string, channel?: "retail" | "wholesale"): Promise<ApiResult<{ product: CatalogProduct }>> {
   // L-03 AUDIT: encodeURIComponent prevents path traversal via slug.
-  return fetchJson(`/api/catalog/products/slug/${encodeURIComponent(slug)}`, { requireAuth: false });
+  const query = channel ? `?channel=${channel}` : "";
+  return fetchJson(`/api/catalog/products/slug/${encodeURIComponent(slug)}${query}`, { requireAuth: false });
 }
 
 export async function getProductsByIdsBackend(ids: string[], includeInactive?: boolean): Promise<ApiResult<{ products: CatalogProduct[] }>> {
